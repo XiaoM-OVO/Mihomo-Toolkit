@@ -27,8 +27,16 @@
 ### 🌐 `fake-ip.yaml` — 通用 DNS 方案
 基于 **Fake-IP** 模式的 DNS 配置：
 - **分流解析**：境内域名使用阿里/腾讯 DoH，境外使用 Google/Cloudflare DoH。
-- **防止泄露**：启用 `respect-rules`，DNS 解析严格遵循路由规则。
-- **节点解析优化**：独立设置 `proxy-server-nameserver`，解决机场节点域名解析卡顿问题。
+- **降低泄露风险**：启用 `respect-rules`，确保 DNS 解析严格遵循路由规则，防止常见场景下的DNS泄露。
+- **节点解析优化**：独立设置 `proxy-server-nameserver`，缓解代理节点域名解析卡顿问题。
+
+---
+
+## 📅 更新记录
+
+### [2026-05-27] 
+- **⚖️ 协议变更**：项目授权协议由 MIT 迁移至 **GPL-3.0**。
+- **🌐 DNS 性能与安全增强**：新增 `nameserver-policy` 分流策略，实现国内外 DNS 精细化解析。
 
 ---
 
@@ -42,7 +50,7 @@
 
 ### 2. DNS 配置
 1. 进入 **[设置 / Settings]** 界面（或直接修改配置文件）。
-2. 打开 **[DNS覆写 / DNS Overwrite]**界面，点击 **[高级 / ADVANCED ]**。
+2. 打开 **[DNS覆写 / DNS Overwrite]** 界面，点击 **[高级 / ADVANCED ]**。
 3. 将 `dns` 部分的内容替换为本项目提供的 `dns/fake-ip.yaml` 代码。
 4. 建议开启 `Tun 模式` 以获得最佳解析效果。
 
@@ -84,4 +92,4 @@ const regionMap = {
 
 ## 📄 许可
 
-MIT License — 自由使用，修改与分享，请保留原作者信息与鸣谢。
+GNU GPL v3.0 — 自由使用、修改与分享，二次开发需保持开源并沿用本协议。
