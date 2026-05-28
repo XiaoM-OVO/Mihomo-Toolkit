@@ -1,5 +1,6 @@
 // =========================================================================
 // Clash Verge Rev (Mihomo内核) 简易优化配置脚本
+// 版本: v1.1.0 (2026-05-28)
 // 作者: XiaoM-OVO
 // 仓库: https://github.com/XiaoM-OVO/mihomo-toolkit
 // 说明: 自动分类节点 + 规则集驱动分流，可自行调整 non-cn 规则顺序
@@ -47,19 +48,20 @@ function main(config) {
     "🇰🇷 韩国节点", 
     "🇸🇬 新加坡节点", 
     "🇺🇸 美国节点",
-    "👨‍🎤 其他节点"
+    "🌐 其他节点"
   ];
 
-  // 2. 标准组合（自动 + 手动 + 各个地区）
-  const standardOptions = ["🚀 自动选择", "🥷 节点选择", ...regionGroups];
+  // 2. 标准组合（自动 + 手动 + 故障转移 + 各个地区）
+  const standardOptions = ["🚀 自动选择", "🛡️ 故障转移", "📍 节点选择", ...regionGroups];
 
   config["proxy-groups"] = [
     // 核心管理
-    { name: "🥷 节点选择", type: "select", proxies: ["🚀 自动选择", ...regionGroups, "DIRECT"] },
+    { name: "📍 节点选择", type: "select", proxies: ["🚀 自动选择", "🛡️ 故障转移", ...regionGroups, "DIRECT"] },
     { name: "🚀 自动选择", type: "url-test", url: "http://www.gstatic.com/generate_204", interval: 300, tolerance: 50, proxies: allProxies },
+    { name: "🛡️ 故障转移", type: "fallback", url: "http://www.gstatic.com/generate_204", interval: 300, proxies: [...regionGroups, "DIRECT"]  },
     
     // 特殊服务
-    { name: "🤖 OpenAI", type: "select", proxies: ["🇺🇸 美国节点", "🇹🇼 台湾节点", "🇸🇬 新加坡节点", "🇯🇵 日本节点", "🇰🇷 韩国节点", "🥷 节点选择", "👨‍🎤 其他节点"] },
+    { name: "🤖 OpenAI", type: "select", proxies: ["🇺🇸 美国节点", "🇹🇼 台湾节点", "🇸🇬 新加坡节点", "🇯🇵 日本节点", "🇰🇷 韩国节点", "📍 节点选择", "🌐 其他节点"] },
 
     // 常规分流
     { name: "🎮 游戏服务", type: "select", proxies: ["DIRECT", ...standardOptions] },
@@ -73,7 +75,7 @@ function main(config) {
     { name: "Ⓜ️ Microsoft", type: "select", proxies: ["DIRECT", ...standardOptions] },
 
     // 兜底与拦截
-    { name: "🐟 漏网之鱼", type: "select", proxies: ["🥷 节点选择", "🚀 自动选择", "DIRECT", ...regionGroups] },
+    { name: "🐟 漏网之鱼", type: "select", proxies: ["📍 节点选择", "🚀 自动选择", "🛡️ 故障转移", "DIRECT", ...regionGroups] },
     { name: "🚫 广告拦截", type: "select", proxies: ["REJECT", "DIRECT"] },
 
     // 自动分类组
@@ -83,7 +85,7 @@ function main(config) {
     { name: "🇰🇷 韩国节点", type: "url-test", url: "http://www.gstatic.com/generate_204", interval: 300, proxies: safe(regionNodes.kr) },
     { name: "🇸🇬 新加坡节点", type: "url-test", url: "http://www.gstatic.com/generate_204", interval: 300, proxies: safe(regionNodes.sg) },
     { name: "🇺🇸 美国节点", type: "url-test", url: "http://www.gstatic.com/generate_204", interval: 300, proxies: safe(regionNodes.us) },
-    { name: "👨‍🎤 其他节点", type: "select", proxies: safe(otherNodes, ["🥷 节点选择"]) }
+    { name: "🌐 其他节点", type: "select", proxies: safe(otherNodes, ["DIRECT"]) }
   ];
 
   // --- 规则集管理 ---
@@ -99,7 +101,7 @@ function main(config) {
     "microsoft": "geo/geosite/microsoft.yaml",
     "steam": "geo/geosite/steam.yaml",
     "epic": "geo/geosite/epicgames.yaml",
-    "game-download": "geo/geosite/category-games@cn.yaml", 
+    "game-download": "geo/geosite/category-games.yaml", 
     "non-cn": "geo/geosite/geolocation-!cn.yaml",
     "cn-domain": "geo/geosite/cn.yaml",
     "telegram-ip": "geo/geoip/telegram.yaml",
@@ -115,7 +117,7 @@ function main(config) {
         url: `${repo}/${path}`,
         path: `./ruleset/${name}.yaml`,
         interval: 86400,
-        proxy: "🥷 节点选择" 
+        proxy: "📍 节点选择" 
       }
     ])
   );
@@ -150,13 +152,18 @@ function main(config) {
     "RULE-SET,apple,🍎 Apple",
     "RULE-SET,microsoft,Ⓜ️ Microsoft",
 
-    // --- 地理位置分流 (直连优先方案) ---
+    // ===== 规则顺序方案 =====
+    // 方案 A（默认）：直连优先，性能最佳，适用于绝大多数场景
+    // 方案 B（备选）：代理优先，分流更激进，适合强迫症用户
+    // 切换方法：注释方案 A，取消注释方案 B
+
+    // --- 地理位置分流 A (直连优先方案) ---
     "RULE-SET,cn-domain,DIRECT",
     "RULE-SET,cn-ip,DIRECT",
-    "RULE-SET,non-cn,🥷 节点选择",
+    "RULE-SET,non-cn,📍 节点选择",
 
-    // --- 地理位置分流 （代理优先） ---
-    //"RULE-SET,non-cn,🥷 节点选择",
+    // --- 地理位置分流 B （代理优先） ---
+    //"RULE-SET,non-cn,📍 节点选择",
     //"RULE-SET,cn-domain,DIRECT",
     //"RULE-SET,cn-ip,DIRECT",
 
