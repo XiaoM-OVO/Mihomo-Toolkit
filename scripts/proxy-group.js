@@ -1,6 +1,6 @@
 // =========================================================================
 // Clash Verge Rev (Mihomo内核) 简易优化配置脚本
-// 版本: v1.2.0 (2026-05-29)
+// 版本: v1.3.0 (2026-05-30)
 // 作者: XiaoM-OVO
 // 仓库: https://github.com/XiaoM-OVO/mihomo-toolkit
 // 说明: 自动分类节点 + 规则集驱动分流，可自行调整 non-cn 规则顺序
@@ -11,10 +11,12 @@ function main(config) {
   const proxyNames = proxies.map(p => p.name);
   const allProxies = proxyNames.length ? proxyNames : ["DIRECT"];
 
+  // --- 安全访问列表 ---
   const safe = (list, fallback = ["DIRECT"]) => {
     return (list && list.length > 0) ? list : fallback;
   };
 
+  // --- 地区关键词映射 ---
   const regionMap = {
     hk: { name: "🇭🇰 香港节点", keywords: ["港", "香港", "🇭🇰", "HK", "Hong Kong"] },
     tw: { name: "🇹🇼 台湾节点", keywords: ["台", "台湾", "🇹🇼", "TW", "Taiwan"] },
@@ -25,6 +27,7 @@ function main(config) {
     eu: { name: "🇪🇺 欧洲节点", keywords: ["欧", "欧洲", "🇪🇺", "EU", "Europe", "UK", "英国", "德国", "法国", "荷兰", "乌克兰", "DE", "FR", "NL","UA"] }
   };
 
+  // --- 分类结果容器 ---
   const matched = new Set();
   const regionNodes = { hk: [], tw: [], jp: [], kr: [], sg: [], us: [], eu: [] };
 
@@ -70,11 +73,15 @@ function main(config) {
     { name: "🛡️ 故障转移", type: "fallback", url: "http://www.gstatic.com/generate_204", interval: 300, proxies: [...regionGroups, "DIRECT"]  },
     
     // 特殊服务
-    { name: "🤖 OpenAI", type: "select", proxies: ["🇺🇸 美国节点", "🇹🇼 台湾节点", "🇸🇬 新加坡节点", "🇯🇵 日本节点", "🇰🇷 韩国节点", "📍 节点选择", "🌐 其他节点"] },
-    { name: "🎓 学术网站", type: "select", proxies: ["🇺🇸 美国节点", "🇪🇺 欧洲节点", "🇯🇵 日本节点", "🇸🇬 新加坡节点", "📍 节点选择", "DIRECT"] },
+    { name: "🤖 OpenAI", type: "select", proxies: ["🇺🇸 美国节点", "🇯🇵 日本节点", "🇸🇬 新加坡节点", "🇰🇷 韩国节点", "🇪🇺 欧洲节点", "🇹🇼 台湾节点", "🌐 其他节点"] },
+    { name: "♊ Gemini", type: "select", proxies: ["🇯🇵 日本节点", "🇺🇸 美国节点", "🇸🇬 新加坡节点", "🇹🇼 台湾节点", "🇰🇷 韩国节点", "🇪🇺 欧洲节点", "🌐 其他节点"] },
+    { name: "🦀 Claude", type: "select", proxies: ["🇺🇸 美国节点", "🇯🇵 日本节点", "🇸🇬 新加坡节点", "🇰🇷 韩国节点", "🇪🇺 欧洲节点", "🇹🇼 台湾节点", "🌐 其他节点"] },
+
+    { name: "🎓 学术网站", type: "select", proxies: ["🇺🇸 美国节点", "🇪🇺 欧洲节点", "🇯🇵 日本节点", "🇸🇬 新加坡节点", "📍 节点选择", "🌐 其他节点", "DIRECT"] },
 
     // 常规分流
     { name: "🎮 游戏服务", type: "select", proxies: ["DIRECT", ...standardOptions] },
+    { name: "📺 哔哩哔哩", type: "select", proxies: ["DIRECT", "🇭🇰 香港节点", "🇹🇼 台湾节点"] },
     { name: "📺 YouTube", type: "select", proxies: [...standardOptions, "DIRECT"] },
     { name: "🎬 Netflix", type: "select", proxies: [...standardOptions, "DIRECT"] },
     { name: "🚅 Google", type: "select", proxies: [...standardOptions, "DIRECT"] },
@@ -103,28 +110,37 @@ function main(config) {
   // --- 规则集管理 ---
   const repo = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta";
   const ruleProviders = {
+    // 基础规则集
     "lan-domain": "geo/geosite/private.yaml",
     "lan-ip": "geo/geoip/private.yaml",
     "ads": "geo/geosite/category-ads-all.yaml",
-    "youtube": "geo/geosite/youtube.yaml",
-    "netflix": "geo/geosite/netflix.yaml",
+    // AI规则集
     "openai": "geo/geosite/openai.yaml",
+    "gemini": "geo/geosite/google-gemini.yaml",
+    "claude": "geo/geosite/anthropic.yaml",
+    // 业务规则集
     "github": "geo/geosite/github.yaml",
     "telegram": "geo/geosite/telegram.yaml",
+    "bilibili": "geo/geosite/bilibili.yaml",
+    "youtube": "geo/geosite/youtube.yaml",
+    "netflix": "geo/geosite/netflix.yaml",
     "google": "geo/geosite/google.yaml",
     "apple": "geo/geosite/apple.yaml",
     "microsoft": "geo/geosite/microsoft.yaml",
+    // 游戏规则集
     "steam": "geo/geosite/steam.yaml",
     "steam-cn": "geo/geosite/steam@cn.yaml",
     "epic": "geo/geosite/epicgames.yaml",
-    "game-download": "geo/geosite/category-games.yaml", 
+    // 学术规则集
     "scholar": "geo/geosite/category-scholar-!cn.yaml",
+    // 地理位置规则集
     "non-cn": "geo/geosite/geolocation-!cn.yaml",
     "cn-domain": "geo/geosite/cn.yaml",
     "telegram-ip": "geo/geoip/telegram.yaml",
     "cn-ip": "geo/geoip/cn.yaml",
   };
 
+  // 生成规则提供者配置
   config["rule-providers"] = Object.fromEntries(
     Object.entries(ruleProviders).map(([name, path]) => [
       name,
@@ -161,10 +177,15 @@ function main(config) {
     // --- 广告拦截 ---
     "RULE-SET,ads,🚫 广告拦截",
 
+    // --- AI分流 ---
+    "RULE-SET,openai,🤖 OpenAI",
+    "RULE-SET,gemini,♊ Gemini",
+    "RULE-SET,claude,🦀 Claude",
+
     // --- 业务分流 ---
+    "RULE-SET,bilibili,📺 哔哩哔哩",
     "RULE-SET,youtube,📺 YouTube",
     "RULE-SET,netflix,🎬 Netflix",
-    "RULE-SET,openai,🤖 OpenAI",
     "RULE-SET,github,🐱 GitHub", 
     "PROCESS-NAME,Telegram.exe,✈️ Telegram",
     "PROCESS-NAME,Telegram,✈️ Telegram",
