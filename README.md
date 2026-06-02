@@ -1,89 +1,92 @@
-# 🚀 Mihomo (Meta) 极简配置工具箱
+<div align="center">
 
-一套为 [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev) 设计的扩展脚本与 DNS 优化方案，追求**逻辑解耦 · UI 洁癖 · 全自动化维护**。
+# 🚀 Mihomo 极简配置工具箱
 
-> ⚠️ **兼容性提醒**：本项目基于 **Mihomo (Meta) 内核** 官方文档开发，**仅在 Clash Verge Rev 上完整测试**。理论上任何使用 Mihomo 内核的客户端都能运行，但未经实测，不保证其他客户端的兼容性，使用前请自行测试。
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
+![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)
+![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)
+
+**一套为 [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev) 设计的动态策略组扩展脚本与 DNS 优化方案**
+
+「 **逻辑解耦** · **UI 清爽** · **自动化维护** 」
+
+</div>
+
 ---
 
-## ✨ 核心特性
+> ⚠️ **兼容性提醒**：本项目基于 **Mihomo 内核** 官方文档开发，**仅在 Clash Verge Rev 上完整测试**。理论上任何使用 Mihomo 内核的客户端都能运行，但未经实测，不保证其他客户端的兼容性。
 
-### 🛠️ `proxy-group.js` — 自动化策略组扩展
+## ✨核心特性
 
-这是一个**核心配置扩展脚本**，能够动态重构节点列表，生成科学且符合直觉的分流结构：
+### 🧼 节点名称智能清洗与重组
+- 自动识别地区、倍率、线路特征（IEPL/CN2/BGP 等），去除杂乱符号
+- 自动为节点添加可视化图标：
+  - 🤖 OpenAI / ChatGPT　|　♊ Google Gemini　|　🦀 Claude
+  - 📺 流媒体访问　|　🎮 游戏/FullCone　|　⚡ Hysteria
+  - 🛡️ AnyTLS　|　📱 WAP 优化　|　⏬ 下载/BT 专用　|　🆓 免费节点
+- 同一地区多节点自动编号（如 `🇭🇰 香港节点 [01]`），UI 清爽一致
 
-- **🪄 智能分类与测速**：基于关键字容错匹配，自动划分为港、台、日、韩、新、美、欧等组别。并为各地区生成懒加载的 `url-test` 测速组，按需优选低延迟节点。
-- **🛡️ 防风控与防泄漏**：内置区域级 `fallback` 故障转移，避免跨区乱跳导致的账号访问异常；集成 `Sniffer` 流量嗅探，自动提取纯 IP 后的真实域名，提升规则命中率。
-- **🎯 场景化精细分流**（默认预设，代码内可随意调换顺序）：
-  - **🤖 AI 大模型**：针对 OpenAI/Gemini/Claude，默认优先选择连通性较好的地区。
-  - **🎓 学术/科研**：优先调度兼容节点，兼顾访问速度与论文资源获取。
-  - **📺 影音流媒体**：流媒体自动分流；B站默认直连，亦提供港澳台快速通道。
-  - **🎮 游戏下载**：内置 Steam/Epic 识别，下载默认直连跑满带宽，社区商店可选代理。
-  - **🍎 系统服务**：Apple/Microsoft 默认直连保障更新，抽风时支持一键无缝切代理。
-  - **✈️ 日常冲浪**：Telegram/GitHub 等提供专属组，可手动指定或全自动；未知流量交由 `🐟 漏网之鱼` 兜底。
-- **🧹 纯净 UI 体验**：策略组由代码基于当前订阅动态组装，剔除冗余项，保持客户端界面清爽简洁。
+### 🛠️ `proxy-group.js` — 自动化策略组引擎
+- **智能地区分类**：支持 20+ 国家和地区（含欧洲多国、印度、俄罗斯、澳大利亚、巴西等）。
+- **动态隐藏空策略组**：无节点的地区组自动隐藏，UI 更美观。
+- **负载均衡专用组**：为下载 / BT / 安卓应用等流量自动轮询低倍率节点，降低代理服务商风控风险。
+- **AI 服务分流**：OpenAI / Gemini / Claude 自动指向有节点的地区，并优先选择连通性较好的区域。
+- **BT/P2P 防封保护**：内置进程识别 + bt-trackers/peers 规则集，强制直连。
+- **学术访问优化**：内置常见学术数据库规则集，自动选择低延迟欧美节点，改善外文文献访问体验。
+- **游戏与下载优化**：Steam/Epic 商店直连跑满带宽，游戏服务可手动/自动代理。
+- **流媒体 & 日常应用**：YouTube、Netflix、Bilibili、Telegram、GitHub 等一键分流。
 
-> 💡 **提示**：以上规则及顺序均为兼顾日常体验的“默认预设”。因为是 JS 脚本驱动，如果你有强迫症或特殊的网络偏好，完全可以随时在代码里自由增删和调换顺序！
-
-### 🌐 `fake-ip.yaml` — 通用 DNS 方案
-基于 **Fake-IP** 模式的 DNS 配置：
-- **分流解析**：境内域名使用阿里/腾讯 DoH，境外使用 Google/Cloudflare DoH。
-- **降低泄露风险**：启用 `respect-rules`，确保 DNS 解析遵循路由规则，防止常见场景下的DNS泄露。
-- **节点解析优化**：独立设置 `proxy-server-nameserver`，缓解代理节点域名解析卡顿问题。
+### 🌐 `fake-ip.yaml` — DNS 优化方案
+- 分流解析：境内域名用阿里/腾讯 DoH，境外用 Google/Cloudflare DoH
+- 降低 DNS 泄露风险：启用 `respect-rules`，遵循路由规则
+- 节点解析优化：独立设置 `proxy-server-nameserver`，缓解卡顿
 
 ---
 
 ## 🛠️ 如何使用
 
-### 1. 脚本部署 (Clash Verge Rev)
-1. 进入 **[订阅 / Profiles]** 界面。
-2. 双击 **[全局拓展脚本 / Global Extend Script]**，打开js界面。
-3. 将 `scripts/proxy-group.js` 的内容全部复制进去。
-4. 刷新订阅，即可看到全新的策略组布局。
+### 1. 部署脚本 (Clash Verge Rev)
+1. 进入 **订阅 / Profiles** 界面。
+2. 双击 **全局拓展脚本 / Global Extend Script**，打开编辑器。
+3. 将 `scripts/proxy-group.js` 的全部内容复制进去。
+4. **保存**后刷新订阅，即可看到全新的策略组布局。
 
 ### 2. DNS 配置
-1. 进入 **[设置 / Settings]** 界面（或直接修改配置文件）。
-2. 打开 **[DNS覆写 / DNS Overwrite]** 界面，点击 **[高级 / ADVANCED ]**。
-3. 将 `dns` 部分的内容替换为本项目提供的 `dns/fake-ip.yaml` 代码。
-4. 建议开启 `Tun 模式` 以获得最佳解析效果。
+1. 进入 **设置 / Settings** → **DNS 覆写 / DNS Overwrite** → **高级 / ADVANCED**。
+2. 将 `dns/fake-ip.yaml` 中的 `dns` 部分替换原有配置。
+3. 建议开启 **Tun 模式** 以获得最佳解析效果。
 
-> 💡“由于脚本中 `rule-providers` 依赖代理节点更新，在初次导入后，请确保至少有一个代理节点能正常连接（脚本会自动通过 **🚀 自动选择** 组寻找最低延迟节点拉取规则），以便脚本通过代理拉取规则集。”
+> 💡 首次使用请确保至少有一个代理节点能正常连接（脚本会通过 **🚀 自动选择** 测速组拉取规则集）。
 
 ---
 
 ## 🔧 自定义指南
 
-### 1. 调整节点识别关键词  
-打开脚本顶部的 `regionMap`，按需修改 `keywords` 数组。匹配规则：  
-- **中文/符号**：直接包含即匹配（例如 `"港"` 会匹配所有带“港”字的节点名）。  
-- **英文**：自动作为**独立单词**匹配（例如 `"HK"` 不会匹配 `SHK` 或 `HKT`，避免误判）。  
-
-```javascript
-const regionMap = {
-  hk: { name: "🇭🇰 香港节点", keywords: ["港", "香港", "🇭🇰", "HK", "Hong Kong", "CM-HK"] },
-  tw: { name: "🇹🇼 台湾节点", keywords: ["台", "台湾", "🇹🇼", "TW", "Taiwan"] },
-  jp: { name: "🇯🇵 日本节点", keywords: ["日", "日本", "🇯🇵", "JP", "Japan", "Tokyo"] },
-  // 新增地区示例：
-  // in: { name: "🇮🇳 印度节点", keywords: ["印度", "🇮🇳", "IN", "India"] }
-};
+### 调整节点识别关键词
+打开脚本顶部的 `regionReplacements` 数组，按需增删地区识别规则。  
+例如新增“泰国”：
+```js
+{ reg: /泰国|TH|Thailand/i, name: "泰国", icon: "🇹🇭" }
 ```
 
-### 2. 调整节点组的顺序或名称  
-脚本中 `regionGroups` 数组控制地区组在 UI 中的显示顺序，修改它即可。  
-⚠️ 注意保持 `proxy-groups` 中引用的名称一致。
+### 修改 AI 服务使用的地区顺序
+找到 `aiProxies` 数组（脚本中已根据可用地区动态生成），若想固定顺序，可替换为：
+```js
+const aiProxies = ["🇺🇸 美国节点", "🇯🇵 日本节点", "🇸🇬 新加坡节点"];
+```
 
-### 3. 自定义规则顺序  
-脚本末尾的 `rules` 数组分为两套方案（A 直连优先 / B 代理优先），注释切换即可。  
-若想追加个人规则，写在 `MATCH` 之前即可。
+### 切换规则顺序方案
+脚本底部 `rules` 数组中有注释说明：
+- 默认：**方案 A（直连优先）**
+- 若需代理优先，注释方案 A，取消注释方案 B。
 
 ---
 
 ## 🙏 鸣谢
 
-本项目的诞生离不开以下开源项目与作者的无私奉献，特此致谢：
-
-- **核心思路与灵感**：[iczrac/Parsers-for-clash](https://github.com/iczrac/Parsers-for-clash) （感谢提供最初的 Parser 脚本重构思路）
+- **核心思路与灵感**：[iczrac/Parsers-for-clash](https://github.com/iczrac/Parsers-for-clash)
 - **内核及现代规则集**：[Mihomo (Meta)](https://github.com/MetaCubeX/mihomo) & [meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat)
-- **AI 协同**：本项目逻辑由人类架构，通过 Gemini、DeepSeek 等 AI 模型博弈对线压力测试而成。
+- **AI 协同**：由人类架构，通过 Gemini、DeepSeek 等 AI 模型对线压力测试而成。
 
 ---
 
