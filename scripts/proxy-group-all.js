@@ -1,5 +1,5 @@
 // =========================================================================
-//  📦 Mihomo-Toolkit | 通用动态策略组脚本
+//  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE
 // ------------------------------------------------------------------------
 // 版本: v1.5.1 (2026-06-04)
 // 作者: XiaoM-OVO
@@ -349,7 +349,57 @@ function main(config) {
 
     "MATCH,🐟 漏网之鱼"
   ];
+  // =========================================================================
+  // --- 7. TUN模式与严格路由防漏 ---
+  // =========================================================================
+  const uiTun = config.tun || {}; 
+  config["tun"] = {
+    ...uiTun,                   // 保留界面上的 enable 状态
+    "stack": "system",          // gvisor / mixed / system
+    "device": "Mihomo",         // 虚拟网卡名称
+    "auto-route": true,         // 自动设置全局路由
+    "strict-route": true,       // ⚠️严格路由：防止 Windows 底层 UDP/DNS 泄漏
+    "auto-detect-interface": true
+  };
 
+  // =========================================================================
+  // --- 8. Fake-IP 与纯净 DNS 体系 ---
+  // =========================================================================
+  config["dns"] = {
+    "enable": true,
+    "listen": "0.0.0.0:1053",
+    "ipv6": false,              // ⚠️ 禁用 IPv6 解析，防止本地 IPv6 偷跑
+    "enhanced-mode": "fake-ip",
+    "fake-ip-range": "198.18.0.1/16",
+    "fake-ip-filter-mode": "blacklist",
+    "respect-rules": true,
+    "use-hosts": true,
+    "use-system-hosts": false,
+    "fake-ip-filter": [
+      "*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com",
+      "localhost.ptlogin2.qq.com", "*.msftncsi.com", "www.msftconnecttest.com",
+      "google.cn", "+.music.163.com", "+.music.126.net"
+    ],
+    // 默认 DNS (解析国内和直连域名)
+    "default-nameserver": ["223.5.5.5", "119.29.29.29"],
+    "direct-nameserver": ["https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"],
+    "direct-nameserver-follow-policy": true,
+    // 解析代理节点域名的 DNS
+    "proxy-server-nameserver": ["https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"],
+    // 兜底海外 DNS (走代理，确保返回距离节点最近的 IP)
+    "nameserver": ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],
+    // 国内特定服务 DNS 策略分流
+    "nameserver-policy": {
+      "geosite:cn,apple,microsoft": [
+        "https://dns.alidns.com/dns-query",
+        "https://doh.pub/dns-query"
+      ]
+    }
+  };
+
+  // =========================================================================
+  // --- 9. Sniffer 深度包检测 (增强分流准确性) ---
+  // =========================================================================
   config["sniffer"] = {
     "enable": true, "force-dns-mapping": true, "parse-pure-ip": true, "override-destination": true,
     "sniff": { "TLS": { "ports": [443, 8443] }, "HTTP": { "ports": [80, "8080-8880"], "override-destination": true } }
