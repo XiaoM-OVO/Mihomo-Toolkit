@@ -24,38 +24,18 @@ dns:
   default-nameserver:
     - '223.5.5.5'
     - '119.29.29.29'
-  nameserver:
-    - 'https://dns.alidns.com/dns-query'
-    - 'https://doh.pub/dns-query'
-  direct-nameserver-follow-policy: false
-  fallback-filter:
-    geoip: true
-    geoip-code: 'CN'
-    ipcidr:
-      - '240.0.0.0/4'
-      - '0.0.0.0/32'
-    domain:
-      - '+.google.com'
-      - '+.facebook.com'
-      - '+.youtube.com'
-      - '+.githubusercontent.com'
-      - '+.googlevideo.com'
-      - '+.msftconnecttest.com'
-      - '+.msftncsi.com'
-  fallback:
-    - 'https://8.8.8.8/dns-query'
-    - 'https://1.1.1.1/dns-query'
-    - 'https://dns.google/dns-query'
   proxy-server-nameserver:
     - 'https://dns.alidns.com/dns-query'
     - 'https://doh.pub/dns-query'
-  direct-nameserver: []
+  nameserver:
+    - 'https://8.8.8.8/dns-query'
+    - 'https://1.1.1.1/dns-query'
+  direct-nameserver:
+    - 'https://dns.alidns.com/dns-query'
+    - 'https://doh.pub/dns-query'
+  direct-nameserver-follow-policy: true   
+
   nameserver-policy:
-    dnsleaktest.com,bash.ws:
-      - 'https://8.8.8.8/dns-query'
-    geosite:cn,apple,microsoft:
+    'geosite:cn,apple,microsoft':
       - 'https://dns.alidns.com/dns-query'
       - 'https://doh.pub/dns-query'
-    geosite:geolocation-!cn:
-      - 'https://8.8.8.8/dns-query'
-      - 'https://1.1.1.1/dns-query'
