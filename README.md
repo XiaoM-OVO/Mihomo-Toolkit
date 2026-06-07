@@ -79,25 +79,31 @@
 
 ```javascript
 const USER_CONFIG = {    
+  // 【基础控制】
   enableScript: true,        // 🌟 脚本总开关：设为 false 可一键无损停用本脚本
   enableAI: true,            // 是否开启 AI 服务独立分流
-  enableGame: true,          // 是否开启游戏平台独立分流
-  proxyFirst: false,         // 核心路由模式：false 为直连优先(性能最高)，true 为代理优先(全局接管)
-  useMRS: true,              // 是否使用 Mihomo 高性能二进制规则格式(.mrs)
-  osType: "windows",         // 客户端运行环境，用于匹配 P2P 下载进程名
-  enableDomesticGroup: false // 是否开启特定回流组 (适用于需要访问特定地理限制服务的场景)
+  proxyFirst: false,         // 核心路由模式：false 为直连优先(体验最佳)，true 为代理优先(全局接管)
+  
+  // 【进阶高阶参数】(v2.1.0+)
+  useMRS: true,                // 🚀 是否使用 Mihomo 高性能二进制规则格式(.mrs)
+  regionGroupType: "url-test", // ⚙️ 地区组行为: "url-test"(自动测速), "select"(手动选择), "fallback"(故障转移)
+  testInterval: 300,           // 🕒 测速间隔: 多少秒进行一次连通性测试
+  testTolerance: 50,           // ⚖️ 切换阈值: 节点延迟差低于此值时不发生切换，防止频繁变动 IP
+  
   // ... 更多开关请查看脚本源码
 };
 ```
-### 1. 调整 AI 节点匹配逻辑
-若希望调整特定区域（如优先选择新加坡节点），可在脚本 `appGroups` 组装区修改地区数组顺序：
-```js
-const aiCore = ["🇸🇬 新加坡节点", "🇺🇸 美国节点", "🇯🇵 日本节点", ...].filter(...)
+### 1. 调整 AI 节点匹配优先级
+脚本默认优先选择美国、日本、台湾等节点用于 AI 服务。如果你希望**优先使用新加坡节点**，只需在脚本顶部的常量区修改 `AI_PREFERRED_REGIONS` 数组的顺序即可：
+```javascript
+// 将 "sg" (新加坡) 移到数组第一位
+const AI_PREFERRED_REGIONS = ["sg", "us", "jp", "tw", "kr", "eu"]; 
 ```
 
-### 2. 下载流量隔离阈值
-脚本默认将名称中包含 `< 1.0` 倍率的节点判定为下载节点。如需修改判断阈值（例如 0.5），请修改此处正则后的判断逻辑：
-```js
+### 2. 调整下载节点判定阈值
+脚本默认将名称中包含 `< 1.0` 倍率的节点判定为下载节点并隔离。如需修改判断阈值（例如低于 0.5 倍率才算下载节点），请在源码的正则提取区修改如下逻辑：
+```javascript
+// 找到这行代码并修改数字
 if (num < 0.5) isLowMulti = true;
 ```
 
