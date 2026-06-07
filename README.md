@@ -79,13 +79,14 @@
 
 ```javascript
 const USER_CONFIG = {    
+  enableScript: true,        // 🌟 脚本总开关：设为 false 可一键无损停用本脚本
   enableAI: true,            // 是否开启 AI 服务独立分流
   enableGame: true,          // 是否开启游戏平台独立分流
   proxyFirst: false,         // 核心路由模式：false 为直连优先(性能最高)，true 为代理优先(全局接管)
   useMRS: true,              // 是否使用 Mihomo 高性能二进制规则格式(.mrs)
   osType: "windows",         // 客户端运行环境，用于匹配 P2P 下载进程名
   enableDomesticGroup: false // 是否开启特定回流组 (适用于需要访问特定地理限制服务的场景)
-  ...
+  // ... 更多开关请查看脚本源码
 };
 ```
 ### 1. 调整 AI 节点匹配逻辑
