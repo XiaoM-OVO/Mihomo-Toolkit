@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本
 // ------------------------------------------------------------------------
-// 版本: v2.1.0 (Build 2026.06.07)
+// 版本: v2.1.1 (Build 2026.06.08)
 // 作者: XiaoM-OVO
 // 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配
@@ -11,7 +11,7 @@
 // 🤖 : OpenAI / ChatGPT      ♊ : Google Gemini       🦀 : Anthropic Claude
 // 📺 : 流媒体访问 (NF/P+)     🎮 : 游戏 / FullCone      ⚡ : Hysteria / 高速
 // 🛡️ : AnyTLS / 安全协议      📱 : WAP 移动优化         ⏬ : 下载 / BT 专用
-// 🆓 : 免费 / 公益节点         🗑️ : 清洗失败节点
+// 🆓 : 免费 / 公益节点         🗑️ : 清洗失败节点          🏠 ：住宅IP / 家宽
 // =========================================================================
 
 function main(config) {
@@ -23,7 +23,7 @@ function main(config) {
     // 【1. 脚本总控】
     enableScript: true,          // 🟢 总开关：设为 false 则原样输出订阅内容，不修改任何节点
 
-    // 【2. 常用功能分流 (默认开启)】
+    // 【2. 常用功能分流】
     enableAdBlock: true,         // 🚫 广告拦截：去除网页及 APP 广告
     enableAI: true,              // 🤖 AI 助手：OpenAI, Gemini, Claude 等
     enableGitHub: true,          // 🐱 开发者选项：GitHub, GitLab 等
@@ -31,26 +31,29 @@ function main(config) {
     enableScholar: true,         // 🎓 学术研究：Google Scholar 等
     enableYouTube: true,         // ▶️ 影音娱乐：YouTube 独立分流
     enableNetflix: true,         // 🎬 影音娱乐：Netflix 独立分流
+    enableDisney: false,         // 🪄 影音娱乐：Disney+ 独立分流
     enableBilibili: true,        // 📺 影音娱乐：哔哩哔哩港澳台
     enableGame: true,            // 🎮 游戏平台：Steam, Epic 等
     enableSystemServices: true,  // 🪟 系统服务：Microsoft, Apple, Google 服务
 
-    // 【3. 专项场景分流 (按需开启)】
+    // 【3. 专项场景分流】
     enableTikTok: false,         // 🎵 TikTok：自动过滤香港节点
     enableSpotify: false,        // 🎧 Spotify：音乐流媒体
     enableSocial: false,         // 💬 海外社交：Twitter, Meta 等
     enableCrypto: false,         // 🪙 加密货币：Binance 等交易平台
     enablePayPal: false,         // 💳 金融支付：PayPal 独立分流
     enableDomesticGroup: false,  // 🇨🇳 中国分流：开启后增加专门的“中国”策略组
+    enableResidential: false,    // 🏠 家宽分流：自动提取住宅/ISP节点，并作为 AI、流媒体、金融的首选
 
     // 【4. 路由逻辑与设备优化】
     proxyFirst: false,           // 🧭 路由偏好：false(直连优先-推荐), true(代理优先-漏网走代理)
     osType: "windows",           // 💻 设备类型: "windows", "mac", "linux", "all"
-    enableQUICReject: false,     // ⚡ 屏蔽 QUIC: 提升 YT 速度，若游戏语音异常请关闭
+    enableQUICReject: false,     // ⚡ 屏蔽 QUIC: 强制降级至 TCP，避免 UDP 丢包/限速导致的卡顿或断流。若游戏/语音异常请关闭。
+    enableIPv6: false,           // 🌐 IPv6控制台：局域网IPv6直连，及全局IPv6接管开关
     removeInfoNodes: false,      // 🗑️ 纯净节点: 彻底过滤流量/到期时间等营销节点
 
     // 【5. 核心性能与策略组高级参数】
-    useMRS: true,                // 🚀 极速模式: true(MRS格式-性能极高), false(YAML格式)
+    useMRS: true,                // 🚀 极速模式: true(MRS格式-性能), false(YAML格式-兼容)
     regionGroupType: "url-test", // ⚙️ 地区组行为: "url-test"(自动), "select"(手动), "fallback"(故障转移)
     testURL: "http://cp.cloudflare.com/generate_204", // 🔗 延迟测速地址
     testInterval: 300,           // 🕒 测速间隔: 单位秒
@@ -93,6 +96,7 @@ function main(config) {
     { reg: /\b(?:GPT|ChatGPT|OpenAI)\b/i, icon: "🤖", pool: "chatgpt" },
     { reg: /\bGemini\b/i, icon: "♊", pool: "gemini" },
     { reg: /\bClaude\b/i, icon: "🦀", pool: "claude" },
+    { reg: /(?:家宽|住宅|双ISP|原生|Residential|Resi|ISP|Home|HKT|HKBN|HGC|WTT|Hinet|Kbro|So[-_]?net|Nuro|Singtel|StarHub)/i, icon: "🏠", pool: "residential" },
     { reg: /(?:游戏)|\b(?:Game|FullCone)\b/i, icon: "🎮", pool: "game" },
     { reg: /(?:流媒体|解锁)|\b(?:Netflix|NF|Disney\+|YouTube)\b/i, icon: "📺" },
     { reg: /(?:下载)|\bBT\b/i, icon: "⏬" },
@@ -120,7 +124,7 @@ function main(config) {
   // =========================================================================
   const BUCKETS = {
     hk: [], tw: [], jp: [], kr: [], sg: [], us: [], eu: [], cn: [], other: [],
-    garbage: [], download: [], info: [], allStandard: [],
+    garbage: [], download: [], info: [], allStandard: [],residential: [],
     chatgpt: [], gemini: [], claude: [], game: []
   };
 
@@ -236,6 +240,8 @@ function main(config) {
     // 根据标签分配节点到对应的可用组
     if (icons.includes("⏬")) {
       BUCKETS.download.push(finalName);
+    } else if (USER_CONFIG.enableResidential && icons.includes("🏠")) {
+      featurePools.forEach(p => BUCKETS[p].push(finalName)); 
     } else {
       BUCKETS.allStandard.push(finalName);
       featurePools.forEach(p => BUCKETS[p].push(finalName)); 
@@ -260,12 +266,14 @@ function main(config) {
 
   const hasGlobalProxy = activeRegionGroups.some(g => g !== "🇨🇳 大陆节点" && g !== "🗑️ 未知识别");
 
-  const standardOptions = ["📍 节点选择", "🚀 自动选择", "♻️ 故障转移"];
+  const standardOptions = ["📍 手动选择", "🚀 自动选择", "♻️ 故障转移"];
   if (BUCKETS.download.length > 0) standardOptions.push("⚖️ 负载均衡");
+  if (USER_CONFIG.enableResidential && BUCKETS.residential.length > 0) standardOptions.push("🏠 家宽专用");
   standardOptions.push(...activeRegionGroups);
 
   const coreSelectProxies = ["🚀 自动选择", "♻️ 故障转移"];
   if (BUCKETS.download.length > 0) coreSelectProxies.push("⚖️ 负载均衡");
+  if (USER_CONFIG.enableResidential && BUCKETS.residential.length > 0) coreSelectProxies.push("🏠 家宽专用");
   coreSelectProxies.push(...activeRegionGroups, "DIRECT", ...BUCKETS.info); 
 
   // =========================================================================
@@ -288,6 +296,7 @@ function main(config) {
   };
 
   const appGroups = [];
+  const resiPrefix = (USER_CONFIG.enableResidential && BUCKETS.residential.length > 0) ? ["🏠 家宽专用"] : [];
   
   if (USER_CONFIG.enableAI) {
     const aiCore = AI_PREFERRED_REGIONS.map(id => REGION_NAMES[id]).filter(g => activeRegionGroups.includes(g));
@@ -295,28 +304,29 @@ function main(config) {
     const showGemini = aiCore.length > 0 || BUCKETS.gemini.length > 0;
     const showClaude = aiCore.length > 0 || BUCKETS.claude.length > 0;
     appGroups.push(
-      buildSelect("🤖 OpenAI", [...aiCore, ...BUCKETS.chatgpt, "📍 节点选择", "DIRECT"], !showOpenAI),
-      buildSelect("♊ Gemini", [...aiCore, ...BUCKETS.gemini, "📍 节点选择", "DIRECT"], !showGemini),
-      buildSelect("🦀 Claude", [...aiCore, ...BUCKETS.claude, "📍 节点选择", "DIRECT"], !showClaude)
+      buildSelect("🤖 OpenAI", [...resiPrefix, ...aiCore, ...BUCKETS.chatgpt, "📍 手动选择", "DIRECT"], !showOpenAI),
+      buildSelect("♊ Gemini", [...resiPrefix, ...aiCore, ...BUCKETS.gemini, "📍 手动选择", "DIRECT"], !showGemini),
+      buildSelect("🦀 Claude", [...resiPrefix, ...aiCore, ...BUCKETS.claude, "📍 手动选择", "DIRECT"], !showClaude)
     );
   }
 
   if (USER_CONFIG.enableScholar) {
     const scholarProxies = ["🇺🇸 美国节点", "🇪🇺 欧洲节点", "🇯🇵 日本节点", "🇸🇬 新加坡节点", "🇹🇼 台湾节点", "🇭🇰 香港节点"].filter(g => activeRegionGroups.includes(g));
-    appGroups.push(buildSelect("🎓 学术网站", [...scholarProxies, "📍 节点选择", "DIRECT"], scholarProxies.length === 0));
+    appGroups.push(buildSelect("🎓 学术网站", [...scholarProxies, "📍 手动选择", "DIRECT"], scholarProxies.length === 0));
   }
   if (USER_CONFIG.enableCrypto) {
     const cryptoCore = ["🇹🇼 台湾节点", "🇯🇵 日本节点", "🇪🇺 欧洲节点"].filter(g => activeRegionGroups.includes(g));
-    appGroups.push(buildSelect("🪙 加密货币", [...cryptoCore, "📍 节点选择", "DIRECT"], !hasGlobalProxy));
+    appGroups.push(buildSelect("🪙 加密货币", [...cryptoCore, "📍 手动选择", "DIRECT"], !hasGlobalProxy));
   }
-  if (USER_CONFIG.enablePayPal)   appGroups.push(buildSelect("💳 PayPal", ["DIRECT", "📍 节点选择", ...activeRegionGroups], !hasGlobalProxy));
+  if (USER_CONFIG.enablePayPal)   appGroups.push(buildSelect("💳 PayPal", ["DIRECT", ...resiPrefix, "📍 手动选择", ...activeRegionGroups], !hasGlobalProxy));
 
   if (USER_CONFIG.enableGame)     appGroups.push(buildSelect("🎮 游戏服务", ["DIRECT", ...standardOptions, ...BUCKETS.game], !hasGlobalProxy));
   if (USER_CONFIG.enableSocial)   appGroups.push(buildSelect("💬 社交平台", [...standardOptions, "DIRECT"], !hasGlobalProxy));
   if (USER_CONFIG.enableYouTube)  appGroups.push(buildSelect("▶️ YouTube", [...standardOptions, "DIRECT"], !hasGlobalProxy));
   if (USER_CONFIG.enableNetflix)  appGroups.push(buildSelect("🎬 Netflix", [...standardOptions, "DIRECT"], !hasGlobalProxy));
-  if (USER_CONFIG.enableGitHub)   appGroups.push(buildSelect("🐱 GitHub", [...standardOptions, "DIRECT"], !hasGlobalProxy));
-  if (USER_CONFIG.enableTelegram) appGroups.push(buildSelect("✈️ Telegram", [...standardOptions, "DIRECT"], !hasGlobalProxy));
+  if (USER_CONFIG.enableDisney)   appGroups.push(buildSelect("🪄 Disney+", [...standardOptions, "DIRECT"], !hasGlobalProxy));
+  if (USER_CONFIG.enableGitHub)   appGroups.push(buildSelect("🐱 GitHub",  [...standardOptions, "DIRECT"], !hasGlobalProxy));
+  if (USER_CONFIG.enableTelegram) appGroups.push(buildSelect("✈️ Telegram",[...standardOptions, "DIRECT"], !hasGlobalProxy));
   if (USER_CONFIG.enableSpotify)  appGroups.push(buildSelect("🎧 Spotify", [...standardOptions, "DIRECT"], !hasGlobalProxy));
   
   if (USER_CONFIG.enableBilibili) {
@@ -327,7 +337,7 @@ function main(config) {
   
   if (USER_CONFIG.enableTikTok) {
     const tiktokCore = activeRegionGroups.filter(g => g !== "🇭🇰 香港节点" && g !== "🇨🇳 大陆节点" && g !== "🗑️ 未知识别");
-    appGroups.push(buildSelect("🎵 TikTok", [...tiktokCore, "📍 节点选择", "DIRECT"], tiktokCore.length === 0));
+    appGroups.push(buildSelect("🎵 TikTok", [...resiPrefix, ...tiktokCore, "📍 手动选择", "DIRECT"], tiktokCore.length === 0));
   }
 
   if (USER_CONFIG.enableSystemServices) {
@@ -337,14 +347,25 @@ function main(config) {
       buildSelect("🍎 Apple", ["DIRECT", ...standardOptions], !hasGlobalProxy)
     );
   }
+
   if (USER_CONFIG.enableAdBlock)  appGroups.push(buildSelect("🚫 广告拦截", ["REJECT", "DIRECT"]));
 
   // 【核心控制组】
   const finalGroups = [
-    buildSelect("📍 节点选择", coreSelectProxies),
+    buildSelect("📍 手动选择", coreSelectProxies),
     { name: "🚀 自动选择", type: "url-test", url: USER_CONFIG.testURL, interval: USER_CONFIG.testInterval, tolerance: USER_CONFIG.testTolerance, proxies: safeList(BUCKETS.allStandard) },
     { name: "♻️ 故障转移", type: "fallback", url: USER_CONFIG.testURL, interval: USER_CONFIG.testInterval, proxies: safeList([...activeRegionGroups, "DIRECT"]) }
   ];
+
+  if (USER_CONFIG.enableResidential && BUCKETS.residential.length > 0) {
+    finalGroups.push({ 
+      name: "🏠 家宽专用", 
+      type: "fallback", 
+      url: USER_CONFIG.testURL, 
+      interval: USER_CONFIG.testInterval, 
+      proxies: safeList([...new Set(BUCKETS.residential)]) 
+    });
+  }
 
   // 【下载负载均衡池】
   finalGroups.push(buildSelect("⚖️ 负载均衡", BUCKETS.download.length > 0 ? ["DIRECT", "⚖️ 负载均衡轮询池", "🚀 自动选择", ...BUCKETS.download] : ["DIRECT"], BUCKETS.download.length === 0));
@@ -354,7 +375,10 @@ function main(config) {
 
   // 合并应用组与杂项组
   finalGroups.push(...appGroups);
-  finalGroups.push(buildSelect("🐟 漏网之鱼", USER_CONFIG.proxyFirst ? ["📍 节点选择", "🚀 自动选择", "DIRECT"] : ["DIRECT", "📍 节点选择", "🚀 自动选择"]));
+  if (USER_CONFIG.enableIPv6) {
+    finalGroups.push(buildSelect("🌐 IPv6控制台", ["📍 手动选择", "REJECT", "DIRECT"]));
+  }
+  finalGroups.push(buildSelect("🐟 漏网之鱼", USER_CONFIG.proxyFirst ? ["📍 手动选择", "🚀 自动选择", "DIRECT"] : ["DIRECT", "📍 手动选择", "🚀 自动选择"]));
 
   finalGroups.push(...Object.entries(REGION_NAMES).map(([id, name]) => buildRegionGroup(name, BUCKETS[id], BUCKETS[id].length === 0)));
   finalGroups.push(buildSelect("🌐 其他节点", safeList(BUCKETS.other), BUCKETS.other.length === 0));
@@ -390,6 +414,7 @@ function main(config) {
   if (USER_CONFIG.enableBilibili) PROVIDER_BASE["bilibili"] = "geosite/bilibili";
   if (USER_CONFIG.enableYouTube)  PROVIDER_BASE["youtube"] = "geosite/youtube";
   if (USER_CONFIG.enableNetflix)  PROVIDER_BASE["netflix"] = "geosite/netflix";
+  if (USER_CONFIG.enableDisney)   PROVIDER_BASE["disney"] = "geosite/disney";
   if (USER_CONFIG.enableGitHub)   PROVIDER_BASE["github"] = "geosite/github";
   if (USER_CONFIG.enableCrypto)   PROVIDER_BASE["crypto"] = "geosite/category-cryptocurrency";
   if (USER_CONFIG.enablePayPal)   PROVIDER_BASE["paypal"] = "geosite/paypal";
@@ -426,6 +451,14 @@ function main(config) {
     "RULE-SET,lan-domain,DIRECT",
     "RULE-SET,lan-ip,DIRECT,no-resolve"
   ];
+
+  if (USER_CONFIG.enableIPv6) {
+    routingRules.push(
+      "IP-CIDR6,::1/128,DIRECT,no-resolve",
+      "IP-CIDR6,fc00::/7,DIRECT,no-resolve",
+      "IP-CIDR6,fe80::/10,DIRECT,no-resolve"
+    );
+  }
 
   if (USER_CONFIG.enableQUICReject) routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT");
   if (USER_CONFIG.enableAdBlock)    routingRules.push("RULE-SET,ads,🚫 广告拦截");
@@ -465,6 +498,7 @@ function main(config) {
   if (USER_CONFIG.enableBilibili) routingRules.push("RULE-SET,bilibili,📺 哔哩哔哩");
   if (USER_CONFIG.enableYouTube)  routingRules.push("RULE-SET,youtube,▶️ YouTube");
   if (USER_CONFIG.enableNetflix)  routingRules.push("RULE-SET,netflix,🎬 Netflix");
+  if (USER_CONFIG.enableDisney)   routingRules.push("RULE-SET,disney,🪄 Disney+");
   if (USER_CONFIG.enableGitHub)   routingRules.push("RULE-SET,github,🐱 GitHub");
   if (USER_CONFIG.enableSpotify)  routingRules.push("RULE-SET,spotify,🎧 Spotify");
   if (USER_CONFIG.enableTikTok)   routingRules.push("RULE-SET,tiktok,🎵 TikTok");
@@ -486,9 +520,13 @@ function main(config) {
   const cnTarget = USER_CONFIG.enableDomesticGroup ? "🇨🇳 中国分流" : "DIRECT";
   
   if (USER_CONFIG.proxyFirst) {
-    routingRules.push("RULE-SET,non-cn,📍 节点选择", `RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`);
+    routingRules.push("RULE-SET,non-cn,📍 手动选择", `RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`);
   } else {
-    routingRules.push(`RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`, "RULE-SET,non-cn,📍 节点选择");
+    routingRules.push(`RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`, "RULE-SET,non-cn,📍 手动选择");
+  }
+
+  if (USER_CONFIG.enableIPv6) {
+    routingRules.push("IP-CIDR6,::/0,🌐 IPv6控制台,no-resolve");
   }
 
   routingRules.push("MATCH,🐟 漏网之鱼");
