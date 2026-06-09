@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE
 // ------------------------------------------------------------------------
-// 版本: v2.1.1 (Build 2026.06.08)
+// 版本: v2.1.2 (Build 2026.06.09)
 // 作者: XiaoM-OVO
 // 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配
@@ -46,7 +46,7 @@ function main(config) {
     enableResidential: false,    // 🏠 家宽分流：自动提取住宅/ISP节点，并作为 AI、流媒体、金融的首选
 
     // 【4. 路由逻辑与设备优化】
-    proxyFirst: false,           // 🧭 路由偏好：false(直连优先-推荐), true(代理优先-漏网走代理)
+    proxyFirst: true,            // 🧭 路由偏好：true(代理优先-推荐,漏网之鱼走代理), false(直连优先-适合重度国内用户)
     osType: "windows",           // 💻 设备类型: "windows", "mac", "linux", "all"
     enableQUICReject: false,     // ⚡ 屏蔽 QUIC: 强制降级至 TCP，避免 UDP 丢包/限速导致的卡顿或断流。若游戏/语音异常请关闭。
     enableIPv6: false,           // 🌐 全局 IPv6 总开关：控制 TUN、DNS 及路由（本地无物理 IPv6 请务必设为 false！）
@@ -55,9 +55,10 @@ function main(config) {
     // 【5. 核心性能与策略组高级参数】
     useMRS: true,                // 🚀 极速模式: true(MRS格式-性能), false(YAML格式-兼容)
     regionGroupType: "url-test", // ⚙️ 地区组行为: "url-test"(自动), "select"(手动), "fallback"(故障转移)
-    testURL: "http://cp.cloudflare.com/generate_204", // 🔗 延迟测速地址
     testInterval: 300,           // 🕒 测速间隔: 单位秒
     testTolerance: 50,           // ⚖️ 切换阈值: 延迟差低于此值不切换 IP
+    testURL: "http://cp.cloudflare.com/generate_204",  // 🔗 延迟测速地址
+    ruleProviderCDN: "https://fastly.jsdelivr.net/gh", // 🔗 规则集 CDN，若拉取失败可替换为 https://testingcf.jsdelivr.net/gh 等
   };
 
   if (!USER_CONFIG.enableScript) return config;
@@ -69,26 +70,36 @@ function main(config) {
   const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信)"; 
   
   const REGION_DEFS = [
-    { id: "hk", name: "香港", icon: "🇭🇰", reg: new RegExp(`${IN_PREFIX}港|香港|(?<![a-zA-Z])HKT?(?![a-zA-Z])|Hong Kong`, "i") },
+    // --- 核心地区 ---
+    { id: "hk", name: "香港", icon: "🇭🇰", reg: new RegExp(`${IN_PREFIX}港|香港|香江|(?<![a-zA-Z])HKT?(?![a-zA-Z])|Hong Kong`, "i") },
     { id: "tw", name: "台湾", icon: "🇹🇼", reg: new RegExp(`${IN_PREFIX}台|台湾|台灣|台北|新北|(?<![a-zA-Z])TW(?![a-zA-Z])|Taiwan`, "i") },
     { id: "jp", name: "日本", icon: "🇯🇵", reg: new RegExp(`${IN_PREFIX}日|日本|东京|大阪|埼玉|(?<![a-zA-Z])JP(?![a-zA-Z])|Japan`, "i") },
     { id: "kr", name: "韩国", icon: "🇰🇷", reg: new RegExp(`${IN_PREFIX}韩|韩国|首尔|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea`, "i") },
     { id: "sg", name: "新加坡", icon: "🇸🇬", reg: new RegExp(`${IN_PREFIX}新|新加坡|狮城|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore`, "i") },
-    { id: "us", name: "美国", icon: "🇺🇸", reg: new RegExp(`${IN_PREFIX}美|美国|洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America`, "i") },
+    { id: "us", name: "美国", icon: "🇺🇸", reg: new RegExp(`${IN_PREFIX}美|美国|西美|洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America`, "i") },
+    // --- 欧洲地区 ---
     { id: "eu", name: "英国", icon: "🇬🇧", reg: /英国|伦敦|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
     { id: "eu", name: "德国", icon: "🇩🇪", reg: /德国|法兰克福|(?<![a-zA-Z])DE(?![a-zA-Z])|Germany/i },
     { id: "eu", name: "法国", icon: "🇫🇷", reg: /法国|巴黎|(?<![a-zA-Z])FR(?![a-zA-Z])|France/i },
     { id: "eu", name: "俄罗斯", icon: "🇷🇺", reg: /俄罗斯|莫斯科|伯力|圣彼得堡|(?<![a-zA-Z])RU(?![a-zA-Z])|Russia/i },
     { id: "eu", name: "乌克兰", icon: "🇺🇦", reg: /乌克兰|基辅|(?<![a-zA-Z])UA(?![a-zA-Z])|Ukraine/i },
     { id: "eu", name: "土耳其", icon: "🇹🇷", reg: /土耳其|伊斯坦布尔|(?<![a-zA-Z])TR(?![a-zA-Z])|Turkey/i },
+    { id: "eu", name: "西班牙", icon: "🇪🇸", reg: /西班牙|马德里|(?<![a-zA-Z])ES(?![a-zA-Z])|Spain/i },
+    // --- 东南亚地区 ---
+    { id: "sea", name: "马来西亚", icon: "🇲🇾", reg: /马来|马来西亚|吉隆坡|(?<![a-zA-Z])MY(?![a-zA-Z])|Malaysia/i },
+    { id: "sea", name: "泰国", icon: "🇹🇭", reg: /泰国|曼谷|(?<![a-zA-Z])TH(?![a-zA-Z])|Thailand/i },
+    { id: "sea", name: "印尼", icon: "🇮🇩", reg: /印尼|印度尼西亚|雅加达|(?<![a-zA-Z])ID(?![a-zA-Z])|Indonesia/i },
+    { id: "sea", name: "菲律宾", icon: "🇵🇭", reg: /菲律宾|马尼拉|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i },
+    { id: "sea", name: "越南", icon: "🇻🇳", reg: /越南|胡志明|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
+    // --- 其他国家与地区 ---
     { name: "加拿大", icon: "🇨🇦", reg: /加拿大|多伦多|温哥华|蒙特利尔|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
     { name: "印度", icon: "🇮🇳", reg: /印度|孟买|新德里|(?<![a-zA-Z])IN(?![a-zA-Z])|India/i },
     { name: "阿根廷", icon: "🇦🇷", reg: /阿根廷|布宜诺斯艾利斯|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
     { name: "尼日利亚", icon: "🇳🇬", reg: /尼日利亚|(?<![a-zA-Z])NG(?![a-zA-Z])|Nigeria/i },
-    { name: "越南", icon: "🇻🇳", reg: /越南|胡志明|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
     { name: "澳大利亚", icon: "🇦🇺", reg: /澳大利亚|澳洲|悉尼|墨尔本|(?<![a-zA-Z])AU(?![a-zA-Z])|Australia|Sydney/i },
     { name: "巴西", icon: "🇧🇷", reg: /巴西|圣保罗|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
     { name: "阿联酋", icon: "🇦🇪", reg: /阿联酋|迪拜|(?<![a-zA-Z])(?:AE|UAE)(?![a-zA-Z])/i },
+    // --- 中国 ---
     { id: "cn", name: "中国", icon: "🇨🇳", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China/i }
   ];
 
@@ -107,12 +118,10 @@ function main(config) {
   ];
 
   // 预编译正则，提升匹配效率
-  const REGEX_INFO_NODE = /剩余流量|套餐到期|有效时间|官网|过期|通知|更新|重置|交流群|TG群|联系客服|获取/;
+  const REGEX_INFO_NODE = /剩余流量|套餐到期|有效时间|官网|过期|通知|更新|重置|交流群|TG群|联系客服|获取|公告|维护|不可用|测速|关注|群组|扣费|失联|地址|禁止|仅限/;
   const REGEX_ENTRY_CITY = /(深圳|广州|上海|北京|杭州|四川|江苏|宁波|东莞|深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信)(?:-|->|至|=>|\s)*(?=港|台|日|韩|新|美|英|德|法|香港|台湾|日本|韩国|新加坡|美国)/;
-  // 💡 修复：移除全局标志 g，防止潜在的正则对象状态残留
   const REGEX_MULTI = /(?:^|[\s_\-\(\)\[\]【】])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*[xX×]|[xX×]\s*(\d+(?:\.\d+)?))(?=[\s_\-\(\)\[\]【】]|$)/i;
   const REGEX_LINE = /(IEPL|IPLC|BGP|CN2|GIA|专线|直连|中转|隧道|CMI|CUG|PCCW|HGC|HSBC|优化|9929|4837)/i;
-  // 💡 优化：使用更规范的 Unicode 属性正则匹配国旗
   const REGEX_UNKNOWN_FLAG = /(\p{Regional_Indicator}{2})\s*([A-Za-z\u4e00-\u9fa5]+(?:[\s-][A-Za-z\u4e00-\u9fa5]+)*)/u;
   const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
   
@@ -123,7 +132,7 @@ function main(config) {
   // --- 2. 节点双重遍历：清洗、计数与分发入桶 ---
   // =========================================================================
   const BUCKETS = {
-    hk: [], tw: [], jp: [], kr: [], sg: [], us: [], eu: [], cn: [], other: [],
+    hk: [], tw: [], jp: [], kr: [], sg: [], us: [], eu: [], sea: [], cn: [], other: [],
     garbage: [], download: [], info: [], allStandard: [],residential: [],
     chatgpt: [], gemini: [], claude: [], game: []
   };
@@ -166,14 +175,11 @@ function main(config) {
       return "";
     });
 
-    // 提取专线特征
-    let lineMatch;
-    // 因为去掉了正则的 g 标志，使用安全的局部提取防死循环
-    const tempLineRegex = new RegExp(REGEX_LINE.source, 'ig');
-    while ((lineMatch = tempLineRegex.exec(name)) !== null) {
-      lineArr.push(lineMatch[0].length > 2 ? lineMatch[0].toUpperCase() : lineMatch[0]);
-    }
-    name = name.replace(tempLineRegex, "");
+    //利用回调直接单行完成提取和删除
+    name = name.replace(new RegExp(REGEX_LINE.source, 'ig'), match => {
+      lineArr.push(match.length > 2 ? match.toUpperCase() : match);
+      return "";
+    });
 
     // 组装后缀数组
     if (entryStr) suffixArr.push(entryStr);
@@ -258,7 +264,7 @@ function main(config) {
   // =========================================================================
   const safeList = (list, defaultNodes = ["DIRECT"]) => list.length > 0 ? list : defaultNodes;
 
-  const REGION_NAMES = { cn: "🇨🇳 大陆节点", hk: "🇭🇰 香港节点", tw: "🇹🇼 台湾节点", jp: "🇯🇵 日本节点", kr: "🇰🇷 韩国节点", sg: "🇸🇬 新加坡节点", us: "🇺🇸 美国节点", eu: "🇪🇺 欧洲节点" };
+  const REGION_NAMES = { cn: "🇨🇳 大陆节点", hk: "🇭🇰 香港节点", tw: "🇹🇼 台湾节点", jp: "🇯🇵 日本节点", kr: "🇰🇷 韩国节点", sg: "🇸🇬 新加坡节点", us: "🇺🇸 美国节点", eu: "🇪🇺 欧洲节点", sea: "🏝️ 东南亚节点"};
   
   const activeRegionGroups = Object.keys(REGION_NAMES).filter(k => BUCKETS[k].length > 0).map(k => REGION_NAMES[k]);
   if (BUCKETS.other.length > 0) activeRegionGroups.push("🌐 其他节点");
@@ -348,7 +354,7 @@ function main(config) {
     );
   }
 
-  if (USER_CONFIG.enableAdBlock)  appGroups.push(buildSelect("🚫 广告拦截", ["REJECT", "DIRECT"]));
+  if (USER_CONFIG.enableAdBlock)  appGroups.push(buildSelect("🚫 广告拦截",  ["REJECT-DROP", "REJECT", "DIRECT"]));
 
   // 【核心控制组】
   const finalGroups = [
@@ -389,7 +395,7 @@ function main(config) {
   // =========================================================================
   // --- 5. 规则集配置 (Rule Providers) ---
   // =========================================================================
-  const REPO = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta";
+  const REPO = `${USER_CONFIG.ruleProviderCDN}/MetaCubeX/meta-rules-dat@meta`;
   const ruleFormat = USER_CONFIG.useMRS ? "mrs" : "yaml"; 
 
   const PROVIDER_BASE = {
@@ -460,7 +466,7 @@ function main(config) {
     );
   }
 
-  if (USER_CONFIG.enableQUICReject) routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT");
+  if (USER_CONFIG.enableQUICReject) routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT-DROP");
   if (USER_CONFIG.enableAdBlock)    routingRules.push("RULE-SET,ads,🚫 广告拦截");
 
   const osTarget = USER_CONFIG.osType.toLowerCase();
@@ -468,10 +474,36 @@ function main(config) {
   const isMac = ["mac", "all"].includes(osTarget);
   const isLin = ["linux", "all"].includes(osTarget);
 
-  if (isWin) routingRules.push("PROCESS-NAME,qBittorrent.exe,DIRECT", "PROCESS-NAME,Thunder.exe,DIRECT", "PROCESS-NAME,IDM.exe,⚖️ 负载均衡");
-  if (isMac) routingRules.push("PROCESS-NAME,qbittorrent,DIRECT", "PROCESS-NAME,Thunder,DIRECT");
-  if (isLin) routingRules.push("PROCESS-NAME,qbittorrent,DIRECT");
-  if (isMac || isLin) routingRules.push("PROCESS-NAME,aria2c,DIRECT", "PROCESS-NAME,transmission-daemon,DIRECT");
+  if (isWin) {
+    routingRules.push(
+      "PROCESS-NAME,qBittorrent.exe,DIRECT", 
+      "PROCESS-NAME,Thunder.exe,DIRECT", 
+      "PROCESS-NAME,BitComet.exe,DIRECT", 
+      "PROCESS-NAME,uTorrent.exe,DIRECT", 
+      "PROCESS-NAME,aria2c.exe,DIRECT",
+      "PROCESS-NAME,IDMan.exe,⚖️ 负载均衡",
+      "PROCESS-NAME,fdm.exe,⚖️ 负载均衡"
+    );
+  }
+  if (isMac) {
+    routingRules.push(
+      "PROCESS-NAME,qbittorrent,DIRECT", 
+      "PROCESS-NAME,Thunder,DIRECT", 
+      "PROCESS-NAME,BitComet,DIRECT", 
+      "PROCESS-NAME,uTorrent,DIRECT"
+    );
+  }
+  if (isLin) {
+    routingRules.push(
+      "PROCESS-NAME,qbittorrent,DIRECT"
+    );
+  }
+  if (isMac || isLin) {
+    routingRules.push(
+      "PROCESS-NAME,aria2c,DIRECT", 
+      "PROCESS-NAME,transmission-daemon,DIRECT"
+    );
+  }
 
   routingRules.push(
     "RULE-SET,bt-trackers-pt,DIRECT",
