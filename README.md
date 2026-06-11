@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)
 ![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)
-![Version](https://img.shields.io/badge/version-2.1.3-brightgreen)
+![Version](https://img.shields.io/badge/version-2.2.0-brightgreen)
 
 **一套为 Mihomo 内核生态客户端设计的通用动态网络路由与策略组配置方案**
 
@@ -116,6 +116,9 @@
 | `testTolerance` | `50` | ⚖️ **切换阈值**：延迟差低于此值时不频繁切换节点，保持连接稳定 |
 | `testURL` | `...` | 🔗 **测速地址**：延迟测试使用的 URL 地址 |
 | `ruleProviderCDN` | `...` | 🌐 **规则集 CDN**：规则拉取失败时可更换镜像源 |
+| `enableRegionHashLB` | `false` | 🧪 **地区哈希负载均衡**：为 `hk/tw/jp/kr/sg/us/cn` 等主要地区自动创建一致性哈希负载均衡池（`consistent-hashing`），并置顶到对应地区组首位。适合需要会话保持的场景（如网银、游戏登录）。 |
+
+> 💡 **地区哈希负载均衡**开启后，对应地区的策略组会优先出现 `⚖️ 负载均衡-哈希 (地区)` 组，确保同一客户端 IP 始终命中同一节点。
 
 ### 6. 底层核心配置覆写
 
@@ -166,7 +169,8 @@
 
 ### 高级组
 - `🏠 家宽专用`（需开启 `enableResidential`）
-- `⚖️ 负载均衡` 及 `⚖️ 负载均衡轮询池`（存在下载类节点时）
+- `⏬ 下载策略` 及 `🔄 负载均衡-轮询`（存在下载类节点时）
+- `⚖️ 负载均衡-哈希 (HK/TW/JP/KR/SG/US/CN)`（需开启 `enableRegionHashLB`，且对应地区至少有 2 个节点，**自动隐藏**）
 - `🇨🇳 中国分流`（需开启 `enableDomesticGroup`）
 - `🌐 IPv6控制台`（需开启 `enableIPv6`）
 
@@ -206,6 +210,9 @@
 
 ### Q6：规则集更新失败？
 - 检查网络是否能访问 `raw.githubusercontent.com` 或您配置的 CDN。可以更换 `ruleProviderCDN` 为其他镜像源。
+
+### Q7：什么是「地区哈希负载均衡」？什么时候开启？
+- 开启后，脚本会为香港、台湾、日本、韩国、新加坡、美国、中国等主要地区创建基于“一致性哈希”的负载均衡组。同一个来源 IP 的所有请求会固定到同一个节点，解决登录态漂移、网银验证等问题。适合对 IP 会话保持有要求的场景，但会增加少量策略组数量。若不需要，保持默认 `false` 即可。
 
 ## 🙏 鸣谢与组件来源
 

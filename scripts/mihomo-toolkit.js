@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE
 // ------------------------------------------------------------------------
-// 版本: v2.1.3 (Build 2026.06.10)
+// 版本: v2.2.0 (Build 2026.06.11)
 // 作者: XiaoM-OVO
 // 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配
@@ -55,6 +55,7 @@ function main(config) {
     // 【5. 核心性能与策略组高级参数】
     useMRS: true,                // 🚀 极速模式: true(MRS格式-性能), false(YAML格式-兼容)
     regionGroupType: "url-test", // ⚙️ 地区组行为: "url-test"(自动), "select"(手动), "fallback"(故障转移)
+    enableRegionHashLB: false,   // ⚖️ 地区散列: 开启后在核心地区组顶部增加"⚖️ 负载均衡-哈希(地区)"选项，建议配合 regionGroupType:"select" 使用
     testInterval: 300,           // 🕒 测速间隔: 单位秒
     testTolerance: 50,           // ⚖️ 切换阈值: 延迟差低于此值不切换 IP
     testURL: "http://cp.cloudflare.com/generate_204",  // 🔗 延迟测速地址
@@ -220,7 +221,7 @@ function main(config) {
     groupTrack[groupKey] = (groupTrack[groupKey] || 0) + 1;
 
     const numStr   = counts[groupKey] > 1 ? ` [${groupTrack[groupKey].toString().padStart(2, "0")}]` : "";
-    let finalName  = regionInfo ? `${regionInfo.icon} ${regionInfo.name}${numStr}` : `🗑️ ${rawName}`;
+    let finalName  = regionInfo ? `${regionInfo.icon} ${regionInfo.name}${numStr}` : `🗑️ ${rawName}${numStr}`;
     if (icons.length)                       finalName += ` ${[...new Set(icons)].join("")}`;
     if (regionInfo && suffixArr.length)     finalName += ` | ${suffixArr.join(" ")}`;
     proxy.name = finalName;
@@ -372,8 +373,8 @@ function main(config) {
     finalGroups.push({ name: "🏠 家宽专用", type: "fallback", url: testURL, interval: testInterval, proxies: safeList([...new Set(BUCKETS.residential)]) });
   }
   if (hasLoadBalancer) {
-    finalGroups.push(buildSelect("⚖️ 负载均衡", ["DIRECT", "⚖️ 负载均衡轮询池", "🚀 自动选择", ...BUCKETS.download]));
-    finalGroups.push({ name: "⚖️ 负载均衡轮询池", type: "load-balance", strategy: "round-robin", url: testURL, interval: 300, lazy: true, proxies: safeList(BUCKETS.download), hidden: true });
+    finalGroups.push(buildSelect("⏬ 下载策略", ["DIRECT", "🔄 负载均衡-轮询", "🚀 自动选择", ...BUCKETS.download]));
+    finalGroups.push({ name: "🔄 负载均衡-轮询", type: "load-balance", strategy: "round-robin", url: testURL, interval: 300, lazy: true, proxies: safeList(BUCKETS.download), hidden: true });
   }
 
   if (USER_CONFIG.enableDomesticGroup) finalGroups.push(buildSelect("🇨🇳 中国分流", ["DIRECT", ...standardOptions]));
@@ -383,10 +384,36 @@ function main(config) {
 
   // 漏网之鱼
   let fallbackProxies = ["📍 手动选择", "🚀 自动选择"];
-  if (hasLoadBalancer) fallbackProxies.push("⚖️ 负载均衡");
+  if (hasLoadBalancer) fallbackProxies.push("⏬ 下载策略");
   if (USER_CONFIG.proxyFirst) fallbackProxies.push("DIRECT");
   else fallbackProxies = ["DIRECT", ...fallbackProxies];
   finalGroups.push(buildSelect("🐟 漏网之鱼", fallbackProxies));
+
+  // 动态将散列算法按地区注入到各个地区组顶部
+  if (USER_CONFIG.enableRegionHashLB) {
+    const hashWhitelist = ["hk", "tw", "jp", "kr", "sg", "us", "cn"];
+
+    Object.entries(REGION_NAMES).forEach(([id, name]) => {
+      if (hashWhitelist.includes(id) && BUCKETS[id].length > 1) {
+        const regionName = name.split(" ")[1].replace("节点", "");
+        const regionTag = id.toUpperCase();
+        const hashGroupName = `⚖️ 负载均衡-哈希 (${regionTag})`;
+
+        finalGroups.push({
+          name: hashGroupName,
+          type: "load-balance",
+          strategy: "consistent-hashing",
+          url: USER_CONFIG.testURL,
+          interval: USER_CONFIG.testInterval,
+          lazy: true,
+          proxies: [...BUCKETS[id]],
+          hidden: true
+        });
+
+        BUCKETS[id].unshift(hashGroupName);
+      }
+    });
+  }
 
   finalGroups.push(...Object.entries(REGION_NAMES).map(([id, name]) => buildRegionGroup(name, BUCKETS[id], BUCKETS[id].length === 0)));
   finalGroups.push(buildSelect("🌐 其他节点",  safeList(BUCKETS.other),   BUCKETS.other.length === 0));
@@ -494,7 +521,7 @@ function main(config) {
   }
 
   // 下载 / BT 进程规则（依赖 OS 判断，规则集已在 PROVIDER_BASE 基础段）
-  const lbTarget = hasLoadBalancer ? "⚖️ 负载均衡" : "📍 手动选择";
+  const lbTarget = hasLoadBalancer ? "⏬ 下载策略" : "📍 手动选择";
   const osTarget = USER_CONFIG.osType.toLowerCase();
   const isWin = ["windows", "all"].includes(osTarget);
   const isMac = ["mac",     "all"].includes(osTarget);
@@ -567,6 +594,7 @@ function main(config) {
   // --- 8. Fake-IP 与纯净 DNS 体系 ---
   // =========================================================================
   if (USER_CONFIG.overwriteDns) {
+    const nsPolicySets = ["cn-domain"];
     config["dns"] = {
       "enable": true,
       "listen": "0.0.0.0:1053",
@@ -589,7 +617,7 @@ function main(config) {
       "proxy-server-nameserver":         ["https://223.5.5.5/dns-query", "https://1.12.12.12/dns-query"],
       "nameserver":                      ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],
       "nameserver-policy": {
-        "rule-set:cn-domain,apple,microsoft": ["https://223.5.5.5/dns-query", "https://1.12.12.12/dns-query"]
+        [`rule-set:${nsPolicySets.join(",")}`]: ["https://223.5.5.5/dns-query", "https://1.12.12.12/dns-query"]
       }
     };
   }
@@ -607,5 +635,6 @@ function main(config) {
     };
   }
 
+  // EOF: May your routing be fast and your connection secure. 🚀
   return config;
 }
