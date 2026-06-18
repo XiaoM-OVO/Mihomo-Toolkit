@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)](https://github.com/clash-verge-rev/clash-verge-rev)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/version-2.5.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.6.0-brightgreen)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -35,12 +35,12 @@
 
 ## ✨ 核心特性
 
-- 🧹 **深度清洗去重**：去除冗余广告/倍率，保留落地城市，自动打标（🤖 AI、📺 流媒体、🏠 家宽等）
-- 🌍 **动态地区折叠**：小众地区自动归入大洲组，面板干净
-- 🔀 **全场景分流**：内置广告、AI、游戏、影音、社交、金融等 20+ 常用分流
-- 🎨 **在线图标**：支持一键切换 Emoji / 精美在线图标
-- 🗑️ **DAG 级联清理**：自动删减空策略组与孤儿规则
-- ⚡ **性能防漏**：BT 直连防封、QUIC 屏蔽、TUN/DNS/Sniffer 深度优化
+- 🧹 **深度清洗去重**：去除冗余广告/倍率，拦截纯文本引流节点，保留落地城市。
+- 🌍 **动态地区折叠**：小众地区自动归入大洲组，支持 Emoji 国旗动态捕获冷门国家。
+- 🔀 **全场景分流**：内置广告、AI、游戏、影音、社交、金融等 20+ 常用分流。
+- 🎨 **协议与状态图标**：支持展示节点底层协议（🦊/🛸/🐴等）及业务解锁状态。
+- 🗑️ **DAG 级联清理**：自动删减空策略组与孤儿规则，保持内核配置纯净。
+- ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、TUN/DNS/Sniffer 深度优化。
 
 ---
 
@@ -56,7 +56,7 @@
 > 💡 **全局脚本**：在 Clash Verge Rev 的「设置」-「全局拓展脚本」中粘贴，可使所有订阅共用同一份逻辑。
 
 ### 3. 个性化配置（可选）
-打开脚本开头 `USER_CONFIG` 对象，按需开关（`true` 开启 / `false` 关闭）。
+打开脚本开头 `USER_CONFIG` 对象，按需开关（`true` 开启 / `false` 关闭）。脚本内置了简易的 **【自定义指南】**，如需添加自定义的新应用分流（例如 HBO、网易云等），只需搜索 `自定义指南` 按照保姆级教程打卡即可。
 
 ---
 
@@ -83,10 +83,13 @@
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `enableDedupe` | `false` | 去重底层完全重复的注水节点 |
-| `removeInfoNodes` | `false` | 过滤流量/到期等营销节点 |
+| `removeInfoNodes` | `false` | 过滤流量/到期等信息节点 |
 | `keepDestinationCity` | `true` | 节点名后缀展示落地城市 |
+| `showProtocolIcon` | `false` | 在节点名前展示底层协议图标(🦊 VMess等) |
+| `strictRegionMatch` | `false` | 严格地区匹配(关闭则允许 Emoji 动态捕获冷门国家) |
+| `adTextThreshold` | `6` | 纯文本广告拦截阈值(超过此长度的纯文字视作广告) |
 | `lowMultiThreshold` | `0.99` | 倍率 ≤ 此值自动打上下载标签（0 关闭） |
-| `isolateDownload` | `true` | 下载节点是否从普通池剔除 |
+| `isolateDownload` | `false` | 低倍率节点是否从普通池剔除 |
 
 </details>
 
@@ -143,12 +146,12 @@
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `enableBTDirect` | `true` | BT/PT 进程强制直连防封号 |
+| `enableProcessDirect` | `true` | 指定进程强制直连（默认内置主流 BT 软件，支持自定义追加） |
 | `enableQUICReject` | `false` | 屏蔽 QUIC，防止 UDP 阻断 |
 | `overwriteTun` | `true` | 覆写 TUN，强化路由与 IP 防漏 |
 | `overwriteDns` | `true` | 覆写 DNS（Fake-IP + 防污染） |
 | `overwriteSniffer` | `true` | 覆写 Sniffer，防 SNI 阻断 |
-| `enableCoreOptimize` | `true` | 开启节点记忆、TCP 并发、指纹伪装 |
+| `enableCoreOptimize` | `true` | 开启节点记忆、精准指纹伪装、TCP 并发优化 |
 
 </details>
 
@@ -156,7 +159,7 @@
 
 ## 🧹 节点清洗与分组结构
 
-### 🏷️ 节点特征图标
+### 🏷️ 节点特征图标 (特性标签)
 
 | 图标 | 含义 | 图标 | 含义 |
 |------|------|------|------|
@@ -165,7 +168,16 @@
 | 🦀 | Anthropic Claude | ⏬ | 下载 / BT（低倍率） |
 | 📺 | 流媒体解锁 | 🆓 | 免费/公益节点 |
 | 🎮 | 游戏 / FullCone | 🏠 | 住宅 IP / 家宽 |
-| ⚡ | HY2 / TUIC / 高速 | 🗑️ | 未识别节点 |
+| ⚡ | HY2 / TUIC | 🗑️ | 未识别/清洗失败节点 |
+
+### 🏷️ 底层协议图标 (需开启 `showProtocolIcon`)
+
+| 图标 | 协议 | 图标 | 协议 |
+|------|------|------|------|
+| ✈️ | SS / SSR | ⚡ | Hysteria / Hysteria2 |
+| 🦊 | VMess | 💨 | TUIC |
+| 🛸 | VLESS | 🕸️ | WireGuard |
+| 🐴 | Trojan | 🦈 | Snell |
 
 ### 📂 动态生成的策略组
 - **核心**：`📍 手动选择`、`🚀 自动选择`、`♻️ 故障转移`
@@ -194,18 +206,23 @@
 </details>
 
 <details>
-<summary><b>Q: 开启 BT 防漏后，普通下载也会直连吗？</b></summary>
-不会。BT 客户端（qBittorrent 等）强制直连，而多线程下载器（IDM/FDM）仍走 <code>⏬ 下载策略</code> 代理池。
+<summary><b>Q: 开启进程直连防漏后，普通下载也会直连吗？</b></summary>
+不会。脚本内置的强制直连名单仅针对特定客户端（如 qBittorrent、迅雷、BitComet 等）。而多线程下载器（如 IDM、FDM）默认仍会走 <code>⏬ 下载策略</code> 代理池。如需自定义直连软件，可在脚本代码的「高级进阶修改区」手动向数组追加进程名。
 </details>
 
 <details>
-<summary><b>Q: 如何将 Emoji 替换为在线图标？</b></summary>
-将 <code>groupIconMode</code> 设为 <code>"icon"</code>，刷新后自动加载。
+<summary><b>Q: 开启了图标模式，但有的协议没显示图标？</b></summary>
+请检查是否在脚本开头开启了 <code>showProtocolIcon: true</code> 开关，并确保该节点类型在映射字典内。
 </details>
 
 <details>
-<summary><b>Q: 规则集拉取失败怎么办？</b></summary>
-修改 <code>ruleProviderCDN</code> 为可用镜像，如 <code>https://cdn.jsdelivr.net/gh</code> 或 <code>https://ghproxy.com/</code>。
+<summary><b>Q: 如何将 Emoji 替换为在线精美图标？</b></summary>
+将 <code>groupIconMode</code> 设为 <code>"icon"</code>，刷新订阅后即会自动加载。
+</details>
+
+<details>
+<summary><b>Q: 规则集拉取失败或一直超时怎么办？</b></summary>
+修改 <code>ruleProviderCDN</code> 为其他可用镜像，如 <code>https://cdn.jsdelivr.net/gh</code> 或 <code>https://ghproxy.com/</code>。
 </details>
 
 <details>
@@ -216,7 +233,7 @@
 ---
 
 ## 📦 更新日志
-版本历史请参阅 [CHANGELOG.md](CHANGELOG.md)。
+版本历史与详尽的更新说明请参阅 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 🙏 鸣谢
 - 核心思路：[iczrac/Parsers-for-clash](https://github.com/iczrac/Parsers-for-clash)
