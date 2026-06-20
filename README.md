@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)](https://github.com/clash-verge-rev/clash-verge-rev)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/version-2.6.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.6.1-brightgreen)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -191,43 +191,63 @@
 ## ❓ 常见问题
 
 <details>
-<summary><b>Q: 某些节点消失了或跑到了“其他/欧洲/东南亚”组？</b></summary>
-由 <code>minorNodeThreshold</code> 控制（默认 3）。若某国节点少于该值，会折叠到大洲组。设 <code>1</code> 或 <code>0</code> 可强制独立建组。
+<summary><b>Q: 节点清洗误杀了我的节点，怎么调？</b></summary>
+
+无效节点判定的核心条件：节点名中<b>没有数字、技术词汇（IEPL/BGP/CN2等）和营销词汇（专线/高速/VIP等）</b>，且纯文本长度超过 <code>adTextThreshold</code>（默认 6）即拦截。
+
+按推荐度排序三种自救：
+1. 简单粗暴——调高 <code>adTextThreshold</code>（如 10~12），但会整体放宽拦截判定；
+2. 精准放行——在 <code>REGEX_TECH_LINE</code> 或 <code>REGEX_FLUFF_LINE</code> 中添加节点关键词，让其通过广告判定；放行后若无地区匹配会自动归入「🗑️ 未知识别」；
+3. 上户口——若节点名包含未被内置字典覆盖的地区名，可在 <code>REGION_DEFS</code> 中新增对应条目，避免放行后掉入垃圾桶。
+
 </details>
 
 <details>
-<summary><b>Q: 如何隐藏“🗑️ 未知识别”组？</b></summary>
-将 <code>hideGarbageGroup</code> 设为 <code>true</code>。
+<summary><b>Q: 节点去重 (<code>enableDedupe</code>) 会不会误杀正常节点？</b></summary>
+
+不会。去重基于 <code>Server + Port + Type + Network + SNI + Host + Path + UUID</code> 组合键，只有底层完全一致的"注水"节点才会被剔除。同 IP 不同端口的节点不受影响。
 </details>
 
 <details>
-<summary><b>Q: Telegram/下载器进程规则不生效？</b></summary>
-检查 <code>osType</code> 是否与当前系统匹配（<code>windows</code>/<code>mac</code>/<code>linux</code>/<code>all</code>），进程名依赖该变量。
+<summary><b>Q: 为什么我的节点被标了 ⏬ 下载标签？</b></summary>
+
+由 <code>lowMultiThreshold</code> 控制（默认 0.99）。节点名中的倍率（如 x0.5、x0.8）≤ 此值时自动判定为低倍率下载节点。如果不想自动标记，设为 0 即可关闭；如果想从普通池中移除这些节点，开启 <code>isolateDownload</code>。
 </details>
 
 <details>
-<summary><b>Q: 开启进程直连防漏后，普通下载也会直连吗？</b></summary>
-不会。脚本内置的强制直连名单仅针对特定客户端（如 qBittorrent、迅雷、BitComet 等）。而多线程下载器（如 IDM、FDM）默认仍会走 <code>⏬ 下载策略</code> 代理池。如需自定义直连软件，可在脚本代码的「高级进阶修改区」手动向数组追加进程名。
+<summary><b>Q: 脚本开启太多开关会不会影响性能？</b></summary>
+
+不会。脚本只运行一次（在订阅刷新时），负责生成静态的 Mihomo 配置。最终影响性能的是生成后的策略组数量和规则条数，而非脚本开关数量。不过建议按需开启，避免生成空策略组和冗余 rule-provider。
 </details>
 
 <details>
-<summary><b>Q: 开启了图标模式，但有的协议没显示图标？</b></summary>
-请检查是否在脚本开头开启了 <code>showProtocolIcon: true</code> 开关，并确保该节点类型在映射字典内。
+<summary><b>Q: 分流规则不生效 / 一直走到漏网之鱼？</b></summary>
+
+检查三步：① 对应的 <code>enableXxx</code> 开关是否开启；② 对应 app 的策略组是否为空被 DAG 清理了（空组会被自动裁撤，导致规则回退到漏网之鱼）；③ <code>ruleProviderCDN</code> 是否可正常拉取规则集。
 </details>
 
 <details>
-<summary><b>Q: 如何将 Emoji 替换为在线精美图标？</b></summary>
-将 <code>groupIconMode</code> 设为 <code>"icon"</code>，刷新订阅后即会自动加载。
+<summary><b>Q: 为什么策略组里多了/少了某个地区？</b></summary>
+
+由 <code>minorNodeThreshold</code>（默认 3）和节点数量共同决定：够阈值独立建组，不够则折叠到大洲组；大洲组再不够则最终归入「🌐 其他节点」。设成 1 可以让所有地区强制独立建组，但面板会很臃肿。
 </details>
 
 <details>
-<summary><b>Q: 规则集拉取失败或一直超时怎么办？</b></summary>
-修改 <code>ruleProviderCDN</code> 为其他可用镜像，如 <code>https://cdn.jsdelivr.net/gh</code> 或 <code>https://ghproxy.com/</code>。
+<summary><b>Q: <code>osType: "all"</code> 和分别指定有什么区别？</b></summary>
+
+<code>"all"</code> 会同时注入 Windows / macOS / Linux 三套进程规则，虽然省事但规则集会变胖。如果只在单一平台使用，指定具体系统可以精简规则。
 </details>
 
 <details>
-<summary><b>Q: 国内用户使用注意事项？</b></summary>
-建议将 <code>ruleProviderCDN</code> 替换为国内镜像，并确保 <code>enableIPv6</code> 为 <code>false</code>（如无原生 IPv6）。
+<summary><b>Q: 如何新增一个自定义分流（如 HBO Max）？</b></summary>
+
+按脚本开头的<b>「自定义指南」</b>走三步：① <code>APP_GROUPS_REGISTRY</code> 新建组；② <code>FEATURE_MAP</code> 加入规则集和路由；③（可选）<code>ICON_MAPPING</code> 配图标。不需要改深层逻辑。
+</details>
+
+<details>
+<summary><b>Q: 开代理后部分国内网站变慢或打不开？</b></summary>
+
+检查 <code>proxyFirst</code>：国内用户建议设为 <code>false</code>（直连优先），并开启 <code>enableDomesticGroup</code>。如果是因为 DNS 污染，确认 <code>overwriteDns</code> 已开启（默认开启的 Fake-IP 体系能有效防污染）。
 </details>
 
 ---
