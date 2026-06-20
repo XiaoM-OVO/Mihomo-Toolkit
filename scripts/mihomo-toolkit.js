@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 版本: v2.6.0 (Build 2026.06.18)
+// 版本: v2.6.1 (Build 2026.06.19)
 // 作者: XiaoM-OVO (Refactored)
 // 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -34,24 +34,24 @@ function main(config) {
   // =========================================================================
   const USER_CONFIG = {
 
-    // 【1. 基础全局配置】 (基础逻辑与设备环境)
+    // 【1. 基础全局配置】
     enableScript: true,          // 🟢 脚本总控：设为 false 则原样输出订阅内容
     osType: "windows",           // 💻 设备类型: "windows", "mac", "linux", "all"
     proxyFirst: true,            // 🧭 路由偏好：true(海外代理优先)，false(国内直连优先)
     defaultProxyMode: "auto",    // 🔀 默认代理策略: auto(自动) / manual(手动) / fallback(故障转移)  [⚠️特殊: direct / reject]
     enableIPv6: false,           // 🌐 全局 IPv6：控制 TUN、DNS 及路由（本地无物理 IPv6 请务必设为 false！）
 
-    // 【2. 节点清洗与处理】 (名字重构与白嫖/低倍率节点过滤)
+    // 【2. 节点清洗与处理】
     enableDedupe: false,         // 🧽 节点去重：开启后自动剔除机场底层完全重复的“注水”节点
     removeInfoNodes: false,      // 🗑️ 纯净节点: 彻底过滤流量/到期时间等营销节点
     keepDestinationCity: true,   // 🏙️ 保留落地城市：开启后将在节点名后缀展示具体城市 (如 东京/大阪/洛杉矶)
     showProtocolIcon: false,     // 🏷️ 协议图标展示: true(在节点名展示🦊/🛸等底层协议图标), false(隐藏协议图标)
-    strictRegionMatch: false,    // 🌍 未知地区匹配：true(仅匹配预设字典，其余全扔垃圾桶)，false(宽松模式，允许通过国旗Emoji动态捕获冷门国家放入"其他"组)
+    strictRegionMatch: false,    // 🌍 严格地区匹配：true(仅匹配预设字典，其余全扔垃圾桶)，false(宽松模式，允许通过国旗Emoji动态捕获冷门国家放入"其他"组)
     adTextThreshold: 6,          // 🔠 纯文本广告判定阈值：无数字/线路特征且长度大于此值的节点视为广告
     lowMultiThreshold: 0.99,     // ⏬ 自动降级阈值：倍率 <= 此值的节点自动打上下载标签 (设为 0 关闭自动降级)
     isolateDownload: false,      // ⏬ 下载节点隔离：设为 true 从普通大区池中剔除，设为 false 则允许进入普通池
 
-    // 【3. 策略组建组与 UI 面板】 (界面显示与折叠逻辑)
+    // 【3. 策略组建组与 UI 面板】
     minorNodeThreshold: 3,       // 📊 小众地区建组阈值：节点数 >= 此值则独立建组，否则折叠至大区组
     regionGroupType: "url-test", // ⚙️ 地区组行为: "url-test", "select", "fallback"
     enableRegionHashLB: false,   // ⚖️ 地区散列: 在达到阈值的地区组增加哈希负载均衡策略组
@@ -60,7 +60,7 @@ function main(config) {
     iconRepoOrz: "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/",
     iconRepoKoolson: "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/",
 
-    // 【4. 核心分流开关】 (日常高频使用的场景)
+    // 【4. 核心分流开关】
     enableAdBlock: true,         // 🚫 广告拦截：去除网页及 APP 广告
     enableAI: true,              // 🤖 AI 助手：OpenAI, Gemini, Claude 等
     enableTelegram: true,        // ✈️ 社交通讯：Telegram 独立分流
@@ -71,7 +71,7 @@ function main(config) {
     enableSystemServices: true,  // 🪟 系统服务：Microsoft, Apple, Google 框架服务
     enableDomesticGroup: false,  // 🇨🇳 中国分流：开启后增加专门的"中国"策略组 (配合直连优先使用)
 
-    // 【5. 扩展分流开关】 (特定群体或特殊偏好场景)
+    // 【5. 扩展分流开关】
     enableAntiAD: false,         // ☢️ 激进广告拦截：启用 anti-AD 规则集 (强力，但容易误杀)
     enableGitHub: true,          // 🐱 开发者选项：GitHub, GitLab 等 
     enableScholar: true,         // 🎓 学术研究：Google Scholar 等
@@ -121,8 +121,8 @@ function main(config) {
 
   // 📡 覆写使用的默认纯净 DNS (用于防污染及 Fake-IP 解析)
   const CUSTOM_DNS_DEFAULT = ["223.5.5.5", "119.29.29.29"]; // 基础解析 DNS
-  const CUSTOM_DNS_DIRECT  = ["https://223.5.5.5/dns-query", "https://1.12.12.12/dns-query"]; // 国内直连 DNS (DoH)
-  const CUSTOM_DNS_PROXY   = ["https://223.5.5.5/dns-query", "https://1.12.12.12/dns-query"]; // 代理节点 DNS (DoH)
+  const CUSTOM_DNS_DIRECT  = ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"]; // 直连解析 DNS (DoH)
+  const CUSTOM_DNS_PROXY   = ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"];      // 代理解析 DNS (DoH)
 
 
   // 🧹 常用正则大礼包 
@@ -133,7 +133,7 @@ function main(config) {
   const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, "i"); // 单独用于判定禁止下载
   
   // 识别前置入口城市 (如 深圳->香港)
-  const REGEX_ENTRY_CITY = /(深圳|广州|上海|北京|杭州|四川|江苏|宁波|东莞|深|广|沪|京|杭|川|苏|甬|莞|香港|台湾|日本|韩国|新加坡|美国)(?:-|->|至|=>|\s)*(?=港|台|日|韩|新|美|英|德|法|香港|台湾|日本|韩国|新加坡|美国)/;
+  const REGEX_ENTRY_CITY = /(深圳|广州|上海|北京|杭州|四川|江苏|宁波|东莞|深|广|沪|京|杭|川|苏|甬|莞|香港|台湾|日本|韩国|新加坡|美国|英国|德国|法国|澳洲|英|德|法|澳|美|日|韩|新|港|台|入口|Ingress)(?:-|->|至|=>|\s)*(?=港|台|日|韩|新|美|英|德|法|澳|京|沪|广|深|中|国内|大陆|回国|中国|香港|台湾|日本|韩国|新加坡|美国|北京|上海|广州|深圳|落地|出口|出口|Exit|Destination)/;
   // 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
   const REGEX_MULTI      = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率)(?!\s*\d))/i;
   // 识别线路类型 (如 IEPL, BGP, CN2)
@@ -189,8 +189,8 @@ function main(config) {
   // --- 2. 常量与字典预定义 ---
   // =========================================================================
   // 📍 前置入口城市前缀
-  const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|香港|台湾|日本|韩国|新加坡|美国)";
-  const TAG_MAP   = { "深圳":"深", "广州":"广", "上海":"沪", "北京":"京", "杭州":"杭", "四川":"川", "江苏":"苏", "宁波":"甬", "东莞":"莞", "香港":"港", "台湾":"台", "日本":"日", "韩国":"韩", "新加坡":"新", "美国":"美" };
+  const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|香港|台湾|日本|韩国|新加坡|美国|英国|德国|法国|澳洲|英|德|法|澳|美|日|韩|新|港|台)";
+  const TAG_MAP   = { "深圳":"深", "广州":"广", "上海":"沪", "北京":"京", "杭州":"杭", "四川":"川", "江苏":"苏", "宁波":"甬", "东莞":"莞", "香港":"港", "台湾":"台", "日本":"日", "韩国":"韩", "新加坡":"新", "美国":"美", "英国":"英", "德国":"德", "法国":"法", "澳洲":"澳" };
 
   // 💻 操作系统类型判定
   const OS = (USER_CONFIG.osType || "windows").toLowerCase();
@@ -200,7 +200,7 @@ function main(config) {
 
   // 🌍 地区识别字典
   const REGION_DEFS = [
-    { id: "cn", name: "中国",   icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|港|台|新|英|澳)[^\s]*?(?:-|->|至|=>)?\s*(?:国内|落地)(?!入口|中转|BGP|线路|港|台|日|韩|新|美|英|德|法|澳)/i },
+    { id: "cn", name: "中国",   icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
     { id: "hk", name: "香港",   icon: "🇭🇰", reg: new RegExp(`${IN_PREFIX}港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong`, "i") },
     { id: "mo", name: "澳门",   icon: "🇲🇴", reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i },
     { id: "tw", name: "台湾",   icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", reg: new RegExp(`${IN_PREFIX}台|台湾|台灣|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet`, "i") },
@@ -399,7 +399,7 @@ function main(config) {
     return null;
   }
 
-  // 🔄 核心：第一轮遍历（逻辑现在变得极其清晰）
+  // 🔄 核心：第一轮遍历
   const processedData = proxies.map(proxy => {
     const rawName = proxy.name;
 
@@ -956,9 +956,9 @@ function main(config) {
       "fake-ip-filter": ["*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com", "localhost.ptlogin2.qq.com", "*.msftncsi.com", "www.msftconnecttest.com", "ipv6.msftncsi.com", "*.ipv6-literal.net", "google.cn", "*.music.163.com", "*.music.126.net"],
       "default-nameserver": CUSTOM_DNS_DEFAULT, 
       "direct-nameserver": CUSTOM_DNS_DIRECT, "direct-nameserver-follow-policy": true,
-      "proxy-server-nameserver": CUSTOM_DNS_DIRECT, 
+      "proxy-server-nameserver": CUSTOM_DNS_DEFAULT, 
       "nameserver": CUSTOM_DNS_PROXY,
-      "nameserver-policy": { "rule-set:cn-domain": CUSTOM_DNS_DIRECT }
+      "nameserver-policy": { "rule-set:cn-domain": CUSTOM_DNS_DIRECT, "rule-set:non-cn": CUSTOM_DNS_PROXY }
     };
   }
 
