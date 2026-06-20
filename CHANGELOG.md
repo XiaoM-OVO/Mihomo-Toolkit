@@ -1,4 +1,14 @@
 # 更新日志
+## v2.6.1 (2026-06-19)
+
+### 🔧 优化
+- **DNS 防泄漏加固**：`nameserver` 改为国际公共 DNS（Cloudflare + Google），补全 `nameserver-policy` 中 `rule-set:non-cn` 路由，防止域名 DNS 查询泄露。
+- 移除废弃的 `1.12.12.12` DoH 地址，替换为 `120.53.53.53`（DNSPod 维护的 DoH IP 端点）。
+- 略微完善入口城市提取正则
+
+### 📝 修复
+- **代理节点 DNS 污染导致连接失败**：`proxy-server-nameserver` 改为使用 UDP 默认 DNS 引导解析，避免潜在污染 IP 风险导致节点不可用。
+
 ## v2.6.0 (2026-06-18)
 
 ### 🚀 核心架构重构
