@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 版本: v2.6.1 (Build 2026.06.19)
+// 版本: v2.7.0 (Build 2026.06.22)
 // 作者: XiaoM-OVO (Refactored)
 // 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -14,18 +14,6 @@
 // 💡 【底层协议图标说明】
 // ✈️ : SS/SSR    🦊 : VMess     🛸 : VLESS      🐎 : Trojan
 // ⚡ : HY/HY2    💨 : TUIC      🕸️ : WireGuard  🦈 : Snell
-// =========================================================================
-// 🛠️ 【自定义指南：如何添加自定义的新应用分流？】
-// 如果你想新增一个自定义规则（比如 HBO Max），只需在以下 3 个地方“打卡”即可：
-//
-// 1️⃣ 【建组】搜索 `APP_GROUPS_REGISTRY`，加入策略组清单：
-//    { key: "enableHBO", name: "📺 HBO", proxies: [...standardOptions, "DIRECT"] }
-//
-// 2️⃣ 【引流】搜索 `FEATURE_MAP`，下载规则集并指派路由：
-//    { key: "enableHBO", providers: { hbo: "geosite/hbo" }, rules: ["RULE-SET,hbo,📺 HBO"] }
-//
-// 3️⃣ 【美化】(可选) 搜索 `ICON_MAPPING`，为其配置图标：
-//    "📺 HBO": { icon: USER_CONFIG.iconRepoKoolson + "HBO.png", newName: "HBO" }
 // =========================================================================
 function main(config) {
 
@@ -40,13 +28,15 @@ function main(config) {
     proxyFirst: true,            // 🧭 路由偏好：true(海外代理优先)，false(国内直连优先)
     defaultProxyMode: "auto",    // 🔀 默认代理策略: auto(自动) / manual(手动) / fallback(故障转移)  [⚠️特殊: direct / reject]
     enableIPv6: false,           // 🌐 全局 IPv6：控制 TUN、DNS 及路由（本地无物理 IPv6 请务必设为 false！）
+    enableAirportTag: false,     // 🏷️ 标签前缀：订阅合并时自动/手动添加 [标签] 前缀
+    airportTag: "",              // 🏷️ 手动指定前缀（需要节点名字自带标签，逗号分隔），为空则自动检测节点原名中的 [xxx] 标识
 
     // 【2. 节点清洗与处理】
     enableDedupe: false,         // 🧽 节点去重：开启后自动剔除机场底层完全重复的“注水”节点
     removeInfoNodes: false,      // 🗑️ 纯净节点: 彻底过滤流量/到期时间等营销节点
     keepDestinationCity: true,   // 🏙️ 保留落地城市：开启后将在节点名后缀展示具体城市 (如 东京/大阪/洛杉矶)
     showProtocolIcon: false,     // 🏷️ 协议图标展示: true(在节点名展示🦊/🛸等底层协议图标), false(隐藏协议图标)
-    strictRegionMatch: false,    // 🌍 严格地区匹配：true(仅匹配预设字典，其余全扔垃圾桶)，false(宽松模式，允许通过国旗Emoji动态捕获冷门国家放入"其他"组)
+    strictRegionMatch: false,    // 🌍 未知地区匹配：true(严格模式，仅匹配预设字典，其余全扔垃圾桶)，false(宽松模式，允许通过国旗Emoji动态捕获冷门国家放入"其他"组)
     adTextThreshold: 6,          // 🔠 纯文本广告判定阈值：无数字/线路特征且长度大于此值的节点视为广告
     lowMultiThreshold: 0.99,     // ⏬ 自动降级阈值：倍率 <= 此值的节点自动打上下载标签 (设为 0 关闭自动降级)
     isolateDownload: false,      // ⏬ 下载节点隔离：设为 true 从普通大区池中剔除，设为 false 则允许进入普通池
@@ -69,7 +59,7 @@ function main(config) {
     enableBilibili: true,        // 📺 影音娱乐：哔哩哔哩港澳台限制解除
     enableGame: true,            // 🎮 游戏平台：Steam, Epic 等
     enableSystemServices: true,  // 🪟 系统服务：Microsoft, Apple, Google 框架服务
-    enableDomesticGroup: false,  // 🇨🇳 中国分流：开启后增加专门的"中国"策略组 (配合直连优先使用)
+    enableDomesticGroup: false,  // 🇨🇳 中国分流：开启后增加专门的"中国"策略组 (配合直连优先使用，触发海外回国模式)
 
     // 【5. 扩展分流开关】
     enableAntiAD: false,         // ☢️ 激进广告拦截：启用 anti-AD 规则集 (强力，但容易误杀)
@@ -92,6 +82,7 @@ function main(config) {
 
     // 【7. 安全防漏与底层内核覆写】
     enableProcessDirect: true,   // 🛑 进程直连防漏：强制指定的软件(如P2P/BT等)走直连，防止流量滥用与误代理(关闭后内置BT规则会指向⏬ 下载策略)
+    enableTrafficAudit: true,    // 🛡️ 流量审计：非标流量强制直连防断流
     enableQUICReject: false,     // ⚡ 屏蔽 QUIC 协议: 强制降级至 TCP，避免 UDP 阻断丢包
     overwriteTun: true,          // 🖧 覆写 TUN 配置：注入严格路由与网段排除
     overwriteDns: true,          // 📡 覆写 DNS 配置：强制使用 Fake-IP 与纯净防污染 DNS
@@ -147,7 +138,7 @@ function main(config) {
   const REGEX_ALL_FLAGS  = /\p{Regional_Indicator}{2}/gu;
 
   // =========================================================================
-  // --- 1. 物理节点去重逻辑 (基于 Server + Port + Type) ---
+  // --- 1. 物理节点去重逻辑 ---
   // =========================================================================
   let proxies = [];
   let builtInProxies = [];
@@ -155,16 +146,8 @@ function main(config) {
   const BASIC_PROXIES = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS']);
 
   (config.proxies || []).forEach(proxy => {
-    // 放行内置节点
-    if (BASIC_PROXIES.has(proxy.name)) {
-      builtInProxies.push(proxy);
-      return;
-    }
-    // 放行没有 server 字段的通知节点
-    if (!proxy.server || REGEX_INFO_NODE.test(proxy.name)) {
-      proxies.push(proxy);
-      return;
-    }
+    if (BASIC_PROXIES.has(proxy.name)) { builtInProxies.push(proxy); return; }
+    if (!proxy.server || REGEX_INFO_NODE.test(proxy.name)) { proxies.push(proxy); return; }
     
     if (USER_CONFIG.enableDedupe) {
       // 组合唯一键值防误杀
@@ -173,13 +156,8 @@ function main(config) {
       const host = proxy.host || proxy["ws-opts"]?.headers?.Host || proxy["ws-opts"]?.headers?.host || "";
       const path = proxy["ws-opts"]?.path || proxy["grpc-opts"]?.["grpc-service-name"] || "";
       const uuid = (proxy.uuid || proxy.password || "").toLowerCase();
-
       const key = `${proxy.server}:${proxy.port}:${proxy.type}:${network}:${sni}:${host}:${path}:${uuid}`;
-      
-      if (!proxySet.has(key)) {
-        proxySet.add(key);
-        proxies.push(proxy);
-      }
+      if (!proxySet.has(key)) { proxySet.add(key); proxies.push(proxy); }
     } else {
       proxies.push(proxy);
     }
@@ -200,6 +178,7 @@ function main(config) {
 
   // 🌍 地区识别字典
   const REGION_DEFS = [
+    //--- 大中华区 ---
     { id: "cn", name: "中国",   icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
     { id: "hk", name: "香港",   icon: "🇭🇰", reg: new RegExp(`${IN_PREFIX}港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong`, "i") },
     { id: "mo", name: "澳门",   icon: "🇲🇴", reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i },
@@ -281,11 +260,17 @@ function main(config) {
     { reg: /\bClaude\b/i,                 tag: "claude",  pool: "claude" },
     { reg: /(?:家宽|住宅|宽带|原生|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential" },
     { reg: /(?:游戏)|\b(?:Game|FullCone)\b/i,                      tag: "game", pool: "game" },
-    { reg: /(?:流媒体|解锁)|\b(?:Netflix|NF|Disney\+|YouTube)\b/i, tag: "streaming" },
     { reg: /(?:下载)|\bBT\b/i,                                     tag: "download" },
     { reg: /(?:免费|白嫖|公益)/i,                                   tag: "free" },
     { reg: /\bWAP\b/i,                                             tag: "wap" },
-    { reg: /-A$|\bAnyTLS\b/i,                                      tag: "anytls" }
+    { reg: /-A$|\bAnyTLS\b/i,                                      tag: "anytls" },
+    // --- 🎬 流媒体专项（各自开桶）---
+    { reg: /\b(?:Netflix|NF|奈飞|网飞|耐飞)\b/i,           tag: "streaming", pool: "netflix" },
+    { reg: /\b(?:YouTube|YT|油管)\b/i,                     tag: "streaming", pool: "youtube" },
+    { reg: /\b(?:Disney\+|Disney|迪士尼|D\+)\b/i,          tag: "streaming", pool: "disney" },
+    { reg: /\b(?:TikTok|抖音海外|TT)\b/i,                  tag: "streaming", pool: "tiktok" },
+    { reg: /\b(?:Spotify|声田|声破天)\b/i,                 tag: "streaming", pool: "spotify" },
+    { reg: /(?:流媒体|解锁)/i,                             tag: "streaming" },
   ];
 
   // =========================================================================
@@ -300,7 +285,7 @@ function main(config) {
   REGION_DEFS.forEach(r => BUCKETS[r.id || r.name] = []);
   FEATURE_RULES.filter(r => r.pool).forEach(r => BUCKETS[r.pool] = []);
   
-  // 🏷️ 预编译清洗正则 (极其关键：供后续的纯函数匹配和擦除使用)
+  // 🏷️ 预编译清洗正则
   REGION_DEFS.forEach(r => {
     const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
     r._cleanReg = new RegExp(combinedSource, "ig"); // 用于最后擦除名字
@@ -309,15 +294,15 @@ function main(config) {
   });
   FEATURE_RULES.forEach(r => r._cleanReg = new RegExp(r.reg.source, "ig")); 
 
-  // 辅助纯函数 1: 基础字符清洗 (保持字符串干净)
+  // 辅助纯函数 1: 基础字符清洗
   function sanitizeNodeName(rawName) {
-    let name = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, ""); // 去除零宽字符
+    let name = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
     name = name.replace(/\p{Extended_Pictographic}/gu, m => {
       const cp = m.codePointAt(0);
-      return (cp >= 0x1F1E6 && cp <= 0x1F1FF) ? m : ""; // 仅保留国旗 Emoji
+      return (cp >= 0x1F1E6 && cp <= 0x1F1FF) ? m : "";
     });
-    name = name.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, ""); // 去除中文间空格
-    name = name.replace(/[\u2190-\u21FF\u2460-\u24FF\u2500-\u27BF\u2B00-\u2BFF]/g, " "); // 去除特殊装饰符
+    name = name.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, "");
+    name = name.replace(/[\u2190-\u21FF\u2460-\u24FF\u2500-\u27BF\u2B00-\u2BFF]/g, " ");
     return name.replace(REGEX_CLEANUP, "").trim();
   }
 
@@ -327,9 +312,7 @@ function main(config) {
 
     // 1. 提取入口城市
     const entryMatch = name.match(REGEX_ENTRY_CITY);
-    if (entryMatch) {
-      attrs.entryStr = TAG_MAP[entryMatch[1]] || entryMatch[1];
-    }
+    if (entryMatch) attrs.entryStr = TAG_MAP[entryMatch[1]] || entryMatch[1];
 
     // 2. 提取并擦除倍率
     let cleanName = name.replace(REGEX_MULTI, (m, m1, m2, m3) => {
@@ -357,23 +340,19 @@ function main(config) {
 
     // 5. 提取营销标识
     let fluffStr = "";
-    cleanName = cleanName.replace(REGEX_FLUFF_LINE, match => {
-      fluffStr += match.toUpperCase();
-      return "";
-    });
+    cleanName = cleanName.replace(REGEX_FLUFF_LINE, match => { fluffStr += match.toUpperCase(); return ""; });
 
     // 6. 计算线路排序权重和最终后缀文本
     const fullLineStr = attrs.lineArr.join("/") + fluffStr;
-    attrs.bestLineWeight = /(IEPL|IPLC|专线|VIP|PRO)/.test(fullLineStr) ? 1 :
-                           /(GIA|CN2|9929|CMIN2)/.test(fullLineStr) ? 2 :
-                           /(高速|极速|优化|PREMIUM)/.test(fullLineStr) ? 3 :
-                           /(BGP|CMI)/.test(fullLineStr) ? 4 :
-                           /(中转|隧道)/.test(fullLineStr) ? 5 : 6;
+    attrs.bestLineWeight = /(IEPL|IPLC)/.test(fullLineStr) ? 1 :
+                          /(GIA|CN2|9929|CMIN2)/.test(fullLineStr) ? 2 :
+                          /(专线|VIP|PRO|高速|极速|优化|PREMIUM)/.test(fullLineStr) ? 3 :
+                          /(BGP|CMI)/.test(fullLineStr) ? 4 :
+                          /(中转|隧道)/.test(fullLineStr) ? 5 : 6;
 
     // 最终展示的后缀，只有干净的技术词
     attrs.cleanLines = [...new Set(attrs.lineArr)].join("/");
-
-    return { attrs, cleanName }; // 必须 return！
+    return { attrs, cleanName };
   }
 
   // 辅助纯函数 3: 智能地区匹配
@@ -385,11 +364,11 @@ function main(config) {
 
     if (matchedRegions.length > 0) {
       // 优先匹配长度最长的，长度相同匹配最靠后的(比如深港，以港为准)
-    const bestMatch = matchedRegions.reduce((prev, curr) => {
-      if (curr.len !== prev.len) return curr.len > prev.len ? curr : prev;
-      return curr.index > prev.index ? curr : prev; 
-    }, matchedRegions[0]);
-    return bestMatch?.def || null;
+      const bestMatch = matchedRegions.reduce((prev, curr) => {
+        if (curr.len !== prev.len) return curr.len > prev.len ? curr : prev;
+        return curr.index > prev.index ? curr : prev; 
+      }, matchedRegions[0]);
+      return bestMatch?.def || null;
     }
     
     if (!USER_CONFIG.strictRegionMatch) {
@@ -397,6 +376,22 @@ function main(config) {
       if (flagMatch) return { id: "other", icon: flagMatch[1], name: flagMatch[2].trim() };
     }
     return null;
+  }
+
+  // 🏷️ 标签提取：手动关键词匹配 or 自动 [xxx] 检测
+  function getAirportTag(rawName) {
+      if (!USER_CONFIG.enableAirportTag) return "";
+      if (USER_CONFIG.airportTag) {
+          // 手动模式：用户指定关键词，不限位置、不限长度，完全信任
+          for (const kw of USER_CONFIG.airportTag.split(",").map(k => k.trim()).filter(Boolean)) {
+              const m = rawName.match(new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+              if (m) return m[0];
+          }
+          return "";
+      }
+      // 自动模式：[xxx] 且内容 ≤ 4 字符才算标签，超长视为营销垃圾
+      const m = rawName.match(/\[([^\]]{1,4})\]/);
+      return m ? m[1] : "";
   }
 
   // 🔄 核心：第一轮遍历
@@ -409,8 +404,16 @@ function main(config) {
     const isAdTypo = /防.{0,3}失|失.{0,3}联|地.{0,3}[址止]|官.{0,3}[网罔]|发.{0,3}[布步]|交.{0,3}流|群.{0,3}组|客.{0,3}服|定.{0,3}制/i.test(rawName);
     
     let tempName = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
+    // 🏷️ 广告判定前剥离标签文字：手动信任关键词 / 自动仅信任 ≤4 字符的 [xxx]
+    let tempNameForAd = tempName;
+    if (USER_CONFIG.enableAirportTag) {
+        tempNameForAd = USER_CONFIG.airportTag
+            ? USER_CONFIG.airportTag.split(",").reduce((s, k) => s.replace(new RegExp((k = k.trim()).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ""), tempName)
+            : tempName.replace(/\[([^\]]{1,4})\]/g, "");
+    }
+
     const isOrphanAd = !(/\d/.test(tempName) || REGEX_TECH_LINE.test(tempName) || REGEX_FLUFF_LINE.test(tempName)) && 
-                      tempName.replace(/\p{Extended_Pictographic}/gu, "").trim().length > USER_CONFIG.adTextThreshold;
+                      tempNameForAd.replace(/\p{Extended_Pictographic}/gu, "").trim().length > USER_CONFIG.adTextThreshold;
 
     if (isFakeServer || isDummyAuth || isAdTypo || isOrphanAd || REGEX_INFO_NODE.test(tempName)) {
       if (USER_CONFIG.removeInfoNodes) return { skip: true };
@@ -444,12 +447,9 @@ function main(config) {
         }
       });
 
-      // 自动降级逻辑 (只判断 tag)
-      if (attrs.isLowMulti && !isForbidDownload && !tags.has("download")) {
-        tags.add("download");
-      }
+      if (attrs.isLowMulti && !isForbidDownload && !tags.has("download")) tags.add("download");
 
-      // 擦除地名文字，极致瘦身
+      // 擦除地名文字
       if (regionInfo.id !== "other") {
         name = name.replace(REGEX_ALL_FLAGS, "").replace(regionInfo._cleanReg, "");
       } else {
@@ -464,12 +464,15 @@ function main(config) {
     const pType = (proxy.type || "").toLowerCase();
     
     return { 
-      proxy, rawName, regionInfo, tags: Array.from(tags), featurePools, suffixArr, pType, // 这里的 icons 换成了 tags
-      groupKey: regionInfo ? regionInfo.name : name,
-      multiNum: attrs.multiNum, 
-      bestLineWeight: attrs.bestLineWeight, 
-      cleanLines: attrs.cleanLines, 
-      entryStr: attrs.entryStr
+      proxy, rawName, regionInfo, tags: Array.from(tags), featurePools, suffixArr, pType,
+      airportTag: getAirportTag(rawName),
+      groupKey: (() => {
+        const tag = getAirportTag(rawName);
+        const prefix = tag ? tag + "__" : "";
+        return prefix + (regionInfo ? regionInfo.name : name);
+      })(),
+      multiNum: attrs.multiNum, bestLineWeight: attrs.bestLineWeight, 
+      cleanLines: attrs.cleanLines, entryStr: attrs.entryStr
     };
   }).filter(d => d && !d.skip);
 
@@ -479,8 +482,8 @@ function main(config) {
 
   // 🧹 多维排序逻辑
   processedData.sort((a, b) => {
-    const orderA = REGION_ORDER[a.groupKey] ?? 999;
-    const orderB = REGION_ORDER[b.groupKey] ?? 999;
+  const orderA = REGION_ORDER[a.regionInfo?.name || a.groupKey] ?? 999;
+  const orderB = REGION_ORDER[b.regionInfo?.name || b.groupKey] ?? 999;
     if (orderA !== orderB) return orderA - orderB;
     if (a.bestLineWeight !== b.bestLineWeight) return a.bestLineWeight - b.bestLineWeight;
     const entryA = a.entryStr || "ZZZ", entryB = b.entryStr || "ZZZ";
@@ -501,43 +504,28 @@ function main(config) {
     const { proxy, regionInfo, groupKey, rawName, tags, featurePools, suffixArr, pType } = item;
     groupTrack[groupKey] = (groupTrack[groupKey] || 0) + 1;
 
-    // 🧱 1. 身份块：[国旗] [名字] [编号]
     const numStr = counts[groupKey] > 1 ? ` [${groupTrack[groupKey].toString().padStart(2, "0")}]` : "";
-    let finalName = regionInfo ? `${regionInfo.icon} ${regionInfo.name}${numStr}` : `🗑️ ${rawName}${numStr}`;
+    // 🏷️ 标签前缀提取
+    let airportTagStr = "";
+    if (USER_CONFIG.enableAirportTag) {
+      const tag = getAirportTag(rawName);
+      if (tag) airportTagStr = `[${tag}] `;
+    }
+    let finalName = regionInfo ? `${airportTagStr}${regionInfo.icon} ${regionInfo.name}${numStr}` : `${airportTagStr}🗑️ ${rawName}${numStr}`;
 
     if (regionInfo) {
-      // 🧱 2. 能力块：基于解耦映射表的 UI 渲染
       let combinedIcons = "";
-      
-      // 协议图标
-      if (USER_CONFIG.showProtocolIcon && UI_ICONS.protocols[pType]) {
-        combinedIcons += UI_ICONS.protocols[pType];
-      }
-      
-      // 遍历收集到的特征标签进行图标渲染
-      tags.forEach(tag => {
-        if (UI_ICONS.features[tag]) {
-          combinedIcons += UI_ICONS.features[tag];
-        }
-      });
-
-      if (combinedIcons) {
-        finalName += `${combinedIcons}`;
-      }
-
-      // 🧱 3. 链路质量块
-      if (suffixArr.length) {
-        finalName += ` | ${suffixArr.join(" ")}`; 
-      }
+      if (USER_CONFIG.showProtocolIcon && UI_ICONS.protocols[pType]) combinedIcons += UI_ICONS.protocols[pType];
+      tags.forEach(tag => { if (UI_ICONS.features[tag]) combinedIcons += UI_ICONS.features[tag]; });
+      if (combinedIcons) finalName += combinedIcons;
+      if (suffixArr.length) finalName += ` | ${suffixArr.join(" ")}`; 
     }
     
-    // 赋值最终格式化的名字
     proxy.name = finalName;
 
     if (!regionInfo) {
       BUCKETS.garbage.push(finalName);
     } else {
-      // 核心分发逻辑也改为判断 tags
       if (tags.includes("download")) BUCKETS.download.push(finalName);
       if (USER_CONFIG.isolateDownload && tags.includes("download")) return; 
       
@@ -595,10 +583,8 @@ function main(config) {
     .filter(k => BUCKETS[k]?.length > 0)
     .map(k => REGION_NAMES[k]);
     
-  const hasGlobalProxy  = activeRegionGroups.some(g => g !== "🇨🇳 大陆节点" && g !== "🗑️ 未知识别");
   const resiPrefix = (USER_CONFIG.enableResidential && BUCKETS.residential.length) ? ["🏠 家宽专用"] : [];
   
-  // 核心的公共代理选项预置
   const MODE_MAP = { "auto": "🚀 自动选择", "manual": "📍 手动选择", "fallback": "♻️ 故障转移", "direct": "DIRECT", "reject": "REJECT" };
   const proxyTarget = MODE_MAP[USER_CONFIG.defaultProxyMode] || "🚀 自动选择";
   const baseOptions = ["📍 手动选择", "🚀 自动选择", "♻️ 故障转移", ...resiPrefix, ...activeRegionGroups];
@@ -609,10 +595,10 @@ function main(config) {
   // --- 5. 组装 Proxy-Groups ---
   // =========================================================================
   const buildSelect = (name, proxies, hidden = false) => ({ name, type: "select", proxies: [...new Set(proxies)], hidden });
-  const buildRegionGroup = (id, name, proxies, hidden = false) => {
+  const buildRegionGroup = (id, name, proxies) => {
     let { regionGroupType: type, testURL: url, testInterval: interval, testTolerance: tolerance } = USER_CONFIG;
     if (MIXED_REGION_IDS.includes(id)) type = "select"; 
-    const base = { name, type, proxies: [...new Set(proxies)], hidden };
+    const base = { name, type, proxies: [...new Set(proxies)] };
     if (type !== "select") Object.assign(base, { url, interval, lazy: true, ...(type === "url-test" && { tolerance }) });
     return base;
   };
@@ -622,72 +608,83 @@ function main(config) {
 
   // 📋 各大 App 的分流策略配置注册表
   const APP_GROUPS_REGISTRY = [
-    { key: "enableScholar", name: "🎓 学术网站", proxies: ["🇺🇸 美国节点", "🇪🇺 欧洲节点", "🇯🇵 日本节点", "🇸🇬 新加坡节点", "🇹🇼 台湾节点", "🇭🇰 香港节点", proxyTarget, "DIRECT"] },
-    { key: "enableCrypto",  name: "🪙 加密货币", proxies: ["🇹🇼 台湾节点", "🇯🇵 日本节点", "🇪🇺 欧洲节点", ...resiPrefix, proxyTarget, "DIRECT"] },
-    { key: "enablePayPal",  name: "💳 PayPal",  proxies: ["DIRECT", proxyTarget, ...activeRegionGroups, ...resiPrefix] },
-    { key: "enableGame",    name: "🎮 游戏服务", proxies: ["DIRECT", ...standardOptions, ...BUCKETS.game] },
-    { key: "enableTikTok",  name: "🎵 TikTok",  proxies: [...activeRegionGroups.filter(g => !["🇭🇰 香港节点", "🇨🇳 大陆节点", "🗑️ 未知识别"].includes(g)), proxyTarget, "DIRECT"] },
-    { key: "enableSocial",  name: "💬 社交平台", proxies: [...standardOptions, "DIRECT"] },
-    { key: "enableYouTube", name: "▶️ YouTube", proxies: [...standardOptions, "DIRECT"] },
-    { key: "enableNetflix", name: "🎬 Netflix", proxies: [...standardOptions, "DIRECT"] },
-    { key: "enableDisney",  name: "🪄 Disney+", proxies: [...standardOptions, "DIRECT"] },
-    { key: "enableGitHub",  name: "🐱 GitHub",  proxies: [...standardOptions, "DIRECT"] },
-    { key: "enableTelegram",name: "✈️ Telegram",proxies: [...standardOptions, "DIRECT"] },
-    { key: "enableSpotify", name: "🎧 Spotify", proxies: [...standardOptions, "DIRECT"] },
+      // 🎬 流媒体
+      { key: "enableYouTube", name: "▶️ YouTube", proxies: [...BUCKETS.youtube, ...standardOptions, "DIRECT"] },
+      { key: "enableNetflix", name: "🎬 Netflix", proxies: [...BUCKETS.netflix, ...standardOptions, "DIRECT"] },
+      { key: "enableDisney",  name: "🪄 Disney+", proxies: [...BUCKETS.disney, ...standardOptions, "DIRECT"] },
+      { key: "enableTikTok",  name: "🎵 TikTok",  proxies: [...BUCKETS.tiktok, ...activeRegionGroups.filter(g => !["🇭🇰 香港节点", "🇨🇳 大陆节点", "🗑️ 未知识别"].includes(g)), proxyTarget, "DIRECT"] },
+      { key: "enableSpotify", name: "🎧 Spotify", proxies: [...BUCKETS.spotify, ...standardOptions, "DIRECT"] },
+
+      // 💬 社交通讯
+      { key: "enableTelegram",name: "✈️ Telegram",proxies: [...standardOptions, "DIRECT"] },
+      { key: "enableSocial",  name: "💬 社交平台", proxies: [...standardOptions, "DIRECT"] },
+
+      // 🛠️ 开发者
+      { key: "enableGitHub",  name: "🐱 GitHub",  proxies: [...standardOptions, "DIRECT"] },
+      { key: "enableScholar", name: "🎓 学术网站", proxies: ["🇺🇸 美国节点", "🇪🇺 欧洲节点", "🇯🇵 日本节点", "🇸🇬 新加坡节点", "🇹🇼 台湾节点", "🇭🇰 香港节点", proxyTarget, "DIRECT"] },
+
+      // 🎮 游戏
+      { key: "enableGame",    name: "🎮 游戏服务", proxies: ["DIRECT", ...standardOptions, ...BUCKETS.game] },
+
+      // 💳 金融
+      { key: "enableCrypto",  name: "🪙 加密货币", proxies: ["🇹🇼 台湾节点", "🇯🇵 日本节点", "🇪🇺 欧洲节点", ...resiPrefix, proxyTarget, "DIRECT"] },
+      { key: "enablePayPal",  name: "💳 PayPal",  proxies: ["DIRECT", proxyTarget, ...activeRegionGroups, ...resiPrefix] },
   ];
 
-  // AI 节点独立判定处理
+  // AI 节点独立判定
   if (USER_CONFIG.enableAI) {
     const aiCore = AI_PREFERRED_REGIONS.map(id => REGION_NAMES[id]); 
     ["chatgpt", "gemini", "claude"].forEach((key, i) => {
       const names = ["🤖 ChatGPT", "♊ Gemini", "🦀 Claude"];
-      const show = aiCore.some(g => activeRegionGroups.includes(g)) || BUCKETS[key].length > 0;
-      appGroups.push(buildSelect(names[i], [...resiPrefix, ...aiCore, ...BUCKETS[key], proxyTarget, "DIRECT"], !show));
+      appGroups.push(buildSelect(names[i], [...resiPrefix, ...aiCore, ...BUCKETS[key], proxyTarget, "DIRECT"]));
     });
   }
 
-  // 哔哩哔哩特殊处理
+  // 哔哩哔哩
   if (USER_CONFIG.enableBilibili) {
     const biliProxies = USER_CONFIG.enableDomesticGroup ? ["🇨🇳 中国分流", ...BILI_PREFERRED_REGIONS, "DIRECT"] : ["DIRECT", ...BILI_PREFERRED_REGIONS];
-    appGroups.push(buildSelect("📺 哔哩哔哩", biliProxies, !hasGlobalProxy));
+    appGroups.push(buildSelect("📺 哔哩哔哩", biliProxies));
   }
 
-  // 系统服务处理
+  // 系统服务
   if (USER_CONFIG.enableSystemServices) {
     ["🪟 Microsoft", "🔍 Google", "🍎 Apple"].forEach(name => {
       const pList = name === "🔍 Google" ? [...standardOptions, "DIRECT"] : ["DIRECT", ...standardOptions];
-      appGroups.push(buildSelect(name, pList, !hasGlobalProxy));
+      appGroups.push(buildSelect(name, pList));
     });
   }
 
-  // 根据注册表循环构建 APP 策略组
+  // 注册表批量构建
   APP_GROUPS_REGISTRY.forEach(({ key, name, proxies }) => {
-    if (USER_CONFIG[key]) appGroups.push(buildSelect(name, proxies, !hasGlobalProxy));
+    if (USER_CONFIG[key]) appGroups.push(buildSelect(name, proxies));
   });
 
   if (USER_CONFIG.enableAdBlock || USER_CONFIG.enableAntiAD) {
     appGroups.push(buildSelect("🚫 广告拦截", ["REJECT-DROP", "REJECT", "DIRECT"]));
   }
 
-  // 组装核心基础策略组
+  // 核心基础策略组
   const finalGroups = [
     buildSelect("📍 手动选择", coreSelectProxies),
     { name: "🚀 自动选择", type: "url-test", url: testURL, interval: testInterval, tolerance: testTolerance, proxies: BUCKETS.allStandard },
     { name: "♻️ 故障转移", type: "fallback", url: testURL, interval: testInterval, proxies: activeRegionGroups }
   ];
 
-  // 挂载家宽、下载、中国组等专属组
+  // 家宽
   if (USER_CONFIG.enableResidential) {
-    finalGroups.push({ name: "🏠 家宽专用", type: "fallback", url: testURL, interval: testInterval, proxies: BUCKETS.residential, hidden: BUCKETS.residential.length === 0 });
+    finalGroups.push({ name: "🏠 家宽专用", type: "fallback", url: testURL, interval: testInterval, proxies: BUCKETS.residential });
   }
   
-  // 下载组强制装载
+  // 下载
   finalGroups.push(buildSelect("⏬ 下载策略", ["DIRECT", "🔄 负载均衡-轮询", "🚀 自动选择", ...BUCKETS.download]));
   finalGroups.push({ name: "🔄 负载均衡-轮询", type: "load-balance", strategy: "round-robin", url: testURL, interval: 300, lazy: true, proxies: BUCKETS.download, hidden: true });
 
+  // 中国分流
   if (USER_CONFIG.enableDomesticGroup) {
     const cnCore = ["🇨🇳 大陆节点", "🇭🇰 香港节点", "🇲🇴 澳门节点", "🇹🇼 台湾节点"];
-    const cnProxies = USER_CONFIG.proxyFirst ? [...cnCore, "DIRECT", proxyTarget] : ["DIRECT", ...cnCore, proxyTarget];
+    const cnProxies = (USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst)
+      ? [...cnCore, proxyTarget, "DIRECT"]
+      : ["DIRECT", ...cnCore, proxyTarget];
     finalGroups.push(buildSelect("🇨🇳 中国分流", cnProxies));
   }
   
@@ -695,15 +692,14 @@ function main(config) {
   
   if (USER_CONFIG.enableIPv6) finalGroups.push(buildSelect("🌐 IPv6控制台", ["REJECT", "📍 手动选择", "DIRECT"]));
 
-  // 构建漏网之鱼
+  // 漏网之鱼
   let fallbackProxies = [proxyTarget, "🚀 自动选择", "📍 手动选择", "♻️ 故障转移", "⏬ 下载策略"];
   if (proxyTarget !== "DIRECT") {
     USER_CONFIG.proxyFirst ? fallbackProxies.push("DIRECT") : fallbackProxies.unshift("DIRECT");
   }
-  // 利用 Set 去重！
   finalGroups.push(buildSelect("🐟 漏网之鱼", [...new Set(fallbackProxies)]));
 
-  // 地区哈希负载均衡
+  // 哈希负载均衡
   if (USER_CONFIG.enableRegionHashLB) {
     Object.keys(REGION_NAMES).forEach(id => {
       if (!MIXED_REGION_IDS.includes(id) && BUCKETS[id] && BUCKETS[id].length > 1) {
@@ -714,13 +710,13 @@ function main(config) {
     });
   }
 
-  // 挂载各大区国家策略组
+  // 大区国家策略组
   Object.entries(REGION_NAMES).forEach(([id, name]) => {
     if (BUCKETS[id] && BUCKETS[id].length > 0) finalGroups.push(buildRegionGroup(id, name, BUCKETS[id]));
   });
   finalGroups.push(
-    buildSelect("🌐 其他节点", BUCKETS.other, BUCKETS.other.length === 0), 
-    buildSelect("🗑️ 未知识别", BUCKETS.garbage, USER_CONFIG.hideGarbageGroup || BUCKETS.garbage.length === 0)
+    buildSelect("🌐 其他节点", BUCKETS.other),
+    buildSelect("🗑️ 未知识别", BUCKETS.garbage, USER_CONFIG.hideGarbageGroup)
   );
   
   config["proxy-groups"] = finalGroups;
@@ -746,7 +742,23 @@ function main(config) {
     { key: "enableAdBlock", providers: { ads: "geosite/category-ads-all" }, rules: ["RULE-SET,ads,🚫 广告拦截"] },
     { key: "enableAI", providers: { openai: "geosite/openai", gemini: "geosite/google-gemini", claude: "geosite/anthropic" }, rules: ["RULE-SET,openai,🤖 ChatGPT", "RULE-SET,gemini,♊ Gemini", "RULE-SET,claude,🦀 Claude"] },
     { key: "enableScholar", providers: { scholar: "geosite/category-scholar-!cn" }, rules: ["DOMAIN-KEYWORD,sci-hub,🎓 学术网站", "RULE-SET,scholar,🎓 学术网站"] },
-    { key: "enableGame", providers: { steam: "geosite/steam", "steam-cn": "geosite/steam@cn", epic: "geosite/epicgames" }, rules: ["DOMAIN-SUFFIX,steamusercontent.com,🎮 游戏服务", "DOMAIN-SUFFIX,steamserver.net,DIRECT", "RULE-SET,steam-cn,DIRECT", "RULE-SET,steam,🎮 游戏服务", "DOMAIN-SUFFIX,epicgames.com,DIRECT", "RULE-SET,epic,🎮 游戏服务"] },
+    { key: "enableGame",
+      providers: {
+        steam: "geosite/steam", "steam-cn": "geosite/steam@cn", epic: "geosite/epicgames",
+        riot: "geosite/riot", blizzard: "geosite/blizzard", nintendo: "geosite/nintendo",
+        playstation: "geosite/playstation", xbox: "geosite/xbox",ubisoft: "geosite/ubisoft",
+        origin: "geosite/origin", ea: "geosite/ea"
+      },
+      rules: [
+        "DOMAIN-SUFFIX,steamusercontent.com,🎮 游戏服务", "DOMAIN-SUFFIX,steamserver.net,DIRECT",
+        "RULE-SET,steam-cn,DIRECT", "DOMAIN-SUFFIX,epicgames.com,DIRECT",
+        "RULE-SET,steam,🎮 游戏服务", "RULE-SET,epic,🎮 游戏服务",
+        "RULE-SET,riot,🎮 游戏服务", "RULE-SET,blizzard,🎮 游戏服务",
+        "RULE-SET,nintendo,🎮 游戏服务", "RULE-SET,playstation,🎮 游戏服务",
+        "RULE-SET,xbox,🎮 游戏服务", "RULE-SET,ubisoft,🎮 游戏服务",
+        "RULE-SET,origin,🎮 游戏服务", "RULE-SET,ea,🎮 游戏服务"
+      ]
+    },
     { key: "enableBilibili", providers: { bilibili: "geosite/bilibili" }, rules: ["RULE-SET,bilibili,📺 哔哩哔哩"] },
     { key: "enableYouTube", providers: { youtube: "geosite/youtube" }, rules: ["RULE-SET,youtube,▶️ YouTube"] },
     { key: "enableNetflix", providers: { netflix: "geosite/netflix" }, rules: ["RULE-SET,netflix,🎬 Netflix"] },
@@ -788,13 +800,18 @@ function main(config) {
   if (IS_MAC) routingRules.push(...PROCESS_PROXY_MAC.map(p => `PROCESS-NAME,${p},⏬ 下载策略`));
   routingRules.push("RULE-SET,download-games-cn,DIRECT", "RULE-SET,download-games,⏬ 下载策略", "RULE-SET,download-android,⏬ 下载策略");
 
-  const cnTarget = USER_CONFIG.enableDomesticGroup ? "🇨🇳 中国分流" : "DIRECT";
-  const nonCnTarget = proxyTarget;
+  const isReturn = USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst;
+  const cnTarget = USER_CONFIG.enableDomesticGroup ? "🇨🇳 中国分流" : (isReturn ? proxyTarget : "DIRECT");
+  const nonCnTarget = isReturn ? "DIRECT" : proxyTarget;
   
   if (USER_CONFIG.proxyFirst) routingRules.push(`RULE-SET,non-cn,${nonCnTarget}`, `RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`);
   else routingRules.push(`RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`, `RULE-SET,non-cn,${nonCnTarget}`);
 
   if (USER_CONFIG.enableIPv6) routingRules.push("IP-CIDR6,::/0,🌐 IPv6控制台,no-resolve");
+  if (USER_CONFIG.enableTrafficAudit) {
+      routingRules.push("DST-PORT,53/80/443,🐟 漏网之鱼");
+      routingRules.push("DST-PORT,1-65535,DIRECT");
+  }
   routingRules.push("MATCH,🐟 漏网之鱼");
 
   config["rules"] = [...new Set(routingRules)];
@@ -873,19 +890,20 @@ function main(config) {
   // =========================================================================
   const ICON_MAPPING = {
     // === ⚙️ 核心与基础策略组 ===
-    "📍 手动选择":      { icon: USER_CONFIG.iconRepoOrz + "Static.png",       newName: "手动选择" },
-    "🚀 自动选择":      { icon: USER_CONFIG.iconRepoOrz + "Urltest.png",      newName: "自动选择" },
-    "♻️ 故障转移":      { icon: USER_CONFIG.iconRepoOrz + "Available.png",    newName: "故障转移" },
-    "⏬ 下载策略":      { icon: USER_CONFIG.iconRepoOrz + "Roundrobin.png",   newName: "下载策略" },
-    "🏠 家宽专用":      { icon: USER_CONFIG.iconRepoOrz + "Home.png",         newName: "家宽专用" },
+    "📍 手动选择":     { icon: USER_CONFIG.iconRepoOrz + "Static.png",       newName: "手动选择" },
+    "🚀 自动选择":     { icon: USER_CONFIG.iconRepoOrz + "Urltest.png",      newName: "自动选择" },
+    "♻️ 故障转移":     { icon: USER_CONFIG.iconRepoOrz + "Available.png",    newName: "故障转移" },
+    "⏬ 下载策略":     { icon: USER_CONFIG.iconRepoOrz + "Roundrobin.png",   newName: "下载策略" },
+    "🏠 家宽专用":     { icon: USER_CONFIG.iconRepoOrz + "Home.png",         newName: "家宽专用" },
+
     // === 🌐 常见媒体与服务 ===
     "🇨🇳 中国分流":      { icon: USER_CONFIG.iconRepoKoolson + "China_Map.png", newName: "中国分流" },
-    "🎓 学术网站":      { icon: USER_CONFIG.iconRepoKoolson + "Scholar.png",   newName: "学术网站" },
-    "🪙 加密货币":      { icon: USER_CONFIG.iconRepoKoolson + "Cryptocurrency.png", newName: "加密货币" },
+    "🎓 学术网站":     { icon: USER_CONFIG.iconRepoKoolson + "Scholar.png",   newName: "学术网站" },
+    "🪙 加密货币":     { icon: USER_CONFIG.iconRepoKoolson + "Cryptocurrency.png", newName: "加密货币" },
     "💳 PayPal":       { icon: USER_CONFIG.iconRepoKoolson + "PayPal.png",    newName: "PayPal" },
-    "🎮 游戏服务":      { icon: USER_CONFIG.iconRepoKoolson + "Game.png",      newName: "游戏服务" },
+    "🎮 游戏服务":     { icon: USER_CONFIG.iconRepoKoolson + "Game.png",      newName: "游戏服务" },
     "🎵 TikTok":       { icon: USER_CONFIG.iconRepoKoolson + "TikTok.png",    newName: "TikTok" },
-    "💬 社交平台":      { icon: USER_CONFIG.iconRepoKoolson + "Discord.png",   newName: "社交平台" },
+    "💬 社交平台":     { icon: USER_CONFIG.iconRepoKoolson + "Discord.png",   newName: "社交平台" },
     "▶️ YouTube":      { icon: USER_CONFIG.iconRepoKoolson + "YouTube.png",   newName: "YouTube" },
     "🎬 Netflix":      { icon: USER_CONFIG.iconRepoKoolson + "Netflix.png",   newName: "Netflix" },
     "🪄 Disney+":      { icon: USER_CONFIG.iconRepoKoolson + "Disney.png",    newName: "Disney+" },
@@ -895,16 +913,17 @@ function main(config) {
     "🤖 ChatGPT":      { icon: USER_CONFIG.iconRepoOrz  + "OpenAI.png",       newName: "ChatGPT" },
     "♊ Gemini":       { icon: USER_CONFIG.iconRepoKoolson + "AI.png",        newName: "Gemini" },
     "🦀 Claude":       { icon: USER_CONFIG.iconRepoKoolson + "Bot.png",       newName: "Claude" },
-    "📺 哔哩哔哩":      { icon: USER_CONFIG.iconRepoOrz + "Bili.png",          newName: "哔哩哔哩" },
+    "📺 哔哩哔哩":     { icon: USER_CONFIG.iconRepoOrz + "Bili.png",          newName: "哔哩哔哩" },
     "🪟 Microsoft":    { icon: USER_CONFIG.iconRepoOrz + "Microsoft.png",     newName: "Microsoft" },
     "🔍 Google":       { icon: USER_CONFIG.iconRepoOrz + "Google.png",        newName: "Google" },
     "🍎 Apple":        { icon: USER_CONFIG.iconRepoOrz + "Apple.png",         newName: "Apple" },
+    
     // === 🛡️ 兜底与特殊规则 ===
-    "🚫 广告拦截":      { icon: USER_CONFIG.iconRepoKoolson + "Reject.png",    newName: "广告拦截" },
-    "🌐 IPv6控制台":    { icon: USER_CONFIG.iconRepoKoolson + "Direct.png",    newName: "IPv6控制台" },
-    "🐟 漏网之鱼":      { icon: USER_CONFIG.iconRepoKoolson + "Final.png",     newName: "漏网之鱼" },
-    "🌐 其他节点":      { icon: USER_CONFIG.iconRepoKoolson + "Global.png",    newName: "其他节点" },
-    "🗑️ 未知识别":      { icon: USER_CONFIG.iconRepoKoolson + "Cydia.png",     newName: "未知识别" }
+    "🚫 广告拦截":     { icon: USER_CONFIG.iconRepoKoolson + "Reject.png",    newName: "广告拦截" },
+    "🌐 IPv6控制台":   { icon: USER_CONFIG.iconRepoKoolson + "Direct.png",    newName: "IPv6控制台" },
+    "🐟 漏网之鱼":     { icon: USER_CONFIG.iconRepoKoolson + "Final.png",     newName: "漏网之鱼" },
+    "🌐 其他节点":     { icon: USER_CONFIG.iconRepoKoolson + "Global.png",    newName: "其他节点" },
+    "🗑️ 未知识别":     { icon: USER_CONFIG.iconRepoKoolson + "Cydia.png",     newName: "未知识别" }
   };
 
   if (USER_CONFIG.groupIconMode !== "emoji") {
@@ -949,16 +968,25 @@ function main(config) {
   // --- 10. Fake-IP 与纯净 DNS 体系 ---
   // =========================================================================
   if (USER_CONFIG.overwriteDns) {
+    const isReturn = USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst;
+    const directDNS  = isReturn ? CUSTOM_DNS_PROXY  : CUSTOM_DNS_DIRECT;
+    const proxyDNS   = isReturn ? CUSTOM_DNS_DIRECT : CUSTOM_DNS_PROXY;
+    const serverDNS  = isReturn ? CUSTOM_DNS_PROXY  : CUSTOM_DNS_DEFAULT;
+
     config["dns"] = {
       enable: true, listen: "0.0.0.0:1053", ipv6: USER_CONFIG.enableIPv6, 
       "enhanced-mode": "fake-ip", "fake-ip-range": "198.18.0.1/16", "fake-ip-filter-mode": "blacklist", 
       "respect-rules": true, "use-hosts": true,
       "fake-ip-filter": ["*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com", "localhost.ptlogin2.qq.com", "*.msftncsi.com", "www.msftconnecttest.com", "ipv6.msftncsi.com", "*.ipv6-literal.net", "google.cn", "*.music.163.com", "*.music.126.net"],
-      "default-nameserver": CUSTOM_DNS_DEFAULT, 
-      "direct-nameserver": CUSTOM_DNS_DIRECT, "direct-nameserver-follow-policy": true,
-      "proxy-server-nameserver": CUSTOM_DNS_DEFAULT, 
-      "nameserver": CUSTOM_DNS_PROXY,
-      "nameserver-policy": { "rule-set:cn-domain": CUSTOM_DNS_DIRECT, "rule-set:non-cn": CUSTOM_DNS_PROXY }
+      "default-nameserver": CUSTOM_DNS_DEFAULT,
+      "direct-nameserver": directDNS,
+      "direct-nameserver-follow-policy": true,
+      "proxy-server-nameserver": serverDNS,
+      "nameserver": proxyDNS,
+      "nameserver-policy": {
+        "rule-set:cn-domain": directDNS,
+        "rule-set:non-cn": proxyDNS
+      }
     };
   }
 
@@ -989,10 +1017,7 @@ function main(config) {
     (config.proxies || []).forEach(p => {
       const isTargetType = ["vless", "vmess", "trojan"].includes(p.type);
       const isTlsEnabled = p.tls === true || (["ws", "grpc"].includes(p.network) && p.tls !== false);
-      
-      if (isTargetType && isTlsEnabled) {
-        p["client-fingerprint"] = "chrome";
-      }
+      if (isTargetType && isTlsEnabled) p["client-fingerprint"] = "chrome";
     });
   }
   // EOF: May your routing be fast and your connection secure. 🚀
