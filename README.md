@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)](https://github.com/clash-verge-rev/clash-verge-rev)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/version-2.6.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.7.0-brightgreen)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -39,8 +39,9 @@
 - 🌍 **动态地区折叠**：小众地区自动归入大洲组，支持 Emoji 国旗动态捕获冷门国家。
 - 🔀 **全场景分流**：内置广告、AI、游戏、影音、社交、金融等 20+ 常用分流。
 - 🎨 **协议与状态图标**：支持展示节点底层协议（🦊/🛸/🐴等）及业务解锁状态。
+- 🏷️ **机场标签前缀**：多机场订阅合并时自动/手动标注节点来源，面板来源一目了然。
 - 🗑️ **DAG 级联清理**：自动删减空策略组与孤儿规则，保持内核配置纯净。
-- ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、TUN/DNS/Sniffer 深度优化。
+- ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、流量审计、TUN/DNS/Sniffer 深度优化。
 
 ---
 
@@ -56,7 +57,7 @@
 > 💡 **全局脚本**：在 Clash Verge Rev 的「设置」-「全局拓展脚本」中粘贴，可使所有订阅共用同一份逻辑。
 
 ### 3. 个性化配置（可选）
-打开脚本开头 `USER_CONFIG` 对象，按需开关（`true` 开启 / `false` 关闭）。脚本内置了简易的 **【自定义指南】**，如需添加自定义的新应用分流（例如 HBO、网易云等），只需搜索 `自定义指南` 按照保姆级教程打卡即可。
+打开脚本开头 `USER_CONFIG` 对象，按需开关（`true` 开启 / `false` 关闭）。如需添加自定义的新应用分流（例如 HBO、网易云等），请参阅下方 [常见问题](#-常见问题) 中的自定义分流教程。
 
 ---
 
@@ -74,6 +75,8 @@
 | `proxyFirst` | `true` | `true` 代理优先，`false` 直连优先 |
 | `defaultProxyMode` | `"auto"` | 默认策略：`auto`/`manual`/`fallback` |
 | `enableIPv6` | `false` | 全局 IPv6（无物理 IPv6 请务必关闭） |
+| `enableAirportTag` | `false` | 多机场订阅时自动/手动添加 `[标签]` 前缀 |
+| `airportTag` | `""` | 手动指定标签关键词（逗号分隔），为空则自动检测 `[xxx]` |
 
 </details>
 
@@ -104,7 +107,7 @@
 | `enableYouTube` | `true` | YouTube 分流 |
 | `enableNetflix` | `true` | Netflix 分流 |
 | `enableBilibili` | `true` | 哔哩哔哩港澳台解锁 |
-| `enableGame` | `true` | Steam/Epic 等游戏平台 |
+| `enableGame` | `true` | Steam/Epic/Riot/Blizzard/Nintendo 等游戏平台 |
 | `enableSystemServices` | `true` | Microsoft/Apple/Google 框架服务 |
 
 </details>
@@ -124,7 +127,7 @@
 | `enableCrypto` | `false` | Binance 等加密货币 |
 | `enablePayPal` | `false` | PayPal 金融支付 |
 | `enableResidential` | `false` | 提取住宅/ISP 节点为高级备用 |
-| `enableDomesticGroup` | `false` | 新增「中国分流」策略组 |
+| `enableDomesticGroup` | `false` |「中国分流」策略组（搭配直连优先触发回国模式） |
 
 </details>
 
@@ -147,9 +150,10 @@
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `enableProcessDirect` | `true` | 指定进程强制直连（默认内置主流 BT 软件，支持自定义追加） |
+| `enableTrafficAudit` | `true` | 流量审计，非 53/80/443 端口强制直连防断流 |
 | `enableQUICReject` | `false` | 屏蔽 QUIC，防止 UDP 阻断 |
 | `overwriteTun` | `true` | 覆写 TUN，强化路由与 IP 防漏 |
-| `overwriteDns` | `true` | 覆写 DNS（Fake-IP + 防污染） |
+| `overwriteDns` | `true` | 覆写 DNS（Fake-IP + 防污染，回国模式自动交换 DNS） |
 | `overwriteSniffer` | `true` | 覆写 Sniffer，防 SNI 阻断 |
 | `enableCoreOptimize` | `true` | 开启节点记忆、精准指纹伪装、TCP 并发优化 |
 
@@ -183,7 +187,7 @@
 - **核心**：`📍 手动选择`、`🚀 自动选择`、`♻️ 故障转移`
 - **地区独立组**：节点数 ≥ 阈值时自动生成（如 `🇭🇰 香港`、`🇯🇵 日本`）
 - **大区折叠组**：小众地区收纳至 `🇪🇺 欧洲`、`🏝️ 东南亚`、`🌵 美洲` 或 `🌐 其他节点`
-- **应用场景组**：依配置生成 `🤖 ChatGPT`、`🎬 Netflix`、`✈️ Telegram` 等
+- **应用场景组**：依配置生成 `🤖 ChatGPT`、`🎬 Netflix`、`▶️ YouTube`、`🪄 Disney+`、`🎵 TikTok`、`🎧 Spotify`、`✈️ Telegram` 等
 - **高级功能组**：`🏠 家宽专用`、`⏬ 下载策略`、`🇨🇳 中国分流` 等
 
 ---
@@ -241,7 +245,10 @@
 <details>
 <summary><b>Q: 如何新增一个自定义分流（如 HBO Max）？</b></summary>
 
-按脚本开头的<b>「自定义指南」</b>走三步：① <code>APP_GROUPS_REGISTRY</code> 新建组；② <code>FEATURE_MAP</code> 加入规则集和路由；③（可选）<code>ICON_MAPPING</code> 配图标。不需要改深层逻辑。
+只需在脚本中搜索以下三个位置「打卡」即可，无需改动深层逻辑：<br>
+① <b>建组</b>：搜索 <code>APP_GROUPS_REGISTRY</code>，按格式新增策略组条目；<br>
+② <b>引流</b>：搜索 <code>FEATURE_MAP</code>，添加对应的规则集（<code>providers</code>）和分流路由（<code>rules</code>）；<br>
+③ <b>美化</b>（可选）：搜索 <code>ICON_MAPPING</code>，为策略组配置在线图标。
 </details>
 
 <details>
@@ -250,13 +257,19 @@
 检查 <code>proxyFirst</code>：国内用户建议设为 <code>false</code>（直连优先），并开启 <code>enableDomesticGroup</code>。如果是因为 DNS 污染，确认 <code>overwriteDns</code> 已开启（默认开启的 Fake-IP 体系能有效防污染）。
 </details>
 
+<details>
+<summary><b>Q: 多个订阅源混在一起，怎么区分节点来源？</b></summary>
+
+开启 `enableAirportTag` 后，脚本会自动提取节点名中的 `[xxx]` 方括号标识作为来源标签。推荐配合订阅转换工具，用正则将节点名开头（`^`）替换为 `[标签名]`，即可批量打标；若节点名不含方括号，也可通过 `airportTag` 手动指定匹配关键词（逗号分隔），脚本会按关键词检索并添加前缀。
+</details>
+
 ---
 
 ## 📦 更新日志
 版本历史与详尽的更新说明请参阅 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 🙏 鸣谢
-- 核心思路：[iczrac/Parsers-for-clash](https://github.com/iczrac/Parsers-for-clash)
+- 灵感来源：[iczrac/Parsers-for-clash](https://github.com/iczrac/Parsers-for-clash)
 - 基础内核：[Mihomo](https://github.com/MetaCubeX/mihomo)
 - 规则集：[meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) & [anti-AD](https://github.com/privacy-protection-tools/anti-AD)
 - 图标库：[Orz-3/mini](https://github.com/Orz-3/mini) & [Koolson/Qure](https://github.com/Koolson/Qure)
