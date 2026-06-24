@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)](https://github.com/clash-verge-rev/clash-verge-rev)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/version-2.7.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -41,7 +41,7 @@
 - 🎨 **协议与状态图标**：支持展示节点底层协议（🦊/🛸/🐴等）及业务解锁状态。
 - 🏷️ **机场标签前缀**：多机场订阅合并时自动/手动标注节点来源，面板来源一目了然。
 - 🗑️ **DAG 级联清理**：自动删减空策略组与孤儿规则，保持内核配置纯净。
-- ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、流量审计、TUN/DNS/Sniffer 深度优化。
+- ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、流量审计、TUN/DNS/Sniffer 等深度优化。
 
 ---
 
@@ -71,6 +71,7 @@
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `enableScript` | `true` | 总开关 |
+| `enableDebugLog` | `false` | 节点清洗日志开关 |
 | `osType` | `"windows"` | 设备类型：`windows`/`mac`/`linux`/`all` |
 | `proxyFirst` | `true` | `true` 代理优先，`false` 直连优先 |
 | `defaultProxyMode` | `"auto"` | 默认策略：`auto`/`manual`/`fallback` |
@@ -249,6 +250,17 @@
 ① <b>建组</b>：搜索 <code>APP_GROUPS_REGISTRY</code>，按格式新增策略组条目；<br>
 ② <b>引流</b>：搜索 <code>FEATURE_MAP</code>，添加对应的规则集（<code>providers</code>）和分流路由（<code>rules</code>）；<br>
 ③ <b>美化</b>（可选）：搜索 <code>ICON_MAPPING</code>，为策略组配置在线图标。
+</details>
+
+<details>
+<summary><b>Q: 为什么脚本的 DNS / TUN 覆写没生效？</b></summary>
+
+检查客户端的开关是否覆盖了脚本配置 —— 以 <b>Clash Verge Rev</b> 为例：
+
+- **DNS 覆写**：客户端「设置」→「覆写」→「DNS」中的「启用」开关如果打开，会覆盖脚本的 <code>overwriteDns</code> 配置。<br>→ 请关闭客户端的 DNS 总开关，让脚本的 DNS 配置生效。
+- **TUN 模式**：客户端「设置」→「覆写」→「TUN」开关如果打开，其中「严格路由」(strict-route) 等选项会覆盖脚本的 <code>overwriteTun</code> 配置。<br>→ 如需启用脚本的 TUN 严格路由防漏，请在客户端 TUN 设置中手动调整为与脚本一致或自行配置的参数。
+
+> 💡 核心原则：脚本的覆写功能（<code>overwriteTun</code> / <code>overwriteDns</code>）是为「不使用客户端覆写」的场景设计的。两者同时开启时，以客户端界面设置为准。
 </details>
 
 <details>
