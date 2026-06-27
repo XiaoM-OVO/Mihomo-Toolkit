@@ -1,10 +1,11 @@
 // =========================================================================
-//  📦 Mihomo-Toolkit [MT] | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
+//  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 版本: v2.8.0 (Build 2026.06.24)
+// 版本: v3.0.0 (Build 2026.06.27)
 // 作者: XiaoM-OVO
 // 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
+// 仓库: https://github.com/XiaoM-OVO/Mihomo-Toolkit
 // =========================================================================
 // 💡 【节点清洗图标说明】
 // 🤖 : OpenAI / ChatGPT      ♊ : Google Gemini       🦀 : Anthropic Claude
@@ -13,8 +14,8 @@
 // 🆓 : 免费 / 公益节点         🗑️ : 清洗失败节点
 // ------------------------------------------------------------------------
 // 💡 【底层协议图标说明】
-// ✈️ : SS/SSR    🦊 : VMess     🛸 : VLESS      🐎 : Trojan
-// ⚡ : HY/HY2    💨 : TUIC      🕸️ : WireGuard  🦈 : Snell
+// 🛩️ : SS/SSR    🦊 : VMess     🛸 : VLESS      🐎 : Trojan
+// ⚡ : HY/HY2    💨 : TUIC      🕸️ : WireGuard  📡 : Snell
 // =========================================================================
 function main(config) {
 
@@ -22,7 +23,6 @@ function main(config) {
   // ⚙️ 用户自定义配置区 (开关配置) - true 为开启，false 为关闭
   // =========================================================================
   const USER_CONFIG = {
-
     // 【1. 基础全局配置】
     enableScript: true,          // 🟢 脚本总控：设为 false 则原样输出订阅内容
     enableDebugLog: false,       // 📋 清洗日志：设为 true 则输出节点清洗全过程（原名->新名->归属），供排错使用
@@ -51,14 +51,13 @@ function main(config) {
     groupIconMode: "emoji",      // 🎨 策略组图标: "emoji"(仅保留Emoji), "icon"(仅在线图标), "both"(同时保留)
     iconRepoOrz: "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/",
     iconRepoKoolson: "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/",
+    iconRepoLige47: "https://raw.githubusercontent.com/lige47/lige_icon/main/icon/04ProxySoft/",
 
     // 【4. 核心分流开关】
     enableAdBlock: true,         // 🚫 广告拦截：去除网页及 APP 广告
-    enableAI: true,              // 🤖 AI 助手：OpenAI, Gemini, Claude 等
+    enableAI: true,              // 🤖 AI 助手：OpenAI, Gemini, Claude，Copilot 等
     enableTelegram: true,        // ✈️ 社交通讯：Telegram 独立分流
-    enableYouTube: true,         // ▶️ 影音娱乐：YouTube 独立分流
-    enableNetflix: true,         // 🎬 影音娱乐：Netflix 独立分流
-    enableBilibili: true,        // 📺 影音娱乐：哔哩哔哩港澳台限制解除
+    enableStreaming: true,       // 📺 流媒体服务：具体平台在 STREAMING_SERVICES 中增删（详见下方注册表）
     enableGame: true,            // 🎮 游戏平台：Steam, Epic 等
     enableSystemServices: true,  // 🪟 系统服务：Microsoft, Apple, Google 框架服务
     enableDomesticGroup: false,  // 🇨🇳 中国分流：开启后增加专门的"中国"策略组 (配合直连优先使用，触发海外回国模式)
@@ -67,10 +66,7 @@ function main(config) {
     enableAntiAD: false,         // ☢️ 激进广告拦截：启用 anti-AD 规则集 (强力，但容易误杀)
     enableGitHub: true,          // 🐱 开发者选项：GitHub, GitLab 等 
     enableScholar: true,         // 🎓 学术研究：Google Scholar 等
-    enableTikTok: false,         // 🎵 TikTok：自动过滤香港节点
-    enableSpotify: false,        // 🎧 Spotify：音乐流媒体
-    enableDisney: false,         // 🪄 影音娱乐：Disney+ 独立分流
-    enableSocial: false,         // 💬 海外社交：Twitter, Meta, Discord 等
+    enableSocial: false,         // 💬 海外社交：具体平台在 SOCIAL_SERVICES 中增删（详见下方注册表）
     enableCrypto: false,         // 🪙 加密货币：Binance 等交易平台
     enablePayPal: false,         // 💳 金融支付：PayPal 独立分流
     enableResidential: false,    // 🏠 家宽分流：自动提取住宅/ISP节点作为高级备用
@@ -81,6 +77,11 @@ function main(config) {
     useMRS: true,                // 🚀 极速规则模式: true(MRS格式), false(YAML格式)
     testURL: "https://cp.cloudflare.com/generate_204", // 🔗 延迟测速地址
     ruleProviderCDN: "https://fastly.jsdelivr.net/gh", // 🔗 规则集 CDN 节点 (备用选择: https://testingcf.jsdelivr.net/gh 或 https://gcore.jsdelivr.net/gh)
+
+    // 【6.5 DNS 服务器配置】
+    dnsDefault: ["223.5.5.5", "119.29.29.29"],       // 📡 基础解析 DNS
+    dnsDirect:  ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"], // 📡 直连 DNS (DoH)
+    dnsProxy:   ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],        // 📡 代理 DNS (DoH)
 
     // 【7. 安全防漏与底层内核覆写】
     enableProcessDirect: true,   // 🛑 进程直连防漏：强制指定的软件(如P2P/BT等)走直连，防止流量滥用与误代理(关闭后内置BT规则会指向⏬ 下载策略)
@@ -97,9 +98,21 @@ function main(config) {
   // =========================================================================
   // 🪛 高级进阶修改区 (硬编码预设)
   // =========================================================================
+  // 🤖 AI 服务加载列表（受 enableAI 总开关控制，删 key 即关闭）
+  //    可用: chatgpt, gemini, claude, copilot (+ CUSTOM_SERVICES.ai)
+  const AI_SERVICES = ["chatgpt", "gemini", "claude", "copilot"];
   // 🤖 AI 服务偏好的落地地区（按质量及解锁概率排序，填入地区 ID）
-  const AI_PREFERRED_REGIONS = ["us", "jp", "tw", "sg", "kr", "eu"];
+  const AI_PREFERRED_REGIONS = ["us", "jp", "tw", "sg", "hk", "kr", "eu"];
 
+  // 💬 海外社交 App 列表（受 enableSocial 总开关控制，删 key 即关闭）
+  //    可用: twitter, facebook, instagram, discord (+ CUSTOM_SERVICES.social)
+  const SOCIAL_SERVICES = ["twitter", "facebook", "instagram", "discord"];
+  // 独立建组名单：在这里出现的 App 将拥有专属策略组，不在这里的将全部合并入 [💬 社交平台]
+  const INDEPENDENT_SOCIAL = ["twitter"];
+
+  // 📺 流媒体服务加载列表（受 enableStreaming 总开关控制，删 key 即关闭）
+  //    可用: youtube, netflix, bilibili, disney, twitch, spotify, tiktok, bahamut, pixiv (+ CUSTOM_SERVICES.streaming)
+  const STREAMING_SERVICES = ["youtube", "netflix", "bilibili", "disney", "spotify", "tiktok", "bahamut", "pixiv", "twitch"];
   // 📺 哔哩哔哩 (B站) 港澳台限制解除偏好落地地区
   const BILI_PREFERRED_REGIONS = ["🇹🇼 台湾节点", "🇲🇴 澳门节点", "🇭🇰 香港节点"];
 
@@ -112,10 +125,43 @@ function main(config) {
   const PROCESS_PROXY_WIN  = ["IDMan", "fdm"]; // Win 强制走 [⏬ 下载策略]
   const PROCESS_PROXY_MAC  = ["fdm"];          // Mac 强制走 [⏬ 下载策略]
 
-  // 📡 覆写使用的默认纯净 DNS (用于防污染及 Fake-IP 解析)
-  const CUSTOM_DNS_DEFAULT = ["223.5.5.5", "119.29.29.29"]; // 基础解析 DNS
-  const CUSTOM_DNS_DIRECT  = ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"]; // 直连解析 DNS (DoH)
-  const CUSTOM_DNS_PROXY   = ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"];      // 代理解析 DNS (DoH)
+  // 🛑 自定义追加进程名单（自动合并到内置名单之后）
+  const CUSTOM_PROCESS_DIRECT_WIN = [];
+  const CUSTOM_PROCESS_DIRECT_MAC = [];
+  const CUSTOM_PROCESS_DIRECT_LIN = [];
+  const CUSTOM_PROCESS_PROXY_WIN  = [];
+  const CUSTOM_PROCESS_PROXY_MAC  = [];
+
+  // 🧩 自定义服务注册表（在此追加新服务，定义后将 key 加入上方对应服务数组即可启用）
+  const CUSTOM_SERVICES = {
+    // 🤖 AI：需 name, uiIcon, reg, provider, ruleSet, iconUrl, cleanName
+    ai: {},
+    // 📺 流媒体：需 name, cleanName, iconUrl, provider（reg/pool 可选，有则参与节点清洗）
+    streaming: {},
+    // 💬 社交：需 name, cleanName, iconUrl, provider
+    social: {},
+    // 🎮 游戏：需 provider, rules（分流规则数组）
+    game: {},
+    // 🪟 系统服务：需 name, cleanName, iconUrl, provider, rules
+    system: {},
+    // 🛠️ 开发者/学术：需 name, cleanName, iconUrl, provider
+    dev: {}
+  };
+
+  // 📋 自定义分流规则（原始规则文本，会注入到 MATCH 之前）
+  //    格式示例: "DOMAIN-SUFFIX,example.com,🚀 自动选择" 或 "IP-CIDR,1.2.3.4/32,DIRECT,no-resolve"
+  const CUSTOM_RULES = [];
+
+  // 📥 自定义规则集资源（远程下载的 rule-provider，需配合 CUSTOM_RULES 引用）
+  //    必填: url (下载地址), behavior ("domain"|"ipcidr"|"classical"), format ("yaml"|"mrs")
+  //    可选: interval (默认86400秒), path (默认 ./ruleset/<name>.<format>), proxy (默认 DIRECT)
+  //    示例: { "my-ads": { url: "https://example.com/ads.yaml", behavior: "domain", format: "yaml" } }
+  const CUSTOM_RULE_PROVIDERS = {};
+
+  // 📡 DNS 服务器（引用上方 USER_CONFIG，可直接在用户配置区修改）
+  const CUSTOM_DNS_DEFAULT = USER_CONFIG.dnsDefault;
+  const CUSTOM_DNS_DIRECT  = USER_CONFIG.dnsDirect;
+  const CUSTOM_DNS_PROXY   = USER_CONFIG.dnsProxy;
 
 
   // 🧹 常用正则大礼包 
@@ -135,6 +181,7 @@ function main(config) {
   const REGEX_FLUFF_LINE = /(专线|高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
   // 识别抽象黑话
   const LINE_MAP = { "CTCUCM": "三网", "CTCUM": "三网","CTCU": "电联", "CUCT": "电联","CMCU": "移联", "CUCM": "移联","CTCM": "电移", "CMCT": "电移"};
+  const CN_MAP   = { "移动": "移", "联通": "联", "电信": "电" };
   // 识别未知国家的 emoji 国旗
   const REGEX_UNKNOWN_FLAG = /(\p{Regional_Indicator}{2})\s*([A-Za-z\u4e00-\u9fa5]+(?:[\s-][A-Za-z\u4e00-\u9fa5]+)*)/u;
   const REGEX_ALL_FLAGS  = /\p{Regional_Indicator}{2}/gu;
@@ -142,7 +189,7 @@ function main(config) {
   // =========================================================================
   // --- 0. 调试日志辅助模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v2.8.0";
+  const SCRIPT_VERSION = "v3.0.0";
   const bootTime = new Date().toTimeString().split(' ')[0];
   
   if (USER_CONFIG.enableDebugLog) {
@@ -159,7 +206,7 @@ function main(config) {
         (arg instanceof Error ? `[错] ${arg.message}` : 
         (function(){ try{ return JSON.stringify(arg); }catch(e){ return '[对象]'; }})())
       ).join(' ');
-      console.log(`[MT] ${message}`);
+      console.log(message);
     } catch (err) { /* 忽略错误 */ }
   };
 
@@ -204,7 +251,14 @@ function main(config) {
   // =========================================================================
   // 📍 前置入口城市前缀
   const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|香港|台湾|日本|韩国|新加坡|美国|英国|德国|法国|澳洲|英|德|法|澳|美|日|韩|新|港|台)";
-  const TAG_MAP   = { "深圳":"深", "广州":"广", "上海":"沪", "北京":"京", "杭州":"杭", "四川":"川", "江苏":"苏", "宁波":"甬", "东莞":"莞", "香港":"港", "台湾":"台", "日本":"日", "韩国":"韩", "新加坡":"新", "美国":"美", "英国":"英", "德国":"德", "法国":"法", "澳洲":"澳" };
+  const TAG_MAP = { 
+    "深圳": "深", "SZX": "深", "广州": "广", "CAN": "广", 
+    "上海": "沪", "PVG": "沪", "SHA": "沪", "北京": "京", 
+    "PEK": "京", "PKX": "京", "杭州": "杭", "HGH": "杭", 
+    "四川": "川", "江苏": "苏", "宁波": "甬", "东莞": "莞",
+    "南京": "宁", "成都": "蓉", "武汉": "汉", "重庆": "渝", "天津": "津",
+    "香港": "港", "台湾": "台", "日本": "日", "韩国": "韩", "新加坡": "新", "美国": "美"
+  };
 
   // 💻 操作系统类型判定
   const OS = (USER_CONFIG.osType || "windows").toLowerCase();
@@ -254,22 +308,22 @@ function main(config) {
     { group: "sea", name: "越南",     icon: "🇻🇳", city: "胡志明|河内", reg: /越南|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
     
     // --- 美洲大区 --
-    { group: "am", name: "加拿大", icon: "🇨🇦", city: "多伦多|温哥华|蒙特利尔", reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
-    { group: "am", name: "阿根廷", icon: "🇦🇷", city: "布宜诺斯艾利斯", reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
-    { group: "am", name: "巴西",   icon: "🇧🇷", city: "圣保罗", reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
-    { group: "am", name: "墨西哥", icon: "🇲🇽", reg: /墨西哥|(?<![a-zA-Z])MX(?![a-zA-Z])|Mexico/i },
-    { group: "am", name: "智利",   icon: "🇨🇱", reg: /智利|(?<![a-zA-Z])CL(?![a-zA-Z])|Chile/i },
+    { group: "am", name: "加拿大",    icon: "🇨🇦", city: "多伦多|温哥华|蒙特利尔", reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
+    { group: "am", name: "阿根廷",    icon: "🇦🇷", city: "布宜诺斯艾利斯", reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
+    { group: "am", name: "巴西",      icon: "🇧🇷", city: "圣保罗", reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
+    { group: "am", name: "墨西哥",    icon: "🇲🇽", reg: /墨西哥|(?<![a-zA-Z])MX(?![a-zA-Z])|Mexico/i },
+    { group: "am", name: "智利",      icon: "🇨🇱", reg: /智利|(?<![a-zA-Z])CL(?![a-zA-Z])|Chile/i },
 
     // --- 中东大区 ---
-    { group: "me", name: "阿联酋",   icon: "🇦🇪", city: "迪拜", reg: /阿联酋|迪拜|(?<![a-zA-Z])(?:AE|UAE)(?![a-zA-Z])/i },
-    { group: "me", name: "土耳其",   icon: "🇹🇷", city: "伊斯坦布尔", reg: /土耳其|(?<![a-zA-Z])TR(?![a-zA-Z])|Turkey/i },
-    { group: "me", name: "沙特",     icon: "🇸🇦", city: "利雅得|吉达", reg: /沙特|阿拉伯|(?<![a-zA-Z])SA(?![a-zA-Z])|Saudi/i },
-    { group: "me", name: "以色列",   icon: "🇮🇱", city: "特拉维夫", reg: /以色列|(?<![a-zA-Z])IL(?![a-zA-Z])|Israel/i },
+    { group: "me", name: "阿联酋",    icon: "🇦🇪", city: "迪拜", reg: /阿联酋|迪拜|(?<![a-zA-Z])(?:AE|UAE)(?![a-zA-Z])/i },
+    { group: "me", name: "土耳其",    icon: "🇹🇷", city: "伊斯坦布尔", reg: /土耳其|(?<![a-zA-Z])TR(?![a-zA-Z])|Turkey/i },
+    { group: "me", name: "沙特",      icon: "🇸🇦", city: "利雅得|吉达", reg: /沙特|阿拉伯|(?<![a-zA-Z])SA(?![a-zA-Z])|Saudi/i },
+    { group: "me", name: "以色列",    icon: "🇮🇱", city: "特拉维夫", reg: /以色列|(?<![a-zA-Z])IL(?![a-zA-Z])|Israel/i },
 
     // --- 非洲大区 ---
-    { group: "af", name: "南非",     icon: "🇿🇦", city: "约翰内斯堡", reg: /南非|(?<![a-zA-Z])ZA(?![a-zA-Z])|South Africa/i },
-    { group: "af", name: "尼日利亚", icon: "🇳🇬", reg: /尼日利亚|(?<![a-zA-Z])NG(?![a-zA-Z])|Nigeria/i },
-    { group: "af", name: "埃及",     icon: "🇪🇬", city: "开罗", reg: /埃及|(?<![a-zA-Z])EG(?![a-zA-Z])|Egypt/i },
+    { group: "af", name: "南非",      icon: "🇿🇦", city: "约翰内斯堡", reg: /南非|(?<![a-zA-Z])ZA(?![a-zA-Z])|South Africa/i },
+    { group: "af", name: "尼日利亚",  icon: "🇳🇬", reg: /尼日利亚|(?<![a-zA-Z])NG(?![a-zA-Z])|Nigeria/i },
+    { group: "af", name: "埃及",      icon: "🇪🇬", city: "开罗", reg: /埃及|(?<![a-zA-Z])EG(?![a-zA-Z])|Egypt/i },
     
     // --- 其他零散地区 ---
     { name: "澳大利亚", icon: "🇦🇺", city: "悉尼|墨尔本", reg: /澳大利亚|澳洲|(?<![a-zA-Z])AU(?![a-zA-Z])|Australia|Sydney/i },
@@ -283,32 +337,110 @@ function main(config) {
       "tuic": "💨", "wireguard": "🕸️", "snell": "📡", "http": "🌐", "https": "🔒"
     },
     features: {
-      "chatgpt": "🤖", "gemini": "♊", "claude": "🦀", "residential": "🏠", 
-      "game": "🎮", "streaming": "📺", "download": "⏬", "free": "🆓", 
-      "wap": "📱", "anytls": "🛡️"
+      "residential": "🏠", "game": "🎮", "streaming": "📺", "download": "⏬", 
+      "free": "🆓", "wap": "📱", "anytls": "🛡️"
     }
   };
 
   // 🏷️ 节点特征识别字典
   const FEATURE_RULES = [
-    { reg: /\b(?:GPT|ChatGPT|OpenAI)\b/i, tag: "chatgpt", pool: "chatgpt", groupName: "🤖 ChatGPT" },
-    { reg: /\bGemini\b/i,                 tag: "gemini",  pool: "gemini",  groupName: "♊ Gemini" },
-    { reg: /\bClaude\b/i,                 tag: "claude",  pool: "claude",  groupName: "🦀 Claude" },
     { reg: /(?:家宽|住宅|宽带|原生|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential", groupName: "🏠 家宽专用" },
     { reg: /(?:游戏)|\b(?:Game|FullCone)\b/i,              tag: "game", pool: "game", groupName: "🎮 游戏服务" },
     { reg: /(?:下载)|\bBT\b/i,                             tag: "download" },
     { reg: /(?:免费|白嫖|公益)/i,                          tag: "free" },
     { reg: /\bWAP\b/i,                                     tag: "wap" },
     { reg: /-A$|\bAnyTLS\b/i,                              tag: "anytls" },
-    // --- 🎬 流媒体专项（各自开桶）---
-    { reg: /\b(?:Netflix|NF|奈飞|网飞|耐飞)\b/i,           tag: "streaming", pool: "netflix", groupName: "🎬 Netflix" },
-    { reg: /\b(?:YouTube|YT|油管)\b/i,                     tag: "streaming", pool: "youtube", groupName: "▶️ YouTube" },
-    { reg: /\b(?:Disney\+|Disney|迪士尼|D\+)\b/i,          tag: "streaming", pool: "disney", groupName: "🪄 Disney+" },
-    { reg: /\b(?:TikTok|抖音海外|TT)\b/i,                  tag: "streaming", pool: "tiktok", groupName: "🎵 TikTok" },
-    { reg: /\b(?:Spotify|声田|声破天)\b/i,                 tag: "streaming", pool: "spotify", groupName: "🎧 Spotify" },
     { reg: /(?:流媒体|解锁)/i,                             tag: "streaming" },
   ];
 
+  // 🤖 动态 AI 服务注册表
+  const AI_REGISTRY = {
+    "chatgpt": { tag: "chatgpt", name: "🤖 ChatGPT", uiIcon: "🤖", reg: /\b(?:GPT|ChatGPT|OpenAI)\b/i, provider: "geosite/openai", ruleSet: "openai", iconUrl: USER_CONFIG.iconRepoOrz + "OpenAI.png", cleanName: "ChatGPT" },
+    "gemini":  { tag: "gemini",  name: "♊ Gemini",  uiIcon: "♊", reg: /\bGemini\b/i,                 provider: "geosite/google-gemini", ruleSet: "gemini", iconUrl: USER_CONFIG.iconRepoKoolson + "AI.png", cleanName: "Gemini" },
+    "claude":  { tag: "claude",  name: "🦀 Claude",  uiIcon: "🦀", reg: /\bClaude\b/i,                 provider: "geosite/anthropic", ruleSet: "claude", iconUrl: USER_CONFIG.iconRepoLige47 + "claude(1).png", cleanName: "Claude" },
+    "copilot": { tag: "copilot", name: "🐙 Copilot", uiIcon: "🐙", reg: /\b(?:Copilot|Bing)\b/i,       provider: "geosite/bing", ruleSet: "bing", iconUrl: USER_CONFIG.iconRepoKoolson + "Copilot.png", cleanName: "Copilot" }
+  };
+
+  // 📺 动态流媒体服务注册表 (全息字典)
+  const STREAMING_REGISTRY = {
+    "youtube":  { name: "▶️ YouTube", cleanName: "YouTube", iconUrl: USER_CONFIG.iconRepoKoolson + "YouTube.png", provider: "geosite/youtube", reg: /\b(?:YouTube|YT|油管)\b/i, pool: "youtube" },
+    "netflix":  { name: "🎬 Netflix", cleanName: "Netflix", iconUrl: USER_CONFIG.iconRepoKoolson + "Netflix.png", provider: "geosite/netflix", reg: /\b(?:Netflix|NF|奈飞|网飞|耐飞)\b/i, pool: "netflix" },
+    "disney":   { name: "🪄 Disney+", cleanName: "Disney+", iconUrl: USER_CONFIG.iconRepoKoolson + "Disney.png",  provider: "geosite/disney",  reg: /\b(?:Disney\+|Disney|迪士尼|D\+)\b/i, pool: "disney" },
+    "tiktok":   { name: "🎵 TikTok",  cleanName: "TikTok",  iconUrl: USER_CONFIG.iconRepoKoolson + "TikTok.png",  provider: "geosite/tiktok",  reg: /\b(?:TikTok|抖音海外|TT)\b/i, pool: "tiktok" },
+    "spotify":  { name: "🎧 Spotify", cleanName: "Spotify", iconUrl: USER_CONFIG.iconRepoKoolson + "Spotify.png", provider: "geosite/spotify", reg: /\b(?:Spotify|声田|声破天)\b/i, pool: "spotify" },
+    "bahamut":  { name: "📺 Bahamut", cleanName: "Bahamut", iconUrl: USER_CONFIG.iconRepoKoolson + "Bahamut.png", provider: "geosite/bahamut" }, // 靠地区解锁，无需节点正则
+    "pixiv":    { name: "🅿️ Pixiv",   cleanName: "Pixiv",   iconUrl: USER_CONFIG.iconRepoLige47 + "pixiv.png",    provider: "geosite/pixiv" },
+    "twitch":   { name: "🎮 Twitch",  cleanName: "Twitch",  iconUrl: USER_CONFIG.iconRepoKoolson + "Twitch.png",  provider: "geosite/twitch" },
+    "bilibili": { name: "📺 BiliBili",cleanName: "BiliBili",iconUrl: USER_CONFIG.iconRepoOrz + "Bili.png",        provider: "geosite/bilibili" }
+  };
+
+  // 海外社交平台服务注册表 (全息字典)
+  const SOCIAL_REGISTRY = {
+    "twitter":   { name: "🐦 Twitter",   cleanName: "Twitter",   iconUrl: USER_CONFIG.iconRepoKoolson + "Twitter.png",   provider: "geosite/twitter" },
+    "facebook":  { name: "👥 Facebook",  cleanName: "Facebook",  iconUrl: USER_CONFIG.iconRepoKoolson + "Facebook.png",  provider: "geosite/facebook" },
+    "instagram": { name: "📸 Instagram", cleanName: "Instagram", iconUrl: USER_CONFIG.iconRepoKoolson + "Instagram.png", provider: "geosite/instagram" },
+    "discord":   { name: "🎮 Discord",   cleanName: "Discord",   iconUrl: USER_CONFIG.iconRepoKoolson + "Discord.png",   provider: "geosite/discord" },
+    "meta":      { name: "♾️ Meta",      cleanName: "Meta",      iconUrl: USER_CONFIG.iconRepoKoolson + "Meta.png",      provider: "geosite/facebook" }
+  };
+
+  // 🎮 动态游戏服务注册表
+  const GAME_REGISTRY = {
+    "steam":       { provider: "geosite/steam",       rules: ["RULE-SET,steam,🎮 游戏服务", "DOMAIN-SUFFIX,steamusercontent.com,🎮 游戏服务", "DOMAIN-SUFFIX,steamserver.net,DIRECT", "RULE-SET,steam-cn,DIRECT"] },
+    "steam-cn":    { provider: "geosite/steam@cn",    rules: [] }, // 仅作为 provider 依赖
+    "epic":        { provider: "geosite/epicgames",   rules: ["RULE-SET,epic,🎮 游戏服务", "DOMAIN-SUFFIX,epicgames.com,DIRECT"] },
+    "riot":        { provider: "geosite/riot",        rules: ["RULE-SET,riot,🎮 游戏服务"] },
+    "blizzard":    { provider: "geosite/blizzard",    rules: ["RULE-SET,blizzard,🎮 游戏服务"] },
+    "nintendo":    { provider: "geosite/nintendo",    rules: ["RULE-SET,nintendo,🎮 游戏服务"] },
+    "playstation": { provider: "geosite/playstation", rules: ["RULE-SET,playstation,🎮 游戏服务"] },
+    "xbox":        { provider: "geosite/xbox",        rules: ["RULE-SET,xbox,🎮 游戏服务"] },
+    "ubisoft":     { provider: "geosite/ubisoft",     rules: ["RULE-SET,ubisoft,🎮 游戏服务"] },
+    "origin":      { provider: "geosite/origin",      rules: ["RULE-SET,origin,🎮 游戏服务"] },
+    "ea":          { provider: "geosite/ea",          rules: ["RULE-SET,ea,🎮 游戏服务"] }
+  };
+
+  // 🛠️ 动态开发者与学术注册表
+  const DEV_REGISTRY = {
+    "github":    { name: "🐱 GitHub",   cleanName: "GitHub",  iconUrl: USER_CONFIG.iconRepoKoolson + "GitHub.png",  provider: "geosite/github" },
+    "scholar":   { name: "🎓 学术网站", cleanName: "Scholar", iconUrl: USER_CONFIG.iconRepoKoolson + "Scholar.png", provider: "geosite/category-scholar-!cn" }
+  };
+
+  // 🪟 动态系统服务注册表
+  const SYSTEM_REGISTRY = {
+    "google":    { name: "🔍 Google",    cleanName: "Google",    iconUrl: USER_CONFIG.iconRepoOrz + "Google.png",    provider: "geosite/google",    rules: ["RULE-SET,google,🔍 Google"] },
+    "apple":     { name: "🍎 Apple",     cleanName: "Apple",     iconUrl: USER_CONFIG.iconRepoOrz + "Apple.png",     provider: "geosite/apple",     rules: ["RULE-SET,apple,🍎 Apple"] },
+    "microsoft": { name: "🪟 Microsoft", cleanName: "Microsoft", iconUrl: USER_CONFIG.iconRepoOrz + "Microsoft.png", provider: "geosite/microsoft", rules: ["RULE-SET,microsoft,🪟 Microsoft"] }
+  };
+
+  // 🧩 合并自定义服务到内置注册表（在特性注入之前）
+  if (CUSTOM_SERVICES.ai)        Object.assign(AI_REGISTRY, CUSTOM_SERVICES.ai);
+  if (CUSTOM_SERVICES.streaming) Object.assign(STREAMING_REGISTRY, CUSTOM_SERVICES.streaming);
+  if (CUSTOM_SERVICES.social)    Object.assign(SOCIAL_REGISTRY, CUSTOM_SERVICES.social);
+  if (CUSTOM_SERVICES.game)      Object.assign(GAME_REGISTRY, CUSTOM_SERVICES.game);
+  if (CUSTOM_SERVICES.system)    Object.assign(SYSTEM_REGISTRY, CUSTOM_SERVICES.system);
+  if (CUSTOM_SERVICES.dev)       Object.assign(DEV_REGISTRY, CUSTOM_SERVICES.dev);
+
+  // 根据顶层数组，动态将激活的 AI 注入到清洗字典和特征池中 
+  if (USER_CONFIG.enableAI && AI_SERVICES) {
+    AI_SERVICES.slice().reverse().forEach(key => {
+      const ai = AI_REGISTRY[key];
+      if (ai) {
+        UI_ICONS.features[ai.tag] = ai.uiIcon; // 注入节点名字上的清洗图标
+        FEATURE_RULES.unshift({ 
+          reg: ai.reg, tag: ai.tag, pool: ai.tag, groupName: ai.name 
+        }); // 注入正则判定与节点分流桶
+      }
+    });
+  }
+
+  // 动态合并流媒体节点的清洗正则
+  if (USER_CONFIG.enableStreaming && STREAMING_SERVICES) {
+    STREAMING_SERVICES.forEach(key => {
+      const st = STREAMING_REGISTRY[key];
+      if (st && st.reg && st.pool) {
+        FEATURE_RULES.push({ reg: st.reg, tag: "streaming", pool: st.pool, groupName: st.name });
+      }
+    });
+  }
   // 从 FEATURE_RULES 动态构建池名称到策略组名称的映射
   const POOL_GROUP_MAP = Object.fromEntries(
     FEATURE_RULES.filter(r => r.pool && r.groupName).map(r => [r.pool, r.groupName])
@@ -317,14 +449,16 @@ function main(config) {
   // =========================================================================
   // --- 3. 节点双重遍历：清洗、计数与分发入桶 ---
   // =========================================================================
-  // 🪣 预设分发桶 (用于把清洗后的节点按特征分类存放)
-  const BUCKETS = { garbage: [], download: [], info: [], allStandard: [], other: [], eu: [], sea: [], am: [], sa: [], me: [], af: [] };
   // 🧠 动态提取所有混合大区的 ID（如 "eu", "sea", "am"）并加入兜底的 "other"
   const MIXED_REGION_IDS = [...new Set(REGION_DEFS.map(r => r.group).filter(Boolean)), "other"];
-  
-  // 根据大区字典和特性字典动态创建桶
-  REGION_DEFS.forEach(r => BUCKETS[r.id || r.name] = []);
-  FEATURE_RULES.filter(r => r.pool).forEach(r => BUCKETS[r.pool] = []);
+  // 🪣 预设分发桶 (用于把清洗后的节点按特征分类存放)
+  const BUCKETS = { garbage: [], download: [], info: [], allStandard: [] };
+  // 自动接管所有地区、特征池、混合大区的桶
+  [...new Set([
+    ...REGION_DEFS.map(r => r.id || r.name),
+    ...FEATURE_RULES.filter(r => r.pool).map(r => r.pool),
+    ...MIXED_REGION_IDS
+  ])].forEach(key => { BUCKETS[key] = BUCKETS[key] || []; });
   
   // 🏷️ 预编译清洗正则
   REGION_DEFS.forEach(r => {
@@ -347,52 +481,57 @@ function main(config) {
     return name.replace(REGEX_CLEANUP, "").trim();
   }
 
-  // 辅助纯函数 2: 提取节点属性 (倍率、线路、入口)，返回结果对象与擦除后的 name
+  // 辅助纯函数 2: 提取节点属性 (倍率、线路、入口)
   function extractNodeAttributes(name) {
     let attrs = { multiNum: 1.0, multiStr: "", entryStr: "", lineArr: [], isLowMulti: false };
 
-    // 1. 提取入口城市
-    const entryMatch = name.match(REGEX_ENTRY_CITY);
-    if (entryMatch) attrs.entryStr = TAG_MAP[entryMatch[1]] || entryMatch[1];
+    // 1. 提取并擦除入口城市 (采用剥离模式，避免干扰后续识别)
+    name = name.replace(REGEX_ENTRY_CITY, (match, p1) => {
+        let m = p1.replace(/[-|>至=\s]/g, "");
+        attrs.entryStr = TAG_MAP[m.toUpperCase()] || TAG_MAP[m] || m;
+        return "";
+    });
 
     // 2. 提取并擦除倍率
     let cleanName = name.replace(REGEX_MULTI, (m, m1, m2, m3) => {
       const num = parseFloat(m1 || m2 || m3);
       if (!isNaN(num)) {
         attrs.multiNum = num;
-        attrs.multiStr = `x${num}`;
+        if (num !== 1) attrs.multiStr = `x${num}`;
         if (USER_CONFIG.lowMultiThreshold > 0 && num <= USER_CONFIG.lowMultiThreshold) attrs.isLowMulti = true;
       }
       return "";
     });
 
-    // 3. 提取三大运营商合并 (三网)
-    if (cleanName.includes("移动") && cleanName.includes("电信") && cleanName.includes("联通")) {
-      cleanName = cleanName.replace(/移动|电信|联通/g, "");
-      attrs.lineArr.push("三网");
-    }
-
-    // 4. 提取线路类型并保留到后缀数组
+    // 3. 提取线路类型并存入 lineArr
     cleanName = cleanName.replace(REGEX_TECH_LINE, match => {
       let key = match.toUpperCase();
-      attrs.lineArr.push(LINE_MAP[key] || (match.length > 2 ? key : match));
+      let short = LINE_MAP[key];
+      if (!short) {
+          const cnKey = Object.keys(CN_MAP).find(k => match.includes(k));
+          if (cnKey) short = CN_MAP[cnKey];
+      }
+      if (short) attrs.lineArr.push(short);
+      else if (match.length > 2) attrs.lineArr.push(key);
       return "";
     });
+
+    // 4. 执行三网/两网智能合并压制
+    attrs.lineArr = compressLineArr(attrs.lineArr);
 
     // 5. 提取营销标识
     let fluffStr = "";
     cleanName = cleanName.replace(REGEX_FLUFF_LINE, match => { fluffStr += match.toUpperCase(); return ""; });
 
-    // 6. 计算线路排序权重和最终后缀文本
-    const fullLineStr = attrs.lineArr.join("/") + fluffStr;
+    // 6. 计算线路排序权重
+    attrs.cleanLines = [...new Set(attrs.lineArr)].join("/");
+    const fullLineStr = attrs.cleanLines + fluffStr;
     attrs.bestLineWeight = /(IEPL|IPLC)/.test(fullLineStr) ? 1 :
                           /(GIA|CN2|9929|CMIN2)/.test(fullLineStr) ? 2 :
                           /(专线|VIP|PRO|高速|极速|优化|PREMIUM)/.test(fullLineStr) ? 3 :
                           /(BGP|CMI)/.test(fullLineStr) ? 4 :
                           /(中转|隧道)/.test(fullLineStr) ? 5 : 6;
 
-    // 最终展示的后缀，只有干净的技术词
-    attrs.cleanLines = [...new Set(attrs.lineArr)].join("/");
     return { attrs, cleanName };
   }
 
@@ -417,6 +556,40 @@ function main(config) {
       if (flagMatch) return { id: "other", icon: flagMatch[1], name: flagMatch[2].trim() };
     }
     return null;
+  }
+
+  // 辅助纯函数 4: 三网合并压缩函数
+  function compressLineArr(arr) {
+    const atoms = ["移", "联", "电"];
+    const comboMap = {
+        "电联": ["电", "联"],
+        "移联": ["移", "联"],
+        "电移": ["电", "移"],
+        "三网": ["移", "联", "电"]
+    };
+    const comboKeys = Object.keys(comboMap);
+
+    let unique = [...new Set(arr)];
+    if (unique.includes("三网")) return ["三网"];
+
+    let covered = new Set();
+    for (let item of unique) {
+        if (comboKeys.includes(item)) {
+            comboMap[item].forEach(a => covered.add(a));
+        } else if (atoms.includes(item)) {
+            covered.add(item);
+        }
+    }
+    if (covered.size === 3) return ["三网"];
+
+    let result = [];
+    for (let item of unique) {
+        if (atoms.includes(item) && unique.some(k => comboKeys.includes(k) && comboMap[k].includes(item))) {
+            continue; 
+        }
+        result.push(item);
+    }
+    return [...new Set(result)];
   }
 
   // 🏷️ 标签提取：手动关键词匹配 or 自动 [xxx] 检测
@@ -473,8 +646,7 @@ function main(config) {
     if (isFakeServer) blockReason = "假IP";
     else if (isDummyAuth) blockReason = "假密码";
     else if (isAdTypo) blockReason = "广告词";
-    else if (isOrphanAd) blockReason = `超长纯文本(>${USER_CONFIG.adTextThreshold})`;
-    else if (REGEX_INFO_NODE.test(tempName)) blockReason = "信息说明";
+    else if (isOrphanAd) blockReason = `超长文本(>${USER_CONFIG.adTextThreshold})`;
 
     if (blockReason) {
       return { skip: true, rawName, blockReason }; 
@@ -606,8 +778,6 @@ function main(config) {
       const reasonMsg = USER_CONFIG.strictRegionMatch ? "严格匹配" : "无字典/国旗";
       debugLog(`🗑️ [未识别] 「${rawName}」 -> 「${finalName}」 (${reasonMsg})`);
     } else {
-      let assignedBuckets = [];
-      
       // 1. ⏬ 下载标签处理
       if (tags.includes("download")) {
         BUCKETS.download.push(finalName);
@@ -711,18 +881,11 @@ function main(config) {
   const appGroups = [];
   const { testURL, testInterval, testTolerance } = USER_CONFIG;
 
-  // 📋 各大 App 的分流策略配置注册表
+  // 📋 各大 App 的硬编码分流策略配置注册表
   const APP_GROUPS_REGISTRY = [
-      // 🎬 流媒体
-      { key: "enableYouTube", name: "▶️ YouTube", proxies: [...BUCKETS.youtube, ...standardOptions, "DIRECT"] },
-      { key: "enableNetflix", name: "🎬 Netflix", proxies: [...BUCKETS.netflix, ...standardOptions, "DIRECT"] },
-      { key: "enableDisney",  name: "🪄 Disney+", proxies: [...BUCKETS.disney, ...standardOptions, "DIRECT"] },
-      { key: "enableTikTok",  name: "🎵 TikTok",  proxies: [...BUCKETS.tiktok, ...activeRegionGroups.filter(g => !["🇭🇰 香港节点", "🇨🇳 大陆节点", "🗑️ 未知识别"].includes(g)), proxyTarget, "DIRECT"] },
-      { key: "enableSpotify", name: "🎧 Spotify", proxies: [...BUCKETS.spotify, ...standardOptions, "DIRECT"] },
-
+      
       // 💬 社交通讯
       { key: "enableTelegram",name: "✈️ Telegram",proxies: [...standardOptions, "DIRECT"] },
-      { key: "enableSocial",  name: "💬 社交平台", proxies: [...standardOptions, "DIRECT"] },
 
       // 🛠️ 开发者
       { key: "enableGitHub",  name: "🐱 GitHub",  proxies: [...standardOptions, "DIRECT"] },
@@ -737,19 +900,75 @@ function main(config) {
   ];
 
   // AI 节点独立判定
-  if (USER_CONFIG.enableAI) {
+  if (USER_CONFIG.enableAI && AI_SERVICES) {
     const aiCore = AI_PREFERRED_REGIONS.map(id => REGION_NAMES[id]); 
-    ["chatgpt", "gemini", "claude"].forEach((key, i) => {
-      const names = ["🤖 ChatGPT", "♊ Gemini", "🦀 Claude"];
-      appGroups.push(buildSelect(names[i], [...resiPrefix, ...aiCore, ...BUCKETS[key], proxyTarget, "DIRECT"]));
+    AI_SERVICES.forEach(key => {
+      const ai = AI_REGISTRY[key];
+      if (ai) {
+        appGroups.push(buildSelect(ai.name, [...resiPrefix, ...aiCore, ...BUCKETS[ai.tag], proxyTarget, "DIRECT"]));
+      }
     });
   }
 
-  // 哔哩哔哩
-  if (USER_CONFIG.enableBilibili) {
-    const biliProxies = USER_CONFIG.enableDomesticGroup ? ["🇨🇳 中国分流", ...BILI_PREFERRED_REGIONS, "DIRECT"] : ["DIRECT", ...BILI_PREFERRED_REGIONS];
-    appGroups.push(buildSelect("📺 哔哩哔哩", biliProxies));
+  // 组装流媒体平台策略组
+  if (USER_CONFIG.enableStreaming && STREAMING_SERVICES) {
+    STREAMING_SERVICES.forEach(key => {
+      const st = STREAMING_REGISTRY[key];
+      if (!st) return;
+      
+      let proxies = [];
+      // 针对部分特殊平台做地区限制处理
+      switch(key) {
+        case "tiktok":
+          proxies = [...(BUCKETS.tiktok || []), ...activeRegionGroups.filter(g => !["🇭🇰 香港节点", "🇨🇳 大陆节点", "🗑️ 未知识别"].includes(g)), proxyTarget, "DIRECT"];
+          break;
+        case "bahamut":
+          proxies = ["🇹🇼 台湾节点", "🇭🇰 香港节点", proxyTarget, "DIRECT"];
+          break;
+        case "pixiv":
+          proxies = ["🇯🇵 日本节点", "🇹🇼 台湾节点", proxyTarget, "DIRECT"];
+          break;
+        case "bilibili":
+          proxies = USER_CONFIG.enableDomesticGroup ? ["🇨🇳 中国分流", ...BILI_PREFERRED_REGIONS, "DIRECT"] : ["DIRECT", ...BILI_PREFERRED_REGIONS];
+          break;
+        default:
+          // 标准国际流媒体（如 Netflix/YouTube/Disney/Spotify）
+          proxies = [...(BUCKETS[st.pool] || []), ...standardOptions, "DIRECT"];
+      }
+      appGroups.push(buildSelect(st.name, proxies));
+    });
   }
+
+  //社交平台独立判定
+  if (USER_CONFIG.enableSocial) {
+  let combinedProxies = [...standardOptions, "DIRECT"];
+  let combinedKeys = [];
+
+  SOCIAL_SERVICES.forEach(key => {
+    const app = SOCIAL_REGISTRY[key];
+    if (!app) return;
+
+    if (INDEPENDENT_SOCIAL.includes(key)) {
+      appGroups.push(buildSelect(app.name, [...standardOptions, "DIRECT"]));
+    } else {
+      combinedKeys.push(key);
+    }
+  });
+
+  // 只剩一个App时自动独立建组，避免为单个App创建空洞的"社交平台"合并组
+  if (combinedKeys.length === 1) {
+    const key = combinedKeys[0];
+    const app = SOCIAL_REGISTRY[key];
+    appGroups.push(buildSelect(app.name, [...standardOptions, "DIRECT"]));
+  } else if (combinedKeys.length > 1) {
+    appGroups.push(buildSelect("💬 社交平台", combinedProxies));
+  }
+}
+
+  // 注册表批量构建
+  APP_GROUPS_REGISTRY.forEach(({ key, name, proxies }) => {
+    if (USER_CONFIG[key]) appGroups.push(buildSelect(name, proxies));
+  });
 
   // 系统服务
   if (USER_CONFIG.enableSystemServices) {
@@ -758,11 +977,6 @@ function main(config) {
       appGroups.push(buildSelect(name, pList));
     });
   }
-
-  // 注册表批量构建
-  APP_GROUPS_REGISTRY.forEach(({ key, name, proxies }) => {
-    if (USER_CONFIG[key]) appGroups.push(buildSelect(name, proxies));
-  });
 
   if (USER_CONFIG.enableAdBlock || USER_CONFIG.enableAntiAD) {
     appGroups.push(buildSelect("🚫 广告拦截", ["REJECT-DROP", "REJECT", "DIRECT"]));
@@ -843,46 +1057,73 @@ function main(config) {
   if (USER_CONFIG.enableIPv6) routingRules.push("IP-CIDR6,::1/128,DIRECT,no-resolve", "IP-CIDR6,fc00::/7,DIRECT,no-resolve", "IP-CIDR6,fe80::/10,DIRECT,no-resolve");
   if (USER_CONFIG.enableQUICReject) routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT-DROP");
 
+  // 🚫 广告拦截
+  if (USER_CONFIG.enableAdBlock) {
+    PROVIDER_BASE["ads"] = "geosite/category-ads-all";
+    routingRules.push("RULE-SET,ads,🚫 广告拦截");
+  }
+  if (USER_CONFIG.enableAntiAD) routingRules.push("RULE-SET,anti-ad,🚫 广告拦截");
+
+  // 组装动态 AI 的规则集资源
+  let aiProviders = {};
+  let aiRules = [];
+  if (USER_CONFIG.enableAI && AI_SERVICES) {
+    AI_SERVICES.forEach(key => {
+      const ai = AI_REGISTRY[key];
+      if (ai) {
+        aiProviders[ai.ruleSet] = ai.provider;
+        aiRules.push(`RULE-SET,${ai.ruleSet},${ai.name}`);
+      }
+    });
+  }
+
+  // 组装流媒体平台规则集资源
+  if (USER_CONFIG.enableStreaming && STREAMING_SERVICES) {
+    STREAMING_SERVICES.forEach(key => {
+      const st = STREAMING_REGISTRY[key];
+      if (!st) return;
+      PROVIDER_BASE[key] = st.provider;
+      routingRules.push(`RULE-SET,${key},${st.name}`);
+    });
+  }
+
+  //组装社交平台规则集资源
+  if (USER_CONFIG.enableSocial) {
+  const nonIndependentKeys = SOCIAL_SERVICES.filter(k => !INDEPENDENT_SOCIAL.includes(k));
+  const useCombinedGroup = nonIndependentKeys.length > 1; // 仅当 2+ 个非独立App时才使用合并组
+
+  SOCIAL_SERVICES.forEach(key => {
+    const app = SOCIAL_REGISTRY[key];
+    if (!app) return;
+    const targetGroup = INDEPENDENT_SOCIAL.includes(key) ? app.name :
+                        (useCombinedGroup ? "💬 社交平台" : app.name);
+    PROVIDER_BASE[key] = app.provider;
+    routingRules.push(`RULE-SET,${key},${targetGroup}`);
+  });
+  }
+
+  // 注入游戏规则集
+  if (USER_CONFIG.enableGame) {
+    Object.entries(GAME_REGISTRY).forEach(([key, conf]) => {
+      PROVIDER_BASE[key] = conf.provider;
+      routingRules.push(...conf.rules);
+    });
+  }
+
+  // 注入专项服务规则集（AI / 学术 / GitHub / 加密货币 / PayPal）
   const FEATURE_MAP = [
-    { key: "enableAdBlock", providers: { ads: "geosite/category-ads-all" }, rules: ["RULE-SET,ads,🚫 广告拦截"] },
-    { key: "enableAI", providers: { openai: "geosite/openai", gemini: "geosite/google-gemini", claude: "geosite/anthropic" }, rules: ["RULE-SET,openai,🤖 ChatGPT", "RULE-SET,gemini,♊ Gemini", "RULE-SET,claude,🦀 Claude"] },
+    { key: "enableAI", providers: aiProviders, rules: aiRules },
     { key: "enableScholar", providers: { scholar: "geosite/category-scholar-!cn" }, rules: ["DOMAIN-KEYWORD,sci-hub,🎓 学术网站", "RULE-SET,scholar,🎓 学术网站"] },
-    { key: "enableGame",
-      providers: {
-        steam: "geosite/steam", "steam-cn": "geosite/steam@cn", epic: "geosite/epicgames",
-        riot: "geosite/riot", blizzard: "geosite/blizzard", nintendo: "geosite/nintendo",
-        playstation: "geosite/playstation", xbox: "geosite/xbox",ubisoft: "geosite/ubisoft",
-        origin: "geosite/origin", ea: "geosite/ea"
-      },
-      rules: [
-        "DOMAIN-SUFFIX,steamusercontent.com,🎮 游戏服务", "DOMAIN-SUFFIX,steamserver.net,DIRECT",
-        "RULE-SET,steam-cn,DIRECT", "DOMAIN-SUFFIX,epicgames.com,DIRECT",
-        "RULE-SET,steam,🎮 游戏服务", "RULE-SET,epic,🎮 游戏服务",
-        "RULE-SET,riot,🎮 游戏服务", "RULE-SET,blizzard,🎮 游戏服务",
-        "RULE-SET,nintendo,🎮 游戏服务", "RULE-SET,playstation,🎮 游戏服务",
-        "RULE-SET,xbox,🎮 游戏服务", "RULE-SET,ubisoft,🎮 游戏服务",
-        "RULE-SET,origin,🎮 游戏服务", "RULE-SET,ea,🎮 游戏服务"
-      ]
-    },
-    { key: "enableBilibili", providers: { bilibili: "geosite/bilibili" }, rules: ["RULE-SET,bilibili,📺 哔哩哔哩"] },
-    { key: "enableYouTube", providers: { youtube: "geosite/youtube" }, rules: ["RULE-SET,youtube,▶️ YouTube"] },
-    { key: "enableNetflix", providers: { netflix: "geosite/netflix" }, rules: ["RULE-SET,netflix,🎬 Netflix"] },
-    { key: "enableDisney", providers: { disney: "geosite/disney" }, rules: ["RULE-SET,disney,🪄 Disney+"] },
     { key: "enableGitHub", providers: { github: "geosite/github" }, rules: ["RULE-SET,github,🐱 GitHub"] },
     { key: "enableCrypto", providers: { crypto: "geosite/category-cryptocurrency" }, rules: ["RULE-SET,crypto,🪙 加密货币"] },
     { key: "enablePayPal", providers: { paypal: "geosite/paypal" }, rules: ["RULE-SET,paypal,💳 PayPal"] },
-    { key: "enableSpotify", providers: { spotify: "geosite/spotify" }, rules: ["RULE-SET,spotify,🎧 Spotify"] },
-    { key: "enableTikTok", providers: { tiktok: "geosite/tiktok" }, rules: ["RULE-SET,tiktok,🎵 TikTok"] },
-    { key: "enableSocial", providers: { twitter: "geosite/twitter", facebook: "geosite/facebook", instagram: "geosite/instagram", discord: "geosite/discord" }, rules: ["RULE-SET,twitter,💬 社交平台", "RULE-SET,facebook,💬 社交平台", "RULE-SET,instagram,💬 社交平台", "RULE-SET,discord,💬 社交平台"] },
-    { key: "enableSystemServices", providers: { google: "geosite/google", apple: "geosite/apple", microsoft: "geosite/microsoft" }, rules: ["RULE-SET,google,🔍 Google", "RULE-SET,apple,🍎 Apple", "RULE-SET,microsoft,🪟 Microsoft"] },
   ];
 
   FEATURE_MAP.forEach(({ key, providers, rules }) => {
     if (USER_CONFIG[key]) { Object.assign(PROVIDER_BASE, providers); routingRules.push(...rules); }
   });
 
-  if (USER_CONFIG.enableAntiAD) routingRules.push("RULE-SET,anti-ad,🚫 广告拦截");
-
+  // Telegram 独立分流
   if (USER_CONFIG.enableTelegram) {
     if (IS_WIN) routingRules.push("PROCESS-NAME,Telegram.exe,✈️ Telegram");
     if (IS_MAC || IS_LIN) routingRules.push("PROCESS-NAME,Telegram,✈️ Telegram");
@@ -890,19 +1131,27 @@ function main(config) {
     Object.assign(PROVIDER_BASE, { telegram: "geosite/telegram", "telegram-ip": "geoip/telegram" });
   }
 
+  // 注入系统服务规则集
+  if (USER_CONFIG.enableSystemServices) {
+    Object.entries(SYSTEM_REGISTRY).forEach(([key, conf]) => {
+      PROVIDER_BASE[key] = conf.provider;
+      routingRules.push(...conf.rules);
+    });
+  }
+
   // 🛑 BT / PT 专属防漏拦截
   if (USER_CONFIG.enableProcessDirect) {
-    if (IS_WIN) routingRules.push(...PROCESS_DIRECT_WIN.map(p => `PROCESS-NAME,${p}.exe,DIRECT`));
-    if (IS_MAC) routingRules.push(...PROCESS_DIRECT_MAC.map(p => `PROCESS-NAME,${p},DIRECT`));
-    if (IS_LIN) routingRules.push(...PROCESS_DIRECT_LIN.map(p => `PROCESS-NAME,${p},DIRECT`));
+    if (IS_WIN) routingRules.push(...PROCESS_DIRECT_WIN.concat(CUSTOM_PROCESS_DIRECT_WIN).map(p => `PROCESS-NAME,${p}.exe,DIRECT`));
+    if (IS_MAC) routingRules.push(...PROCESS_DIRECT_MAC.concat(CUSTOM_PROCESS_DIRECT_MAC).map(p => `PROCESS-NAME,${p},DIRECT`));
+    if (IS_LIN) routingRules.push(...PROCESS_DIRECT_LIN.concat(CUSTOM_PROCESS_DIRECT_LIN).map(p => `PROCESS-NAME,${p},DIRECT`));
     routingRules.push("RULE-SET,bt-trackers-pt,DIRECT", "RULE-SET,bt-trackers-public,DIRECT", "DOMAIN-KEYWORD,tracker,DIRECT", "DOMAIN-KEYWORD,announce,DIRECT");
   } else {
     routingRules.push("RULE-SET,bt-trackers-pt,⏬ 下载策略", "RULE-SET,bt-trackers-public,⏬ 下载策略");
   }
 
   // ⏬ 普通下载软件（HTTP/游戏/应用）依然安全进入下载池
-  if (IS_WIN) routingRules.push(...PROCESS_PROXY_WIN.map(p => `PROCESS-NAME,${p}.exe,⏬ 下载策略`));
-  if (IS_MAC) routingRules.push(...PROCESS_PROXY_MAC.map(p => `PROCESS-NAME,${p},⏬ 下载策略`));
+  if (IS_WIN) routingRules.push(...PROCESS_PROXY_WIN.concat(CUSTOM_PROCESS_PROXY_WIN).map(p => `PROCESS-NAME,${p}.exe,⏬ 下载策略`));
+  if (IS_MAC) routingRules.push(...PROCESS_PROXY_MAC.concat(CUSTOM_PROCESS_PROXY_MAC).map(p => `PROCESS-NAME,${p},⏬ 下载策略`));
   routingRules.push("RULE-SET,download-games-cn,DIRECT", "RULE-SET,download-games,⏬ 下载策略", "RULE-SET,download-android,⏬ 下载策略");
 
   const isReturn = USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst;
@@ -917,22 +1166,41 @@ function main(config) {
       routingRules.push("DST-PORT,53/80/443,🐟 漏网之鱼");
       routingRules.push("DST-PORT,1-65535,DIRECT");
   }
+  if (CUSTOM_RULES.length) routingRules.push(...CUSTOM_RULES);  
   routingRules.push("MATCH,🐟 漏网之鱼");
 
   config["rules"] = [...new Set(routingRules)];
   
   config["rule-providers"] = Object.fromEntries(
-    Object.entries(PROVIDER_BASE).map(([name, route]) => [
-      name, { 
-        type: "http", behavior: route.includes("geoip") ? "ipcidr" : "domain", 
-        url: `${REPO}/geo/${route}.${ruleFormat}`, path: `./ruleset/${name}.${ruleFormat}`, 
-        interval: 86400, format: ruleFormat, proxy: "DIRECT" 
-      }
-    ])
+    Object.entries(PROVIDER_BASE).map(([name, route]) => {
+      const isExternal = /^https?:\/\//.test(route);
+      const url = isExternal ? route : `${REPO}/geo/${route}.${ruleFormat}`;
+      const fmt  = isExternal ? (/\.mrs$/i.test(route) ? "mrs" : "yaml") : ruleFormat;
+      const behavior = isExternal ? "domain" : (route.includes("geoip") ? "ipcidr" : "domain");
+      return [
+        name, {
+          type: "http", behavior,
+          url, path: `./ruleset/${name}.${fmt}`,
+          interval: 86400, format: fmt, proxy: "DIRECT"
+        }
+      ];
+    })
   );
 
   if (USER_CONFIG.enableAntiAD) {
     config["rule-providers"]["anti-ad"] = { type: "http", behavior: "domain", url: "https://anti-ad.net/clash.yaml", path: "./ruleset/anti-ad.yaml", interval: 86400, format: "yaml", proxy: "DIRECT" };
+  }
+
+  // 🧩 合并自定义规则集资源
+  if (CUSTOM_RULE_PROVIDERS) {
+    Object.entries(CUSTOM_RULE_PROVIDERS).forEach(([name, conf]) => {
+      const fmt = conf.format || "yaml";
+      config["rule-providers"][name] = {
+        type: "http", proxy: "DIRECT", interval: 86400,
+        path: `./ruleset/${name}.${fmt}`,
+        ...conf
+      };
+    });
   }
 
   // =========================================================================
@@ -1001,27 +1269,13 @@ function main(config) {
     "⏬ 下载策略":     { icon: USER_CONFIG.iconRepoOrz + "Roundrobin.png",   newName: "下载策略" },
     "🏠 家宽专用":     { icon: USER_CONFIG.iconRepoOrz + "Home.png",         newName: "家宽专用" },
 
-    // === 🌐 常见媒体与服务 ===
-    "🇨🇳 中国分流":      { icon: USER_CONFIG.iconRepoKoolson + "China_Map.png", newName: "中国分流" },
-    "🎓 学术网站":     { icon: USER_CONFIG.iconRepoKoolson + "Scholar.png",   newName: "学术网站" },
+    // === 🌐 综合业务大组 ===
+    "🇨🇳 中国分流":     { icon: USER_CONFIG.iconRepoKoolson + "China_Map.png", newName: "中国分流" },
     "🪙 加密货币":     { icon: USER_CONFIG.iconRepoKoolson + "Cryptocurrency.png", newName: "加密货币" },
     "💳 PayPal":       { icon: USER_CONFIG.iconRepoKoolson + "PayPal.png",    newName: "PayPal" },
     "🎮 游戏服务":     { icon: USER_CONFIG.iconRepoKoolson + "Game.png",      newName: "游戏服务" },
-    "🎵 TikTok":       { icon: USER_CONFIG.iconRepoKoolson + "TikTok.png",    newName: "TikTok" },
-    "💬 社交平台":     { icon: USER_CONFIG.iconRepoKoolson + "Discord.png",   newName: "社交平台" },
-    "▶️ YouTube":      { icon: USER_CONFIG.iconRepoKoolson + "YouTube.png",   newName: "YouTube" },
-    "🎬 Netflix":      { icon: USER_CONFIG.iconRepoKoolson + "Netflix.png",   newName: "Netflix" },
-    "🪄 Disney+":      { icon: USER_CONFIG.iconRepoKoolson + "Disney.png",    newName: "Disney+" },
-    "🐱 GitHub":       { icon: USER_CONFIG.iconRepoKoolson + "GitHub.png",    newName: "GitHub" },
+    "💬 社交平台":     { icon: USER_CONFIG.iconRepoKoolson + "Discord.png",   newName: "社交平台" }, // 社交平台兜底组
     "✈️ Telegram":     { icon: USER_CONFIG.iconRepoKoolson + "Telegram.png",  newName: "Telegram" },
-    "🎧 Spotify":      { icon: USER_CONFIG.iconRepoKoolson + "Spotify.png",   newName: "Spotify" },
-    "🤖 ChatGPT":      { icon: USER_CONFIG.iconRepoOrz  + "OpenAI.png",       newName: "ChatGPT" },
-    "♊ Gemini":       { icon: USER_CONFIG.iconRepoKoolson + "AI.png",        newName: "Gemini" },
-    "🦀 Claude":       { icon: USER_CONFIG.iconRepoKoolson + "Bot.png",       newName: "Claude" },
-    "📺 哔哩哔哩":     { icon: USER_CONFIG.iconRepoOrz + "Bili.png",          newName: "哔哩哔哩" },
-    "🪟 Microsoft":    { icon: USER_CONFIG.iconRepoOrz + "Microsoft.png",     newName: "Microsoft" },
-    "🔍 Google":       { icon: USER_CONFIG.iconRepoOrz + "Google.png",        newName: "Google" },
-    "🍎 Apple":        { icon: USER_CONFIG.iconRepoOrz + "Apple.png",         newName: "Apple" },
     
     // === 🛡️ 兜底与特殊规则 ===
     "🚫 广告拦截":     { icon: USER_CONFIG.iconRepoKoolson + "Reject.png",    newName: "广告拦截" },
@@ -1030,6 +1284,48 @@ function main(config) {
     "🌐 其他节点":     { icon: USER_CONFIG.iconRepoKoolson + "Global.png",    newName: "其他节点" },
     "🗑️ 未知识别":     { icon: USER_CONFIG.iconRepoKoolson + "Cydia.png",     newName: "未知识别" }
   };
+
+  // 1. 动态合并 AI 策略组图标
+  if (USER_CONFIG.enableAI && AI_SERVICES) {
+    AI_SERVICES.forEach(key => {
+      const ai = AI_REGISTRY[key];
+      if (ai && ai.iconUrl) ICON_MAPPING[ai.name] = { icon: ai.iconUrl, newName: ai.cleanName };
+    });
+  }
+
+  // 2. 动态合并 流媒体 策略组图标
+  if (USER_CONFIG.enableStreaming && STREAMING_SERVICES) {
+    STREAMING_SERVICES.forEach(key => {
+      const st = STREAMING_REGISTRY[key];
+      if (st && st.iconUrl) ICON_MAPPING[st.name] = { icon: st.iconUrl, newName: st.cleanName };
+    });
+  }
+
+  // 3. 动态合并 独立社交App 策略组图标（含自动晋升的单个非独立App）
+  if (USER_CONFIG.enableSocial && SOCIAL_SERVICES) {
+    const nonIndependentKeys = SOCIAL_SERVICES.filter(k => !INDEPENDENT_SOCIAL.includes(k));
+    const useCombinedGroup = nonIndependentKeys.length > 1;
+
+    SOCIAL_SERVICES.forEach(key => {
+      const app = SOCIAL_REGISTRY[key];
+      if (!app || !app.iconUrl) return;
+      if (INDEPENDENT_SOCIAL.includes(key) || !useCombinedGroup) {
+        ICON_MAPPING[app.name] = { icon: app.iconUrl, newName: app.cleanName };
+      }
+    });
+  }
+
+  // 🆕 4. 动态合并 系统服务 策略组图标
+  if (USER_CONFIG.enableSystemServices) {
+    Object.values(SYSTEM_REGISTRY).forEach(sys => {
+      if (sys.iconUrl) ICON_MAPPING[sys.name] = { icon: sys.iconUrl, newName: sys.cleanName };
+    });
+  }
+
+  // 🆕 5. 动态合并 开发者与学术 策略组图标
+  Object.values(DEV_REGISTRY).forEach(dev => {
+      if (dev.iconUrl) ICON_MAPPING[dev.name] = { icon: dev.iconUrl, newName: dev.cleanName };
+  });
 
   if (USER_CONFIG.groupIconMode !== "emoji") {
     const useIconOnly = USER_CONFIG.groupIconMode === "icon";
@@ -1112,6 +1408,7 @@ function main(config) {
 
     // 1. Profile 记忆模块 (属于 profile 对象)
     config["profile"] = {
+      ...(config.profile || {}), 
       "store-selected": true,                // 记忆用户在 UI 面板选中的节点，重启/重载不丢失
       "store-fake-ip": true                  // 持久化 Fake-IP 缓存，重启不丢失本地 DNS 映射
     };
@@ -1133,10 +1430,8 @@ function main(config) {
   // --- 13. 📋 调试摘要：输出最终建组统计 ---
   // =========================================================================
   if (USER_CONFIG.enableDebugLog) {
-
     // 动态计算真实的有效节点数量
     const validCount = processedData.length - (USER_CONFIG.removeInfoNodes ? 0 : infoCount);
-
     // 动态组装需要打印的数组
     const stats = [
       `📊 [统计] 策略组:${config["proxy-groups"].length}`,

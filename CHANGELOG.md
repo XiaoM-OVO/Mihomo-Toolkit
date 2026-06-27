@@ -1,4 +1,25 @@
 # 更新日志
+
+## v3.0.0 (2026-06-27)
+
+### 🚀 架构重构：注册表驱动 + 可扩展分流体系
+
+- **六维自定义服务注册表 (`CUSTOM_SERVICES`)**：将 AI / 流媒体 / 社交 / 游戏 / 系统 / 学术六大分类拆分为独立注册表。用户只需在对应分类中填入服务定义（name、provider、iconUrl 等），再将 key 加入服务数组即可零侵入启用新分流——全程无需触碰脚本逻辑。
+- **自定义规则注入 (`CUSTOM_RULES`)**：新增原始分流规则数组，支持 `DOMAIN-SUFFIX` / `IP-CIDR` / `RULE-SET` / `PROCESS-NAME` 等任意格式，注入到 MATCH 之前，优先级高于所有内置规则。
+- **远程规则集注册 (`CUSTOM_RULE_PROVIDERS`)**：新增远程 rule-provider 注册表，支持自定义 URL、behavior、format，可选配置 interval / path / proxy，自动合并到内核 rule-providers。
+- **自定义进程名单扩展**：新增 `CUSTOM_PROCESS_DIRECT_WIN/MAC/LIN` 和 `CUSTOM_PROCESS_PROXY_WIN/MAC`，自动合并到内置进程直连/代理名单之后。
+- **DNS 服务器配置化**：将 `dnsDefault` / `dnsDirect` / `dnsProxy` 抽离到 `USER_CONFIG` 配置区，用户可直接修改基础解析与 DoH 服务器，无需深入脚本底层。
+
+### 🧩 Sub-Store 独立节点清洗脚本
+
+- **`pure-nodes.js` 解耦重制版**：将节点清洗核心逻辑从主脚本中独立，封装为 Sub-Store operator 格式。支持物理去重、智能垃圾拦截（白名单地区豁免 + 可配置硬黑名单 + 分级阈值）、批量前缀、特征图标、无副作用浅拷贝，输出兼容 `array` / `object` 两种模式。
+
+### 🔧 优化
+
+- **配置区结构重组**：`USER_CONFIG` 重新划分为 7 大逻辑区块（基础全局 → 节点清洗 → 策略组 UI → 核心分流 → 扩展分流 → 测速规则集 → DNS → 安全防漏），每项配置增加高亮注释。
+- **自定义图标库支持**：新增 `lige47/lige_icon` 图标库 CDN 地址，与 Orz-3 / Koolson 图标库并列可选。
+- **代码模块化**：应用策略组构建全面接入注册表机制，CUSTOM_SERVICES 通过 `Object.assign` 合并到内置注册表，消除硬编码。
+
 ## v2.8.0 (2026-06-24)
 
 ### ✨ 新特性
