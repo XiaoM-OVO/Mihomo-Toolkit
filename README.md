@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)](https://github.com/clash-verge-rev/clash-verge-rev)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.0.0-brightgreen)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -27,6 +27,8 @@
 ## 📌 快速导航
 - [✨ 核心特性](#-核心特性)
 - [🚀 快速开始](#-快速开始)
+  - [主脚本 (Clash Verge Rev)](#1-下载脚本)
+  - [节点清洗脚本 (Sub-Store)](#-sub-store-节点清洗脚本)
 - [⚙️ 配置详解](#️-配置详解)
 - [🧹 图标与分组说明](#-节点清洗与分组结构)
 - [❓ 常见问题](#-常见问题)
@@ -35,9 +37,10 @@
 
 ## ✨ 核心特性
 
+- 🧩 **注册表驱动架构**：六维自定义服务注册表（AI / 流媒体 / 社交 / 游戏 / 系统 / 学术），填入定义即启用，无需触碰脚本逻辑。
 - 🧹 **深度清洗去重**：去除冗余广告/倍率，拦截纯文本引流节点，保留落地城市。
 - 🌍 **动态地区折叠**：小众地区自动归入大洲组，支持 Emoji 国旗动态捕获冷门国家。
-- 🔀 **全场景分流**：内置广告、AI、游戏、影音、社交、金融等 20+ 常用分流。
+- 🔀 **全场景分流**：内置广告、AI、游戏、影音、社交、金融等 20+ 常用分流，支持自定义规则与远程规则集注入。
 - 🎨 **协议与状态图标**：支持展示节点底层协议（🦊/🛸/🐴等）及业务解锁状态。
 - 🏷️ **机场标签前缀**：多机场订阅合并时自动/手动标注节点来源，面板来源一目了然。
 - 🗑️ **DAG 级联清理**：自动删减空策略组与孤儿规则，保持内核配置纯净。
@@ -54,10 +57,46 @@
 - 进入「配置」页面，右键订阅 → **编辑拓展脚本**。
 - 将脚本内容粘贴保存，点击「刷新订阅」即可生效。
 
-> 💡 **全局脚本**：在 Clash Verge Rev 的「设置」-「全局拓展脚本」中粘贴，可使所有订阅共用同一份逻辑。
+> 💡 **全局脚本**：在 Clash Verge Rev 的「订阅」-「全局拓展脚本」中粘贴，可使所有订阅共用同一份逻辑。
 
 ### 3. 个性化配置（可选）
 打开脚本开头 `USER_CONFIG` 对象，按需开关（`true` 开启 / `false` 关闭）。如需添加自定义的新应用分流（例如 HBO、网易云等），请参阅下方 [常见问题](#-常见问题) 中的自定义分流教程。
+
+---
+
+## 🧩 Sub-Store 节点清洗脚本
+
+专为 [Sub-Store](https://github.com/sub-store-org/Sub-Store) 平台设计的独立节点清洗脚本 (`sub-store/pure-nodes.js`)，将主脚本的节点处理核心逻辑解耦为 operator 格式，适用于**仅需节点过滤/去重/重命名，不需要完整策略组与分流体系**的场景。
+
+### 功能对比
+
+| 能力 | 主脚本 (mihomo-toolkit.js) | 清洗脚本 (pure-nodes.js) |
+|------|---------------------------|--------------------------|
+| 节点去重 / 垃圾拦截 | ✅ | ✅ |
+| 倍率 / 线路 / 落地城市提取 | ✅ | ✅ |
+| 协议图标 / 特征图标 | ✅ | ✅ |
+| 机场标签前缀 | ✅ | ✅ |
+| 策略组 / 分流规则生成 | ✅ | ❌ |
+| DNS / TUN / Sniffer 覆写 | ✅ | ❌ |
+| 输出格式 | Mihomo 配置 | `array` 或 `object`(含 meta) |
+
+### 快速使用
+
+1. 在 Sub-Store 中进入「订阅管理」→ 选择目标订阅 →「编辑」→「节点操作」
+2. 将 `sub-store/pure-nodes.js` 内容粘贴到脚本编辑区
+3. 可选：修改脚本顶部 `CONFIG` 对象配置（或通过 Sub-Store 外部传入 `userConfig`）
+4. 保存并刷新订阅
+
+### 配置要点
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `outputMode` | `"array"` | `"array"` 纯节点数组（兼容常规流程），`"object"` 返回含 meta 元数据 |
+| `blockKeywords` | `[]` | 自定义黑名单关键词（如 `["免费领取", "点击购买"]`） |
+| `blockServers` | `[]` | 自定义黑名单服务器地址 |
+| `adTextThreshold` | `12` | 广告文本阈值（比主脚本默认 6 更宽松，降低 Sub-Store 误杀率） |
+
+> 💡 其他参数（`enableDedupe`、`keepDestinationCity`、`showProtocolIcon` 等）与主脚本同名配置语义一致。
 
 ---
 
@@ -103,13 +142,12 @@
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `enableAdBlock` | `true` | 广告拦截 |
-| `enableAI` | `true` | OpenAI/Gemini/Claude 独立组 |
+| `enableAI` | `true` | AI 助手：OpenAI/Gemini/Claude/Copilot（具体 key 在 `AI_SERVICES` 数组中增删） |
 | `enableTelegram` | `true` | Telegram 独立分流（自动适配各平台进程） |
-| `enableYouTube` | `true` | YouTube 分流 |
-| `enableNetflix` | `true` | Netflix 分流 |
-| `enableBilibili` | `true` | 哔哩哔哩港澳台解锁 |
+| `enableStreaming` | `true` | 流媒体服务总开关（具体平台在 `STREAMING_SERVICES` 数组中增删，支持 YouTube/Netflix/Bilibili/Disney+/TikTok/Spotify/巴哈姆特/Pixiv/Twitch + 自定义） |
 | `enableGame` | `true` | Steam/Epic/Riot/Blizzard/Nintendo 等游戏平台 |
 | `enableSystemServices` | `true` | Microsoft/Apple/Google 框架服务 |
+| `enableDomesticGroup` | `false` |「中国分流」策略组（搭配直连优先触发回国模式） |
 
 </details>
 
@@ -121,14 +159,10 @@
 | `enableAntiAD` | `false` | 激进去广告（anti-AD，强但易误杀） |
 | `enableGitHub` | `true` | GitHub/GitLab 分流 |
 | `enableScholar` | `true` | Google Scholar 等学术站 |
-| `enableTikTok` | `false` | TikTok（自动过滤香港节点） |
-| `enableSpotify` | `false` | Spotify 音乐流媒体 |
-| `enableDisney` | `false` | Disney+ 流媒体 |
-| `enableSocial` | `false` | Twitter/Meta/Discord 等社交 |
+| `enableSocial` | `false` | 海外社交平台（具体 key 在 `SOCIAL_SERVICES` 数组中增删，支持 Twitter/Facebook/Instagram/Discord + 自定义） |
 | `enableCrypto` | `false` | Binance 等加密货币 |
 | `enablePayPal` | `false` | PayPal 金融支付 |
 | `enableResidential` | `false` | 提取住宅/ISP 节点为高级备用 |
-| `enableDomesticGroup` | `false` |「中国分流」策略组（搭配直连优先触发回国模式） |
 
 </details>
 
@@ -160,6 +194,148 @@
 
 </details>
 
+<details>
+<summary><b>🧩 自定义服务注册表 (v3.0 新增)</b></summary>
+
+`CUSTOM_SERVICES` 是 v3.0 的核心升级——六维注册表让你无需修改脚本逻辑即可无限扩展新服务。只需两步：**① 在对应分类中填入定义** → **② 将 key 加入对应服务数组**，即可零侵入启用。
+
+```javascript
+const CUSTOM_SERVICES = {
+  ai: {},          // 🤖 AI 助手：填入定义后将 key 加入 AI_SERVICES 数组
+  streaming: {},   // 📺 流媒体：填入定义后将 key 加入 STREAMING_SERVICES 数组
+  social: {},      // 💬 社交平台：填入定义后将 key 加入 SOCIAL_SERVICES 数组
+  game: {},        // 🎮 游戏平台：填入 provider + rules
+  system: {},      // 🪟 系统服务：填入 provider + rules
+  dev: {}          // 🛠️ 开发者/学术：填入 provider
+};
+```
+
+**注册表字段说明**（按分类不同有所差异）：
+
+| 分类 | 必填字段 | 可选字段 |
+|------|----------|----------|
+| `ai` | `name`, `uiIcon`, `reg`, `provider`, `ruleSet`, `iconUrl`, `cleanName` | — |
+| `streaming` | `name`, `cleanName`, `iconUrl`, `provider` | `reg`, `pool`（有则参与节点清洗与策略组构建） |
+| `social` | `name`, `cleanName`, `iconUrl`, `provider` | — |
+| `game` | `provider`, `rules` | — |
+| `system` | `name`, `cleanName`, `iconUrl`, `provider`, `rules` | — |
+| `dev` | `name`, `cleanName`, `iconUrl`, `provider` | — |
+
+---
+
+### 📺 示例 1：新增流媒体分流（HBO Max）
+
+场景：HBO Max 的规则集在 `geosite/hbomax`，且节点名中经常带 "HBO" 字样，希望自动识别并优先走解锁节点。
+
+```javascript
+CUSTOM_SERVICES.streaming = {
+  hbo: {
+    name: "🎬 HBO Max",                     // 策略组显示名称
+    cleanName: "HBO",                       // 清洗后保留的纯净名称
+    iconUrl: "https://.../HBO.png",         // 策略组图标 URL
+    provider: "geosite/hbomax",             // Mihomo 分流规则集
+    reg: /\b(?:HBO|HBOMax|Max)\b/i,        // 节点名正则匹配（命中则打 📺 标签）
+    pool: "hbo"                             // 节点桶名——命中 reg 的节点自动归入此桶，优先提供给 HBO 策略组
+  }
+};
+// 启用：在 STREAMING_SERVICES 数组中追加 "hbo"
+```
+
+启用后效果：节点名含 "HBO" 的自动打上 📺 标签 → 归入 `hbo` 桶 → HBO Max 策略组优先使用这些节点，不足时回退到通用大区池。
+
+---
+
+### 🤖 示例 2：新增 AI 服务（DeepSeek）
+
+场景：DeepSeek 在国内直连更稳定，但有海外节点时希望走代理。规则集在 `geosite/deepseek`，节点名含 "DeepSeek" 或 "DS"。
+
+```javascript
+CUSTOM_SERVICES.ai = {
+  deepseek: {
+    name: "🧠 DeepSeek",                    // 策略组显示名称
+    uiIcon: "🧠",                           // 节点名上的特征图标
+    reg: /\b(?:DeepSeek|DS)\b/i,           // 节点名正则（命中则展示 🧠 图标）
+    provider: "geosite/deepseek",           // 分流规则集
+    ruleSet: "deepseek",                    // rule-provider key（在 rules 中引用）
+    iconUrl: "https://.../DeepSeek.png",    // 策略组图标 URL
+    cleanName: "DeepSeek"                   // 清洗时保留的纯净名称
+  }
+};
+// 启用：在 AI_SERVICES 数组中追加 "deepseek"
+```
+
+启用后效果：节点名含 "DeepSeek" 的打上 🧠 图标 → 自动生成 🧠 DeepSeek 策略组 → 优先走家宽/美日等 AI 友好地区，最后回退代理/DIRECT。
+
+---
+
+### 🎮 示例 3：新增游戏分流（原神 / Genshin）
+
+场景：原神国际服需要走代理，国内服直连。只需提供 rule-provider 和分流规则数组。
+
+```javascript
+CUSTOM_SERVICES.game = {
+  genshin: {
+    provider: "geosite/hoyoverse",                            // Mihomo 分流规则集
+    rules: [
+      "RULE-SET,genshin,🎮 游戏服务",                          // 国际服走游戏组
+      "DOMAIN-SUFFIX,hoyoverse.com,🎮 游戏服务",
+      "DOMAIN-SUFFIX,mihoyo.com,DIRECT"                       // 米哈游国内站直连
+    ]
+  }
+};
+// 启用：game 分类无需加入数组，填入即自动生效（受 enableGame 总开关控制）
+```
+
+---
+
+### 💬 示例 4：新增社交平台（Reddit）
+
+场景：Reddit 走代理分流，无需节点清洗参与。
+
+```javascript
+CUSTOM_SERVICES.social = {
+  reddit: {
+    name: "👽 Reddit",
+    cleanName: "Reddit",
+    iconUrl: "https://.../Reddit.png",
+    provider: "geosite/reddit"
+  }
+};
+// 启用：在 SOCIAL_SERVICES 数组中追加 "reddit"
+// 若希望 Reddit 独立建组（而非合并入 💬 社交平台），同时在 INDEPENDENT_SOCIAL 中追加 "reddit"
+```
+
+---
+
+> 💡 **字段速查**：`provider` 支持两种格式——**① 路径片段** `geosite/xxx`（自动拼接 CDN 前缀，行为从路径推断）；**② 完整 URL** `https://example.com/rules.yaml`（直接使用，格式从扩展名推断，行为默认 `domain`）。规则集完整列表见 [meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat/tree/meta/geo/geosite)；`iconUrl` 推荐使用 `USER_CONFIG.iconRepoOrz` / `iconRepoKoolson` / `iconRepoLige47` 拼接图标文件名。
+
+</details>
+
+<details>
+<summary><b>📋 自定义规则与规则集 (v3.0 新增)</b></summary>
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `CUSTOM_RULES` | `[]` | 原始分流规则数组，支持 `DOMAIN-SUFFIX`/`IP-CIDR`/`RULE-SET`/`PROCESS-NAME` 等任意格式，注入到 MATCH 之前，优先级高于所有内置规则 |
+| `CUSTOM_RULE_PROVIDERS` | `{}` | 远程 rule-provider 注册表，必填 `url`/`behavior`/`format`，可选 `interval`/`path`/`proxy` |
+| `CUSTOM_PROCESS_DIRECT_WIN/MAC/LIN` | `[]` | 追加进程直连名单（自动合并到内置 BT 进程之后） |
+| `CUSTOM_PROCESS_PROXY_WIN/MAC` | `[]` | 追加进程强制走下载策略名单 |
+
+</details>
+
+<details>
+<summary><b>📡 DNS 服务器配置 (v3.0 新增)</b></summary>
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `dnsDefault` | `["223.5.5.5", "119.29.29.29"]` | 基础解析 DNS（UDP） |
+| `dnsDirect` | `["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"]` | 直连 DNS（DoH），国内域名解析 |
+| `dnsProxy` | `["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"]` | 代理 DNS（DoH），海外域名解析 |
+
+> 💡 回国模式下直连/代理 DNS 会自动交换，无需手动调整。
+
+</details>
+
 ---
 
 ## 🧹 节点清洗与分组结构
@@ -179,10 +355,10 @@
 
 | 图标 | 协议 | 图标 | 协议 |
 |------|------|------|------|
-| ✈️ | SS / SSR | ⚡ | Hysteria / Hysteria2 |
+| 🛩️ | SS / SSR | ⚡ | Hysteria / Hysteria2 |
 | 🦊 | VMess | 💨 | TUIC |
 | 🛸 | VLESS | 🕸️ | WireGuard |
-| 🐴 | Trojan | 🦈 | Snell |
+| 🐎 | Trojan | 📡 | Snell |
 
 ### 📂 动态生成的策略组
 - **核心**：`📍 手动选择`、`🚀 自动选择`、`♻️ 故障转移`
@@ -228,7 +404,7 @@
 <details>
 <summary><b>Q: 分流规则不生效 / 一直走到漏网之鱼？</b></summary>
 
-检查三步：① 对应的 <code>enableXxx</code> 开关是否开启；② 对应 app 的策略组是否为空被 DAG 清理了（空组会被自动裁撤，导致规则回退到漏网之鱼）；③ <code>ruleProviderCDN</code> 是否可正常拉取规则集。
+检查三步：① 对应的总开关（如 <code>enableStreaming</code>）是否开启，且目标服务 key 是否在对应的服务数组中（如 <code>STREAMING_SERVICES</code>）；② 对应 app 的策略组是否为空被 DAG 清理了（空组会被自动裁撤，导致规则回退到漏网之鱼）；③ <code>ruleProviderCDN</code> 是否可正常拉取规则集。
 </details>
 
 <details>
@@ -246,10 +422,11 @@
 <details>
 <summary><b>Q: 如何新增一个自定义分流（如 HBO Max）？</b></summary>
 
-只需在脚本中搜索以下三个位置「打卡」即可，无需改动深层逻辑：<br>
-① <b>建组</b>：搜索 <code>APP_GROUPS_REGISTRY</code>，按格式新增策略组条目；<br>
-② <b>引流</b>：搜索 <code>FEATURE_MAP</code>，添加对应的规则集（<code>providers</code>）和分流路由（<code>rules</code>）；<br>
-③ <b>美化</b>（可选）：搜索 <code>ICON_MAPPING</code>，为策略组配置在线图标。
+v3.0 采用注册表架构，只需两步，无需触碰脚本逻辑：<br>
+① <b>注册服务</b>：在 <code>CUSTOM_SERVICES.streaming</code> 中填入服务定义（name、provider、iconUrl 等）；<br>
+② <b>启用</b>：将注册的 key 加入 <code>STREAMING_SERVICES</code> 数组即可。<br>
+例如：<code>CUSTOM_SERVICES.streaming.hbo = { name: "HBO Max", cleanName: "HBO", iconUrl: "...", provider: {...} }</code>，然后 <code>STREAMING_SERVICES</code> 数组中加 <code>"hbo"</code>。<br>
+更多字段说明见上方「自定义服务注册表」章节。
 </details>
 
 <details>
@@ -284,8 +461,8 @@
 - 灵感来源：[iczrac/Parsers-for-clash](https://github.com/iczrac/Parsers-for-clash)
 - 基础内核：[Mihomo](https://github.com/MetaCubeX/mihomo)
 - 规则集：[meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) & [anti-AD](https://github.com/privacy-protection-tools/anti-AD)
-- 图标库：[Orz-3/mini](https://github.com/Orz-3/mini) & [Koolson/Qure](https://github.com/Koolson/Qure)
-- **AI 协同**：由本人架构，Gemini 代码生成，DeepSeek、Claude 参与代码审查与多轮对线压力测试而成。
+- 图标库：[Orz-3/mini](https://github.com/Orz-3/mini) & [Koolson/Qure](https://github.com/Koolson/Qure) & [lige47/lige_icon](https://github.com/lige47/lige_icon)
+- **AI 协同**：由本人架构，Gemini，DeepSeek参与代码生成与审查，多轮对线压力测试迭代而成。
 
 ## 🐛 提交问题
 如果在使用过程中遇到 BUG 或有好的建议，欢迎提交 [Issue](https://github.com/XiaoM-OVO/mihomo-toolkit/issues)。提交前请先查阅 [常见问题](#-常见问题)。
