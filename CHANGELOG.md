@@ -1,5 +1,34 @@
 # 更新日志
 
+## v3.0.1 (2026-06-30)
+
+### ⚙️ 主脚本优化 (`mihomo-toolkit.js`)
+
+- **✨ 新增：Sniffer QUIC 嗅探支持**
+  - 嗅探器新增 `QUIC: { ports: [443, 4433] }`，提升对 QUIC 协议流量的深度包检测能力（配合 YouTube 等优先使用 QUIC 的应用）。
+  - 新增 `+.stun.*.*`、`+.nintendo.net`、`+.playstation.net`、`+.xboxlive.com` 到 `fake-ip-filter`，防止 WebRTC/STUN 穿透失败及游戏主机联机断连。
+
+- **🚀 优化：核心性能与稳定性机制**
+  - 将 `getAirportTag` 中每节点重复执行的 `split` + `new RegExp` 提取到全局预编译，处理大规模订阅（500+ 节点）时显著降低 GC 压力。
+  - 同步优化了广告判定段的标签剥离逻辑，复用预编译正则数组。
+  - `while (changed)` 循环增加 `maxIterations = 20` 上限，策略组存在循环引用时自动终止并输出警告，防止死循环导致脚本挂死。
+
+- **📝 修复：客户端指纹覆盖导致握手失败**
+  - 内核优化注入 `client-fingerprint` 时增加前置检查 `!p["client-fingerprint"]`，不再覆盖节点订阅自带的指纹配置，避免意外的 TLS 握手失败。
+
+### 🧩 Sub-Store 独立模块 (`pure-nodes.js`) 重大升级
+
+- **✨ 新增：高度自定义与兼容性提升**
+  - 支持通过 `{prefix}{airport}{icon}{region}{index}{features}{suffix}` 自由组合节点名称，彻底解决固定格式无法满足个性化需求的问题。
+  - 当关闭 `showFeatureIcon` 时，脚本会自动将特征（如家宽、流媒体、AI等）转换为规范的文字标签，不再强制使用 Emoji。
+  - 新增 `outputGarbage` 和 `outputUnknown` 开关，用户可自行决定是否在输出列表中保留拦截到的广告或未识别节点。
+  - 扩展了协议图标库，新增对 `Reality`、`ShadowTLS`、`Xray` 等协议的图标识别。
+
+- **🚀 优化：排序与调试体验**
+  - 引入了更科学的节点排序逻辑：`地理大区 -> 线路质量权重(IPLC>GIA>BGP) -> 入口城市 -> 线路名称 -> 倍率 -> 原始名称`。
+  - 优质专线节点现在会自动排列在同地区的最上方。
+  - 拦截逻辑新增 `blockReason` 标注，明确区分“黑名单关键词”、“假IP”、“超长广告”等拦截原因，方便在控制台调试。
+
 ## v3.0.0 (2026-06-27)
 
 ### 🚀 架构重构：注册表驱动 + 可扩展分流体系
