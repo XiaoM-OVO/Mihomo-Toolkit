@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)](https://github.com/clash-verge-rev/clash-verge-rev)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/version-3.0.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.0.1-brightgreen)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 

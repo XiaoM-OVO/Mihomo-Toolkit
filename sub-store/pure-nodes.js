@@ -1,36 +1,45 @@
 /**
  * =========================================================================
- * 📦 Mihomo-Toolkit (Sub-Store 解耦重制版) | 纯净节点清洗脚本
- * ------------------------------------------------------------------------
- * 描述: 专为 Sub-Store 提取的节点过滤、去重与重命名脚本
- * 功能: 物理去重 / 垃圾拦截 / 提取倍率线路 / 批量前缀 / 智能特征图标
- * 优化: 白名单地区豁免 + 可配置硬黑名单 + 分级阈值 + 无副作用拷贝
- * 输出: { proxies, array / meta }
+ * 📦 Mihomo-Toolkit | Sub-Store 解耦重制版 | 纯净节点清洗脚本 | MIT 许可证
  * =========================================================================
+ * 🏷️ 版本: 1.0.0-beta.1 (Build 2026.06.30)
+ * 👤 作者: XiaoM-OVO
+ * 📝 描述: 专为 Sub-Store 设计的节点处理脚本，提供过滤、去重、重命名与自动排序功能。
+ * 🛠️ 功能: 物理去重 | 垃圾节点归档 | 解析倍率与线路 | 批量前缀 | 智能特征图标 | 多维排序
+ * 🌐 仓库: https://github.com/XiaoM-OVO/Mihomo-Toolkit
+ * -------------------------------------------------------------------------
  */
 
 function operator(proxies, targetPlatform, userConfig = {}) {
+
     // =========================================================================
     // ⚙️ 默认配置（可被外部传入覆盖）
     // =========================================================================
     const CONFIG = {
-        outputMode: "array",         // 🚀 输出模式: "array"纯节点数组, "object"包含 meta 元数据的对象
-        customPrefix: "",            // 🏷️ 批量自定义前缀
-        keepDestinationCity: true,   // 🏙️ 保留落地城市
-        showProtocolIcon: false,     // 🏷️ 协议图标
-        showFeatureIcon: false,      // 🌟 特征图标
-        enableDedupe: false,         // 🧽 物理去重
-        removeInfoNodes: false,      // 🗑️ 纯净模式（删除说明节点）
-        strictRegionMatch: false,    // 🌏 严格地区（未知节点丢弃）
-        adTextThreshold: 12,         // 🔠 广告阈值（提高默认值，降低误杀）
-        enableAirportTag: false,     // 🏷️ 标签提取
-        airportTag: "",              // 🏷️ 强制指定标签
-        // 🆕 自定义硬黑名单（留空则关闭）
-        blockKeywords: [],           // 例: ["免费领取", "点击购买", "官网地址"]
-        blockServers: [],            // 例: ["123.123.123.123", "fake.com"]
+        outputMode: "array",          // 🚀 输出模式: "array"纯节点数组, "object"包含 meta 元数据的对象
+        outputGarbage: false,         // 🗑️ 垃圾输出: 是否将拦截的广告/假节点也输出(默认不输出,但会进桶)
+        outputUnknown: true,          // ❓ 未知输出: 是否将未识别的节点输出(默认输出)
+        
+        enableStandardRename: true,   // 📝 标准化重命名: 关闭则保留节点原名(防吞词)
+        renameTemplate: "{prefix}{airport} {icon} {region}{index} {features} {suffix}", // 🏷️ 自定义命名模板
+        
+        customPrefix: "",             // 🏷️ 批量自定义前缀(也可通过 {prefix} 模板控制)
+        keepDestinationCity: true,    // 🏙️ 保留落地城市
+        showRegionIcon: true,         // 🌍 显示地区国旗 Emoji
+        showProtocolIcon: false,      // 🏷️ 显示协议图标 Emoji
+        showFeatureIcon: false,       // 🌟 显示特征图标 Emoji (即使开启，具体解锁文本也会保留)
+        featureBracket: "",           // 🏷️ 特征标签括号: "「」" / "[]" / "()" / "" 留空不显示
+
+        enableDedupe: false,          // 🧽 物理去重 (基于服务器/端口/UUID等多维度)
+        removeInfoNodes: false,       // 🗑️ 纯净模式 (直接删除到期说明节点)
+        strictRegionMatch: false,     // 🌏 严格地区 (未知国旗不再动态捕获，直接丢入未知组)
+        adTextThreshold: 12,          // 🔠 广告阈值 (超过该长度且无特定特征视为广告)
+        enableAirportTag: false,      // 🏷️ 提取原机场标签 (例: [Bitz])
+        airportTag: "",               // 🏷️ 强制覆盖/指定所有节点的机场标签
+        blockKeywords: [],            // 🆕 黑名单关键词，例: ["免费领取", "点击购买"]
+        blockServers: [],             // 🆕 屏蔽服务器，例: ["123.123.123.123", "fake.com"]
         ...userConfig
     };
-
 
     // =========================================================================
     // 🪛 核心常量与正则字典
@@ -40,42 +49,83 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|\\b(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)\\b`, "ig");
     const REGEX_ENTRY_CITY = /(深圳|广州|上海|北京|杭州|四川|江苏|宁波|东莞|深|广|沪|京|杭|川|苏|甬|莞|SZX|CAN|PVG|SHA|PEK|PKX|HGH|入口|Ingress)(?:-|->|至|=>|\s)*(?=港|台|日|韩|新|美|英|德|法|澳|落地|出口|Exit)/i;
     const REGEX_MULTI = /(?:倍率|Rate)\s*[:：]?\s*(\d+(?:\.\d+)?)|(?<![a-zA-Z])(?:[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率|倍)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率|倍))(?!\s*\d)/i;
-    const REGEX_TECH_LINE = /(IEPL|IPLC|CMIN2|CMI|CN2\s*GIA|CN2|GIA|9929|4837|CUG|BGP|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|IIJ|NTT|OCN|Softbank|Transit|Relay|隧道|Direct|HGC|HKBN|PCCW|WTT|HKT|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|三网|电联|移联|电移|移动|联通|电信|专线)/gi;
+    
+    const REGEX_TECH_LINE = /(IEPL|IPLC|CMIN2|CMI|CN2\s*GIA|CN2|GIA|9929|4837|CUG|BGP|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|IIJ|NTT|OCN|Softbank|Transit|Relay|隧道|Direct|HGC|HKBN|PCCW|WTT|HKT|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CTCM|CMCT|三网|电联|移联|电移|移动|联通|电信|专线)/gi;
     const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
     const REGEX_UNKNOWN_FLAG = /(\p{Regional_Indicator}{2})\s*([A-Za-z\u4e00-\u9fa5]+(?:[\s-][A-Za-z\u4e00-\u9fa5]+)*)/u;
     const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
 
-    const CN_MAP   = { "移动": "移", "联通": "联", "电信": "电" };
-    const LINE_MAP = { "CTCUCM": "三网", "CTCUM": "三网", "CTCU": "电联", "CUCT": "电联", "CMCU": "移联", "CUCM": "移联", "CTCM": "电移", "CMCT": "电移" };
-    const TAG_MAP = { 
-        "深圳": "深", "SZX": "深", "广州": "广", "CAN": "广", 
-        "上海": "沪", "PVG": "沪", "SHA": "沪", "北京": "京", 
-        "PEK": "京", "PKX": "京", "杭州": "杭", "HGH": "杭", 
+    const CN_MAP   = { "移动": "移", "联通": "联", "电信": "电", ...(userConfig.cnMap || {}) };
+    const LINE_MAP = { "CTCUCM": "三网", "CTCUM": "三网", "CTCU": "电联", "CUCT": "电联", "CMCU": "移联", "CUCM": "移联", "CTCM": "电移", "CMCT": "电移", ...(userConfig.lineMap || {}) };
+    const TAG_MAP = {
+        "深圳": "深", "SZX": "深", "广州": "广", "CAN": "广",
+        "上海": "沪", "PVG": "沪", "SHA": "沪", "北京": "京",
+        "PEK": "京", "PKX": "京", "杭州": "杭", "HGH": "杭",
         "四川": "川", "江苏": "苏", "宁波": "甬", "东莞": "莞",
-        "南京": "宁", "成都": "蓉", "武汉": "汉", "重庆": "渝", "天津": "津"
+        "南京": "宁", "成都": "蓉", "武汉": "汉", "重庆": "渝", "天津": "津",
+        ...(userConfig.tagMap || {})
     };
 
     const UI_ICONS = {
-        protocols: { "ss": "🛩️", "ssr": "🚀", "vmess": "🦊", "vless": "🛸", "trojan": "🐴", "hysteria": "⚡", "hysteria2": "⚡", "tuic": "💨", "wireguard": "🕸️", "snell": "📡", "socks": "🧦", "socks5": "🧦", "http": "🌐", "https": "🌐", "ssh": "💻" },
-        features: { 
-            "residential": "🏠", "game": "🎮", "streaming": "📺", 
-            "gemini": "♊", "claude": "🦀", "chatgpt": "🤖", "ai": "✨",
-            "download": "⏬", "free": "🆓" 
+        protocols: { 
+            "ss": "🛩️", "ssr": "🚀", "vmess": "🦊", "vless": "🛸", "trojan": "🐴", 
+            "hysteria": "⚡", "hysteria2": "⚡", "tuic": "💨", "wireguard": "🕸️", 
+            "snell": "📡", "socks": "🧦", "socks5": "🧦", "http": "🌐", "https": "🌐", 
+            "ssh": "💻", "xray": "☢️", "shadowtls": "🛡️", "reality": "🎭"
+        },
+        features: {
+            // specificFeatures 值 → emoji，1:1 映射无冗余（showFeatureIcon 专用）
+            "家宽": "🏠", "游戏": "🎮", "流媒体": "📺", "下载": "⏬", "免费": "🆓",
+            "gpt": "🤖", "gemini": "♊", "claude": "🦀", "ai": "✨",
+            "nf": "🎬", "d+": "🐭", "yt": "▶️", "tk": "🎵", "sp": "🎧",
         }
     };
 
-    // 🌟 特征识别字典
-    const FEATURE_RULES = [
-        { reg: /(?:家宽|住宅|宽带|原生|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, _cleanReg: /(?:家宽|住宅|宽带|原生|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/ig, tag: "residential" },
-        { reg: /(?:游戏)|\b(?:Game|FullCone)\b/i, _cleanReg: /(?:游戏)|\b(?:Game|FullCone)\b/ig, tag: "game" },
-        { reg: /(?:下载)|\bBT\b/i, _cleanReg: /(?:下载)|\bBT\b/ig, tag: "download" },
-        { reg: /(?:免费|白嫖|公益)/i, _cleanReg: /(?:免费|白嫖|公益)/ig, tag: "free" },
-        { reg: /\b(?:Gemini)\b/i, _cleanReg: /\b(?:Gemini)\b/ig, tag: "gemini" },
-        { reg: /\b(?:Claude)\b/i, _cleanReg: /\b(?:Claude)\b/ig, tag: "claude" },
-        { reg: /\b(?:ChatGPT|OpenAI|GPT)\b/i, _cleanReg: /\b(?:ChatGPT|OpenAI|GPT)\b/ig, tag: "chatgpt" },
-        { reg: /\b(?:AI解锁|AI)\b/i, _cleanReg: /\b(?:AI解锁|AI)\b/ig, tag: "ai" },
-        { reg: /\b(?:Netflix|NF|奈飞|网飞|耐飞|YouTube|YT|油管|Disney\+|Disney|迪士尼|D\+|TikTok|抖音海外|TT|Spotify|声田|流媒体|解锁)\b/i, _cleanReg: /\b(?:Netflix|NF|奈飞|网飞|耐飞|YouTube|YT|油管|Disney\+|Disney|迪士尼|D\+|TikTok|抖音海外|TT|Spotify|声田|流媒体|解锁)\b/ig, tag: "streaming" }
+    const FEATURE_TEXT_MAP = {
+        "residential": "家宽", "game": "游戏", "streaming": "流媒体",
+        "gemini": "Gemini", "claude": "Claude", "chatgpt": "GPT", "ai": "AI",
+        "download": "下载", "free": "免费"
+    };
+
+    // 流媒体：数据同源 —— 关键词 → 缩写，避免在正则和映射中各写一遍
+    const STREAMING_SERVICES = [
+        { keys: ["Netflix", "NF", "奈飞", "网飞", "耐飞"], abbr: "NF" },
+        { keys: ["Disney\\+", "Disney", "迪士尼", "D\\+"], abbr: "D+" },
+        { keys: ["YouTube", "YT", "油管"], abbr: "YT" },
+        { keys: ["TikTok", "抖音海外", "抖音", "TT"], abbr: "TK" },
+        { keys: ["Spotify", "声田"], abbr: "SP" },
     ];
+    const STREAMING_GENERIC = ["流媒体", "解锁"]; // 无具体服务时兜底
+
+    // 由数据自动生成：正则 source + 缩写查找表
+    const STREAMING_SOURCE = [
+        ...STREAMING_SERVICES.flatMap(s => s.keys),
+        ...STREAMING_GENERIC
+    ].map(k => `\\b(?:${k})\\b`).join("|");
+
+    const STREAMING_ABBR = {};
+    STREAMING_SERVICES.forEach(s => s.keys.forEach(k => {
+        // 剥掉正则转义符（如 Disney\+ → Disney+），得到匹配后的真实文本作为 key
+        STREAMING_ABBR[k.replace(/\\/g, "").toLowerCase()] = s.abbr;
+    }));
+
+    const FEATURE_RULES_RAW = [
+        { source: "(?:家宽|住宅|宽带|原生|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)", tag: "residential" },
+        { source: "(?:游戏)|\\b(?:Game|FullCone)\\b", tag: "game" },
+        { source: "(?:下载)|\\bBT\\b", tag: "download" },
+        { source: "(?:免费|白嫖|公益)", tag: "free" },
+        { source: "\\b(?:Gemini)\\b", tag: "gemini" },
+        { source: "\\b(?:Claude)\\b", tag: "claude" },
+        { source: "\\b(?:ChatGPT|OpenAI|GPT)\\b", tag: "chatgpt" },
+        { source: "\\b(?:AI(?:解锁|访问|加速|代理)?)\\b", tag: "ai" },
+        { source: STREAMING_SOURCE, tag: "streaming" }
+    ];
+    const FEATURE_RULES = FEATURE_RULES_RAW.map(r => ({
+        source: r.source,
+        reg: new RegExp(r.source, "i"),
+        _cleanReg: new RegExp(r.source, "ig"),
+        tag: r.tag
+    }));
 
     const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信)";
     const REGION_DEFS = [
@@ -104,7 +154,6 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         { name: "中国", icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i }
     ];
 
-    // 预编译地区匹配对象
     REGION_DEFS.forEach(r => {
         const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
         r._cleanReg = new RegExp(combinedSource, "ig");
@@ -116,8 +165,9 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     // 🛠️ 辅助函数
     // =========================================================================
     function escapeRegExp(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
+
     function sanitizeNodeName(rawName) {
         let name = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
         name = name.replace(/\p{Extended_Pictographic}/gu, m => {
@@ -129,74 +179,80 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         return name.replace(REGEX_CLEANUP, "").trim();
     }
 
+    function compressLineArr(arr) {
+        const atomSet = new Set(["移", "联", "电"]);
+        const comboMap = {
+            "电联": new Set(["电","联"]), "移联": new Set(["移","联"]),
+            "电移": new Set(["电","移"]), "三网": new Set(["移","联","电"])
+        };
+
+        let atomItems = [], nonAtomItems = [];
+        for (let item of [...new Set(arr)]) {
+            if (atomSet.has(item)) atomItems.push(item);
+            else nonAtomItems.push(item);
+        }
+
+        const atomCount = new Set(atomItems).size;
+        let merged = [];
+        if (atomCount >= 3) {
+            merged = ["三网"];
+        } else if (atomCount === 2) {
+            const matchCombo = Object.entries(comboMap).find(([k, members]) =>
+                k !== "三网" && members.size === 2 && [...members].every(a => atomItems.includes(a))
+            );
+            merged = matchCombo ? [matchCombo[0]] : atomItems;
+        } else if (atomCount === 1) {
+            merged = [atomItems[0]];
+        }
+
+        return [...merged, ...nonAtomItems];
+    }
+
     function extractNodeAttributes(name) {
-        let attrs = { multiStr: "", entryStr: "", lineArr: [] };
+        let attrs = { multiStr: "", entryStr: "", lineArr: [], multiNum: 1.0, bestLineWeight: 99 };
         
-        // 入口城市提取
         name = name.replace(REGEX_ENTRY_CITY, match => {
             let m = match.replace(/[-|>至=\s]/g, "");
             attrs.entryStr = TAG_MAP[m.toUpperCase()] || TAG_MAP[m] || m;
             return "";
         });
 
-        // 倍率提取
         let cleanName = name.replace(REGEX_MULTI, (m, m1, m2, m3) => {
             const num = parseFloat(m1 || m2 || m3);
-            if (!isNaN(num) && num !== 1) attrs.multiStr = `x${num}`;
+            if (!isNaN(num)) {
+                attrs.multiNum = num;
+                if (num !== 1) attrs.multiStr = `x${num}`;
+            }
             return "";
         });
 
-        // 技术线路匹配
+        let fluffStr = "";
+        cleanName = cleanName.replace(REGEX_FLUFF_LINE, match => { fluffStr += match.toUpperCase(); return ""; });
+
+        const techTerms = [];
         cleanName = cleanName.replace(REGEX_TECH_LINE, match => {
             let key = match.toUpperCase();
+            techTerms.push(key);
             let short = LINE_MAP[key];
             if (!short) {
                 const cnKey = Object.keys(CN_MAP).find(k => match.includes(k));
                 if (cnKey) short = CN_MAP[cnKey];
             }
-            if (short) attrs.lineArr.push(short);
+            attrs.lineArr.push(short || key);
             return "";
         });
 
-        // 🆕 压缩技术线路简称
         attrs.lineArr = compressLineArr(attrs.lineArr);
         attrs.cleanLines = attrs.lineArr.join("/");
+
+        const weightSource = techTerms.join(" ") + " " + fluffStr;
+        attrs.bestLineWeight = /(IEPL|IPLC)/.test(weightSource) ? 1 :
+                              /(GIA|CN2|9929|CMIN2)/.test(weightSource) ? 2 :
+                              /(专线|VIP|PRO|高速|极速|优化|PREMIUM)/.test(weightSource) ? 3 :
+                              /(BGP|CMI)/.test(weightSource) ? 4 :
+                              /(中转|隧道)/.test(weightSource) ? 5 : 6;
         
         return { attrs, cleanName };
-    }
-    function compressLineArr(arr) {
-    const atoms = ["移", "联", "电"];
-    const comboMap = {
-        "电联": ["电","联"],
-        "移联": ["移","联"],
-        "电移": ["电","移"],
-        "三网": ["移","联","电"]
-    };
-    const comboKeys = Object.keys(comboMap);
-
-    let unique = [...new Set(arr)];
-    if (unique.includes("三网")) return ["三网"];
-
-    // 检查是否所有原子都被覆盖（不论是通过组合词还是单原子）
-    let covered = new Set();
-    for (let item of unique) {
-        if (comboKeys.includes(item)) {
-            comboMap[item].forEach(a => covered.add(a));
-        } else if (atoms.includes(item)) {
-            covered.add(item);
-        }
-    }
-    if (covered.size === 3) return ["三网"];
-
-    // 否则，如果单原子已被某个组合词包含，则移除该单原子
-    let result = [];
-    for (let item of unique) {
-        if (atoms.includes(item) && comboKeys.some(k => comboMap[k].includes(item))) {
-            continue; // 跳过被组合词覆盖的原子
-        }
-        result.push(item);
-    }
-    return [...new Set(result)];
     }
 
     function matchNodeRegion(name) {
@@ -226,23 +282,27 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         return m ? m[1] : "";
     }
 
-    // 🆕 字段归一化函数（浅拷贝版本，无副作用）
-    function normalizeProxyFields(proxy, platform) {
-        // 总是返回新对象，避免污染原始数据
-        if (!platform || platform === "clash") return { ...proxy };
+    function normalizeProxyFields(originalProxy, platform) {
+        let newProxy;
+        try {
+            newProxy = typeof structuredClone === "function" 
+                ? structuredClone(originalProxy) 
+                : JSON.parse(JSON.stringify(originalProxy));
+        } catch (e) {
+            newProxy = { ...originalProxy }; 
+        }
         
-        const newProxy = { ...proxy };
-        // 字段别名映射表
+        if (!platform || platform === "clash") return newProxy;
+        
         const aliasMap = {
-            sni: ["sni", "servername", "server-name", "tls.servername"],
+            sni: ["sni", "servername", "server-name", "tls.servername", "peer"],
             host: ["host", "hostname", "http-host"],
             password: ["password", "auth", "key"],
-            uuid: ["uuid", "id", "user-id"],
+            uuid: ["uuid", "id", "user-id", "client_id"],
             port: ["port", "listen-port"],
             server: ["server", "address", "hostname"]
         };
         
-        // 对每个标准字段，尝试从别名中取值并填充
         for (const [standard, aliases] of Object.entries(aliasMap)) {
             if (newProxy[standard] === undefined || newProxy[standard] === null) {
                 for (const alias of aliases) {
@@ -257,7 +317,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     }
 
     // =========================================================================
-    // 🚀 核心处理循环 (两阶段遍历)
+    // 🚀 第一阶遍历: 提取、清洗与打标
     // =========================================================================
     const proxySet = new Set();
     const processedData = [];
@@ -265,27 +325,17 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     let infoCount = 0;
     let discardedCount = 0;
 
-    // 初始化桶（用于返回元数据）
     const BUCKETS = {};
-    // 注册所有地区和特征池
-    [...new Set(REGION_DEFS.map(r => r.name)), "garbage", "download", "info", "allStandard"].forEach(key => {
+    [...new Set(REGION_DEFS.map(r => r.name)), "garbage", "download", "info", "allStandard", "unknown"].forEach(key => {
         BUCKETS[key] = [];
     });
-    FEATURE_RULES.forEach(r => {
-        if (r.tag) BUCKETS[r.tag] = [];
-    });
-    // 额外为 unknown 预留
-    BUCKETS.unknown = [];
+    FEATURE_RULES.forEach(r => { if (r.tag) BUCKETS[r.tag] = []; });
 
-    // --- 第一阶遍历：属性提取、过滤去重 ---
     proxies.forEach(originalProxy => {
-        // 1. 浅拷贝，避免副作用
         let proxy = normalizeProxyFields(originalProxy, targetPlatform);
-        
-        let rawName = proxy.name || "";
-        let tempName = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
+        const rawName = proxy.name || "";
+        const tempName = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
 
-        // --- 信息节点优先拦截 ---
         if (REGEX_INFO_NODE.test(tempName)) {
             if (!CONFIG.removeInfoNodes) {
                 processedData.push({ proxy, isInfo: true, rawName });
@@ -296,15 +346,14 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             return;
         }
 
-        // --- 物理去重 ---
         if (CONFIG.enableDedupe) {
             const server = (proxy.server || "").toLowerCase();
-            const port = proxy.port || "";
-            const type = proxy.type || "";
-            const sni = (proxy.sni || proxy.servername || proxy["reality-opts"]?.["server-name"] || "").toLowerCase();
+            const port = String(proxy.port || "");
+            const type = (proxy.type || "").toLowerCase();
+            const sni = (proxy.sni || proxy.servername || proxy.peer || proxy["reality-opts"]?.["server-name"] || "").toLowerCase();
             const host = (proxy.host || proxy["ws-opts"]?.headers?.Host || proxy["ws-opts"]?.headers?.host || "").toLowerCase();
             const path = proxy["ws-opts"]?.path || proxy["grpc-opts"]?.["grpc-service-name"] || "";
-            const authKey = proxy.uuid || proxy.password || proxy.client_id || "";
+            const authKey = String(proxy.uuid ?? proxy.password ?? proxy.client_id ?? "");
             
             const key = `${server}|${port}|${type}|${sni}|${host}|${path}|${authKey}`;
             if (proxySet.has(key)) {
@@ -314,94 +363,103 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             proxySet.add(key);
         }
 
-        // ================================================================
-        // 🧹 优化版：智能垃圾拦截（白名单豁免 + 硬黑名单 + 分级阈值）
-        // ================================================================
-
-        // 1️⃣ 用户自定义硬黑名单（名称关键词 & 服务器地址关键词）
-        const blockKeywords = CONFIG.blockKeywords || [];
-        const blockServers = CONFIG.blockServers || [];
-        if (blockKeywords.some(k => tempName.includes(k))) {
-            discardedCount++;
-            return;
-        }
-        if (blockServers.some(s => (proxy.server || "").includes(s))) {
-            discardedCount++;
-            return;
-        }
-
-        // 2️⃣ 伪造服务器（捕获常见占位符）
-        const fakeIPs = ['127.0.0.1', '0.0.0.0', '1.1.1.1', '8.8.8.8', 
-                         '1.2.3.4', '2.2.2.2', '3.3.3.3', 'localhost'];
-        const isFakeServer = fakeIPs.some(ip => (proxy.server || "").toLowerCase().includes(ip)) 
-                             || proxy.port === 0;
-        const isDummyAuth = /^(0{8}-{0,4}-{0,4}-{0,4}-{0,12}|123456|password|dummy)$/i
-                             .test(proxy.uuid || proxy.password || "");
-        if (isFakeServer || isDummyAuth) {
-            discardedCount++;
-            return;
-        }
-
-        // 3️⃣ 智能孤儿广告检测（白名单豁免机制）
-        const hasDigit = /\d/.test(tempName);
-        const hasTechLine = REGEX_TECH_LINE.test(tempName);
-        const hasFluff = REGEX_FLUFF_LINE.test(tempName);
-        
-        // 关键优化：提前匹配地区（只要有地区名，就给与极高的宽容度）
-        const hasValidRegion = REGION_DEFS.some(r => r._matchReg.test(tempName));
-
-        // 去掉表情和括号后的纯文本长度
-        const cleanText = tempName.replace(/[\[\]]/g, "").replace(/\p{Extended_Pictographic}/gu, "").trim();
-        const cleanLength = cleanText.length;
-        
-        // 阈值分级：有地区的节点，阈值放宽到 20；无地区的，使用用户配置（默认 12）
-        const effectiveThreshold = hasValidRegion 
-            ? Math.max(CONFIG.adTextThreshold || 12, 18)
-            : (CONFIG.adTextThreshold || 12);
-        
-        const isTooLong = cleanLength > effectiveThreshold;
-
         let isGarbage = false;
+        let blockReason = "";
+        const tempNameLower = tempName.toLowerCase();
+        
+        if (CONFIG.blockKeywords?.some(k => tempNameLower.includes(k.toLowerCase()))) {
+            isGarbage = true; blockReason = "黑名单关键字";
+        } else if (CONFIG.blockServers?.some(s => (proxy.server || "").toLowerCase().includes(s.toLowerCase()))) {
+            isGarbage = true; blockReason = "黑名单服务器";
+        }
 
-        if (hasValidRegion) {
-            // ✅ 包含有效地区（白名单豁免区）
-            // 只有同时满足【超长 + 无数字 + 无技术线路】才判定为伪装广告
-            if (isTooLong && !hasDigit && !hasTechLine) {
-                isGarbage = true;
-            }
-        } else {
-            // ❌ 不包含有效地区 -> 严格检测
-            if (isTooLong && !hasDigit && !hasTechLine) {
-                isGarbage = true;
-            }
-            // 额外的：如果连 fluff（优化/高速）都没有，且长度>10，大概率是垃圾通知
-            if (!hasFluff && cleanLength > 10 && !hasDigit && !hasTechLine) {
-                isGarbage = true;
+        const isFakeIP = /^(127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|1\.1\.1\.1|8\.8\.8\.8|1\.2\.3\.4|2\.2\.2\.2|3\.3\.3\.3)/.test(proxy.server);
+        const isFakeServer = isFakeIP || proxy.server === 'localhost' || proxy.port === 0;
+        const isDummyAuth = /^(0{8}-{0,4}-{0,4}-{0,4}-{0,12}|123456|password|dummy)$/i.test(proxy.uuid || proxy.password || "");
+        
+        if (!isGarbage && (isFakeServer || isDummyAuth)) {
+            isGarbage = true; blockReason = "假IP/假密码";
+        }
+
+        if (!isGarbage) {
+            const hasDigit = /\d/.test(tempName);
+            const hasTechLine = REGEX_TECH_LINE.test(tempName);
+            const hasFluff = REGEX_FLUFF_LINE.test(tempName);
+            const hasValidRegion = REGION_DEFS.some(r => r._matchReg.test(tempName));
+            const hasFeature = FEATURE_RULES.some(rule => rule.reg.test(tempName)); 
+
+            const cleanText = tempName.replace(/[\[\]]/g, "").replace(/\p{Extended_Pictographic}/gu, "").trim();
+            const cleanLength = cleanText.length;
+            const effectiveThreshold = hasValidRegion ? Math.max(CONFIG.adTextThreshold || 12, 18) : (CONFIG.adTextThreshold || 12);
+            
+            if (cleanLength > effectiveThreshold && !hasDigit && !hasTechLine && !hasFeature) {
+                isGarbage = true; blockReason = "超长广告文本";
+            } else if (!hasValidRegion && !hasFluff && cleanLength > 10 && !hasDigit && !hasTechLine && !hasFeature) {
+                isGarbage = true; blockReason = "孤儿广告";
             }
         }
 
         if (isGarbage) {
             discardedCount++;
+            processedData.push({ proxy, isGarbage: true, rawName, blockReason });
             return;
         }
 
-        // ================================================================
-        // 继续正常处理
         // ================================================================
         let name = sanitizeNodeName(rawName);
         const { attrs, cleanName } = extractNodeAttributes(name);
         name = cleanName;
 
-        // 特征提取
         let tags = new Set();
+        let specificFeatures = []; 
+
         FEATURE_RULES.forEach(rule => {
-            if (rule.reg.test(name)) {
+            // 使用全局匹配 /ig，确保特征都能被搜到
+            const allMatches = name.match(new RegExp(rule.source, "ig"));
+            if (allMatches) {
                 tags.add(rule.tag);
-                name = name.replace(rule._cleanReg, "");
+
+                if (rule.tag === "streaming") {
+                    // 流媒体：先收集具体服务缩写，避免"NF/D+/YT/流媒体"这种冗余
+                    let seen = new Set();
+                    const specifics = [];
+                    let hasGeneric = false;
+                    allMatches.forEach(m => {
+                        const abbr = STREAMING_ABBR[m.toLowerCase()];
+                        if (abbr) {
+                            if (!seen.has(abbr)) { seen.add(abbr); specifics.push(abbr); }
+                        } else {
+                            hasGeneric = true;
+                        }
+                    });
+                    if (specifics.length > 0) {
+                        specificFeatures.push(...specifics);
+                    } else if (hasGeneric) {
+                        const fb = FEATURE_TEXT_MAP["streaming"];
+                        if (!specificFeatures.includes(fb)) specificFeatures.push(fb);
+                    }
+                } else {
+                    // 非流媒体标签：沿用缩写映射
+                    allMatches.forEach(m => {
+                        let word = m.toUpperCase();
+                        if (/CHATGPT|OPENAI|GPT/i.test(word)) word = "GPT";
+                        else if (/家宽|住宅|RESIDENTIAL/i.test(word)) word = "家宽";
+                        else if (rule.tag === "game") word = "游戏";
+                        else if (rule.tag === "download") word = "下载";
+                        else if (rule.tag === "free") word = "免费";
+                        else if (rule.tag === "ai") word = "AI";
+                        else word = FEATURE_TEXT_MAP[rule.tag] || word;
+
+                        if (!specificFeatures.includes(word)) specificFeatures.push(word);
+                    });
+                }
+
+                if (CONFIG.enableStandardRename) {
+                    name = name.replace(new RegExp(rule.source, "ig"), "");
+                }
             }
         });
 
-        // 4. 地区匹配
         const regionInfo = matchNodeRegion(name);
         let destCityStr = "";
         if (CONFIG.keepDestinationCity && regionInfo && regionInfo.city && !regionInfo.isUnknown) {
@@ -410,41 +468,72 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         }
 
         if (regionInfo) {
-            if (regionInfo.isUnknown) {
-                name = name.replace(REGEX_ALL_FLAGS, "").replace(regionInfo.name, "");
-            } else {
-                name = name.replace(REGEX_ALL_FLAGS, "").replace(regionInfo._cleanReg, "");
+            if (CONFIG.enableStandardRename) {
+                if (regionInfo.isUnknown) {
+                    name = name.replace(REGEX_ALL_FLAGS, "").replace(regionInfo.name, "");
+                } else {
+                    name = name.replace(REGEX_ALL_FLAGS, "").replace(regionInfo._cleanReg, "");
+                }
             }
         }
         
-        name = name.replace(/[\[\]{}()<>（）【】]/g, "").replace(/[-_\|\s]+/g, " ").trim() || "未知";
+        name = name.replace(/[\[\]{}()<>（）【】]/g, "").replace(/[-_\|\s]+/g, " ").trim() || "其他";
 
         const pType = (proxy.type || "").toLowerCase();
         const suffixArr = [attrs.entryStr, destCityStr, attrs.cleanLines, attrs.multiStr].filter(Boolean);
         const airportTag = getAirportTag(rawName);
         const groupKey = (airportTag ? airportTag + "__" : "") + (regionInfo ? regionInfo.name : name);
 
-        processedData.push({
-            proxy,
-            rawName,
-            regionInfo,
-            suffixArr,
-            pType,
-            groupKey,
-            airportTag,
-            tags: Array.from(tags),
-            isInfo: false
+        processedData.push({ 
+            proxy, rawName, cleanName: name, regionInfo, suffixArr, pType, 
+            groupKey, airportTag, tags: Array.from(tags), specificFeatures, attrs, // 传入特定词汇数组
+            isInfo: false, isGarbage: false 
         });
     });
 
-    // --- 计数与排序（保证序号连贯） ---
+    // =========================================================================
+    // 🧹 数据排序
+    // =========================================================================
+    const REGION_ORDER = {};
+    REGION_DEFS.forEach((r, index) => { REGION_ORDER[r.name] = index; });
+
+    processedData.sort((a, b) => {
+        if (a.isInfo !== b.isInfo) return a.isInfo ? -1 : 1;
+        if (a.isGarbage !== b.isGarbage) return a.isGarbage ? 1 : -1;
+        
+        const isUnknownA = !a.regionInfo || a.regionInfo.isUnknown;
+        const isUnknownB = !b.regionInfo || b.regionInfo.isUnknown;
+        if (isUnknownA !== isUnknownB) return isUnknownA ? 1 : -1;
+
+        const orderA = REGION_ORDER[a.regionInfo?.name] ?? 999;
+        const orderB = REGION_ORDER[b.regionInfo?.name] ?? 999;
+        if (orderA !== orderB) return orderA - orderB;
+
+        const weightA = a.attrs?.bestLineWeight ?? 99;
+        const weightB = b.attrs?.bestLineWeight ?? 99;
+        if (weightA !== weightB) return weightA - weightB;
+
+        const entryA = a.attrs?.entryStr || "ZZZ", entryB = b.attrs?.entryStr || "ZZZ";
+        if (entryA !== entryB) return entryA.localeCompare(entryB, 'zh-CN');
+
+        const lineA = a.attrs?.cleanLines || "ZZZ", lineB = b.attrs?.cleanLines || "ZZZ";
+        if (lineA !== lineB) return lineA.localeCompare(lineB, 'zh-CN');
+
+        const multiA = a.attrs?.multiNum ?? 1, multiB = b.attrs?.multiNum ?? 1;
+        if (multiA !== multiB) return multiA - multiB; 
+
+        return (a.rawName || '').localeCompare(b.rawName || '', 'zh-CN');
+    });
+
     const counts = {};
     const groupTrack = {};
     processedData.forEach(d => {
-        if (!d.isInfo) counts[d.groupKey] = (counts[d.groupKey] || 0) + 1;
+        if (!d.isInfo && !d.isGarbage) counts[d.groupKey] = (counts[d.groupKey] || 0) + 1;
     });
 
-    // --- 第二阶遍历：组装重命名，并填充桶 ---
+    // =========================================================================
+    // 🚀 第二阶遍历: 执行重命名与组装
+    // =========================================================================
     const finalProxies = [];
     const nodeMeta = [];
 
@@ -457,112 +546,108 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             return;
         }
 
-        const { proxy, regionInfo, groupKey, rawName, suffixArr, pType, airportTag, tags } = item;
-        groupTrack[groupKey] = (groupTrack[groupKey] || 0) + 1;
-        
-        const numStr = counts[groupKey] > 1 ? ` [${groupTrack[groupKey].toString().padStart(2, "0")}]` : "";
-        const airportTagStr = airportTag ? `[${airportTag}] ` : "";
-        const myPrefix = CONFIG.customPrefix || "";
-        
-        let finalName;
-        let isGarbage = false;
-
-        if (regionInfo) {
-            // 正常地区节点
-            finalName = `${myPrefix}${airportTagStr}${regionInfo.icon} ${regionInfo.name}${numStr}`;
-            
-            let combinedIcons = "";
-            if (CONFIG.showProtocolIcon && UI_ICONS.protocols[pType]) combinedIcons += UI_ICONS.protocols[pType];
-            if (CONFIG.showFeatureIcon && tags && tags.length > 0) {
-                tags.forEach(tag => { if (UI_ICONS.features[tag]) combinedIcons += UI_ICONS.features[tag]; });
-            }
-            if (combinedIcons) finalName += ` ${combinedIcons}`;
-            if (suffixArr.length) finalName += ` | ${suffixArr.join(" ")}`;
-        } else {
-            // 未知节点
-            if (CONFIG.strictRegionMatch) {
-                // 丢弃
-                discardedCount++;
-                return;
-            }
-            // 保留，标记为未知
-            const coreName = name || rawName;
-            finalName = `${myPrefix}${airportTagStr}❓ 未知 | ${coreName}${numStr}`;
-            isGarbage = true;
+        if (item.isGarbage) {
+            const garbageName = `🗑️ [拦截: ${item.blockReason}] ${item.rawName}`;
+            item.proxy.name = garbageName;
+            BUCKETS.garbage.push(garbageName);
+            if (CONFIG.outputGarbage) finalProxies.push(item.proxy);
+            nodeMeta.push({ proxy: item.proxy, regionInfo: null, tags: [], groupKey: "garbage", isInfo: false, isGarbage: true });
+            return;
         }
 
-        proxy.name = finalName;
-        finalProxies.push(proxy);
+        const { proxy, regionInfo, groupKey, rawName, suffixArr, pType, airportTag, tags, specificFeatures } = item;
+        groupTrack[groupKey] = (groupTrack[groupKey] || 0) + 1;
+        
+        let finalName;
+        let isUnknown = !regionInfo || (regionInfo && regionInfo.isUnknown);
+        const myPrefix = CONFIG.customPrefix || "";
+        const numStr = counts[groupKey] > 1 ? `[${groupTrack[groupKey].toString().padStart(2, "0")}]` : "";
 
-        // 填充桶
-        if (isGarbage) {
-            BUCKETS.garbage.push(finalName);
-        } else if (regionInfo && regionInfo.isUnknown) {
-            BUCKETS.unknown.push(finalName);
-        } else if (regionInfo) {
+        if (!isUnknown) {
+            if (CONFIG.enableStandardRename) {
+                let combinedIcons = "";
+                if (CONFIG.showProtocolIcon && UI_ICONS.protocols[pType]) combinedIcons += UI_ICONS.protocols[pType];
+                
+                if (tags.length > 0) {
+                    if (CONFIG.showFeatureIcon) {
+                        // 用细粒度 specificFeatures 查 emoji，兜底回退到标签级
+                        const items = specificFeatures.length > 0 ? specificFeatures : Array.from(tags);
+                        items.forEach(f => {
+                            const key = f.toLowerCase();
+                            if (UI_ICONS.features[key]) combinedIcons += UI_ICONS.features[key];
+                            else if (UI_ICONS.features[f]) combinedIcons += UI_ICONS.features[f];
+                        });
+                    } else {
+                        if (specificFeatures.length > 0) {
+                            const fb = CONFIG.featureBracket || "  ";
+                            combinedIcons += `${fb[0] || ""}${specificFeatures.join("/")}${fb[1] || ""}`;
+                        }
+                    }
+                }
+
+                finalName = CONFIG.renameTemplate
+                    .replace(/\{prefix\}/g, myPrefix)
+                    .replace(/\{airport\}/g, airportTag ? `[${airportTag}]` : "")
+                    .replace(/\{icon\}/g, CONFIG.showRegionIcon ? regionInfo.icon : "")
+                    .replace(/\{region\}/g, regionInfo.name)
+                    .replace(/\{index\}/g, numStr ? ` ${numStr}` : "") // 空格处理，防止孤立
+                    .replace(/\{features\}/g, combinedIcons)
+                    .replace(/\{suffix\}/g, suffixArr.length ? `| ${suffixArr.join(" ")}` : "")
+                    .replace(/\s{2,}/g, " ") // 清理多余空格
+                    .trim();
+
+                // 移除可能的开头多余符号
+                if (finalName.startsWith("| ")) finalName = finalName.substring(2);
+            } else {
+                // 📝 模式B：不开启标准重命名 (保留原名词汇)
+                finalName = `${myPrefix}${item.cleanName}`;
+            }
+            
+            // 归入各地区与特征桶
             const regionKey = regionInfo.name;
             if (!BUCKETS[regionKey]) BUCKETS[regionKey] = [];
             BUCKETS[regionKey].push(finalName);
             BUCKETS.allStandard.push(finalName);
-            // 特征池
             tags.forEach(tag => {
                 if (!BUCKETS[tag]) BUCKETS[tag] = [];
                 BUCKETS[tag].push(finalName);
             });
-            // 特殊: 下载隔离
-            if (tags.includes("download")) {
-                BUCKETS.download.push(finalName);
-            }
+            proxy.name = finalName;
+            finalProxies.push(proxy);
+
         } else {
-            // 实际上不会到这里，因为上面已处理
+            // ❓ 未知节点处理
+            const coreName = item.cleanName || rawName;
+            finalName = `${myPrefix}${airportTag ? `[${airportTag}] ` : ""}❓ 未知 | ${coreName} ${numStr}`.replace(/\s{2,}/g, " ").trim();
+            proxy.name = finalName;
+            BUCKETS.unknown.push(finalName);
+            if (CONFIG.outputUnknown) finalProxies.push(proxy);
         }
 
-        // 记录元数据
-        nodeMeta.push({
-            proxy,
-            regionInfo,
-            tags,
-            groupKey,
-            isInfo: false,
-            isGarbage
-        });
+        nodeMeta.push({ proxy, regionInfo, tags, groupKey, isInfo: false, isGarbage: false });
     });
 
-    // 统计信息
     const stats = {
         total: proxies.length,
+        outputCount: finalProxies.length,
         dedupeCount,
         infoCount,
-        discardedCount,
+        discardedCount, 
         garbageCount: BUCKETS.garbage.length,
         unknownCount: BUCKETS.unknown.length,
         regionCounts: {},
         featureCounts: {}
     };
-    // 统计各桶大小
+    
     Object.keys(BUCKETS).forEach(key => {
-        if (key === "garbage" || key === "download" || key === "info" || key === "allStandard" || key === "unknown") return;
+        if (["garbage", "download", "info", "allStandard", "unknown"].includes(key)) return;
         if (BUCKETS[key].length > 0) stats.regionCounts[key] = BUCKETS[key].length;
     });
     FEATURE_RULES.forEach(r => {
         if (BUCKETS[r.tag] && BUCKETS[r.tag].length > 0) stats.featureCounts[r.tag] = BUCKETS[r.tag].length;
     });
 
-    // =========================================================================
-    // 🚀 返回数据 (根据输出模式开关智能返回)
-    // =========================================================================
-    if (CONFIG.outputMode === "object") {
-        // 高级模式：返回带策略元数据的对象
-        return {
-            proxies: finalProxies,
-            meta: {
-                buckets: BUCKETS,
-                stats: stats,
-                nodeMeta: nodeMeta
-            }
-        };
-    } else {
-        // 通用模式（默认）：直接返回节点数组，兼容一切 Sub-Store 常规流程
-        return finalProxies;
-    }
+    return CONFIG.outputMode === "object" 
+        ? { proxies: finalProxies, meta: { buckets: BUCKETS, stats: stats, nodeMeta: nodeMeta } }
+        : finalProxies;
 }

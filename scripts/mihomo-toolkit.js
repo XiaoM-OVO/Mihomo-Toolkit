@@ -1,11 +1,11 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 版本: v3.0.0 (Build 2026.06.27)
-// 作者: XiaoM-OVO
-// 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
-// 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
-// 仓库: https://github.com/XiaoM-OVO/Mihomo-Toolkit
+// 🏷️ 版本: v3.0.1 (Build 2026.06.30)
+// 👤 作者: XiaoM-OVO
+// 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
+// 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
+// 🌐 仓库: https://github.com/XiaoM-OVO/Mihomo-Toolkit
 // =========================================================================
 // 💡 【节点清洗图标说明】
 // 🤖 : OpenAI / ChatGPT      ♊ : Google Gemini       🦀 : Anthropic Claude
@@ -15,7 +15,7 @@
 // ------------------------------------------------------------------------
 // 💡 【底层协议图标说明】
 // 🛩️ : SS/SSR    🦊 : VMess     🛸 : VLESS      🐎 : Trojan
-// ⚡ : HY/HY2    💨 : TUIC      🕸️ : WireGuard  📡 : Snell
+// ⚡ : HY/HY2     💨 : TUIC      🕸️ : WireGuard  📡 : Snell
 // =========================================================================
 function main(config) {
 
@@ -189,14 +189,14 @@ function main(config) {
   // =========================================================================
   // --- 0. 调试日志辅助模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.0.0";
+  const SCRIPT_VERSION = "v3.0.1";
   const bootTime = new Date().toTimeString().split(' ')[0];
   
   if (USER_CONFIG.enableDebugLog) {
-    console.log(`📦 Mihomo-Toolkit [MT] ${SCRIPT_VERSION} 已加载`);
+    console.log(`📦 Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
     console.log(`去重[${USER_CONFIG.enableDedupe?'开':'关'}] | 纯净[${USER_CONFIG.removeInfoNodes?'开':'关'}] | 地区[${USER_CONFIG.strictRegionMatch?'严':'松'}] | 下载[≤${USER_CONFIG.lowMultiThreshold}]`);
   } else {
-    console.log(`📦 Mihomo-Toolkit [MT] ${SCRIPT_VERSION} 已加载`);
+    console.log(`📦 Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
   }
 
   const debugLog = (...args) => {
@@ -465,9 +465,17 @@ function main(config) {
     const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
     r._cleanReg = new RegExp(combinedSource, "ig"); // 用于最后擦除名字
     r._matchReg = new RegExp(combinedSource, "i");  // 用于判定节点归属
-    r._cityReg  = r.city ? new RegExp(r.city, "i") : null; 
+    r._cityReg  = r.city ? new RegExp(r.city, "i") : null;
   });
-  FEATURE_RULES.forEach(r => r._cleanReg = new RegExp(r.reg.source, "ig")); 
+  FEATURE_RULES.forEach(r => r._cleanReg = new RegExp(r.reg.source, "ig"));
+
+  // 🏷️ 预编译机场标签正则
+  const customAirportTags = USER_CONFIG.airportTag
+    ? USER_CONFIG.airportTag.split(",").map(k => k.trim()).filter(Boolean)
+    : [];
+  const customAirportRegExps = customAirportTags.map(kw =>
+    new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+  );
 
   // 辅助纯函数 1: 基础字符清洗
   function sanitizeNodeName(rawName) {
@@ -595,10 +603,9 @@ function main(config) {
   // 🏷️ 标签提取：手动关键词匹配 or 自动 [xxx] 检测
   function getAirportTag(rawName) {
       if (!USER_CONFIG.enableAirportTag) return "";
-      if (USER_CONFIG.airportTag) {
-          // 手动模式：用户指定关键词，不限位置、不限长度，完全信任
-          for (const kw of USER_CONFIG.airportTag.split(",").map(k => k.trim()).filter(Boolean)) {
-              const m = rawName.match(new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+      if (customAirportRegExps.length > 0) {
+          for (let i = 0; i < customAirportRegExps.length; i++) {
+              const m = rawName.match(customAirportRegExps[i]);
               if (m) return m[0];
           }
           return "";
@@ -626,8 +633,8 @@ function main(config) {
     // 🏷️ 广告判定前剥离标签文字
     let tempNameForAd = tempName;
     if (USER_CONFIG.enableAirportTag) {
-        tempNameForAd = USER_CONFIG.airportTag
-            ? USER_CONFIG.airportTag.split(",").reduce((s, k) => s.replace(new RegExp((k = k.trim()).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ""), tempName)
+        tempNameForAd = customAirportRegExps.length > 0
+            ? customAirportRegExps.reduce((s, re) => s.replace(re, ""), tempName)
             : tempName.replace(/\[([^\]]{1,4})\]/g, "");
     }
 
@@ -1210,9 +1217,11 @@ function main(config) {
   (config.proxies || []).forEach(p => validBasics.add(p.name));
   
   let changed = true;
+  let maxIterations = 20;
   const removedGroups = new Set();
 
-  while (changed) {
+  while (changed && maxIterations > 0) {
+    maxIterations--;
     changed = false;
     const aliveGroups = new Set(config["proxy-groups"].map(g => g.name));
 
@@ -1237,6 +1246,9 @@ function main(config) {
       if (isEmpty && isExempt) group.proxies = ["DIRECT"];
       return true;
     });
+  }
+  if (maxIterations === 0 && USER_CONFIG.enableDebugLog) {
+    console.log("⚠️ [警告] 策略组嵌套层数过深或存在循环引用，清理已提前终止！");
   }
 
   // 同步清理殉葬的分流规则与孤儿 Rule Providers
@@ -1378,7 +1390,7 @@ function main(config) {
       enable: true, listen: "0.0.0.0:1053", ipv6: USER_CONFIG.enableIPv6, 
       "enhanced-mode": "fake-ip", "fake-ip-range": "198.18.0.1/16", "fake-ip-filter-mode": "blacklist", 
       "respect-rules": true, "use-hosts": true,
-      "fake-ip-filter": ["*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com", "localhost.ptlogin2.qq.com", "*.msftncsi.com", "www.msftconnecttest.com", "ipv6.msftncsi.com", "*.ipv6-literal.net", "google.cn", "*.music.163.com", "*.music.126.net"],
+      "fake-ip-filter": ["*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com", "localhost.ptlogin2.qq.com", "*.msftncsi.com", "www.msftconnecttest.com", "ipv6.msftncsi.com", "*.ipv6-literal.net", "google.cn", "*.music.163.com", "*.music.126.net", "+.stun.*.*", "+.nintendo.net", "+.playstation.net", "+.xboxlive.com"],
       "default-nameserver": CUSTOM_DNS_DEFAULT,
       "direct-nameserver": directDNS,
       "direct-nameserver-follow-policy": true,
@@ -1397,7 +1409,7 @@ function main(config) {
   if (USER_CONFIG.overwriteSniffer) {
     config["sniffer"] = { 
       enable: true, "force-dns-mapping": true, "parse-pure-ip": true, "override-destination": true, 
-      sniff: { TLS: { ports: [443, 8443] }, HTTP: { ports: [80, "8080-8880"], "override-destination": true } } 
+      sniff: { TLS: { ports: [443, 8443] }, HTTP: { ports: [80, "8080-8880"], "override-destination": true }, QUIC: { ports: [443, 4433] } }
     };
   }
 
@@ -1421,7 +1433,7 @@ function main(config) {
     (config.proxies || []).forEach(p => {
       const isTargetType = ["vless", "vmess", "trojan"].includes(p.type);
       const isTlsEnabled = p.tls === true || (["ws", "grpc"].includes(p.network) && p.tls !== false);
-      if (isTargetType && isTlsEnabled) p["client-fingerprint"] = "chrome";
+      if (isTargetType && isTlsEnabled && !p["client-fingerprint"]) p["client-fingerprint"] = "chrome";
       if (p.type !== "http") p.udp = true; 
     });
   }
@@ -1430,8 +1442,10 @@ function main(config) {
   // --- 13. 📋 调试摘要：输出最终建组统计 ---
   // =========================================================================
   if (USER_CONFIG.enableDebugLog) {
+
     // 动态计算真实的有效节点数量
     const validCount = processedData.length - (USER_CONFIG.removeInfoNodes ? 0 : infoCount);
+
     // 动态组装需要打印的数组
     const stats = [
       `📊 [统计] 策略组:${config["proxy-groups"].length}`,
@@ -1445,6 +1459,7 @@ function main(config) {
     
     debugLog(stats.join(" | "));
   }
+  
   // EOF: May your routing be fast and your connection secure. 🚀
   return config;
 }
