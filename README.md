@@ -7,7 +7,8 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)](https://github.com/clash-verge-rev/clash-verge-rev)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/version-3.0.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Main_Script-v3.1.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Pure_Module-v1.0.0-blueviolet)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -28,7 +29,7 @@
 - [✨ 核心特性](#-核心特性)
 - [🚀 快速开始](#-快速开始)
   - [主脚本 (Clash Verge Rev)](#1-下载脚本)
-  - [节点清洗脚本 (Sub-Store)](#-sub-store-节点清洗脚本)
+  - [节点清洗脚本 (跨平台通用版)](#-纯净节点清洗脚本)
 - [⚙️ 配置详解](#️-配置详解)
 - [🧹 图标与分组说明](#-节点清洗与分组结构)
 - [❓ 常见问题](#-常见问题)
@@ -45,6 +46,8 @@
 - 🏷️ **机场标签前缀**：多机场订阅合并时自动/手动标注节点来源，面板来源一目了然。
 - 🗑️ **DAG 级联清理**：自动删减空策略组与孤儿规则，保持内核配置纯净。
 - ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、流量审计、TUN/DNS/Sniffer 等深度优化。
+- 🔍 **智能 IP 溯源**：纯净版支持接入 ip-api 批量高并发解析，精准纠正 CDN 或虚假定位节点。
+- 🔍 **智能 IP 溯源**：清洗脚本支持接入 ip-api 批量高并发解析，精准纠正 CDN 或虚假定位节点。
 
 ---
 
@@ -64,9 +67,9 @@
 
 ---
 
-## 🧩 Sub-Store 节点清洗脚本
+## 🧩 纯净节点清洗脚本
 
-专为 [Sub-Store](https://github.com/sub-store-org/Sub-Store) 平台设计的独立节点清洗脚本 (`sub-store/pure-nodes.js`)，将主脚本的节点处理核心逻辑解耦为 operator 格式，适用于**仅需节点过滤/去重/重命名，不需要完整策略组与分流体系**的场景。
+独立节点清洗脚本 (`scripts/pure-nodes.js`)，将主脚本的节点处理核心逻辑解耦为 operator 格式。适用于 Sub-Store、Surge、Loon 等多环境，专为**仅需节点过滤/去重/重命名/IP溯源，不需要完整策略组体系**的场景设计。
 
 ### 功能对比
 
@@ -76,14 +79,15 @@
 | 倍率 / 线路 / 落地城市提取 | ✅ | ✅ |
 | 协议图标 / 特征图标 | ✅ | ✅ |
 | 机场标签前缀 | ✅ | ✅ |
+| IP-API 补充定位检测 | ❌ | ✅ |
 | 策略组 / 分流规则生成 | ✅ | ❌ |
 | DNS / TUN / Sniffer 覆写 | ✅ | ❌ |
 | 输出格式 | Mihomo 配置 | `array` 或 `object`(含 meta) |
 
 ### 快速使用
 
-1. 在 Sub-Store 中进入「订阅管理」→ 选择目标订阅 →「编辑」→「节点操作」
-2. 将 `sub-store/pure-nodes.js` 内容粘贴到脚本编辑区
+1. 以 Sub-Store 为例，进入「订阅管理」→ 选择目标订阅 →「编辑」→「节点操作」
+2. 将 `scripts/pure-nodes.js` 内容粘贴到脚本编辑区
 3. 可选：修改脚本顶部 `CONFIG` 对象配置（或通过 Sub-Store 外部传入 `userConfig`）
 4. 保存并刷新订阅
 
@@ -127,10 +131,9 @@
 |------|--------|------|
 | `enableDedupe` | `false` | 去重底层完全重复的注水节点 |
 | `removeInfoNodes` | `false` | 过滤流量/到期等信息节点 |
-| `keepDestinationCity` | `true` | 节点名后缀展示落地城市 |
-| `showProtocolIcon` | `false` | 在节点名前展示底层协议图标(🦊 VMess等) |
+| `renameTemplate` | `"{airport}..."`| 节点重命名模板，支持 `{city}`, `{protocol}`, `{transport}` 等变量 |
 | `strictRegionMatch` | `false` | 严格地区匹配(关闭则允许 Emoji 动态捕获冷门国家) |
-| `adTextThreshold` | `6` | 纯文本广告拦截阈值(超过此长度的纯文字视作广告) |
+| `adTextThreshold` | `6` | 纯文本广告判定阈值(超过此长度的纯文字视作广告) |
 | `lowMultiThreshold` | `0.99` | 倍率 ≤ 此值自动打上下载标签（0 关闭） |
 | `isolateDownload` | `false` | 低倍率节点是否从普通池剔除 |
 
@@ -172,10 +175,85 @@
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `minorNodeThreshold` | `3` | 小众地区独立建组阈值（低于此值折叠） |
+| `highMultiThreshold` | `2.5` | 高倍率软隔离判定阈值（超过此倍率排序下沉） |
 | `regionGroupType` | `"url-test"` | 地区组行为：`url-test`/`select`/`fallback` |
 | `enableRegionHashLB` | `false` | 为达标地区增加哈希负载均衡组 |
 | `hideGarbageGroup` | `false` | 隐藏「未知识别」组 |
 | `groupIconMode` | `"emoji"` | `"emoji"`/`"icon"`/`"both"` |
+
+</details>
+
+<details>
+<summary><b>⏱️ 网络测速与规则集配置</b></summary>
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `testInterval` | `300` | 测速间隔（秒） |
+| `testTolerance` | `50` | 切换阈值（延迟差低于此值不频繁切换 IP） |
+| `useMRS` | `true` | 极速规则模式：`true` (MRS格式), `false` (YAML格式) |
+| `testURL` | `"https://..."` | 延迟测速地址 |
+| `ruleProviderCDN` | `"https://..."` | 规则集 CDN 节点（支持 fastly/testingcf/gcore 等） |
+
+</details>
+
+<details>
+<summary><b>📡 DNS 服务器配置</b></summary>
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `dnsDefault` | `[...]` | 基础解析 DNS |
+| `dnsDirect` | `[...]` | 直连 DNS (DoH) |
+| `dnsProxy` | `[...]` | 代理 DNS (DoH) |
+
+</details>
+
+<details>
+<summary><b>🏷️ 节点重命名模板变量大全 (renameTemplate)</b></summary>
+
+您可以自由组合以下变量，定制专属于您的节点名称格式（纯净版与主脚本均适用）：
+
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| `{airport}` | 机场标签前缀（若开启了 `enableAirportTag`） | `[Bitz]` |
+| `{icon}` | 国家/地区对应的国旗 Emoji | `🇺🇸` |
+| `{region}` | 提取出的国家/地区中文简称 | `美国` |
+| `{index}` | 节点标号（当有多个同地区同特征节点时自动编号） | ` 01`, ` 02` |
+| `{features}` | 从节点名中提取的修饰词/特性说明 | `家宽`, `BGP` |
+| `{protocol}` | 底层协议特征 Emoji（如 VMess 为 🦊，Trojan 为 🐴） | `🦊` |
+| `{in}` | 入口地区 / 接入点（适用于 IPLC/IEPL 中转线） | `深`, `沪` |
+| `{city}` | 落地城市名 / 目标节点名称 | `洛杉矶` |
+| `{multi}` | 节点倍率数值（剥离了原有的文字修饰） | `x1.5`, `x2.0` |
+| `{line}` | 兼容后置标签集合（包含所有您未单独提取的入口、特征、倍率等） | `家宽 x2` |
+| `{transport}` | 传输层网络协议大写标签 | `WS`, `GRPC` |
+| `{isp}` | 解析到的 ISP 运营商名称（带方括号） | `[Akamai]` |
+| `{asn}` | 解析到的自治系统编号（带方括号） | `[AS16509]` |
+| `{org}` | 解析到的组织机构（带方括号） | `[Oracle]` |
+
+> 💡 **小贴士**：如果您的模板中没有显式使用 `{in}` 或 `{multi}`，它们的值会被自动安全地合并回 `{line}` 中，保证您的节点信息不会丢失。想要彻底隐藏它们，只需从模板中删去 `{line}` 即可。
+
+</details>
+
+<details>
+<summary><b>⏱️ 网络测速与规则集配置</b></summary>
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `testInterval` | `300` | 测速间隔（秒） |
+| `testTolerance` | `50` | 切换阈值（延迟差低于此值不频繁切换 IP） |
+| `useMRS` | `true` | 极速规则模式：`true` (MRS格式), `false` (YAML格式) |
+| `testURL` | `"https://..."` | 延迟测速地址 |
+| `ruleProviderCDN` | `"https://..."` | 规则集 CDN 节点（支持 fastly/testingcf/gcore 等） |
+
+</details>
+
+<details>
+<summary><b>📡 DNS 服务器配置</b></summary>
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `dnsDefault` | `[...]` | 基础解析 DNS |
+| `dnsDirect` | `[...]` | 直连 DNS (DoH) |
+| `dnsProxy` | `[...]` | 代理 DNS (DoH) |
 
 </details>
 

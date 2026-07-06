@@ -1,5 +1,48 @@
 # 更新日志
 
+## 2026-07-06 (主脚本 v3.1.0 | 清洗模块 v1.0.0)
+
+### ⚙️ 通用动态策略组全量版 (`mihomo-toolkit.js v3.1.0`)
+
+- **✨ 新增：灵活节点命名模板系统**
+  - 引入 `renameTemplate` 配置项，支持使用 `{airport}`、`{icon}`、`{region}`、`{index}`、`{features}`、`{protocol}`、`{city}`、`{in}`、`{line}`、`{multi}`、`{transport}`、`{isp}`、`{asn}`、`{org}` 等变量自由组合节点名称，彻底告别固定格式。
+  - 新增传输层（`{transport}`）标签，自动识别并显示非 TCP 协议（WS、H2、GRPC、QUIC、HTTP），便于排查连接方式。
+  - 新增 ISP/ASN/组织（`{isp}`、`{asn}`、`{org}`）信息提取，可从节点名中捕获运营商及自治系统编号。
+  - 移除旧的 `keepDestinationCity` 和 `showProtocolIcon` 开关，统一由模板控制，配置更简洁。
+
+- **🚀 优化：节点清洗与渲染逻辑**
+  - 在 `extractNodeAttributes` 中增强 ISP/ASN 提取，避免被误当成无用后缀丢弃。
+  - 模板渲染后自动清理多余分隔符（如 `|`、`·`、`/`）和连续空格，确保最终节点名整洁。
+
+- **📝 修复**
+  - 修复了模板变量替换后可能残留的空白或重复分隔符问题。
+  - 修正了部分边缘情况下 `{transport}` 未正确填充的 bug。
+
+### 🧩 节点清洗通用版 (`pure-nodes.js v1.0.0`)
+
+- **✨ 新增：IP 地理信息补充检测 (IP Enrich)**
+  - 新增 `enableIpEnrich` 开关，支持通过 `ip-api.com` 批量查询节点服务器 IP 的真实地理位置、运营商、ASN 及组织信息。
+  - 新增安全熔断机制 (`ipEnrichThreshold`)，当节点总数超过阈值时自动跳过 IP 检测，防止脚本超时。
+  - 支持 `missing` / `all` 两种检测模式：`missing` 仅补充缺失地区的节点，`all` 强制覆盖所有节点。
+  - 内置智能 DNS 解析链路（系统 DNS → 阿里 DoH → Google DoH 兜底），确保域名类型服务器能被正确解析为 IP。
+  - 新增 CDN/Anycast 识别与防覆盖逻辑：当检测到节点落地 IP 属于 Cloudflare、Akamai 等知名 CDN 供应商时，自动跳过 IP 定位，避免因 CDN 边缘节点导致的地区误判。
+
+- **✨ 新增：命名模板变量扩展**
+  - `renameTemplate` 新增 `{isp}`、`{asn}`、`{org}` 三个变量，支持在节点名中展示运营商名称、自治系统编号及所属组织。
+  - 新增 `extractNodeAttributes` 中的 ISP/ASN 自动提取能力，从节点原始名称中捕获已知供应商（如 Akamai、Cloudflare、AWS 等）。
+
+- **🚀 优化：跨平台兼容性与数据安全**
+  - 引入 `normalizeProxyFields` 函数，在非 Clash 平台（如 Surge / Loon）上自动将节点字段别名标准化为统一字段，消除平台差异导致的字段丢失问题。
+  - 新增 `deepCloneSimple` 兜底克隆函数，确保在 `structuredClone` 和 `JSON.parse/stringify` 均不可用时仍能安全复制节点对象。
+  - 去重键值生成逻辑中加入 `sni`、`host`、`path` 等深层参数，配合 `authKey`（UUID/密码）实现更精准的物理去重。
+
+- **📝 修复与完善**
+  - 修复了 beta 版中 `showFeatureIcon` 关闭时特征文本未正确显示的问题，现在可准确展示“NF/D+/YT”等流媒体缩写。
+  - 修复了 `keepDestinationCity` 配置未完全生效的 bug，城市信息现在可正确保留或清除。
+  - 优化了 `REGEX_ENTRY_CITY` 正则，提升入口城市提取的准确率。
+  - 完善了统计信息 (`stats`) 输出，新增 `discardedCount` 字段，清晰记录被拦截的垃圾节点数量。
+  - 增强了 `blockKeywords` / `blockServers` 黑名单功能，支持用户自定义关键词和服务器 IP 拦截。
+
 ## v3.0.1 (2026-06-30)
 
 ### ⚙️ 主脚本优化 (`mihomo-toolkit.js`)
