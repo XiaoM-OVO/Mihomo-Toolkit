@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.1.0 (Build 2026.07.06)
+// 🏷️ 版本: v3.2.0 (Build 2026.07.12)
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -20,7 +20,9 @@
 // 💡 【传输层标签说明】(由 renameTemplate 中的 {transport} 控制)
 // TCP 默认隐藏 | WS / H2 / GRPC / QUIC / HTTP 展示在节点名末尾 · 之后
 // ------------------------------------------------------------------------
-// 💡 【自定义模板变量说明】
+// 💡 【节点重命名与模板变量说明】
+// 你可以直接使用下方用 {} 包裹的字符串模板，或者传递一个 JS 函数: `(vars, proxy) => "新名字"`
+// 如果使用函数，可以通过 vars.xxx 获取以下所有变量，通过 proxy 获取原始的节点数据对象。
 // {airport}: 节点标签 (如果在第一项开启了 enableAirportTag)
 // {icon}:    国家/地区的国旗 Emoji (如 🇭🇰, 🇺🇸)
 // {region}:  国家/地区的中文字符串 (如 香港, 美国)
@@ -32,9 +34,7 @@
 // {line}:    线路特征 (如: "BGP/家宽")
 // {multi}:   倍率数值 (如: "x2.0")
 // {transport}:非TCP传输层标签 (如 WS, H2, GRPC)
-// {isp}:     运营商名称 (如: "Akamai", "Cloudflare")
-// {asn}:     自治系统编号 (如: "AS16509")
-// {org}:     组织/数据中心 (如: "Amazon.com", "Oracle")
+// {ip_stack}:网络栈 (如: "IPv6", "双栈")
 // =========================================================================
 const USER_CONFIG = {
   
@@ -48,14 +48,19 @@ const USER_CONFIG = {
   proxyFirst: true,            // 🧭 路由偏好：true(海外代理优先)，false(国内直连优先)
   defaultProxyMode: "auto",    // 🔀 默认代理策略: auto(自动) / manual(手动) / fallback(故障转移)  [⚠️特殊: direct / reject]
   enableIPv6: false,           // 🌐 全局 IPv6：控制 TUN、DNS 及路由（本地无物理 IPv6 请务必设为 false！）
-  enableAirportTag: false,     // 🏷️ 标签前缀：订阅合并时自动/手动添加 [标签] 前缀
-  airportTag: "",              // 🏷️ 手动指定前缀（需要节点名字自带标签，逗号分隔），为空则自动检测节点原名中的 [xxx] 标识
+  enableAirportTag: false,     // 🏷️ 标签提取：订阅合并时自动/手动捕捉标签内容
+  airportTag: "",              // 🏷️ 手动指定标签（需要节点名字自带标签，逗号分隔），为空则自动正则检测
+  airportTagReg: /^\[([^\]]{1,8})\]/i, // 🧩 自定义标签提取正则 (默认提取首部方括号内容)
 
   // 【2. 节点清洗与处理】
-  enableDedupe: false,         // 🧽 节点去重：开启后自动剔除机场底层完全重复的“注水”节点
+  enableDedupe: false,         // 🧽 节点去重：开启后自动剔除底层完全重复的“注水”节点
   removeInfoNodes: false,      // 🗑️ 纯净节点: 隐藏流量/到期时间等信息节点
 
-  renameTemplate: "{airport} {icon} {region} {index} {features} | {in} {city} {line} {multi} · {transport}", // 🔤 节点重命名模板
+  renameTemplate: "[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}", // 🔤 节点重命名模板
+  renameSeparators: ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"], // 🧹 允许作为分隔符被自动清理的悬空符号列表
+  whitelistKeywords: [],       // ⚪ 白名单关键词: 包含即放行并保留原名，不参与清洗，例: ["跳过清洗", "直连节点"]
+  specialNodeRules: [],        // 💡 自定义重命名: 示例: { reg: /url.test|测速/i, targetName: "🚀 节点测速" })
+  enableNodeRename: true,      // 🔄 二次重命名：设为 false 则直接继承原节点名（如果上游已经清洗过名字，建议关闭此项防乱码）
   strictRegionMatch: false,    // 🌏 未知地区匹配：true(严格模式，仅匹配预设字典，其余全扔垃圾桶)，false(宽松模式，允许通过国旗Emoji动态捕获冷门国家放入"其他"组)
   adTextThreshold: 6,          // 🔠 纯文本广告判定阈值：无数字/线路特征且长度大于此值的节点视为广告
   lowMultiThreshold: 0.99,     // ⏬ 下载分流阈值：倍率 <= 此值的节点自动归入下载策略 (设为 0 关闭)
@@ -97,23 +102,26 @@ const USER_CONFIG = {
   testURL: "https://cp.cloudflare.com/generate_204", // 🔗 延迟测速地址
   ruleProviderCDN: "https://fastly.jsdelivr.net/gh", // 🔗 规则集 CDN 节点 (备用选择: https://testingcf.jsdelivr.net/gh 或 https://gcore.jsdelivr.net/gh)
 
-  // 【6.5 DNS 服务器配置】
+  // 【7 DNS 服务器配置】
   dnsDefault: ["223.5.5.5", "119.29.29.29"],       // 📡 基础解析 DNS
   dnsDirect:  ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"], // 📡 直连 DNS (DoH)
   dnsProxy:   ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],        // 📡 代理 DNS (DoH)
 
-  // 【7. 安全防漏与底层内核覆写】
+  // 【8. 安全防漏与底层内核覆写】
   enableProcessDirect: true,   // 🛑 进程直连防漏：强制指定的软件(如P2P/BT等)走直连，防止流量滥用与误代理(关闭后内置BT规则会指向⏬ 下载策略)
   enableTrafficAudit: true,    // 🛡️ 流量审计：非标流量强制直连防断流
   enableQUICReject: false,     // ⚡ 屏蔽 QUIC 协议: 强制降级至 TCP，避免 UDP 阻断丢包
   overwriteTun: true,          // 🖧 覆写 TUN 配置：注入严格路由与网段排除
   overwriteDns: true,          // 📡 覆写 DNS 配置：强制使用 Fake-IP 与纯净防污染 DNS
   overwriteSniffer: true,      // 🔎 覆写 Sniffer 配置：启用深度包检测防 SNI 阻断
-  enableCoreOptimize: true     // ⚙️ 覆写核心体验: 开启记忆功能、统一延迟、并发与指纹伪装
+  enableCoreOptimize: true     // ⚡ 覆写核心内核优化: 开启提升性能、统一延迟、指纹伪装
 };
 
 
-function main(config) {
+function main(config, extConfig) {
+  if (extConfig && typeof extConfig === 'object') {
+    Object.assign(USER_CONFIG, extConfig);
+  }
   if (!USER_CONFIG.enableScript) return config;
 
   // =========================================================================
@@ -186,7 +194,7 @@ function main(config) {
 
 
   // 🧹 常用正则大礼包 
-  const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过期|更新公告|重置|维护|不可用|扣费|节点说明|防失联|官网|地址|Q群|电报|Tg群|距离下次|测试/i;
+  const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过期|更新公告|重置|维护|不可用|扣费|节点说明|防失联|官网|地址|Q群|电报|Tg群|距离下次/i;
   const REGEX_FORBID_DL_STR = "(?:禁止|禁|严禁|请勿|勿|不要|不能|拒绝|屏蔽|防)(?:BT|PT|P2P|下载|测速|迅雷)|(?:仅限|仅供)(?:网页|日常|聊天)|\\b(?:No|Block|Ban)[\\s\\-_]*(?:BT|PT|Torrent|Download)\\b";
   // 清洗冗余说明文字和推广网址
   const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)`, "ig");
@@ -197,7 +205,7 @@ function main(config) {
   // 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
   const REGEX_MULTI      = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率)(?!\s*\d))/i;
   // 识别线路类型 (如 IEPL, BGP, CN2)
-  const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMI|CMIN2|CUG|PCCW|9929|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT)/gi;
+  const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMI|CMIN2|CUG|PCCW|9929|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|测试|实验|备用|测速)/gi;
   // 识别营销标识
   const REGEX_FLUFF_LINE = /(专线|高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
   // 识别抽象黑话
@@ -210,7 +218,7 @@ function main(config) {
   // =========================================================================
   // --- ⚙️ 预处理阶段一：调试日志辅助模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.1.0";
+  const SCRIPT_VERSION = "v3.2.0";
   const bootTime = new Date().toTimeString().split(' ')[0];
 
   if (USER_CONFIG.enableDebugLog) {
@@ -270,7 +278,7 @@ function main(config) {
     { id: "us", name: "美国",   icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", reg: new RegExp(`${IN_PREFIX}美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America`, "i") },
     
     // --- 欧洲大区 ---
-    { group: "eu", name: "英国",   icon: "🇬🇧", city: "伦敦", reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
+    { group: "eu", name: "英国",   icon: "🇬🇧", city: "伦敦|費勒姆", reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
     { group: "eu", name: "德国",   icon: "🇩🇪", city: "法兰克福", reg: /德国|(?<![a-zA-Z])DE(?![a-zA-Z])|Germany/i },
     { group: "eu", name: "法国",   icon: "🇫🇷", city: "巴黎", reg: /法国|(?<![a-zA-Z])FR(?![a-zA-Z])|France/i },
     { group: "eu", name: "俄罗斯", icon: "🇷🇺", city: "莫斯科|伯力|圣彼得堡|新西伯利亚", reg: /俄罗斯|(?<![a-zA-Z])RU(?![a-zA-Z])|Russia/i },
@@ -325,7 +333,8 @@ function main(config) {
     },
     features: {
       "residential": "🏠", "game": "🎮", "streaming": "📺", "download": "⏬", 
-      "free": "🆓", "wap": "📱", "anytls": "🛡️"
+      "free": "🆓", "wap": "📱", "anytls": "🛡️", "cdn中转": "☁️",
+      "cellular": "📱",
     }
   };
 
@@ -334,10 +343,14 @@ function main(config) {
     { reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential", groupName: "🏠 家宽专用" },
     { reg: /(?:游戏|🎮)|\b(?:Game|FullCone)\b/i,              tag: "game", pool: "game", groupName: "🎮 游戏服务" },
     { reg: /(?:下载|⏬)|\bBT\b/i,                             tag: "download" },
-    { reg: /(?:免费|白嫖|公益|🆓)/i,                          tag: "free" },
-    { reg: /(?:📱)|\bWAP\b/i,                                     tag: "wap" },
-    { reg: /-A$|(?:🛡️)|\bAnyTLS\b/i,                              tag: "anytls" },
+    { reg: /(?:免费|白嫖|公益|🆓)/i,                           tag: "free" },
+    { reg: /(?:📱)|\bWAP\b/i,                                 tag: "wap" },
+    { reg: /-A$|(?:🛡️)|\bAnyTLS\b/i,                          tag: "anytls" },
+    { reg: /(?:cdn中转|CDN中转|中转CDN|CDN加速|☁️)/i,         tag: "cdn中转" },
     { reg: /(?:流媒体|解锁|📺)/i,                             tag: "streaming" },
+    { reg: /\b(?:IPv6|v6)\b/i,                                tag: "ipv6" },
+    { reg: /(?:双栈|DualStack)/i,                             tag: "dualstack" },
+    { reg: /(?:蜂窝|Cellular|移动网络)/i,                     tag: "cellular" },
   ];
 
   // 🤖 动态 AI 服务注册表
@@ -445,13 +458,7 @@ function main(config) {
   });
   FEATURE_RULES.forEach(r => r._cleanReg = new RegExp(r.reg.source, "ig"));
 
-  // 🏷️ 预编译机场标签正则
-  const customAirportTags = USER_CONFIG.airportTag
-    ? USER_CONFIG.airportTag.split(",").map(k => k.trim()).filter(Boolean)
-    : [];
-  const customAirportRegExps = customAirportTags.map(kw =>
-    new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
-  );
+
 
   // =========================================================================
   // --- ▶️ 执行阶段一：物理节点去重与前置拦截 ---
@@ -495,7 +502,7 @@ function main(config) {
   // 🧠 动态提取所有混合大区的 ID（如 "eu", "sea", "am"）并加入兜底的 "other"
   const MIXED_REGION_IDS = [...new Set(REGION_DEFS.map(r => r.group).filter(Boolean)), "other"];
   // 🪣 预设分发桶 (用于把清洗后的节点按特征分类存放)
-  const BUCKETS = { garbage: [], download: [], info: [], allStandard: [] };
+  const BUCKETS = { garbage: [], download: [], info: [], allStandard: [], special: [] };
   // 自动接管所有地区、特征池、混合大区的桶
   [...new Set([
     ...REGION_DEFS.map(r => r.id || r.name),
@@ -518,17 +525,7 @@ function main(config) {
 
   // 辅助纯函数 2: 提取节点属性 (倍率、线路、入口)
   function extractNodeAttributes(name) {
-    let attrs = { multiNum: 1.0, multiStr: "", entryStr: "", lineArr: [], isLowMulti: false, ispStr: "", asnStr: "" };
-
-    // 0. 提取 ISP 和 ASN 信息 (避免被当成无用后缀丢弃)
-    name = name.replace(/(Akamai|Cloudflare|Amazon|Oracle|Google|Microsoft|Tencent|Alibaba|DigitalOcean|Linode|Hetzner|OVH|Vultr|Fastly|Edgio|Gcore|Misaka|Kirino)/i, match => {
-        attrs.ispStr = match;
-        return "";
-    });
-    name = name.replace(/AS\d{2,6}/i, match => {
-        attrs.asnStr = match.toUpperCase();
-        return "";
-    });
+    let attrs = { multiNum: 1.0, multiStr: "", entryStr: "", lineArr: [], isLowMulti: false };
 
     // 1. 提取并擦除入口城市 (采用剥离模式，避免干扰后续识别)
     name = name.replace(REGEX_ENTRY_CITY, (match, p1) => {
@@ -598,7 +595,10 @@ function main(config) {
     
     if (!USER_CONFIG.strictRegionMatch) {
       const flagMatch = name.match(REGEX_UNKNOWN_FLAG);
-      if (flagMatch) return { id: "other", icon: flagMatch[1], name: flagMatch[2].trim() };
+      if (flagMatch) {
+        const dynamicName = flagMatch[2].trim();
+        return { id: dynamicName, icon: flagMatch[1], name: dynamicName, _isDynamic: true };
+      }
     }
     return null;
   }
@@ -637,20 +637,43 @@ function main(config) {
     return [...new Set(result)];
   }
 
-  // 🏷️ 标签提取：手动关键词匹配 or 自动 [xxx] 检测
+  // 🔍 标签提取逻辑
   function getAirportTag(rawName) {
       if (!USER_CONFIG.enableAirportTag) return "";
-      if (customAirportRegExps.length > 0) {
-          for (let i = 0; i < customAirportRegExps.length; i++) {
-              const m = rawName.match(customAirportRegExps[i]);
-              if (m) return m[0];
+      
+      // 1. 优先使用关键词强制抓取（不限位置，只要包含就提取）
+      if (USER_CONFIG.airportTag) {
+          const tags = USER_CONFIG.airportTag.split(",").map(t => t.trim()).filter(Boolean);
+          for (const t of tags) {
+              if (rawName.includes(t)) return t;
           }
-          return "";
       }
-      // 自动模式：[xxx] 且内容 ≤ 4 字符才算标签，超长视为营销垃圾
-      const m = rawName.match(/\[([^\]]{1,4})\]/);
-      return m ? m[1] : "";
+      
+      // 2. 否则使用正则自动提取（默认提取开头方括号内容）
+      const reg = USER_CONFIG.airportTagReg || /^\[([^\]]{1,8})\]/i;
+      const m = rawName.match(reg);
+      return m ? (m[1] || m[0]) : "";
   }
+
+  // 预编译动态分隔符清理正则，避免在循环中重复编译导致 Goja 引擎超时崩溃
+  const customSeps = Array.isArray(USER_CONFIG.renameSeparators) ? USER_CONFIG.renameSeparators : ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"];
+  
+  const charSeps = [];
+  const wordSeps = [];
+  customSeps.forEach(s => {
+    const esc = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (s.length === 1) charSeps.push(esc);
+    else wordSeps.push(esc);
+  });
+  
+  const charClass = charSeps.length > 0 ? `[${charSeps.join('')}]` : '';
+  const wordStr = wordSeps.join('|');
+  const combined = wordSeps.length > 0 ? (charClass ? `(?:${charClass}|${wordStr})` : `(?:${wordStr})`) : charClass;
+  
+  const regAdjacentSeps = combined ? new RegExp(`\\s*${combined}\\s*(?=${combined})`, 'g') : null;
+  const regEdgeSeps = combined ? new RegExp(`^(?:\\s|${combined})+|(?:\\s|${combined})+$`, 'g') : null;
+
+  const whitelistKeywordsLower = (USER_CONFIG.whitelistKeywords || []).map(k => k.toLowerCase());
 
   // 🔄 核心：第一轮遍历
   const processedData = proxies.map(proxy => {
@@ -670,9 +693,8 @@ function main(config) {
     // 🏷️ 广告判定前剥离标签文字
     let tempNameForAd = tempName;
     if (USER_CONFIG.enableAirportTag) {
-        tempNameForAd = customAirportRegExps.length > 0
-            ? customAirportRegExps.reduce((s, re) => s.replace(re, ""), tempName)
-            : tempName.replace(/\[([^\]]{1,4})\]/g, "");
+        const reg = USER_CONFIG.airportTagReg || /^\[([^\]]{1,8})\]/i;
+        tempNameForAd = tempName.replace(reg, "");
     }
 
     const isOrphanAd = !(/\d/.test(tempName) || REGEX_TECH_LINE.test(tempName) || REGEX_FLUFF_LINE.test(tempName)) && 
@@ -683,6 +705,35 @@ function main(config) {
       if (USER_CONFIG.removeInfoNodes) return { skip: true, rawName, blockReason: "信息说明" };
       proxy.server = "127.0.0.1"; proxy.port = 80;
       return { isInfo: true, proxy, rawName };
+    }
+
+    const tempNameLower = tempName.toLowerCase();
+    
+    let isSpecial = false;
+    let specialTargetName = "";
+    
+    if (whitelistKeywordsLower.some(k => tempNameLower.includes(k))) {
+        isSpecial = true;
+        specialTargetName = proxy.name; // 白名单节点强制保留原名
+    }
+
+    if (!isSpecial && USER_CONFIG.specialNodeRules && USER_CONFIG.specialNodeRules.length > 0) {
+      const match = USER_CONFIG.specialNodeRules.find(r => r.reg.test(tempName));
+      if (match) {
+        isSpecial = true;
+        specialTargetName = match.targetName || proxy.name;
+      }
+    }
+
+    if (isSpecial) {
+      proxy.name = specialTargetName;
+      return { 
+        proxy, rawName, regionInfo: null, tags: [], featurePools: [], 
+        pType: (proxy.type || "").toLowerCase(), transportTag: "", attrs: { multiNum: 1 },
+        _destCity: null, airportTag: getAirportTag(rawName),
+        groupKey: "special",
+        isSpecial: true
+      };
     }
 
     // 🆕 精确记录具体的拦截原因
@@ -774,9 +825,16 @@ function main(config) {
 
   // 🧹 多维排序逻辑
   processedData.sort((a, b) => {
-  const orderA = REGION_ORDER[a.regionInfo?.name || a.groupKey] ?? 999;
-  const orderB = REGION_ORDER[b.regionInfo?.name || b.groupKey] ?? 999;
+    if (a.isInfo !== b.isInfo) return a.isInfo ? -1 : 1;
+    if (a.isSpecial !== b.isSpecial) return a.isSpecial ? -1 : 1;
+    const orderA = REGION_ORDER[a.regionInfo?.name || a.groupKey] ?? 999;
+    const orderB = REGION_ORDER[b.regionInfo?.name || b.groupKey] ?? 999;
     if (orderA !== orderB) return orderA - orderB;
+    if (orderA === 999) {
+      const nameA = a.regionInfo?.name || a.groupKey || "";
+      const nameB = b.regionInfo?.name || b.groupKey || "";
+      if (nameA !== nameB) return nameA.localeCompare(nameB, 'zh-CN');
+    }
     const getMultiWeight = (num) => num > (USER_CONFIG.highMultiThreshold || 2.0) ? 1 : 0;
     const multiWeightA = getMultiWeight(a.multiNum);
     const multiWeightB = getMultiWeight(b.multiNum);
@@ -813,46 +871,74 @@ function main(config) {
     let airportTagStr = "";
     if (USER_CONFIG.enableAirportTag) {
       const tag = getAirportTag(rawName);
-      if (tag) airportTagStr = `[${tag}] `;
+      if (tag) airportTagStr = tag;
     }
     let finalName;
-    if (!regionInfo) {
-      finalName = `${airportTagStr}🗑️ ${rawName}${numStr}`;
+    if (item.isSpecial) {
+      finalName = proxy.name;
+    } else if (!regionInfo) {
+      finalName = `${airportTagStr ? `[${airportTagStr}] ` : ""}未知 ${rawName}${numStr}`;
     } else {
       let featureIcons = "";
-      tags.forEach(tag => { if (UI_ICONS.features[tag]) featureIcons += UI_ICONS.features[tag]; });
+      tags.forEach(tag => { 
+        if (tag !== "ipv6" && tag !== "dualstack" && UI_ICONS.features[tag]) {
+            featureIcons += UI_ICONS.features[tag]; 
+        } 
+      });
       
       let protocolIcon = UI_ICONS.protocols[pType] || "";
       let featuresStr = featureIcons || "";
+
+      let ipStackStr = "";
+      if (tags.includes("dualstack")) ipStackStr = "双栈";
+      else if (tags.includes("ipv6")) ipStackStr = "IPv6";
       
       const vars = {
-        "{airport}": airportTagStr.trim(),
-        "{icon}": regionInfo.icon,
-        "{region}": regionInfo.name,
-        "{index}": numStr,
-        "{features}": featuresStr,
-        "{protocol}": protocolIcon,
-        "{multi}": attrs.multiStr || "",
-        "{in}": attrs.entryStr || "",
-        "{city}": _destCity || "",
-        "{line}": attrs.cleanLines || "",
-        "{isp}": attrs.ispStr ? `[${attrs.ispStr}]` : "",
-        "{asn}": attrs.asnStr ? `[${attrs.asnStr}]` : "",
-        "{org}": attrs.ispStr ? `[${attrs.ispStr}]` : "",
-        "{transport}": transportTag || ""
+        airport: airportTagStr.trim(),
+        icon: regionInfo.icon,
+        region: regionInfo.name,
+        index: numStr,
+        features: featuresStr,
+        protocol: protocolIcon,
+        multi: attrs.multiStr || "",
+        in: attrs.entryStr || "",
+        city: _destCity || "",
+        line: attrs.cleanLines || "",
+        ip_stack: ipStackStr,
+        transport: transportTag || ""
       };
       
-      finalName = USER_CONFIG.renameTemplate.replace(/{(airport|icon|region|index|features|protocol|city|line|in|multi|transport|isp|asn|org)}/g, match => vars[match] || "");
-      
-      // 多分隔符兜底清理正则 (处理如 " | · " 或 " | " 或 " | | " 的情况)
-      finalName = finalName.replace(/\s*[|\-·/]\s*(?=[|\-·/])/g, "") 
-                           .replace(/^[|\-·/\s]+|[|\-·/\s]+$/g, "")
-                           .replace(/\s{2,}/g, " ");
+      if (USER_CONFIG.enableNodeRename !== false) {
+        if (typeof USER_CONFIG.renameTemplate === "function") {
+          finalName = USER_CONFIG.renameTemplate(vars, proxy);
+        } else {
+          finalName = USER_CONFIG.renameTemplate.replace(/{(airport|icon|region|index|features|protocol|city|line|in|multi|transport|ip_stack)}/g, (match, key) => vars[key] || "");
+          
+          // 仅对字符串模板执行分隔符和空括号清理兜底
+          if (regAdjacentSeps) {
+              finalName = finalName.replace(regAdjacentSeps, "");
+          }
+          if (regEdgeSeps) {
+              finalName = finalName.replace(regEdgeSeps, "");
+          }
+          finalName = finalName.replace(/\[\s*\]|\(\s*\)/g, "");
+          finalName = finalName.replace(/\s{2,}/g, " ");
+        }
+      } else {
+        // 如果关闭了重命名，则直接继承原始名字
+        finalName = rawName;
+      }
     }
     
     proxy.name = finalName;
 
     // --- 核心分发 + 归属日志 ---
+    if (item.isSpecial) {
+      BUCKETS.special.push(finalName);
+      debugLog(`🌟 [特殊节点] ${rawName} -> ${finalName}`);
+      return;
+    }
+
     if (!regionInfo) {
       BUCKETS.garbage.push(finalName);
       const reasonMsg = USER_CONFIG.strictRegionMatch ? "严格匹配" : "无字典/国旗";
@@ -887,6 +973,7 @@ function main(config) {
       // 执行节点入桶
       featurePools.forEach(p => BUCKETS[p].push(finalName));
       const regionKey = regionInfo.id || regionInfo.name;
+      if (!BUCKETS[regionKey]) BUCKETS[regionKey] = [];
       BUCKETS[regionKey].push(finalName);
       
       if (USER_CONFIG.enableDebugLog) {
@@ -913,6 +1000,26 @@ function main(config) {
     if (nodes && nodes.length > 0) {
       if (nodes.length >= USER_CONFIG.minorNodeThreshold) REGION_NAMES[key] = `${r.icon} ${r.name}节点`; 
       else { BUCKETS[r.group || "other"].push(...nodes); BUCKETS[key] = []; }
+    }
+  });
+
+  // 处理动态生成的未知地区（宽松模式下提取出来的）
+  Object.keys(BUCKETS).forEach(key => {
+    if (key === "garbage" || key === "download" || key === "cn" || key === "info" || key === "allStandard" || key === "other" || key === "residential") return;
+    if (MIXED_REGION_IDS.includes(key) || POOL_GROUP_MAP[key] || REGION_NAMES[key]) return;
+    if (REGION_DEFS.some(r => r.id === key || r.name === key)) return;
+    
+    // 走到这里的全是纯动态未知地区
+    const nodes = BUCKETS[key];
+    if (nodes && nodes.length > 0) {
+      if (nodes.length >= USER_CONFIG.minorNodeThreshold) {
+        const flagMatch = nodes[0].match(REGEX_UNKNOWN_FLAG);
+        const icon = flagMatch ? flagMatch[1] : "🌍";
+        REGION_NAMES[key] = `${icon} ${key}节点`;
+      } else {
+        BUCKETS.other.push(...nodes);
+        BUCKETS[key] = [];
+      }
     }
   });
   
@@ -944,7 +1051,7 @@ function main(config) {
   const proxyTarget = MODE_MAP[USER_CONFIG.defaultProxyMode] || "🚀 自动选择";
   const baseOptions = ["📍 手动选择", "🚀 自动选择", "♻️ 故障转移", ...resiPrefix, ...activeRegionGroups];
   const standardOptions = [...new Set([proxyTarget, ...baseOptions])]; 
-  const coreSelectProxies = ["🚀 自动选择", "♻️ 故障转移", ...resiPrefix, ...activeRegionGroups, "DIRECT", ...BUCKETS.info];
+  const coreSelectProxies = ["🚀 自动选择", "♻️ 故障转移", ...BUCKETS.special, ...resiPrefix, ...activeRegionGroups, "DIRECT", ...BUCKETS.info];
 
   const buildSelect = (name, proxies, hidden = false) => ({ name, type: "select", proxies: [...new Set(proxies)], hidden });
   const buildRegionGroup = (id, name, proxies) => {
@@ -1528,3 +1635,6 @@ function main(config) {
   // EOF: May your routing be fast and your connection secure. 🚀
   return config;
 }
+
+// 供 Node.js CommonJS 环境（如 CLI 工具）调用
+if (typeof module !== 'undefined' && module.exports) module.exports = { main };

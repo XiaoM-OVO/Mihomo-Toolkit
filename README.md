@@ -5,10 +5,10 @@
 **一套为 Mihomo 内核生态客户端设计的通用动态网络路由与策略组配置方案**
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Clash Verge Rev](https://img.shields.io/badge/Clash_Verge_Rev-Compatible-success)](https://github.com/clash-verge-rev/clash-verge-rev)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/Main_Script-v3.1.0-blue)](CHANGELOG.md)
-[![Version](https://img.shields.io/badge/Pure_Module-v1.0.0-blueviolet)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Main_Script-v3.2.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Pure_Module-v1.1.0-blueviolet)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/CLI_Tool-v1.0.0-8A2BE2)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -28,10 +28,10 @@
 ## 📌 快速导航
 - [✨ 核心特性](#-核心特性)
 - [🚀 快速开始](#-快速开始)
-  - [主脚本 (Clash Verge Rev)](#1-下载脚本)
-  - [节点清洗脚本 (跨平台通用版)](#-纯净节点清洗脚本)
+- [🧩 纯净节点清洗脚本](#-纯净节点清洗脚本)
+- [🖥️ CLI 命令行工具](#️-cli-命令行工具)
 - [⚙️ 配置详解](#️-配置详解)
-- [🧹 图标与分组说明](#-节点清洗与分组结构)
+- [🧹 节点清洗与分组结构](#-节点清洗与分组结构)
 - [❓ 常见问题](#-常见问题)
 
 ---
@@ -46,8 +46,9 @@
 - 🏷️ **机场标签前缀**：多机场订阅合并时自动/手动标注节点来源，面板来源一目了然。
 - 🗑️ **DAG 级联清理**：自动删减空策略组与孤儿规则，保持内核配置纯净。
 - ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、流量审计、TUN/DNS/Sniffer 等深度优化。
-- 🔍 **智能 IP 溯源**：纯净版支持接入 ip-api 批量高并发解析，精准纠正 CDN 或虚假定位节点。
-- 🔍 **智能 IP 溯源**：清洗脚本支持接入 ip-api 批量高并发解析，精准纠正 CDN 或虚假定位节点。
+- 🔍 **智能 IP 溯源**：纯净版清洗脚本支持接入 ip-api 批量高并发解析，精准纠正 CDN 或虚假定位节点。
+- 🧬 **智能节点裂变**：纯净版脚本支持将域名节点通过 DNS 解析裂变为多个 IP 实体节点（支持 IPv4/IPv6 过滤与数量上限控制），有效应对单域名多 IP、CDN 调度或需物理 IP 直连的高精度分流场景。
+- 🖥️ **命令行工具**：配套 `pure-runner` CLI，可在终端直接运行脚本，支持订阅下载、元数据导出与多种运行模式。
 
 ---
 
@@ -78,8 +79,9 @@
 | 节点去重 / 垃圾拦截 | ✅ | ✅ |
 | 倍率 / 线路 / 落地城市提取 | ✅ | ✅ |
 | 协议图标 / 特征图标 | ✅ | ✅ |
-| 机场标签前缀 | ✅ | ✅ |
+| 节点标签前缀 | ✅ | ✅ |
 | IP-API 补充定位检测 | ❌ | ✅ |
+| 节点裂变 (域名→多IP) | ❌ | ✅ |
 | 策略组 / 分流规则生成 | ✅ | ❌ |
 | DNS / TUN / Sniffer 覆写 | ✅ | ❌ |
 | 输出格式 | Mihomo 配置 | `array` 或 `object`(含 meta) |
@@ -93,182 +95,98 @@
 
 ### 配置要点
 
+纯净版脚本的 `CONFIG` 对象位于文件顶部，以下列出最常用的核心参数，其余进阶选项（如重命名模板、IP检测细化开关等）已在脚本中附带详细中文注释。
+
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `outputMode` | `"array"` | `"array"` 纯节点数组（兼容常规流程），`"object"` 返回含 meta 元数据 |
-| `blockKeywords` | `[]` | 自定义黑名单关键词（如 `["免费领取", "点击购买"]`） |
-| `blockServers` | `[]` | 自定义黑名单服务器地址 |
-| `adTextThreshold` | `12` | 广告文本阈值（比主脚本默认 6 更宽松，降低 Sub-Store 误杀率） |
+| `outputMode` | `"array"` | `"array"` 输出纯节点数组，`"object"` 额外返回 `meta` 元数据（含统计信息与分桶结果） |
+| `enableDedupe` | `false` | 开启物理去重（基于 Server/Port/UUID 等多维度） |
+| `removeInfoNodes` | `false` | 开启后直接删除“到期时间/剩余流量”等说明节点 |
+| `blockKeywords` | `[]` | 黑名单关键词（命中即拦截），如 `["免费领取", "点击购买"]` |
+| `blockServers` | `[]` | 黑名单服务器地址（命中即拦截），如 `["123.123.123.123"]` |
+| `adTextThreshold` | `12` | 纯文本广告判定阈值（无数字/线路特征且长度超过此值视为广告，比主脚本默认 6 更宽松） |
+| `enableAirportTag` | `false` | 开启后自动提取节点来源标签（多订阅合并时区分来源） |
+| `renameTemplate` | 见脚本 | 节点重命名模板，支持 `{icon}`、`{region}`、`{isp}` 等变量自由组合 |
+| `enableIpEnrich` | `false` | 开启 IP-API 补充检测（自动纠正 CDN/虚假定位，需注意免费版有频率限制） |
+| `enableFission` | `false` | 开启域名裂变（将域名节点解析为多个 IP 实体节点，详见下方裂变配置） |
 
-> 💡 其他参数（`enableDedupe`、`keepDestinationCity`、`showProtocolIcon` 等）与主脚本同名配置语义一致。
+> 💡 **快速上手**：大多数情况下只需调整 `enableDedupe`（去重）和 `removeInfoNodes`（去掉说明节点）即可获得整洁的节点列表。如需精准定位，可开启 `enableIpEnrich`；如需裂变多 IP，请同时配置 `enableFission` 及相关参数。
+
+---
+
+## 🖥️ CLI 命令行工具
+
+如果你不想使用 Sub-Store 或客户端，也可以直接在终端中运行本工具：
+
+```bash
+cd cli
+npm install
+node index.js -u https://example.com/sub.yaml -t full -o final.yaml
+```
+
+📖 详细用法请参阅 [CLI 工具文档](./cli/README.md)。
 
 ---
 
 ## ⚙️ 配置详解
 
-> 所有变量均在 `USER_CONFIG` 中，下方按功能模块分组。
+📝 **完整配置**：请直接在 `mihomo-toolkit.js` 和 `pure-nodes.js` 顶部的 `USER_CONFIG` / `CONFIG` 对象中查看，所有配置项均有详尽的**中文注释**。
 
 <details>
-<summary><b>🔧 基础全局配置</b></summary>
+<summary><b>🏷️ 节点重命名模板变量 (renameTemplate)</b></summary>
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `enableScript` | `true` | 总开关 |
-| `enableDebugLog` | `false` | 节点清洗日志开关 |
-| `osType` | `"windows"` | 设备类型：`windows`/`mac`/`linux`/`all` |
-| `proxyFirst` | `true` | `true` 代理优先，`false` 直连优先 |
-| `defaultProxyMode` | `"auto"` | 默认策略：`auto`/`manual`/`fallback` |
-| `enableIPv6` | `false` | 全局 IPv6（无物理 IPv6 请务必关闭） |
-| `enableAirportTag` | `false` | 多机场订阅时自动/手动添加 `[标签]` 前缀 |
-| `airportTag` | `""` | 手动指定标签关键词（逗号分隔），为空则自动检测 `[xxx]` |
+您可以在 `USER_CONFIG.renameTemplate` 中自由组合以下变量，定制专属的节点名称格式：
 
-</details>
-
-<details>
-<summary><b>🧽 节点清洗与处理</b></summary>
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `enableDedupe` | `false` | 去重底层完全重复的注水节点 |
-| `removeInfoNodes` | `false` | 过滤流量/到期等信息节点 |
-| `renameTemplate` | `"{airport}..."`| 节点重命名模板，支持 `{city}`, `{protocol}`, `{transport}` 等变量 |
-| `strictRegionMatch` | `false` | 严格地区匹配(关闭则允许 Emoji 动态捕获冷门国家) |
-| `adTextThreshold` | `6` | 纯文本广告判定阈值(超过此长度的纯文字视作广告) |
-| `lowMultiThreshold` | `0.99` | 倍率 ≤ 此值自动打上下载标签（0 关闭） |
-| `isolateDownload` | `false` | 低倍率节点是否从普通池剔除 |
-
-</details>
-
-<details>
-<summary><b>📱 核心分流开关</b></summary>
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `enableAdBlock` | `true` | 广告拦截 |
-| `enableAI` | `true` | AI 助手：OpenAI/Gemini/Claude/Copilot（具体 key 在 `AI_SERVICES` 数组中增删） |
-| `enableTelegram` | `true` | Telegram 独立分流（自动适配各平台进程） |
-| `enableStreaming` | `true` | 流媒体服务总开关（具体平台在 `STREAMING_SERVICES` 数组中增删，支持 YouTube/Netflix/Bilibili/Disney+/TikTok/Spotify/巴哈姆特/Pixiv/Twitch + 自定义） |
-| `enableGame` | `true` | Steam/Epic/Riot/Blizzard/Nintendo 等游戏平台 |
-| `enableSystemServices` | `true` | Microsoft/Apple/Google 框架服务 |
-| `enableDomesticGroup` | `false` |「中国分流」策略组（搭配直连优先触发回国模式） |
-
-</details>
-
-<details>
-<summary><b>🧩 专项扩展（按需开启）</b></summary>
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `enableAntiAD` | `false` | 激进去广告（anti-AD，强但易误杀） |
-| `enableGitHub` | `true` | GitHub/GitLab 分流 |
-| `enableScholar` | `true` | Google Scholar 等学术站 |
-| `enableSocial` | `false` | 海外社交平台（具体 key 在 `SOCIAL_SERVICES` 数组中增删，支持 Twitter/Facebook/Instagram/Discord + 自定义） |
-| `enableCrypto` | `false` | Binance 等加密货币 |
-| `enablePayPal` | `false` | PayPal 金融支付 |
-| `enableResidential` | `false` | 提取住宅/ISP 节点为高级备用 |
-
-</details>
-
-<details>
-<summary><b>🎨 策略组与 UI 面板</b></summary>
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `minorNodeThreshold` | `3` | 小众地区独立建组阈值（低于此值折叠） |
-| `highMultiThreshold` | `2.5` | 高倍率软隔离判定阈值（超过此倍率排序下沉） |
-| `regionGroupType` | `"url-test"` | 地区组行为：`url-test`/`select`/`fallback` |
-| `enableRegionHashLB` | `false` | 为达标地区增加哈希负载均衡组 |
-| `hideGarbageGroup` | `false` | 隐藏「未知识别」组 |
-| `groupIconMode` | `"emoji"` | `"emoji"`/`"icon"`/`"both"` |
-
-</details>
-
-<details>
-<summary><b>⏱️ 网络测速与规则集配置</b></summary>
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `testInterval` | `300` | 测速间隔（秒） |
-| `testTolerance` | `50` | 切换阈值（延迟差低于此值不频繁切换 IP） |
-| `useMRS` | `true` | 极速规则模式：`true` (MRS格式), `false` (YAML格式) |
-| `testURL` | `"https://..."` | 延迟测速地址 |
-| `ruleProviderCDN` | `"https://..."` | 规则集 CDN 节点（支持 fastly/testingcf/gcore 等） |
-
-</details>
-
-<details>
-<summary><b>📡 DNS 服务器配置</b></summary>
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `dnsDefault` | `[...]` | 基础解析 DNS |
-| `dnsDirect` | `[...]` | 直连 DNS (DoH) |
-| `dnsProxy` | `[...]` | 代理 DNS (DoH) |
-
-</details>
-
-<details>
-<summary><b>🏷️ 节点重命名模板变量大全 (renameTemplate)</b></summary>
-
-您可以自由组合以下变量，定制专属于您的节点名称格式（纯净版与主脚本均适用）：
+**基础模板变量：**
 
 | 变量名 | 说明 | 示例 |
 |--------|------|------|
-| `{airport}` | 机场标签前缀（若开启了 `enableAirportTag`） | `[Bitz]` |
+| `{airport}` | 机场标签前缀（若开启了 `enableAirportTag`） | `[AirportA]` |
 | `{icon}` | 国家/地区对应的国旗 Emoji | `🇺🇸` |
 | `{region}` | 提取出的国家/地区中文简称 | `美国` |
-| `{index}` | 节点标号（当有多个同地区同特征节点时自动编号） | ` 01`, ` 02` |
-| `{features}` | 从节点名中提取的修饰词/特性说明 | `家宽`, `BGP` |
-| `{protocol}` | 底层协议特征 Emoji（如 VMess 为 🦊，Trojan 为 🐴） | `🦊` |
-| `{in}` | 入口地区 / 接入点（适用于 IPLC/IEPL 中转线） | `深`, `沪` |
-| `{city}` | 落地城市名 / 目标节点名称 | `洛杉矶` |
-| `{multi}` | 节点倍率数值（剥离了原有的文字修饰） | `x1.5`, `x2.0` |
-| `{line}` | 兼容后置标签集合（包含所有您未单独提取的入口、特征、倍率等） | `家宽 x2` |
-| `{transport}` | 传输层网络协议大写标签 | `WS`, `GRPC` |
-| `{isp}` | 解析到的 ISP 运营商名称（带方括号） | `[Akamai]` |
-| `{asn}` | 解析到的自治系统编号（带方括号） | `[AS16509]` |
-| `{org}` | 解析到的组织机构（带方括号） | `[Oracle]` |
+| `{index}` | 节点标号（多节点自动编号） | ` 01`, ` 02` |
+| `{features}` | 提取的修饰词/特性说明 | `家宽`, `BGP` |
+| `{protocol}` | 底层协议特征 Emoji | `🦊` |
+| `{in}` | 入口地区 / 接入点（专线中转） | `深`, `沪` |
+| `{city}` | 落地城市名 | `洛杉矶` |
+| `{multi}` | 节点倍率数值（纯数字） | `x1.5`, `x2.0` |
+| `{line}` | 提取的线路特征（如 `BGP`、`CN2`、`家宽`） | `BGP` |
+| `{transport}` | 传输层协议 | `WS`, `GRPC` |
+| `{ip_stack}` | IP 栈类型（IPv6 / 双栈 / 空） | `双栈` |
 
-> 💡 **小贴士**：如果您的模板中没有显式使用 `{in}` 或 `{multi}`，它们的值会被自动安全地合并回 `{line}` 中，保证您的节点信息不会丢失。想要彻底隐藏它们，只需从模板中删去 `{line}` 即可。
+> 💡 **高级玩法（函数定义）**：
+> 如果您懂 JavaScript，您可以直接将 `USER_CONFIG.renameTemplate` 赋值为一个函数 `(vars, proxy) => string`，这样可以完全接管节点重命名的底层逻辑！
 
-</details>
+### 📝 扩展模板变量（仅限 `pure-nodes.js` 的 IP-API 模式）
 
-<details>
-<summary><b>⏱️ 网络测速与规则集配置</b></summary>
+纯净版脚本支持 IP-API 检测回填，因此在上述**基础模板变量**之外，额外提供以下变量（需开启 `enableIpEnrich`）：
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `testInterval` | `300` | 测速间隔（秒） |
-| `testTolerance` | `50` | 切换阈值（延迟差低于此值不频繁切换 IP） |
-| `useMRS` | `true` | 极速规则模式：`true` (MRS格式), `false` (YAML格式) |
-| `testURL` | `"https://..."` | 延迟测速地址 |
-| `ruleProviderCDN` | `"https://..."` | 规则集 CDN 节点（支持 fastly/testingcf/gcore 等） |
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| `{isp}` | 运营商名称 | `Akamai` |
+| `{asn}` | 自治系统编号 | `AS16509` |
+| `{org}` | 组织机构 | `Amazon.com, Inc.` |
+| `{asname}` | AS 名称 | `AMAZON-02` |
 
-</details>
-
-<details>
-<summary><b>📡 DNS 服务器配置</b></summary>
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `dnsDefault` | `[...]` | 基础解析 DNS |
-| `dnsDirect` | `[...]` | 直连 DNS (DoH) |
-| `dnsProxy` | `[...]` | 代理 DNS (DoH) |
+> 💡 基础模板变量（如 `{icon}`、`{region}`、`{ip_stack}` 等）在主脚本和纯净版中均受支持，无需额外开启。
 
 </details>
 
 <details>
-<summary><b>⚙️ 底层防漏与内核优化</b></summary>
+<summary><b>⚙️ 常用开关速览（快速上手）</b></summary>
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `enableProcessDirect` | `true` | 指定进程强制直连（默认内置主流 BT 软件，支持自定义追加） |
-| `enableTrafficAudit` | `true` | 流量审计，非 53/80/443 端口强制直连防断流 |
-| `enableQUICReject` | `false` | 屏蔽 QUIC，防止 UDP 阻断 |
-| `overwriteTun` | `true` | 覆写 TUN，强化路由与 IP 防漏 |
-| `overwriteDns` | `true` | 覆写 DNS（Fake-IP + 防污染，回国模式自动交换 DNS） |
-| `overwriteSniffer` | `true` | 覆写 Sniffer，防 SNI 阻断 |
-| `enableCoreOptimize` | `true` | 开启节点记忆、精准指纹伪装、TCP 并发优化 |
+以下为脚本中最常调整的核心开关，其余参数均已在脚本中附带详细中文注释：
+
+| 配置项 | 默认值 | 作用 |
+|--------|--------|------|
+| `proxyFirst` | `true` | 路由策略：`true` 为海外代理优先，`false` 为国内直连优先 |
+| `enableDedupe` | `false` | 开启后基于底层参数（Server/Port/UUID等）物理去重 |
+| `removeInfoNodes` | `false` | 开启后自动剔除“到期时间/剩余流量”等说明节点 |
+| `enableAirportTag` | `false` | 开启后自动提取节点来源标签（多订阅合并时非常有用） |
+| `minorNodeThreshold` | `3` | 小众地区独立建组的最小节点数（低于此值折叠至大洲组） |
+| `lowMultiThreshold` | `0.99` | 倍率 ≤ 此值的节点自动标记为 `⏬` 下载节点（设为 `0` 关闭） |
+| `testInterval` | `300` | 自动选择组的测速间隔（单位：秒） |
+| `strictRegionMatch` | `false` | `true` 时仅匹配内置字典，`false` 时可动态捕获冷门国家 |
 
 </details>
 
@@ -527,7 +445,12 @@ v3.0 采用注册表架构，只需两步，无需触碰脚本逻辑：<br>
 <details>
 <summary><b>Q: 多个订阅源混在一起，怎么区分节点来源？</b></summary>
 
-开启 `enableAirportTag` 后，脚本会自动提取节点名中的 `[xxx]` 方括号标识作为来源标签。推荐配合订阅转换工具，用正则将节点名开头（`^`）替换为 `[标签名]`，即可批量打标；若节点名不含方括号，也可通过 `airportTag` 手动指定匹配关键词（逗号分隔），脚本会按关键词检索并添加前缀。
+开启 `enableAirportTag` 后，脚本支持多维度自动打标：
+1. **关键词强制匹配**：在 `airportTag` 中填入机场名关键词（如 `"AirportA, AirportB"`），脚本会扫描节点名，只要命中就直接作为标签！
+2. **正则智能提取**：如果没有命中关键词，脚本会通过 `airportTagReg` 设定的正则表达式进行自动提取（默认提取节点开头的 `[xxx]` 标识）。
+3. **CLI 自动化流水线注入**：使用本项目的 CLI 命令行工具，在 `config.yaml` 的 `subscriptions` 数组中为不同订阅链接指定 `tag`，CLI 会在后台自动为它们批量注入标签前缀。
+
+自动打标后，面板中的节点来源一目了然，再也不怕订阅混淆！如需更精细的归属识别（如运营商、ASN），可配合纯净版脚本的 IP-API 检测使用。
 </details>
 
 ---
