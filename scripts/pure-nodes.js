@@ -1,8 +1,8 @@
-/**
+﻿/**
  * =========================================================================
  * 📦 Mihomo-Toolkit | 通用纯净节点清洗脚本 (Pure JS Edition) | MIT 许可证
  * =========================================================================
- * 🏷️ 版本: 1.0.0 (Build 2026.07.06)
+ * 🏷️ 版本: 1.1.0 (Build 2026.07.12)
  * 👤 作者: XiaoM-OVO
  * 🔌 环境: Node.js / Sub-Store / Surge / Loon / 浏览器 等(多端自适应)
  * 📝 描述: 零依赖跨平台节点处理核心，提供过滤、去重、重命名与自动排序功能。
@@ -19,6 +19,8 @@ const DEFAULT_CONFIG = {
     // 🚀 一、基础输出与模式控制
     // ---------------------------------------------------------------------
     outputMode: "array",          // 输出模式: "array"纯节点数组, "object"包含 meta 元数据的对象
+    logLevel: "info",             // 日志级别: "silent" | "error" | "warn" | "info" | "debug"
+    redactLogs: false,            // 隐私保护: 开启后会对日志中的 IP、域名、节点名等敏感信息脱敏处理
     removeInfoNodes: false,       // 纯净模式: 直接删除"到期时间/剩余流量"等说明节点
     outputGarbage: false,         // 垃圾输出: 是否将拦截的广告/假节点也输出(默认不输出,但会进桶)
     outputUnknown: true,          // 未知输出: 是否将未识别的节点输出(默认输出)
@@ -30,27 +32,29 @@ const DEFAULT_CONFIG = {
     
     // 🖨️ 节点命名模板变量说明 (自由组合，无数据时会自动清理多余空格与符号):
     // {prefix}   -> 自定义前缀 (如: "我的机场-")
-    // {airport}  -> 提取的机场名 (如: "[Bitz]")
+    // {airport}  -> 提取的机场名 (如: "[AirportA]")
     // {icon}     -> 地区国旗 emoji (如: "🇺🇸")
     // {region}   -> 地区名称 (如: "美国", "香港")
     // {city}     -> 城市名称 (如: "洛杉矶" - 若无IP检测则提取原名城市)
     // {index}    -> 节点排序编号 (如: " 01", " 02")
-    // {features} -> 解锁特征与图标 (如: "📺流媒体", "🏠家宽")
+    // {features} -> 解锁特征与图标 (如: "📺/流媒体", "🏠/家宽")
     // {protocol} -> 协议图标 Emoji (如: "🛩️", "🦊")
     // {transport}-> 传输层协议标签 (如: "WS", "H2", "GRPC")
     // {in}       -> 入口地区 (如: "深", "沪")
     // {line}     -> 线路特征 (如: "BGP/家宽")
     // {multi}    -> 倍率数值 (如: "x2.0")
+    // {ip_stack} -> [网络层] 纯IPv6 或 双栈 标识 (如: "IPv6", "双栈")
     // {isp}      -> [IP补充] 运营商名称 (如: "Akamai", "Cloudflare")
     // {asn}      -> [IP补充] 自治系统编号 (如: "AS16509")
     // {org}      -> [IP补充] 组织/数据中心 (如: "Amazon.com", "Oracle")
-    renameTemplate: "{prefix}{airport} {icon} {region} {index} {features} | {in} {city} {line} {multi} · {transport}",
+    renameTemplate: "{prefix}{airport} {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}",
+    renameSeparators: ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"], // 🧹 允许作为分隔符被自动清理的悬空符号列表
 
     customPrefix: "",             // 批量自定义前缀 (也可通过 {prefix} 模板控制)
     showFeatureIcon: false,       // 替换特征文本为 Emoji (开启后"流媒体"变为📺)
     featureBracket: "",           // 特征文本的括号样式: "「」" / "[]" / "()" / "" (留空不显示)
 
-    enableAirportTag: false,      // 提取原机场标签 (例: 提取 [Bitz] 并在同组节点排序)
+    enableAirportTag: false,      // 提取原机场标签 (例: 提取 [AirportA] 并在同组节点排序)
     airportTag: "",               // 强制覆盖/指定所有节点的机场标签
 
     // ---------------------------------------------------------------------
@@ -59,19 +63,31 @@ const DEFAULT_CONFIG = {
     enableDedupe: false,          // 物理去重: 基于 服务器/端口/UUID 等多维度深度去重
     strictRegionMatch: false,     // 严格地区: 未知国旗不再动态捕获，直接丢入"未知"组
     adTextThreshold: 12,          // 广告阈值: 超过该长度且无特定特征视为广告
+    whitelistKeywords: [],        // 白名单关键词: 包含即放行并保留原名，不参与脚本逻辑，例: ["跳过清洗", "直连节点"]
     blockKeywords: [],            // 黑名单关键词: 包含即拦截，例: ["免费领取", "点击购买"]
     blockServers: [],             // 黑名单服务器: 包含即拦截，例: ["123.123.123.123", "fake.com"]
     highMultiThreshold: 2.5,      // 高倍率软隔离: 超过此倍率的节点在同地区内自动下沉沉底
+    specialNodeRules: [],         // 自定义特殊节点: (防止被当成垃圾节点扔掉，且跳过裂变，直接强行重命名,示例: { reg: /url.test|测速/i, targetName: "🚀 节点测速" })
 
     // ---------------------------------------------------------------------
     // 🧩 四、IP API 补充检测 (溯源与精准定位)
     // ---------------------------------------------------------------------
-    enableIpEnrich: false,        // API 检测总开关 (基于 ip-api.com)
+    enableIpEnrich: false,        // 🌍 API 总开关 (调用 ip-api.com)
+    ipEnrichTimeout: 15000,       // 🌍 全局超时熔断(毫秒): 超过此时间仍未解析完成则强制放弃 API 增强并返回现有节点，防止死等
     ipApiKey: "",                 // 🔑 IP-API Pro 密钥 (选填)，如使用 pro.ip-api.com 请填写
     ipEnrichThreshold: 200,       // 🛡️ 安全熔断: 节点总数超过此值自动关闭检测，防止超时
     ipEnrichMode: "missing",      // 检测模式: "missing" 仅检测未知/无地区的节点; "all" 强制检测所有节点
-    ipApiEndpoint: "http://ip-api.com/batch", // IP 接口: 可替换为自建反代或 https://pro.ip-api.com/batch
+    enableIpv6Tag: false,         // 🏷️ 启用 IPv6/双栈 识别 (开启后才会查询 AAAA 记录)
+    enableCellularTag: false,     // 🏷️ 启用蜂窝网络识别
+    enableResidentialTag: false,  // 🏷️ 启用家宽识别 (自动开启高精度 PTR 验证与白名单兜底)
+    enableFission: false,         // 🚦 节点裂变 (将使用域名的节点裂变为多个IP节点。警告: 容易导致API限频和状态 429，请慎用)
+    fissionStack: "all",          // 🚦 裂变栈偏好: "all" (保留所有), "v4" (只裂变 IPv4), "v6" (只裂变 IPv6)
+    fissionMaxNodes: 4,           // 🚦 裂变阈值保护: 单个节点最多裂变为多少个子节点 (防止多IP域名导致节点数量暴增)
+    fissionExcludeKeywords: ["负载均衡", "故障转移", "自动选择", "自动匹配", "最优选择"], // 🚦 裂变黑名单: 包含这些关键词的节点将跳过裂变
+    ipApiEndpoint: "http://ip-api.com/batch", // IP 库接口: 替换为可解除 https://pro.ip-api.com/batch
     ipApiBatchSize: 100,          // 批量请求上限: 免费版限制为 100，如遇 429 报错可调低
+    ipApiBatchDelay: 4000,        // 批次间隔(毫秒): 免费版限制 15次/分钟，设为 4000 可严格防 429
+    ipApiDnsConcurrency: 15,      // DNS 并发数: 控制 DoH 解析的瞬间并发量，防止请求过载
     ipApiDnsEndpoint: "",         // DoH 解析端点: 留空则自动选择 (阿里 DNS → Google DNS 兜底)
 };
 
@@ -79,13 +95,13 @@ const DEFAULT_CONFIG = {
 // 🪛 核心常量与正则字典 (Global)
 // =========================================================================
 const REGEX_ZERO_WIDTH = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g;
-const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过期|更新公告|重置|维护|不可用|扣费|节点说明|防失联|官网|地址|Q群|电报|Tg群|距离下次|测试|关注频道|官方群组|签到获取/i;
+const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过期|更新公告|重置|维护|不可用|扣费|节点说明|防失联|官网|地址|Q群|电报|Tg群|距离下次|关注频道|官方群组|签到获取/i;
 const REGEX_FORBID_DL_STR = "(?:禁止|禁|严禁|请勿|勿|不要|不能|拒绝|屏蔽|防)(?:BT|PT|P2P|下载|测速|迅雷)|(?:仅限|仅供)(?:网页|日常|聊天)|\\b(?:No|Block|Ban)[\\s\\-_]*(?:BT|PT|Torrent|Download)\\b";
 const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|\\b(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)\\b`, "ig");
 const REGEX_ENTRY_CITY = /(深圳|广州|上海|北京|杭州|四川|江苏|宁波|东莞|深|广|沪|京|杭|川|苏|甬|莞|SZX|CAN|PVG|SHA|PEK|PKX|HGH|入口|Ingress)(?:-|->|至|=>|\s)*(?=港|台|日|韩|新|美|英|德|法|澳|落地|出口|Exit)/i;
 const REGEX_MULTI = /(?:倍率|Rate)\s*[:：]?\s*(\d+(?:\.\d+)?)|(?<![a-zA-Z])(?:[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率|倍)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率|倍))(?!\s*\d)/i;
 
-const REGEX_TECH_LINE = /(IEPL|IPLC|CMIN2|CMI|CN2\s*GIA|CN2|GIA|9929|4837|CUG|BGP|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|IIJ|NTT|OCN|Softbank|Transit|Relay|隧道|Direct|HGC|HKBN|PCCW|WTT|HKT|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CTCM|CMCT|三网|电联|移联|电移|移动|联通|电信|专线)/gi;
+const REGEX_TECH_LINE = /(IEPL|IPLC|CMIN2|CMI|CN2\s*GIA|CN2|GIA|9929|4837|CUG|BGP|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|IIJ|NTT|OCN|Softbank|Transit|Relay|隧道|Direct|HGC|HKBN|PCCW|WTT|HKT|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CTCM|CMCT|三网|电联|移联|电移|移动|联通|电信|专线|测试|实验|备用|测速)/gi;
 const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
 const REGEX_UNKNOWN_FLAG = /(\p{Regional_Indicator}{2})\s*([A-Za-z\u4e00-\u9fa5]+(?:[\s-][A-Za-z\u4e00-\u9fa5]+)*)/u;
 const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
@@ -106,21 +122,22 @@ const UI_ICONS = {
         "家宽": "🏠", "游戏": "🎮", "流媒体": "📺", "下载": "⏬", "免费": "🆓",
         "gpt": "🤖", "gemini": "♊", "claude": "🦀", "ai": "✨",
         "nf": "🎬", "d+": "🐭", "yt": "▶️", "tk": "🎵", "sp": "🎧",
-        "no_download": "🚫", "cdn": "☁️", "cdn中转": "☁️",
+        "no_download": "🚫", "cdn": "☁️", "cdn中转": "☁️", "蜂窝": "📱"
     }
 };
 
 const FEATURE_TEXT_MAP = {
     "residential": "家宽", "game": "游戏", "streaming": "流媒体",
     "gemini": "Gemini", "claude": "Claude", "chatgpt": "GPT", "ai": "AI",
-    "download": "下载", "free": "免费", "no_download": "禁止下载"
+    "download": "下载", "free": "免费", "no_download": "禁止下载",
+    "cellular": "蜂窝", "ipv6": "IPv6", "dualstack": "双栈"
 };
 
 const STREAMING_SERVICES = [
     { keys: ["Netflix", "NF", "奈飞", "网飞", "耐飞"], abbr: "NF" },
     { keys: ["Disney\\+", "Disney", "迪士尼", "D\\+"], abbr: "D+" },
     { keys: ["YouTube", "YT", "油管"], abbr: "YT" },
-    { keys: ["TikTok", "抖音海外", "抖音", "TT"], abbr: "TK" },
+    { keys: ["TikTok", "抖音海外", "抖音", "TT"], abbr: "TT" },
     { keys: ["Spotify", "声田"], abbr: "SP" },
 ];
 const STREAMING_GENERIC = ["流媒体", "解锁"];
@@ -147,6 +164,9 @@ const FEATURE_RULES_RAW = [
     { source: "\\b(?:Claude)\\b", tag: "claude" },
     { source: "\\b(?:ChatGPT|OpenAI|GPT)\\b", tag: "chatgpt" },
     { source: "\\b(?:AI(?:解锁|访问|加速|代理)?)\\b", tag: "ai" },
+    { source: "\\b(?:IPv6)\\b", tag: "ipv6" },
+    { source: "(?:双栈|DualStack)", tag: "dualstack" },
+    { source: "(?:蜂窝|Cellular|移动网络)", tag: "cellular" },
     { source: STREAMING_SOURCE, tag: "streaming" }
 ];
 const FEATURE_RULES = FEATURE_RULES_RAW.map(r => ({
@@ -200,6 +220,26 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     // ⚙️ 初始化配置 (融合顶层默认配置与外部传入配置)
     // =========================================================================
     const CONFIG = { ...DEFAULT_CONFIG, ...userConfig };
+
+    const LOG_LEVELS = { "silent": 0, "error": 1, "warn": 2, "info": 3, "debug": 4 };
+    const currentLogLevel = LOG_LEVELS[CONFIG.logLevel] ?? 3;
+
+    function redact(obj) {
+        if (!CONFIG.redactLogs) return obj;
+        if (typeof obj === 'string') {
+            return obj.replace(/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g, '***.***.***.***')
+                      .replace(/\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b/g, '***.***')
+                      .replace(/\b([A-Fa-f0-9]{1,4}:){2,7}[A-Fa-f0-9]{1,4}\b/g, '***:***');
+        }
+        return obj;
+    }
+
+    const logger = {
+        debug: (...args) => { if (currentLogLevel >= 4) console.log("[IP Enrich] 🔍", ...args.map(redact)); },
+        info: (...args) => { if (currentLogLevel >= 3) console.log("[IP Enrich]", ...args.map(redact)); },
+        warn: (...args) => { if (currentLogLevel >= 2) console.warn("[IP Enrich] ⚠️", ...args.map(redact)); },
+        error: (...args) => { if (currentLogLevel >= 1) console.error("[IP Enrich] ❌", ...args.map(redact)); }
+    };
 
     // =========================================================================
     // 🪛 构建动态字典
@@ -356,9 +396,19 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
     function getAirportTag(rawName) {
         if (!CONFIG.enableAirportTag) return "";
-        if (CONFIG.airportTag) return CONFIG.airportTag;
-        const m = rawName.match(/\[([^\]]{1,4})\]/);
-        return m ? m[1] : "";
+        
+        // 1. 优先使用关键词强制抓取
+        if (CONFIG.airportTag) {
+            const tags = CONFIG.airportTag.split(",").map(t => t.trim()).filter(Boolean);
+            for (const t of tags) {
+                if (rawName.includes(t)) return t;
+            }
+        }
+        
+        // 2. 否则使用正则提取
+        const reg = CONFIG.airportTagReg || /^\[([^\]]{1,8})\]/i;
+        const m = rawName.match(reg);
+        return m ? (m[1] || m[0]) : "";
     }
 
     function deepCloneSimple(obj) {
@@ -474,48 +524,75 @@ function operator(proxies, targetPlatform, userConfig = {}) {
      * 策略：优先系统 DNS（不被墙），次选 DoH（阿里 DNS → Google DNS 兜底）
      */
     async function resolveDomainToIp(domain, http) {
-        if (!looksLikeDomain(domain)) return domain;
+        if (!looksLikeDomain(domain)) return { ip: domain, ips: [domain], stack: domain.includes(':') ? "v6" : "v4" };
 
         // 方案一：Node.js 系统 DNS（直连，不受墙影响）
         const sysDns = getSystemDns();
         if (sysDns) {
             try {
-                const result = await sysDns.promises.lookup(domain, { family: 4 });
-                if (result?.address) return result.address;
-            } catch {}
-        }
-
-        // 方案二：DoH 多端点兜底（阿里优先，国内可达；Google 备用）
-        const dohEndpoints = CONFIG.ipApiDnsEndpoint
-            ? [CONFIG.ipApiDnsEndpoint]
-            : [
-                `https://dns.alidns.com/resolve?name=${encodeURIComponent(domain)}&type=A`,
-                `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A`,
-            ];
-
-        for (const url of dohEndpoints) {
-            try {
-                let data;
-                if (http && http.fetch) {
-                    const resp = await http.fetch(url, { signal: AbortSignal.timeout(5000) });
-                    data = await resp.json();
-                } else {
-                    data = await new Promise((resolve, reject) => {
-                        const timer = setTimeout(() => reject(new Error('timeout')), 5000);
-                        http.get({ url }, (err, resp) => {
-                            clearTimeout(timer);
-                            if (err) return reject(err);
-                            try { resolve(typeof resp === 'string' ? JSON.parse(resp) : resp); }
-                            catch (e) { reject(e); }
-                        });
-                    });
+                const results = await sysDns.promises.lookup(domain, { all: true }); 
+                if (results && results.length > 0) {
+                    const allIps = [...new Set(results.map(r => r.address))];
+                    const hasV4 = allIps.some(ip => ip.includes('.'));
+                    const hasV6 = allIps.some(ip => ip.includes(':'));
+                    const stack = (hasV4 && hasV6) ? "dual" : (hasV6 ? "v6" : "v4");
+                    const ip = hasV4 ? allIps.find(ip => ip.includes('.')) : allIps[0];
+                    return { ip, ips: allIps, stack };
                 }
-                const answer = data?.Answer || [];
-                const a = answer.find(r => r.type === 1);
-                if (a?.data) return a.data;
             } catch {}
         }
 
+        // 方案二：DoH 多端点兜底（阿里优先，国内可达；尝试 A 和 AAAA；Google 备用）
+        async function queryDoh(type) {
+            const urls = CONFIG.ipApiDnsEndpoint
+                ? [CONFIG.ipApiDnsEndpoint]
+                : [
+                    `https://dns.alidns.com/resolve?name=${encodeURIComponent(domain)}&type=${type}`,
+                    `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`
+                ];
+            for (const url of urls) {
+                try {
+                    let data;
+                    if (http && http.fetch) {
+                        const resp = await http.fetch(url, { signal: AbortSignal.timeout(2000) });
+                        data = await resp.json();
+                    } else {
+                        data = await new Promise((resolve, reject) => {
+                            const timer = setTimeout(() => reject(new Error('timeout')), 2000);
+                            http.get({ url }, (err, resp) => {
+                                clearTimeout(timer);
+                                if (err) return reject(err);
+                                try { resolve(typeof resp === 'string' ? JSON.parse(resp) : resp); }
+                                catch (e) { reject(e); }
+                            });
+                        });
+                    }
+                    const answer = data?.Answer || [];
+                    const records = answer.filter(r => r.type === (type === 'A' ? 1 : 28)).map(r => r.data);
+                    if (records.length > 0) return records;
+                } catch {}
+            }
+            return [];
+        }
+
+        const promises = [queryDoh('A')];
+        if (CONFIG.enableIpv6Tag || CONFIG.enableFission) promises.push(queryDoh('AAAA'));
+
+        const [v4Res, v6Res] = await Promise.all(promises);
+        
+        let allIps = [];
+        if (v4Res) allIps.push(...v4Res);
+        if (v6Res) allIps.push(...v6Res);
+        allIps = [...new Set(allIps)];
+
+        if (allIps.length > 0) {
+            const hasV4 = allIps.some(ip => ip.includes('.'));
+            const hasV6 = allIps.some(ip => ip.includes(':'));
+            const stack = (hasV4 && hasV6) ? "dual" : (hasV6 ? "v6" : "v4");
+            const ip = hasV4 ? allIps.find(ip => ip.includes('.')) : allIps[0];
+            return { ip, ips: allIps, stack };
+        }
+        
         return null;
     }
 
@@ -527,7 +604,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         
         // 动态拼接 URL 和 API 密钥
         const keyParam = CONFIG.ipApiKey ? `&key=${CONFIG.ipApiKey}` : "";
-        const url = `${CONFIG.ipApiEndpoint}?fields=status,country,countryCode,city,isp,as,org,query,proxy,hosting,mobile&lang=zh-CN${keyParam}`;
+        const url = `${CONFIG.ipApiEndpoint}?fields=status,country,countryCode,city,isp,as,asname,org,reverse,query,proxy,hosting,mobile&lang=zh-CN${keyParam}`;
         const body = JSON.stringify(ips);
 
         let retries = 3; // 最大重试次数
@@ -549,7 +626,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                     if (resp.status === 429) {
                         retries--;
                         const ttl = parseInt(resp.headers.get('X-Ttl') || '5', 10); 
-                        console.warn(`[IP Enrich] ⚠️ 触发 429 限流，脚本将挂起等待 ${ttl} 秒... (剩余重试: ${retries})`);
+                        logger.warn(`触发 429 限流，脚本将挂起等待 ${ttl} 秒... (剩余重试: ${retries})`);
                         if (retries === 0) break; 
                         
                         await new Promise(resolve => setTimeout(resolve, (ttl + 1) * 1000));
@@ -558,7 +635,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
                     if (!resp.ok) {
                         const snippet = await resp.text().catch(() => '');
-                        console.warn(`[IP Enrich] ⚠️ ip-api 返回 HTTP ${resp.status}: ${snippet.slice(0, 100)}`);
+                        logger.warn(`ip-api 返回 HTTP ${resp.status}: ${snippet.slice(0, 100)}`);
                         return [];
                     }
                     data = await resp.json();
@@ -591,7 +668,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                     // 🟡 旧版环境 429 处理 (读不到 Header，固定等 6 秒)
                     if (data && data._is429) {
                         retries--;
-                        console.warn(`[IP Enrich] ⚠️ 触发 429 限流，挂起等待 6 秒... (剩余重试: ${retries})`);
+                        logger.warn(`触发 429 限流，挂起等待 6 秒... (剩余重试: ${retries})`);
                         if (retries === 0) break;
                         await new Promise(resolve => setTimeout(resolve, 6000));
                         continue;
@@ -602,7 +679,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 return Array.isArray(data) ? data : [];
                 
             } catch (e) {
-                console.warn(`[IP Enrich] ⚠️ 批量查询请求失败: ${e.message}`);
+                logger.warn(`批量查询请求失败: ${e.message}`);
                 return []; // 彻底失败直接跳出，不盲目重试
             }
         }
@@ -645,17 +722,58 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         if (isCDN) {
             if (!item.tags.includes("cdn")) item.tags.push("cdn");
             if (!item.specificFeatures.includes("CDN中转")) item.specificFeatures.push("CDN中转");
+        }
 
-            if (item.regionInfo && !item.regionInfo.isUnknown) {
-                console.log(`[IP Enrich] 🛡️ 触发防覆盖: [${item.cleanName}] 查出为 CDN(${ipInfo.org})，放弃使用其虚假定位(${ipInfo.country})`);
-                
-                item._ipSource = true;
-                if (ipInfo.isp) item._ipIsp = ipInfo.isp;
-                if (ipInfo.org) item._ipOrg = ipInfo.org;
-                return; 
+        // --- 1. 保存 IP 元数据与特征打标 (无视地区覆盖策略，只要进来了就必打标) ---
+        item._ipSource = true;
+        if (ipInfo.isp) item._ipIsp = ipInfo.isp;
+        if (ipInfo.as) item._ipAsn = ipInfo.as;
+        if (ipInfo.asname) item._ipAsname = ipInfo.asname;
+        if (ipInfo.org) item._ipOrg = ipInfo.org;
+        item._ipProxy = !!ipInfo.proxy;
+        item._ipHosting = !!ipInfo.hosting;
+        item._ipMobile = !!ipInfo.mobile;
+
+        if (CONFIG.enableIpv6Tag || CONFIG.enableCellularTag || CONFIG.enableResidentialTag) {
+            if (CONFIG.enableIpv6Tag) {
+                const stack = item._ipStack || (ipInfo.query && ipInfo.query.includes(':') ? "v6" : "v4");
+                if (stack === "dual") {
+                    if (!item.tags.includes("dualstack")) item.tags.push("dualstack");
+                } else if (stack === "v6") {
+                    if (!item.tags.includes("ipv6")) item.tags.push("ipv6");
+                }
+            }
+
+            if (!isCDN) {
+                if (CONFIG.enableCellularTag && ipInfo.mobile) {
+                    if (!item.tags.includes("cellular")) item.tags.push("cellular");
+                    if (!item.specificFeatures.includes("蜂窝")) item.specificFeatures.push("蜂窝");
+                } else if (CONFIG.enableResidentialTag && ipInfo.hosting === false) {
+                    let isRes = false;
+                    const ptr = (ipInfo.reverse || "").toLowerCase();
+                    const isp = (ipInfo.isp || "").toLowerCase();
+                    
+                    if (/(dyn|broadband|dsl|cable|dialup|pppoe|pool|client|user|customer|dynamic|dhcp|hinet-ip|telecom|host|netvigator|dip0)/i.test(ptr)) {
+                        isRes = true;
+                    } else if (/(comcast|verizon|spectrum|att|cox|hinet|kbro|seednet|aptg|so-net|nuro|ocn|plala|singtel|starhub|myrepublic|netvigator|ctm|viewqwest|hkbn|hkt)/i.test(isp)) {
+                        isRes = true;
+                    }
+
+                    if (isRes) {
+                        if (!item.tags.includes("residential")) item.tags.push("residential");
+                        if (!item.specificFeatures.includes("家宽")) item.specificFeatures.push("家宽");
+                    }
+                }
             }
         }
 
+        // --- 2. 地区覆盖防误伤逻辑 ---
+        if (isCDN && item.regionInfo && !item.regionInfo.isUnknown) {
+            logger.info(`🛡️ 触发防覆盖: [${item.cleanName}] 查出为 CDN(${ipInfo.org})，放弃使用其虚假定位(${ipInfo.country})`);
+            return; 
+        }
+
+        // 如果用户只在 "missing" 模式，且节点已有合法地区，则在此终止，不进行后续覆盖
         if (CONFIG.ipEnrichMode !== "all" && item.regionInfo && !item.regionInfo.isUnknown) return;
 
         let regionName = IP_COUNTRY_MAP[ipInfo.countryCode];
@@ -663,13 +781,17 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
         // 动态兜底：未预定义的地区自动生成国旗 emoji 和区域条目
         if (!def && ipInfo.countryCode && ipInfo.country) {
+            if (CONFIG.strictRegionMatch) {
+                logger.info(`🛡️ 严格模式拦截: IP查出未定义地区(${ipInfo.country})，按规则拒绝为其动态建组`);
+                return;
+            }
             regionName = ipInfo.country;
             const icon = String.fromCodePoint(
                 0x1F1E6 + ipInfo.countryCode.charCodeAt(0) - 65,
                 0x1F1E6 + ipInfo.countryCode.charCodeAt(1) - 65
             );
             def = { name: regionName, icon, _fromDynamic: true, _cleanReg: new RegExp("", "g") };
-            console.log(`[IP Enrich] 🆕 动态新增未预定义地区: ${icon} ${regionName} (${ipInfo.countryCode})`);
+            logger.info(`🆕 动态新增未预定义地区: ${icon} ${regionName} (${ipInfo.countryCode})`);
         }
 
         if (!def) return;
@@ -690,18 +812,10 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
         // 如果 IP 查到了更精确的城市，且跟名字里的城市不一样，则替换它
         if (ipInfo.city && item._destCity && ipInfo.city.toLowerCase() !== item._destCity.toLowerCase()) {
-            console.log(`[IP Enrich] 📍 城市校准: [${item._destCity}] -> [${ipInfo.city}]`);
+            logger.info(`📍 城市校准: [${item._destCity}] -> [${ipInfo.city}]`);
             // 更新为 IP 查到的真实城市
             item._destCity = ipInfo.city; 
         }
-
-        item._ipSource = true;
-        if (ipInfo.isp) item._ipIsp = ipInfo.isp;
-        if (ipInfo.as) item._ipAsn = ipInfo.as;
-        if (ipInfo.org) item._ipOrg = ipInfo.org;
-        item._ipProxy = !!ipInfo.proxy;
-        item._ipHosting = !!ipInfo.hosting;
-        item._ipMobile = !!ipInfo.mobile;
 
         // 同步更新 groupKey，确保排序编号基于新地区
         item.groupKey = (item.airportTag ? item.airportTag + "__" : "") + def.name;
@@ -712,28 +826,35 @@ function operator(proxies, targetPlatform, userConfig = {}) {
      */
     async function ipEnrichPhase(nodes) {
         const http = getHttpClient();
-        if (!http) { console.log("[IP Enrich] ⚠️ 无可用 HTTP 客户端，跳过 IP 检测"); return; }
+        if (!http) { logger.warn("无可用 HTTP 客户端，跳过 IP 检测"); return; }
 
-        console.log(`[IP Enrich] 🔍 开始 IP 补充检测 (模式: ${CONFIG.ipEnrichMode})`);
+        logger.info(`🔍 开始 IP 补充检测 (模式: ${CONFIG.ipEnrichMode})`);
 
         // 🛡️ 第一步：安全熔断机制 (防超时 / 防过度消耗资源)
         let validNodeCount = 0;
         for (const item of nodes) {
-            if (!item.isInfo && !item.isGarbage) validNodeCount++;
+            if (!item.isInfo && !item.isGarbage && !item.isSpecial) validNodeCount++;
         }
         
         if (validNodeCount > CONFIG.ipEnrichThreshold) {
-            console.warn(`[IP Enrich] 🛑 触发安全熔断！`);
-            console.warn(`[IP Enrich] ⚠️ 有效节点数(${validNodeCount}) 超过了安全阈值(${CONFIG.ipEnrichThreshold})。`);
-            console.warn(`[IP Enrich] 💡 提示：在 Sub-Store 中大规模并发查 IP 极易导致脚本超时被杀。为保护运行稳定，已自动跳过 IP 检测流程。`);
+            logger.warn(`🛑 触发安全熔断！`);
+            logger.warn(`有效节点数(${validNodeCount}) 超过了安全阈值(${CONFIG.ipEnrichThreshold})。`);
+            logger.warn(`💡 提示：在 Sub-Store 中大规模并发查 IP 极易导致脚本超时被杀。为保护运行稳定，已自动跳过 IP 检测流程。`);
             return;
         }
 
         // 第二步：收集需要检测的 server
         const serverToNodes = new Map();
+        const hasTagFeature = CONFIG.enableIpv6Tag || CONFIG.enableCellularTag || CONFIG.enableResidentialTag;
+        
         for (const item of nodes) {
-            if (item.isInfo || item.isGarbage) continue;
-            if (CONFIG.ipEnrichMode !== "all" && item.regionInfo && !item.regionInfo.isUnknown) continue;
+            if (item.isInfo || item.isGarbage || item.isSpecial) continue;
+            
+            // 如果既没有打标需求，又处于 missing 模式且已有地区，则不需要探测
+            if (!hasTagFeature && CONFIG.ipEnrichMode !== "all" && item.regionInfo && !item.regionInfo.isUnknown) {
+                continue;
+            }
+            
             const server = item.proxy?.server;
             if (!server) continue;
             
@@ -741,42 +862,149 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             serverToNodes.get(server).push(item);
         }
         if (serverToNodes.size === 0) {
-            console.log("[IP Enrich] ✅ 无需补充检测（所有节点已有地区信息）");
+            logger.info("✅ 无需补充检测（所有节点已有地区信息）");
             return;
         }
         const collectedTotal = [...serverToNodes.values()].reduce((s, v) => s + v.length, 0);
-        console.log(`[IP Enrich] 📡 收集到 ${serverToNodes.size} 个唯一 server，共 ${collectedTotal} 个节点`);
+        logger.info(`📡 收集到 ${serverToNodes.size} 个唯一 server，共 ${collectedTotal} 个节点`);
 
-        // 第三步：DNS 批量并发解析域名 → IP，按 IP 去重
+        // 第三步：DNS 批量解析域名 → IP (引入并发控制，避免瞬间发包过多导致超时)
         const servers = [...serverToNodes.keys()];
-        const resolved = await Promise.all(servers.map(s => resolveDomainToIp(s, http)));
+        const resolved = [];
+        const DNS_CONCURRENCY = 15; // 每次最多并发查 15 个域名
+        for (let i = 0; i < servers.length; i += DNS_CONCURRENCY) {
+            const chunk = servers.slice(i, i + DNS_CONCURRENCY);
+            const res = await Promise.all(chunk.map(s => resolveDomainToIp(s, http)));
+            resolved.push(...res);
+            // 简单延时缓冲，防止 DoH 接口 QPS 过高被拦截
+            if (i + DNS_CONCURRENCY < servers.length) await new Promise(r => setTimeout(r, 150));
+        }
+
         const ipToNodes = new Map();
-        let domainCount = 0, directIpCount = 0;
+        let domainCount = 0, directIpCount = 0, fissionCount = 0;
         for (let i = 0; i < servers.length; i++) {
             const server = servers[i];
-            const ip = resolved[i];
-            if (ip && !isPrivateIP(ip)) {
+            const res = resolved[i];
+            if (res && res.ip && !isPrivateIP(res.ip)) {
+                const { ip, ips, stack } = res;
                 const items = serverToNodes.get(server);
-                if (!ipToNodes.has(ip)) ipToNodes.set(ip, []);
-                for (const item of items) ipToNodes.get(ip).push(item);
-                if (looksLikeDomain(server)) domainCount++; else directIpCount++;
+                
+                if (CONFIG.enableFission && ips && ips.length > 1 && looksLikeDomain(server)) {
+                    for (const item of items) {
+                        const originalIndex = nodes.indexOf(item);
+                        
+                        // 裂变黑名单检查
+                        let shouldSkipFission = false;
+                        for (const kw of CONFIG.fissionExcludeKeywords) {
+                            if (item.rawName.includes(kw)) {
+                                shouldSkipFission = true;
+                                break;
+                            }
+                        }
+                        
+                        if (shouldSkipFission) {
+                            item._ipStack = stack;
+                            if (!ipToNodes.has(ip)) ipToNodes.set(ip, []);
+                            ipToNodes.get(ip).push(item);
+                            continue;
+                        }
+
+                        // 根据配置过滤裂变所需的 IP 栈
+                        let fissionIps = ips;
+                        if (CONFIG.fissionStack === "v4") {
+                            fissionIps = ips.filter(ip => !ip.includes(':'));
+                        } else if (CONFIG.fissionStack === "v6") {
+                            fissionIps = ips.filter(ip => ip.includes(':'));
+                        }
+
+                        // 如果过滤后没有任何符合要求的 IP，则跳过裂变，当作普通节点处理
+                        if (fissionIps.length === 0) {
+                            item._ipStack = stack;
+                            if (!ipToNodes.has(ip)) ipToNodes.set(ip, []);
+                            ipToNodes.get(ip).push(item);
+                            continue;
+                        }
+                        
+                        if (!fissionTrack[server]) {
+                            fissionTrack[server] = fissionIps.slice(0, Math.min(fissionIps.length, CONFIG.fissionMaxNodes));
+                        }
+
+                        // 1. 处理原节点 (指向第一个 IP)
+                        item._ipStack = fissionIps[0].includes(':') ? "v6" : "v4";
+                        item.proxy.server = fissionIps[0].includes(':') && !fissionIps[0].startsWith('[') ? `[${fissionIps[0]}]` : fissionIps[0];
+                        // 净化历史遗留或误判的栈标签，确保裂变后完全基于物理 IP 重新打标
+                        item.tags = item.tags.filter(t => t !== "dualstack" && t !== "ipv6");
+                        
+                        // SNI 防漏：如果原始 server 是域名，必须将其注入 SNI 和 Host
+                        if (item.proxy.tls || ["ws", "grpc", "h2", "http"].includes(item.proxy.network)) {
+                            if (!item.proxy.sni && !item.proxy.servername) item.proxy.servername = server;
+                        }
+                        if (item.proxy.network === "ws" && !item.proxy["ws-opts"]?.headers?.Host) {
+                            if (!item.proxy["ws-opts"]) item.proxy["ws-opts"] = {};
+                            if (!item.proxy["ws-opts"].headers) item.proxy["ws-opts"].headers = {};
+                            item.proxy["ws-opts"].headers.Host = server;
+                        }
+
+                        if (!ipToNodes.has(fissionIps[0])) ipToNodes.set(fissionIps[0], []);
+                        ipToNodes.get(fissionIps[0]).push(item);
+
+                        // 2. 裂变生成克隆节点
+                        const maxClones = Math.min(fissionIps.length, CONFIG.fissionMaxNodes);
+                        for (let j = 1; j < maxClones; j++) {
+                            const cloneIp = fissionIps[j];
+                            if (isPrivateIP(cloneIp)) continue;
+
+                            const cloneItem = { ...item };
+                            if (item.attrs) cloneItem.attrs = { ...item.attrs };
+                            cloneItem.tags = [...item.tags];
+                            cloneItem.specificFeatures = [...item.specificFeatures];
+                            cloneItem.proxy = JSON.parse(JSON.stringify(item.proxy));
+                            
+                            cloneItem.proxy.server = cloneIp.includes(':') && !cloneIp.startsWith('[') ? `[${cloneIp}]` : cloneIp;
+                            cloneItem._ipStack = cloneIp.includes(':') ? "v6" : "v4";
+                            cloneItem._isFission = true; // 标记裂变节点
+
+                            if (!ipToNodes.has(cloneIp)) ipToNodes.set(cloneIp, []);
+                            ipToNodes.get(cloneIp).push(cloneItem);
+                            
+                            nodes.push(cloneItem);
+                            fissionCount++;
+                        }
+                    }
+                    domainCount++;
+                } else {
+                    for (const item of items) {
+                        item._ipStack = stack;
+                    }
+                    if (!ipToNodes.has(ip)) ipToNodes.set(ip, []);
+                    for (const item of items) ipToNodes.get(ip).push(item);
+                    if (looksLikeDomain(server)) domainCount++; else directIpCount++;
+                }
             }
         }
         if (ipToNodes.size === 0) {
-            console.log("[IP Enrich] ⚠️ DNS 解析全部失败，无 IP 可查询");
+            logger.warn("DNS 解析全部失败，无 IP 可查询");
             return;
         }
         const ipNodesTotal = [...ipToNodes.values()].reduce((s, v) => s + v.length, 0);
-        console.log(`[IP Enrich] 🌐 DNS 解析完成: ${domainCount} 域名→IP, ${directIpCount} 直连, ${ipToNodes.size} 个唯一 IP (${ipNodesTotal} 节点)`);
+        logger.info(`🌐 DNS 解析完成: ${domainCount} 域名→IP, ${directIpCount} 直连, ${ipToNodes.size} 个唯一 IP (${ipNodesTotal} 节点)`);
+        if (fissionCount > 0) {
+            logger.info(`🧬 节点裂变已触发: 共增殖产生了 ${fissionCount} 个新实体节点`);
+        }
 
         // 第四步：分批批量查询（避免超限）
         const ips = [...ipToNodes.keys()];
         const allResults = [];
         for (let i = 0; i < ips.length; i += CONFIG.ipApiBatchSize) {
             const batch = ips.slice(i, i + CONFIG.ipApiBatchSize);
-            console.log(`[IP Enrich] 📦 批量查询第 ${Math.floor(i / CONFIG.ipApiBatchSize) + 1} 批 (${batch.length} IP)...`);
+            logger.info(`📦 批量查询第 ${Math.floor(i / CONFIG.ipApiBatchSize) + 1} 批 (${batch.length} IP)...`);
             const batchRes = await batchQueryIps(batch, http);
             allResults.push(...batchRes);
+            
+            // 每次批次之间强制等待 1 秒
+            if (i + CONFIG.ipApiBatchSize < ips.length) {
+                await new Promise(r => setTimeout(r, 1000));
+            }
         }
 
         // 第五步：回填节点信息
@@ -799,7 +1027,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             }
         }
 
-        console.log(`[IP Enrich] ✅ 完成: ip-api.com 成功 ${resultMap.size}/${ips.length} IP, ` +
+        logger.info(`✅ 完成: ip-api.com 成功 ${resultMap.size}/${ips.length} IP, ` +
             `回填 ${enrichedCount} 节点${regionDetected > 0 ? `, 识别 ${regionDetected} 个地区` : ""}`);
         if (regionDetected > 0) {
             const byRegion = {};
@@ -809,7 +1037,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                     byRegion[n] = (byRegion[n] || 0) + 1;
                 }
             }
-            console.log(`[IP Enrich] 📊 地区分布: ${Object.entries(byRegion).map(([r, c]) => `${r} ${c}`).join(", ")}`);
+            logger.info(`📊 地区分布: ${Object.entries(byRegion).map(([r, c]) => `${r} ${c}`).join(", ")}`);
         }
     }
 
@@ -818,16 +1046,18 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     // =========================================================================
     const proxySet = new Set();
     const processedData = [];
+    const fissionTrack = {};
     let dedupeCount = 0;
     let infoCount = 0;
     let discardedCount = 0;
 
     // 提前处理黑名单（转小写），避免循环内重复开销
+    const whitelistKeywordsLower = (CONFIG.whitelistKeywords || []).map(k => k.toLowerCase());
     const blockKeywordsLower = (CONFIG.blockKeywords || []).map(k => k.toLowerCase());
     const blockServersLower = (CONFIG.blockServers || []).map(s => s.toLowerCase());
 
     const BUCKETS = {};
-    [...new Set(REGION_DEFS.map(r => r.name)), "garbage", "download", "info", "allStandard", "unknown"].forEach(key => {
+    [...new Set(REGION_DEFS.map(r => r.name)), "garbage", "download", "info", "special", "allStandard", "unknown"].forEach(key => {
         BUCKETS[key] = [];
     });
     FEATURE_RULES.forEach(r => { if (r.tag) BUCKETS[r.tag] = []; });
@@ -864,9 +1094,31 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             proxySet.add(key);
         }
 
+        const tempNameLower = tempName.toLowerCase();
+
+        let isSpecial = false;
+        let specialTargetName = "";
+
+        if (whitelistKeywordsLower.some(k => tempNameLower.includes(k))) {
+            isSpecial = true;
+            specialTargetName = proxy.name; // 白名单节点强制保留原名
+        }
+
+        if (!isSpecial && CONFIG.specialNodeRules && CONFIG.specialNodeRules.length > 0) {
+            const match = CONFIG.specialNodeRules.find(r => r.reg.test(tempName));
+            if (match) {
+                isSpecial = true;
+                specialTargetName = match.targetName || proxy.name;
+            }
+        }
+
+        if (isSpecial) {
+            processedData.push({ proxy, isSpecial: true, specialTargetName, rawName, isInfo: false, isGarbage: false });
+            return;
+        }
+
         let isGarbage = false;
         let blockReason = "";
-        const tempNameLower = tempName.toLowerCase();
         
         if (blockKeywordsLower.some(k => tempNameLower.includes(k))) {
             isGarbage = true; blockReason = "黑名单关键字";
@@ -937,11 +1189,13 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                         specificFeatures.push(...specifics);
                     } else if (hasGeneric) {
                         const fb = FEATURE_TEXT_MAP["streaming"];
-                        if (!specificFeatures.includes(fb)) specificFeatures.push(fb);
+                        if (fb && !specificFeatures.includes(fb)) specificFeatures.push(fb);
                     }
                 } else {
                     // 非流媒体标签：沿用缩写映射
                     allMatches.forEach(m => {
+                        if (rule.tag === "ipv6" || rule.tag === "dualstack") return; // 属于网络层，不在应用层 features 中展示
+
                         let word = m.toUpperCase();
                         if (/CHATGPT|OPENAI|GPT/i.test(word)) word = "GPT";
                         else if (/家宽|住宅|RESIDENTIAL/i.test(word)) word = "家宽";
@@ -960,6 +1214,11 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 }
             }
         });
+
+        // 🏷️ 如果开启打标，且节点 server 纯 IP 时直接识别网络栈
+        if (CONFIG.enableIpv6Tag && proxy.server && !looksLikeDomain(proxy.server)) {
+            if (proxy.server.includes(':')) tags.add("ipv6");
+        }
 
         const regionInfo = matchNodeRegion(name);
         let destCityStr = "";
@@ -1010,6 +1269,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
         processedData.sort((a, b) => {
             if (a.isInfo !== b.isInfo) return a.isInfo ? -1 : 1;
+            if (a.isSpecial !== b.isSpecial) return a.isSpecial ? -1 : 1;
             if (a.isGarbage !== b.isGarbage) return a.isGarbage ? 1 : -1;
 
             const isUnknownA = !a.regionInfo || a.regionInfo.isUnknown;
@@ -1019,6 +1279,13 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             const orderA = REGION_ORDER[a.regionInfo?.name] ?? 999;
             const orderB = REGION_ORDER[b.regionInfo?.name] ?? 999;
             if (orderA !== orderB) return orderA - orderB;
+
+            // 对于不在 REGION_DEFS 里的动态/冷门地区（order 都是 999），按地区名拼音排序，防止混在一起
+            if (orderA === 999) {
+                const nameA = a.regionInfo?.name || "";
+                const nameB = b.regionInfo?.name || "";
+                if (nameA !== nameB) return nameA.localeCompare(nameB, 'zh-CN');
+            }
 
             const getMultiWeight = (num) => num > (CONFIG.highMultiThreshold || 99) ? 1 : 0;
             const mwA = getMultiWeight(a.attrs?.multiNum || 1);
@@ -1044,8 +1311,24 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         const counts = {};
         const groupTrack = {};
         processedData.forEach(d => {
-            if (!d.isInfo && !d.isGarbage) counts[d.groupKey] = (counts[d.groupKey] || 0) + 1;
+            if (!d.isInfo && !d.isGarbage && !d.isSpecial) counts[d.groupKey] = (counts[d.groupKey] || 0) + 1;
         });
+
+        // --- ⚙️ 构建多分隔符兜底清理动态正则 ---
+        const defaultSeps = ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"];
+        const customSeps = Array.isArray(CONFIG.renameSeparators) ? CONFIG.renameSeparators : defaultSeps;
+        const charSeps = [];
+        const wordSeps = [];
+        customSeps.forEach(s => {
+            const esc = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (s.length === 1) charSeps.push(esc);
+            else wordSeps.push(esc);
+        });
+        const charClass = charSeps.length > 0 ? `[${charSeps.join('')}]` : '';
+        const wordStr = wordSeps.join('|');
+        const combined = wordSeps.length > 0 ? (charClass ? `(?:${charClass}|${wordStr})` : `(?:${wordStr})`) : charClass;
+        const regAdjacentSeps = combined ? new RegExp(`\\s*${combined}\\s*(?=${combined})`, 'g') : null;
+        const regEdgeSeps = combined ? new RegExp(`^(?:\\s|${combined})+|(?:\\s|${combined})+$`, 'g') : null;
 
         // 🚀 第二阶遍历: 执行重命名与组装
         const finalProxies = [];
@@ -1056,7 +1339,15 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 if (CONFIG.customPrefix) item.proxy.name = CONFIG.customPrefix + item.proxy.name;
                 finalProxies.push(item.proxy);
                 BUCKETS.info.push(item.proxy.name);
-                nodeMeta.push({ proxy: item.proxy, regionInfo: null, tags: [], groupKey: "info", isInfo: true });
+                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionInfo: null, tags: [], groupKey: "info", isInfo: true });
+                return;
+            }
+
+            if (item.isSpecial) {
+                item.proxy.name = item.specialTargetName;
+                BUCKETS.special.push(item.proxy.name);
+                finalProxies.push(item.proxy);
+                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionInfo: null, tags: [], groupKey: "special", isInfo: false, isGarbage: false, isSpecial: true });
                 return;
             }
 
@@ -1065,7 +1356,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 item.proxy.name = garbageName;
                 BUCKETS.garbage.push(garbageName);
                 if (CONFIG.outputGarbage) finalProxies.push(item.proxy);
-                nodeMeta.push({ proxy: item.proxy, regionInfo: null, tags: [], groupKey: "garbage", isInfo: false, isGarbage: true });
+                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionInfo: null, tags: [], groupKey: "garbage", isInfo: false, isGarbage: true });
                 return;
             }
 
@@ -1086,6 +1377,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             const ispStr = item._ipIsp ? cleanIspName(item._ipIsp) : (item.attrs.ispStr || "");
             const orgStr = item._ipOrg ? cleanIspName(item._ipOrg) : (item.attrs.ispStr || "");
             const asnStr = item._ipAsn ? `AS${item._ipAsn.toString().replace(/^AS/i, '')}` : (item.attrs.asnStr || "");
+            const asnameStr = item._ipAsname ? item._ipAsname : "";
 
             let finalName;
             let isUnknown = !regionInfo || (regionInfo && regionInfo.isUnknown);
@@ -1124,19 +1416,22 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                         .replace(/\{in\}/g, item.attrs.entryStr || "")
                         .replace(/\{line\}/g, item.attrs.cleanLines || "")
                         .replace(/\{multi\}/g, item.attrs.multiStr || "")
+                        .replace(/\{ip_stack\}/g, tags.includes("dualstack") ? "双栈" : (tags.includes("ipv6") ? "IPv6" : ""))
                         .replace(/\{city\}/g, finalCity)
                         .replace(/\{isp\}/g, ispStr)
                         .replace(/\{asn\}/g, asnStr)
+                        .replace(/\{asname\}/g, asnameStr)
                         .replace(/\{org\}/g, orgStr)
-                        .replace(/\s{2,}/g, " ")                   // 1. 合并因为空占位符产生的多余空格
-                        .replace(/\s*[|\-·/]\s*(?=[|\-·/])/g, "")  // 2. 清理相邻的冗余符号 (如 " | · " 变成 " · ")
-                        .replace(/\s*[|\-·/]\s*$/g, "")            // 3. 自动清理尾部悬空的符号
-                        .trim();
-
-                    // 4. 单独处理可能悬空在最前面的符号
-                    finalName = finalName.replace(/^[|\-·/]\s*/, "");
+                        .replace(/\s{2,}/g, " ");
+                if (regAdjacentSeps) {
+                    finalName = finalName.replace(regAdjacentSeps, "");
+                }
+                if (regEdgeSeps) {
+                    finalName = finalName.replace(regEdgeSeps, "");
+                }
+                finalName = finalName.trim();
                 } else {
-                    finalName = `${myPrefix}${item.cleanName}`;
+                    finalName = `${myPrefix}${item.rawName}`;
                 }
 
                 const regionKey = regionInfo.name;
@@ -1161,13 +1456,18 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             }
 
             nodeMeta.push({
+                rawName: item.rawName, cleanName: proxy.name,
                 proxy, regionInfo, tags, groupKey,
-                isInfo: false, isGarbage: false,
+                isInfo: false, isGarbage: false, isFission: !!item._isFission,
                 ipIsp: item._ipIsp || null,
                 ipAsn: item._ipAsn || null,
+                ipAsname: item._ipAsname || null,
                 ipOrg: item._ipOrg || null,
             });
         });
+
+        let fissionCount = 0;
+        processedData.forEach(d => { if (d._isFission) fissionCount++; });
 
         const stats = {
             total: proxies.length,
@@ -1177,27 +1477,69 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             discardedCount,
             garbageCount: BUCKETS.garbage.length,
             unknownCount: BUCKETS.unknown.length,
+            fissionCount,
             regionCounts: {},
             featureCounts: {}
         };
 
         Object.keys(BUCKETS).forEach(key => {
-            if (["garbage", "download", "info", "allStandard", "unknown"].includes(key)) return;
+            if (["garbage", "download", "info", "special", "allStandard", "unknown"].includes(key)) return;
             if (BUCKETS[key].length > 0) stats.regionCounts[key] = BUCKETS[key].length;
         });
         FEATURE_RULES.forEach(r => {
             if (BUCKETS[r.tag] && BUCKETS[r.tag].length > 0) stats.featureCounts[r.tag] = BUCKETS[r.tag].length;
         });
 
+        const cleanBuckets = {};
+        Object.keys(BUCKETS).forEach(key => {
+            if (BUCKETS[key].length > 0) cleanBuckets[key] = BUCKETS[key];
+        });
+
+        const reportLines = [
+            '====== 🚀 Mihomo-Toolkit 节点清洗报告 ======',
+            `📥 概况: 读入 ${stats.total} 个节点，最终保留 ${stats.outputCount} 个`,
+            `♻️ 过滤: 物理去重 ${stats.dedupeCount} 个，剔除无效/广告 ${stats.discardedCount} 个，分离说明节点 ${stats.infoCount} 个`
+        ];
+        
+        if (stats.fissionCount > 0) {
+            reportLines.push(`🧬 裂变: 解析域名产生 ${stats.fissionCount} 个分身 IP 节点`);
+        }
+
+        const topRegions = Object.entries(stats.regionCounts).sort((a,b) => b[1] - a[1]).slice(0, 5).map(r => `${r[0]}(${r[1]})`).join(', ');
+        if (topRegions) {
+            reportLines.push(`🌍 地区: ${topRegions} 等 (未知地区 ${stats.unknownCount} 个)`);
+        }
+
+        const topFeatures = Object.entries(stats.featureCounts).sort((a,b) => b[1] - a[1]).map(r => `${r[0]}(${r[1]})`).join(', ');
+        if (topFeatures) {
+            reportLines.push(`🏷️ 特征: ${topFeatures}`);
+        }
+        reportLines.push('============================================');
+
         return CONFIG.outputMode === "object"
-            ? { proxies: finalProxies, meta: { buckets: BUCKETS, stats: stats, nodeMeta: nodeMeta } }
+            ? { proxies: finalProxies, meta: { buckets: cleanBuckets, stats: stats, humanReport: reportLines.join('\n'), fissionTrack, nodeMeta: nodeMeta } }
             : finalProxies;
     }
 
     // 🧩 IP API 补充检测：仅在启用且 HTTP 客户端可用时走异步路径
     if (CONFIG.enableIpEnrich) {
         return (async () => {
-            await ipEnrichPhase(processedData);
+            try {
+                if (CONFIG.ipEnrichTimeout > 0) {
+                    await Promise.race([
+                        ipEnrichPhase(processedData),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error("IP_ENRICH_TIMEOUT")), CONFIG.ipEnrichTimeout))
+                    ]);
+                } else {
+                    await ipEnrichPhase(processedData);
+                }
+            } catch (e) {
+                if (e.message === "IP_ENRICH_TIMEOUT") {
+                    logger.warn(`请求总耗时超过设定阈值 (${CONFIG.ipEnrichTimeout}ms)，强制触发熔断！将跳过剩余 IP 分析并返回已处理的节点。`);
+                } else {
+                    logger.error(`发生异常: ${e.message}`);
+                }
+            }
             return finalizeProcessing();
         })();
     }
