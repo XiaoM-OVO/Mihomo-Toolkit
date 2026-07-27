@@ -32,6 +32,15 @@ async function fetchWithAuth(targetUrl) {
   }
 }
 
+function isAllowedUrl(urlStr) {
+  const parsed = new URL(urlStr);
+  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+  const host = parsed.hostname;
+  if (/^(localhost|127\.|0\.0\.0\.0|::1$)/.test(host)) return false;
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) return false;
+  return true;
+}
+
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
   
@@ -48,6 +57,7 @@ const server = http.createServer(async (req, res) => {
       
       if (configUrl) {
         // Fetch remote config.yaml
+        if (!isAllowedUrl(configUrl)) throw new Error('Invalid or disallowed config URL');
         const configRes = await fetchWithAuth(configUrl);
         if (!configRes.ok) throw new Error(`Failed to fetch remote config: ${configRes.status}`);
         const content = await configRes.text();
