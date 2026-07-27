@@ -29,6 +29,15 @@ async function fetchWithAuth(targetUrl) {
   }
 }
 
+function isAllowedUrl(urlStr) {
+  const parsed = new URL(urlStr);
+  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+  const host = parsed.hostname;
+  if (/^(localhost|127\.|0\.0\.0\.0|::1$)/.test(host)) return false;
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) return false;
+  return true;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -45,6 +54,7 @@ export default {
       // Support ?config=https://...
       const configUrl = url.searchParams.get('config');
       if (configUrl) {
+        if (!isAllowedUrl(configUrl)) return new Response('Invalid or disallowed config URL', { status: 400 });
         const configRes = await fetchWithAuth(configUrl);
         if (!configRes.ok) throw new Error(`Failed to fetch remote config: ${configRes.status}`);
         const content = await configRes.text();
