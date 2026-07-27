@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.2.0 (Build 2026.07.12)
+// 🏷️ 版本: v3.3.0 (Build 2026.07.27)
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -36,7 +36,7 @@
 // {transport}:非TCP传输层标签 (如 WS, H2, GRPC)
 // {ip_stack}:网络栈 (如: "IPv6", "双栈")
 // =========================================================================
-const USER_CONFIG = {
+const DEFAULT_CONFIG = {
   
 // =========================================================================
 // ⚙️ 用户自定义配置区 (开关配置) - true 为开启，false 为关闭
@@ -58,13 +58,15 @@ const USER_CONFIG = {
 
   renameTemplate: "[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}", // 🔤 节点重命名模板
   renameSeparators: ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"], // 🧹 允许作为分隔符被自动清理的悬空符号列表
-  whitelistKeywords: [],       // ⚪ 白名单关键词: 包含即放行并保留原名，不参与清洗，例: ["跳过清洗", "直连节点"]
+  whitelistKeywords: [],       // ⚪ 白名单关键词: 包含即放行并保留原名，不参与清洗，例: ["x-ray", "自建"]
   specialNodeRules: [],        // 💡 自定义重命名: 示例: { reg: /url.test|测速/i, targetName: "🚀 节点测速" })
+  customNodeGroups: {},        // 🎯 自定义节点分组: 指定节点进入哪些应用组, 键=关键词(子串匹配), 值=目标组名数组(如: { "自建HK": ["🤖 ChatGPT", "🐱 GitHub"]})
+  indexPrefixMap: {},          // 🔢 序号前缀映射: 键=订阅标签, 值=前缀(如 { "AirportA": "A", "AirportB": "B" })
   enableNodeRename: true,      // 🔄 二次重命名：设为 false 则直接继承原节点名（如果上游已经清洗过名字，建议关闭此项防乱码）
   strictRegionMatch: false,    // 🌏 未知地区匹配：true(严格模式，仅匹配预设字典，其余全扔垃圾桶)，false(宽松模式，允许通过国旗Emoji动态捕获冷门国家放入"其他"组)
   adTextThreshold: 6,          // 🔠 纯文本广告判定阈值：无数字/线路特征且长度大于此值的节点视为广告
-  lowMultiThreshold: 0.99,     // ⏬ 下载分流阈值：倍率 <= 此值的节点自动归入下载策略 (设为 0 关闭)
-  isolateDownload: false,      // ⏬ 下载节点隔离：设为 true 从普通大区池中剔除，设为 false 则允许进入普通池
+  lowMultiThreshold: 0.99,     // ⏬ 低倍率分流阈值：倍率 <= 此值的节点自动归入下载策略 (设为 0 关闭)
+  isolateDownload: false,      // ⏬ 低倍率节点隔离：设为 true 从普通大区池中剔除，设为 false 则允许进入普通池
 
   // 【3. 策略组建组与 UI 面板】
   minorNodeThreshold: 3,       // 📊 小众地区建组阈值：节点数 >= 此值则独立建组，否则折叠至大区组
@@ -94,6 +96,7 @@ const USER_CONFIG = {
   enableCrypto: false,         // 🪙 加密货币：Binance 等交易平台
   enablePayPal: false,         // 💳 金融支付：PayPal 独立分流
   enableResidential: false,    // 🏠 家宽分流：自动提取住宅/ISP节点作为高级备用
+  residentialNodeGroups: {},   // 🏠 家宽节点注入：键=地区(如 "hk"/"us" 或 "all")，值=目标应用组数组(如 { "all": ["🤖 ChatGPT", "♊ Gemini"] })
 
   // 【6. 网络测速与规则集配置】
   testInterval: 300,           // 🕒 测速间隔: 单位秒
@@ -119,9 +122,7 @@ const USER_CONFIG = {
 
 
 function main(config, extConfig) {
-  if (extConfig && typeof extConfig === 'object') {
-    Object.assign(USER_CONFIG, extConfig);
-  }
+  const USER_CONFIG = Object.assign({}, DEFAULT_CONFIG, extConfig || {});
   if (!USER_CONFIG.enableScript) return config;
 
   // =========================================================================
@@ -129,40 +130,38 @@ function main(config, extConfig) {
   // =========================================================================
   // 🤖 AI 服务加载列表（受 enableAI 总开关控制，删 key 即关闭）
   //    可用: chatgpt, gemini, claude, copilot (+ CUSTOM_SERVICES.ai)
-  const AI_SERVICES = ["chatgpt", "gemini", "claude", "copilot"];
-  // 🤖 AI 服务偏好的落地地区（按质量及解锁概率排序，填入地区 ID）
-  const AI_PREFERRED_REGIONS = ["us", "jp", "tw", "sg", "hk", "kr", "eu"];
+  const AI_SERVICES = USER_CONFIG.aiServices || ["chatgpt", "gemini", "claude", "copilot"];
+  const AI_PREFERRED_REGIONS = USER_CONFIG.aiPreferredRegions || ["us", "jp", "tw", "sg", "hk", "kr", "eu"];
 
-  // 💬 海外社交 App 列表（受 enableSocial 总开关控制，删 key 即关闭）
-  //    可用: twitter, facebook, instagram, discord (+ CUSTOM_SERVICES.social)
-  const SOCIAL_SERVICES = ["twitter", "facebook", "instagram", "discord"];
-  // 独立建组名单：在这里出现的 App 将拥有专属策略组，不在这里的将全部合并入 [💬 社交平台]
-  const INDEPENDENT_SOCIAL = ["twitter"];
+  // 💬 海外社交 App 列表
+  const SOCIAL_SERVICES = USER_CONFIG.socialServices || ["twitter", "facebook", "instagram", "discord"];
+  const INDEPENDENT_SOCIAL = USER_CONFIG.independentSocial || ["twitter"];
 
-  // 📺 流媒体服务加载列表（受 enableStreaming 总开关控制，删 key 即关闭）
-  //    可用: youtube, netflix, bilibili, disney, twitch, spotify, tiktok, bahamut, pixiv (+ CUSTOM_SERVICES.streaming)
-  const STREAMING_SERVICES = ["youtube", "netflix", "bilibili", "disney", "spotify", "tiktok", "bahamut", "pixiv", "twitch"];
-  // 📺 哔哩哔哩 (B站) 港澳台限制解除偏好落地地区
-  const BILI_PREFERRED_REGIONS = ["🇹🇼 台湾节点", "🇲🇴 澳门节点", "🇭🇰 香港节点"];
+  // 📺 流媒体服务加载列表
+  const STREAMING_SERVICES = USER_CONFIG.streamingServices || ["youtube", "netflix", "bilibili", "disney", "spotify", "tiktok", "bahamut", "pixiv", "twitch"];
+  const BILI_PREFERRED_REGIONS = USER_CONFIG.biliPreferredRegions || ["🇹🇼 台湾节点", "🇲🇴 澳门节点", "🇭🇰 香港节点"];
 
-  // 🛑 指定进程强制直连名单 (防漏与自定义绕过)
-  const PROCESS_DIRECT_WIN = ["qBittorrent", "Thunder", "BitComet", "uTorrent", "aria2c"]; // Win 强制直连进程
-  const PROCESS_DIRECT_MAC = ["Thunder", "BitComet", "uTorrent", "qbittorrent", "aria2c", "transmission-daemon"]; // Mac 强制直连进程
-  const PROCESS_DIRECT_LIN = ["qbittorrent", "aria2c", "transmission-daemon"]; // Linux 强制直连进程
+  // 🪟 系统服务加载列表
+  const SYSTEM_SERVICES = USER_CONFIG.systemServices || ["microsoft", "apple", "google"];
 
-  // ⏬ 指定进程强制走下载策略 (多线程 HTTP 下载器等)
-  const PROCESS_PROXY_WIN  = ["IDMan", "fdm"]; // Win 强制走 [⏬ 下载策略]
-  const PROCESS_PROXY_MAC  = ["fdm"];          // Mac 强制走 [⏬ 下载策略]
+  // 🛑 指定进程强制直连名单
+  const PROCESS_DIRECT_WIN = USER_CONFIG.processDirectWin || ["qBittorrent", "Thunder", "BitComet", "uTorrent", "aria2c"];
+  const PROCESS_DIRECT_MAC = USER_CONFIG.processDirectMac || ["Thunder", "BitComet", "uTorrent", "qbittorrent", "aria2c", "transmission-daemon"];
+  const PROCESS_DIRECT_LIN = USER_CONFIG.processDirectLin || ["qbittorrent", "aria2c", "transmission-daemon"];
 
-  // 🛑 自定义追加进程名单（自动合并到内置名单之后）
-  const CUSTOM_PROCESS_DIRECT_WIN = [];
-  const CUSTOM_PROCESS_DIRECT_MAC = [];
-  const CUSTOM_PROCESS_DIRECT_LIN = [];
-  const CUSTOM_PROCESS_PROXY_WIN  = [];
-  const CUSTOM_PROCESS_PROXY_MAC  = [];
+  // ⏬ 指定进程强制走下载策略
+  const PROCESS_PROXY_WIN  = USER_CONFIG.processProxyWin || ["IDMan", "fdm"];
+  const PROCESS_PROXY_MAC  = USER_CONFIG.processProxyMac || ["fdm"];
 
-  // 🧩 自定义服务注册表（在此追加新服务，定义后将 key 加入上方对应服务数组即可启用）
-  const CUSTOM_SERVICES = {
+  // 🛑 自定义追加进程名单
+  const CUSTOM_PROCESS_DIRECT_WIN = USER_CONFIG.customProcessDirectWin || [];
+  const CUSTOM_PROCESS_DIRECT_MAC = USER_CONFIG.customProcessDirectMac || [];
+  const CUSTOM_PROCESS_DIRECT_LIN = USER_CONFIG.customProcessDirectLin || [];
+  const CUSTOM_PROCESS_PROXY_WIN  = USER_CONFIG.customProcessProxyWin || [];
+  const CUSTOM_PROCESS_PROXY_MAC  = USER_CONFIG.customProcessProxyMac || [];
+
+  // 🧩 自定义服务注册表
+  const CUSTOM_SERVICES = USER_CONFIG.customServices || {
     // 🤖 AI：需 name, uiIcon, reg, provider, ruleSet, iconUrl, cleanName
     ai: {},
     // 📺 流媒体：需 name, cleanName, iconUrl, provider（reg/pool 可选，有则参与节点清洗）
@@ -205,9 +204,9 @@ function main(config, extConfig) {
   // 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
   const REGEX_MULTI      = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率)(?!\s*\d))/i;
   // 识别线路类型 (如 IEPL, BGP, CN2)
-  const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMI|CMIN2|CUG|PCCW|9929|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|测试|实验|备用|测速)/gi;
+  const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMI|CMIN2|CUG|PCCW|9929|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|专线|测试|实验|备用|测速)/gi;
   // 识别营销标识
-  const REGEX_FLUFF_LINE = /(专线|高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
+  const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
   // 识别抽象黑话
   const LINE_MAP = { "CTCUCM": "三网", "CTCUM": "三网","CTCU": "电联", "CUCT": "电联","CMCU": "移联", "CUCM": "移联","CTCM": "电移", "CMCT": "电移"};
   const CN_MAP   = { "移动": "移", "联通": "联", "电信": "电" };
@@ -218,14 +217,14 @@ function main(config, extConfig) {
   // =========================================================================
   // --- ⚙️ 预处理阶段一：调试日志辅助模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.2.0";
+  const SCRIPT_VERSION = "v3.3.0";
   const bootTime = new Date().toTimeString().split(' ')[0];
 
   if (USER_CONFIG.enableDebugLog) {
-    console.log(`📦 Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
-    console.log(`去重[${USER_CONFIG.enableDedupe?'开':'关'}] | 纯净[${USER_CONFIG.removeInfoNodes?'开':'关'}] | 地区[${USER_CONFIG.strictRegionMatch?'严':'松'}] | 下载[≤${USER_CONFIG.lowMultiThreshold}]`);
+    console.log(`[Toolkit] 📦 Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
+    console.log(`[Toolkit] 去重[${USER_CONFIG.enableDedupe?'开':'关'}] | 纯净[${USER_CONFIG.removeInfoNodes?'开':'关'}] | 地区[${USER_CONFIG.strictRegionMatch?'严':'松'}] | 下载[≤${USER_CONFIG.lowMultiThreshold}]`);
   } else {
-    console.log(`📦 Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
+    console.log(`[Toolkit] 📦 Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
   }
 
   const debugLog = (...args) => {
@@ -340,7 +339,7 @@ function main(config, extConfig) {
 
   // 🏷️ 节点特征识别字典
   const FEATURE_RULES = [
-    { reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential", groupName: "🏠 家宽专用" },
+    { reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential", groupName: "🏠 家宽优选" },
     { reg: /(?:游戏|🎮)|\b(?:Game|FullCone)\b/i,              tag: "game", pool: "game", groupName: "🎮 游戏服务" },
     { reg: /(?:下载|⏬)|\bBT\b/i,                             tag: "download" },
     { reg: /(?:免费|白嫖|公益|🆓)/i,                           tag: "free" },
@@ -468,11 +467,17 @@ function main(config, extConfig) {
   const proxySet = new Set();
   let dedupeCount = 0;
   let discardedCount = 0;   // 🆕 被物理删除的广告/假节点
-  let infoCount = 0;        // 🆕 信息说明节点（若未开启纯净模式）
+  let infoCount = 0;        // 提取 信息说明节点（仅未丢弃模式下）
+  let ipv6DroppedCount = 0; // 提取 IPv6 过滤节点数
   const BASIC_PROXIES = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS']);
 
   (config.proxies || []).forEach(proxy => {
     if (BASIC_PROXIES.has(proxy.name)) { builtInProxies.push(proxy); return; }
+    if (!USER_CONFIG.enableIPv6 && proxy.server && proxy.server.includes(':')) { 
+      ipv6DroppedCount++; 
+      if (USER_CONFIG.enableDebugLog) debugLog(`🚫 [丢弃] 「${proxy.name}」 (纯 IPv6 节点)`);
+      return;
+    }
     if (!proxy.server || REGEX_INFO_NODE.test(proxy.name)) { proxies.push(proxy); return; }
     
     if (USER_CONFIG.enableDedupe) {
@@ -502,7 +507,7 @@ function main(config, extConfig) {
   // 🧠 动态提取所有混合大区的 ID（如 "eu", "sea", "am"）并加入兜底的 "other"
   const MIXED_REGION_IDS = [...new Set(REGION_DEFS.map(r => r.group).filter(Boolean)), "other"];
   // 🪣 预设分发桶 (用于把清洗后的节点按特征分类存放)
-  const BUCKETS = { garbage: [], download: [], info: [], allStandard: [], special: [] };
+  const BUCKETS = { garbage: [], download: [], info: [], allStandard: [], special: [], resiRegionMap: {} };
   // 自动接管所有地区、特征池、混合大区的桶
   [...new Set([
     ...REGION_DEFS.map(r => r.id || r.name),
@@ -510,6 +515,11 @@ function main(config, extConfig) {
     ...MIXED_REGION_IDS
   ])].forEach(key => { BUCKETS[key] = BUCKETS[key] || []; });
 
+
+  // 辅助纯函数 0: 正则转义
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
 
   // 辅助纯函数 1: 基础字符清洗
   function sanitizeNodeName(rawName) {
@@ -597,7 +607,15 @@ function main(config, extConfig) {
       const flagMatch = name.match(REGEX_UNKNOWN_FLAG);
       if (flagMatch) {
         const dynamicName = flagMatch[2].trim();
-        return { id: dynamicName, icon: flagMatch[1], name: dynamicName, _isDynamic: true };
+        return { 
+          id: dynamicName, 
+          icon: flagMatch[1], 
+          name: dynamicName, 
+          _isDynamic: true,
+          _cleanReg: new RegExp(escapeRegExp(dynamicName), "ig"),
+          _matchReg: new RegExp(escapeRegExp(dynamicName), "i"),
+          _cityReg: null
+        };
       }
     }
     return null;
@@ -605,36 +623,32 @@ function main(config, extConfig) {
 
   // 辅助纯函数 4: 三网合并压缩函数
   function compressLineArr(arr) {
-    const atoms = ["移", "联", "电"];
+    const atomSet = new Set(["移", "联", "电"]);
     const comboMap = {
-        "电联": ["电", "联"],
-        "移联": ["移", "联"],
-        "电移": ["电", "移"],
-        "三网": ["移", "联", "电"]
+      "电联": new Set(["电","联"]), "移联": new Set(["移","联"]),
+      "电移": new Set(["电","移"]), "三网": new Set(["移","联","电"])
     };
-    const comboKeys = Object.keys(comboMap);
 
-    let unique = [...new Set(arr)];
-    if (unique.includes("三网")) return ["三网"];
-
-    let covered = new Set();
-    for (let item of unique) {
-        if (comboKeys.includes(item)) {
-            comboMap[item].forEach(a => covered.add(a));
-        } else if (atoms.includes(item)) {
-            covered.add(item);
-        }
+    let atomItems = [], nonAtomItems = [];
+    for (let item of [...new Set(arr)]) {
+      if (atomSet.has(item)) atomItems.push(item);
+      else nonAtomItems.push(item);
     }
-    if (covered.size === 3) return ["三网"];
 
-    let result = [];
-    for (let item of unique) {
-        if (atoms.includes(item) && unique.some(k => comboKeys.includes(k) && comboMap[k].includes(item))) {
-            continue; 
-        }
-        result.push(item);
+    const atomCount = new Set(atomItems).size;
+    let merged = [];
+    if (atomCount >= 3) {
+      merged = ["三网"];
+    } else if (atomCount === 2) {
+      const matchCombo = Object.entries(comboMap).find(([k, members]) =>
+        k !== "三网" && members.size === 2 && [...members].every(a => atomItems.includes(a))
+      );
+      merged = matchCombo ? [matchCombo[0]] : atomItems;
+    } else if (atomCount === 1) {
+      merged = [atomItems[0]];
     }
-    return [...new Set(result)];
+
+    return [...merged, ...nonAtomItems];
   }
 
   // 🔍 标签提取逻辑
@@ -650,7 +664,9 @@ function main(config, extConfig) {
       }
       
       // 2. 否则使用正则自动提取（默认提取开头方括号内容）
-      const reg = USER_CONFIG.airportTagReg || /^\[([^\]]{1,8})\]/i;
+      const regStr = USER_CONFIG.airportTagReg;
+      let reg = /^\[([^\]]{1,8})\]/i;
+      if (typeof regStr === 'string') { const m = regStr.match(/^\/(.*?)\/([a-z]*)$/); reg = m ? new RegExp(m[1], m[2]) : new RegExp(regStr, 'i'); } else if (regStr instanceof RegExp) { reg = regStr; }
       const m = rawName.match(reg);
       return m ? (m[1] || m[0]) : "";
   }
@@ -677,7 +693,7 @@ function main(config, extConfig) {
 
   // 🔄 核心：第一轮遍历
   const processedData = proxies.map(proxy => {
-    const rawName = proxy.name;
+    const rawName = proxy._rawName || proxy.name;
 
     // --- 步骤 1: 垃圾/广告/内置节点前置拦截 ---
     const isFakeServer = /^(127\.|0\.|1\.1\.1\.1|8\.8\.8\.8|10\.|192\.168\.)/.test(proxy.server || "") || proxy.port === 0;
@@ -688,18 +704,18 @@ function main(config, extConfig) {
                 /(?:元|块|折|¥|售\s*\d+(?:\.\d+)?|价\s*\d+(?:\.\d+)?|\d+G)/i.test(rawName)
               );
     
-    let tempName = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
-    
     // 🏷️ 广告判定前剥离标签文字
-    let tempNameForAd = tempName;
-    if (USER_CONFIG.enableAirportTag) {
-        const reg = USER_CONFIG.airportTagReg || /^\[([^\]]{1,8})\]/i;
-        tempNameForAd = tempName.replace(reg, "");
-    }
+    let tempNameForAd = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
+    let reg = /^\[([^\]]{1,12})\]\s*/i;
+    const regStr = USER_CONFIG.airportTagReg;
+    if (typeof regStr === 'string') { const m = regStr.match(/^\/(.*?)\/([a-z]*)$/); reg = m ? new RegExp(m[1], m[2]) : new RegExp(regStr, 'i'); } else if (regStr instanceof RegExp) { reg = regStr; }
+    tempNameForAd = tempNameForAd.replace(reg, "");
+    
+    let tempName = tempNameForAd.replace(REGEX_ALL_FLAGS, "").replace(/[\[\]{}()<>【】]/g, "").trim();
 
     const isOrphanAd = !(/\d/.test(tempName) || REGEX_TECH_LINE.test(tempName) || REGEX_FLUFF_LINE.test(tempName)) && 
-                      tempNameForAd.replace(/\p{Extended_Pictographic}/gu, "").trim().length > USER_CONFIG.adTextThreshold;
-    const isInfoNode = REGEX_INFO_NODE.test(tempName);
+                      tempNameForAd.replace(/[\[\]{}()<>【】]/g, "").replace(/\p{Extended_Pictographic}/gu, "").replace(/\p{Regional_Indicator}/gu, "").trim().length > USER_CONFIG.adTextThreshold;
+    const isInfoNode = REGEX_INFO_NODE.test(tempName) || proxy.isSyntheticInfo;
 
     if (isInfoNode) {
       if (USER_CONFIG.removeInfoNodes) return { skip: true, rawName, blockReason: "信息说明" };
@@ -712,7 +728,7 @@ function main(config, extConfig) {
     let isSpecial = false;
     let specialTargetName = "";
     
-    if (whitelistKeywordsLower.some(k => tempNameLower.includes(k))) {
+    if (whitelistKeywordsLower.some(k => tempNameLower.includes(k) || rawName.toLowerCase().includes(k))) {
         isSpecial = true;
         specialTargetName = proxy.name; // 白名单节点强制保留原名
     }
@@ -827,6 +843,12 @@ function main(config, extConfig) {
   processedData.sort((a, b) => {
     if (a.isInfo !== b.isInfo) return a.isInfo ? -1 : 1;
     if (a.isSpecial !== b.isSpecial) return a.isSpecial ? -1 : 1;
+    // 🏷️ 标签功能开启时，按机场分组优先排序（同一机场节点聚合，避免跨机场编号冲突）
+    if (USER_CONFIG.enableAirportTag) {
+      const tagA = a.airportTag || "";
+      const tagB = b.airportTag || "";
+      if (tagA !== tagB) return tagA.localeCompare(tagB, 'zh-CN');
+    }
     const orderA = REGION_ORDER[a.regionInfo?.name || a.groupKey] ?? 999;
     const orderB = REGION_ORDER[b.regionInfo?.name || b.groupKey] ?? 999;
     if (orderA !== orderB) return orderA - orderB;
@@ -844,12 +866,48 @@ function main(config, extConfig) {
     if (entryA !== entryB) return entryA.localeCompare(entryB, 'zh-CN');
     const lineA = a.cleanLines || "ZZZ", lineB = b.cleanLines || "ZZZ";
     if (lineA !== lineB) return lineA.localeCompare(lineB, 'zh-CN');
-    if (a.multiNum !== b.multiNum) return a.multiNum - b.multiNum; 
+    if (a.multiNum !== b.multiNum) return a.multiNum - b.multiNum;
+    // 🧷 稳定排序锚点：用 server:port 替代 rawName 作为最终 tiebreaker，避免订阅改名导致顺序漂移
+    const idA = `${a.proxy?.server || ""}:${a.proxy?.port || ""}`;
+    const idB = `${b.proxy?.server || ""}:${b.proxy?.port || ""}`;
+    if (idA !== idB) return idA.localeCompare(idB, 'zh-CN');
     return (a.rawName || '').localeCompare(b.rawName || '', 'zh-CN');
   });
 
-  const counts = {}, groupTrack = {};
-  processedData.forEach(d => { if (!d.isInfo) counts[d.groupKey] = (counts[d.groupKey] || 0) + 1; });
+  // 🏷️ 编号使用纯地区键（去掉机场前缀），确保跨机场编号连续不重复
+  const getRegionOnlyKey = (gk) => {
+    const idx = gk.indexOf('__');
+    return idx !== -1 ? gk.substring(idx + 2) : gk;
+  };
+  
+  const getAirportTagFromGroupKey = (gk) => {
+    const idx = gk.indexOf('__');
+    return idx !== -1 ? gk.substring(0, idx) : "";
+  };
+  
+  const isoCounts = {}, groupTrack = {}, isoTrack = {};
+  const regionTotals = {}; // 地区总节点数（合并所有前缀）
+  processedData.forEach(d => {
+    if (!d.isInfo) {
+      const regionKey = getRegionOnlyKey(d.groupKey);
+      const airportTag = getAirportTagFromGroupKey(d.groupKey);
+      const prefix = d.proxy._indexPrefix || USER_CONFIG.indexPrefixMap[airportTag];
+      const trackKey = prefix ? `${regionKey}_${prefix}` : regionKey;
+
+      // 统计地区总节点数（隔离节点不进地区桶，不参与地区总数）
+      const isIso = (USER_CONFIG.enableResidential && d.tags.includes("residential")) ||
+                    (USER_CONFIG.isolateDownload && d.tags.includes("download"));
+      if (!isIso) {
+        regionTotals[regionKey] = (regionTotals[regionKey] || 0) + 1;
+      }
+
+      // 隔离节点统计组内总数（用于判断是否显示序号）
+      if (isIso) {
+        const isoKey = `iso_${trackKey}`;
+        isoCounts[isoKey] = (isoCounts[isoKey] || 0) + 1;
+      }
+    }
+  });
 
   // 🔄 第二轮遍历：执行重命名，并把节点扔进对应的桶里
   processedData.forEach(item => {
@@ -861,18 +919,41 @@ function main(config, extConfig) {
     }
 
     const { proxy, regionInfo, groupKey, rawName, tags, featurePools, pType, transportTag, attrs, _destCity } = item;
-    groupTrack[groupKey] = (groupTrack[groupKey] || 0) + 1;
+    const regionOnlyKey = getRegionOnlyKey(groupKey);
+    const airportTag = getAirportTagFromGroupKey(groupKey);
+    
+    const prefix = proxy._indexPrefix || USER_CONFIG.indexPrefixMap[airportTag];
+    const trackKey = prefix ? `${regionOnlyKey}_${prefix}` : regionOnlyKey;
 
+    const isIso = (USER_CONFIG.enableResidential && tags.includes("residential")) ||
+                  (USER_CONFIG.isolateDownload && tags.includes("download"));
+    const isoKey = isIso ? `iso_${trackKey}` : trackKey;
+    const useTrack = isIso ? isoTrack : groupTrack;
 
+    // 序号生成逻辑：地区总数>1 → 前缀+序号；地区总数=1 → 不显示
+    useTrack[isoKey] = (useTrack[isoKey] || 0) + 1;
+    const idx = useTrack[isoKey];
+    // 隔离节点：判断隔离组内节点数；标准节点：判断地区总节点数
+    const regionTotal = isIso ? (isoCounts[isoKey] || 1) : (regionTotals[regionOnlyKey] || 1);
+    let numStr;
+    if (regionTotal > 1) {
+      numStr = prefix ? `${prefix}${idx.toString().padStart(2, "0")}` : ` [${idx.toString().padStart(2, "0")}]`;
+    } else {
+      numStr = "";
+    }
 
-    const numStr = counts[groupKey] > 1 ? ` [${groupTrack[groupKey].toString().padStart(2, "0")}]` : "";
-
-    // 🏷️ 标签前缀提取
+    // 🏷️ 标签前缀提取：优先从 rawName 提取，无结果时回退到 proxy.name（builder.js 打的标签可能不在 _rawName 里）
     let airportTagStr = "";
     if (USER_CONFIG.enableAirportTag) {
-      const tag = getAirportTag(rawName);
+      let tag = getAirportTag(rawName);
+      if (!tag && proxy.name !== rawName) tag = getAirportTag(proxy.name);
       if (tag) airportTagStr = tag;
     }
+    // 日志用：剥离标签前缀的原名
+    const tagDisplay = airportTagStr ? `🏷️${airportTagStr} | ` : "";
+    const displayRaw = airportTagStr
+      ? rawName.replace(new RegExp(`^\\[${airportTagStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\s*`, 'i'), '')
+      : rawName;
     let finalName;
     if (item.isSpecial) {
       finalName = proxy.name;
@@ -935,35 +1016,39 @@ function main(config, extConfig) {
     // --- 核心分发 + 归属日志 ---
     if (item.isSpecial) {
       BUCKETS.special.push(finalName);
-      debugLog(`🌟 [特殊节点] ${rawName} -> ${finalName}`);
+      debugLog(`🌟 [自定义] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
       return;
     }
 
     if (!regionInfo) {
       BUCKETS.garbage.push(finalName);
       const reasonMsg = USER_CONFIG.strictRegionMatch ? "严格匹配" : "无字典/国旗";
-      debugLog(`🗑️ [未识别] 「${rawName}」 -> 「${finalName}」 (${reasonMsg})`);
+      debugLog(`🗑️ [未识别] 「${displayRaw}」 → 「${finalName}」 (${reasonMsg})`);
     } else {
-      // 1. ⏬ 下载标签处理
+      // 1. ⏬ 低倍率标签处理
       if (tags.includes("download")) {
         BUCKETS.download.push(finalName);
       }
       if (USER_CONFIG.isolateDownload && tags.includes("download")) {
-        debugLog(`⏬ [隔离] 「${rawName}」 -> 「${finalName}」 | [⏬ 下载池]`);
+        debugLog(`⏬ [隔离] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
         return;
       }
 
       // 2. 🇨🇳 中国大陆节点隔离
       if (regionInfo.id === "cn") {
         BUCKETS.cn.push(finalName);
-        debugLog(`🇨🇳 [隔离] 「${rawName}」 -> 「${finalName}」 | [🇨🇳 中国节点]`);
+        debugLog(`🇨🇳 [中国] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
         return;
       }
       
-      // 3. 🏡 家宽特殊处理
+      // 3. 🏡 家宽特殊处理：独立成组，不进地区桶与 allStandard
       if (USER_CONFIG.enableResidential && tags.includes("residential")) {
-        featurePools.forEach(p => BUCKETS[p].push(finalName)); // 依然分配进流媒体等特征池
-        debugLog(`🏡 [隔离] 「${rawName}」 -> 「${finalName}」 | [🏡 家宽池]`);
+        BUCKETS.residential.push(finalName);
+        const regionKey = regionInfo.id || regionInfo.name;
+        if (!BUCKETS.resiRegionMap[regionKey]) BUCKETS.resiRegionMap[regionKey] = [];
+        BUCKETS.resiRegionMap[regionKey].push(finalName);
+        const regionLabel = regionInfo ? regionKey.toUpperCase() : "未知";
+        debugLog(`🏡 [家宽] ${tagDisplay}「${displayRaw}」 → 「${finalName}」 → [🏠 家宽优选(${regionLabel})]`);
         return;
       }
 
@@ -979,7 +1064,7 @@ function main(config, extConfig) {
       if (USER_CONFIG.enableDebugLog) {
         let assignedBuckets = featurePools.map(p => POOL_GROUP_MAP[p] || `📦 特征池(${p})`);
         assignedBuckets.push(`📍 ${regionInfo.icon} ${regionInfo.name}`);
-        debugLog(`✅ [分发] 「${rawName}」 -> 「${finalName}」 | [${assignedBuckets.join(', ')}]`);
+        debugLog(`✅ [分发] ${tagDisplay}「${displayRaw}」 → 「${finalName}」 → [${assignedBuckets.join(', ')}]`);
       }
     }
   });
@@ -1005,7 +1090,7 @@ function main(config, extConfig) {
 
   // 处理动态生成的未知地区（宽松模式下提取出来的）
   Object.keys(BUCKETS).forEach(key => {
-    if (key === "garbage" || key === "download" || key === "cn" || key === "info" || key === "allStandard" || key === "other" || key === "residential") return;
+    if (key === "garbage" || key === "download" || key === "cn" || key === "info" || key === "allStandard" || key === "other" || key === "residential" || key === "special") return;
     if (MIXED_REGION_IDS.includes(key) || POOL_GROUP_MAP[key] || REGION_NAMES[key]) return;
     if (REGION_DEFS.some(r => r.id === key || r.name === key)) return;
     
@@ -1044,8 +1129,9 @@ function main(config, extConfig) {
   const activeRegionGroups = Object.keys(REGION_NAMES)
     .filter(k => BUCKETS[k]?.length > 0)
     .map(k => REGION_NAMES[k]);
+  if (BUCKETS.other?.length > 0) activeRegionGroups.push("🌐 其他节点");
     
-  const resiPrefix = (USER_CONFIG.enableResidential && BUCKETS.residential.length) ? ["🏠 家宽专用"] : [];
+  const resiPrefix = (USER_CONFIG.enableResidential && BUCKETS.residential.length) ? ["🏠 家宽优选"] : [];
   
   const MODE_MAP = { "auto": "🚀 自动选择", "manual": "📍 手动选择", "fallback": "♻️ 故障转移", "direct": "DIRECT", "reject": "REJECT" };
   const proxyTarget = MODE_MAP[USER_CONFIG.defaultProxyMode] || "🚀 自动选择";
@@ -1155,10 +1241,13 @@ function main(config, extConfig) {
   });
 
   // 系统服务
-  if (USER_CONFIG.enableSystemServices) {
-    ["🪟 Microsoft", "🔍 Google", "🍎 Apple"].forEach(name => {
-      const pList = name === "🔍 Google" ? [...standardOptions, "DIRECT"] : ["DIRECT", ...standardOptions];
-      appGroups.push(buildSelect(name, pList));
+  if (USER_CONFIG.enableSystemServices && SYSTEM_SERVICES) {
+    SYSTEM_SERVICES.forEach(key => {
+      const sys = SYSTEM_REGISTRY[key];
+      if (sys) {
+        const pList = key === "google" ? [...standardOptions, "DIRECT"] : ["DIRECT", ...standardOptions];
+        appGroups.push(buildSelect(sys.name, pList));
+      }
     });
   }
 
@@ -1175,7 +1264,7 @@ function main(config, extConfig) {
 
   // 家宽
   if (USER_CONFIG.enableResidential) {
-    finalGroups.push({ name: "🏠 家宽专用", type: "fallback", url: testURL, interval: testInterval, proxies: BUCKETS.residential });
+    finalGroups.push({ name: "🏠 家宽优选", type: "fallback", url: testURL, interval: testInterval, proxies: BUCKETS.residential });
   }
   
   // 下载策略
@@ -1221,7 +1310,59 @@ function main(config, extConfig) {
     buildSelect("🌐 其他节点", BUCKETS.other),
     buildSelect("🗑️ 未知识别", BUCKETS.garbage, USER_CONFIG.hideGarbageGroup)
   );
-  
+
+  // 🎯 自定义节点分组：将自定义节点追加到指定的应用组
+  if (USER_CONFIG.customNodeGroups && BUCKETS.special.length > 0) {
+    const customGroups = USER_CONFIG.customNodeGroups;
+    const existingGroupNames = new Set(finalGroups.map(g => g.name));
+    for (const [keyword, targetGroups] of Object.entries(customGroups)) {
+      if (!keyword || !Array.isArray(targetGroups)) continue;
+      const keywordLower = keyword.toLowerCase();
+      const matchedNodes = BUCKETS.special.filter(name => name.toLowerCase().includes(keywordLower));
+      if (matchedNodes.length === 0) continue;
+      for (const targetName of targetGroups) {
+        if (!existingGroupNames.has(targetName)) {
+          console.log(`[Toolkit] ⚠️ [自定义分组] 目标组 "${targetName}" 不存在或未启用，跳过注入`);
+          continue;
+        }
+        const group = finalGroups.find(g => g.name === targetName);
+        if (group && group.proxies) {
+          const existing = new Set(group.proxies);
+          matchedNodes.forEach(n => { if (!existing.has(n)) group.proxies.push(n); });
+          console.log(`[Toolkit] 🎯 [自定义分组] 注入 ${matchedNodes.length} 个节点到 "${targetName}"`);
+        }
+      }
+    }
+  }
+
+  // 🏠 家宽节点注入：将指定地区的家宽节点追加到目标应用组
+  if (USER_CONFIG.enableResidential && USER_CONFIG.residentialNodeGroups && BUCKETS.residential.length > 0) {
+    const resiGroups = USER_CONFIG.residentialNodeGroups;
+    const existingGroupNames = new Set(finalGroups.map(g => g.name));
+    const allResiNodes = BUCKETS.residential;
+    const resiRegionMap = BUCKETS.resiRegionMap || {};
+    for (const [regionKey, targetGroups] of Object.entries(resiGroups)) {
+      if (!regionKey || !Array.isArray(targetGroups)) continue;
+      let nodesToInject = allResiNodes;
+      if (regionKey !== "all") {
+        nodesToInject = resiRegionMap[regionKey] || [];
+      }
+      if (nodesToInject.length === 0) continue;
+      for (const targetName of targetGroups) {
+        if (!existingGroupNames.has(targetName)) {
+          console.log(`[Toolkit] ⚠️ [家宽注入] 目标组 "${targetName}" 不存在或未启用，跳过注入`);
+          continue;
+        }
+        const group = finalGroups.find(g => g.name === targetName);
+        if (group && group.proxies) {
+          const existing = new Set(group.proxies);
+          nodesToInject.forEach(n => { if (!existing.has(n)) group.proxies.push(n); });
+          console.log(`[Toolkit] 🏠 [家宽注入] 注入 ${nodesToInject.length} 个${regionKey === "all" ? "" : " " + regionKey.toUpperCase()}家宽节点到 "${targetName}"`);
+        }
+      }
+    }
+  }
+
   config["proxy-groups"] = finalGroups;
 
   // =========================================================================
@@ -1316,10 +1457,13 @@ function main(config, extConfig) {
   }
 
   // 注入系统服务规则集
-  if (USER_CONFIG.enableSystemServices) {
-    Object.entries(SYSTEM_REGISTRY).forEach(([key, conf]) => {
-      PROVIDER_BASE[key] = conf.provider;
-      routingRules.push(...conf.rules);
+  if (USER_CONFIG.enableSystemServices && SYSTEM_SERVICES) {
+    SYSTEM_SERVICES.forEach(key => {
+      const conf = SYSTEM_REGISTRY[key];
+      if (conf) {
+        PROVIDER_BASE[key] = conf.provider;
+        routingRules.push(...conf.rules);
+      }
     });
   }
 
@@ -1339,7 +1483,7 @@ function main(config, extConfig) {
   routingRules.push("RULE-SET,download-games-cn,DIRECT", "RULE-SET,download-games,⏬ 下载策略", "RULE-SET,download-android,⏬ 下载策略");
 
   const isReturn = USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst;
-  const cnTarget = USER_CONFIG.enableDomesticGroup ? "🇨🇳 中国分流" : (isReturn ? proxyTarget : "DIRECT");
+  const cnTarget = USER_CONFIG.enableDomesticGroup ? "🇨🇳 中国分流" : "DIRECT";
   const nonCnTarget = isReturn ? "DIRECT" : proxyTarget;
   
   if (USER_CONFIG.proxyFirst) routingRules.push(`RULE-SET,non-cn,${nonCnTarget}`, `RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`);
@@ -1408,11 +1552,10 @@ function main(config, extConfig) {
 
       // b. 判定：被洗劫一空，或用户显式隐藏(非负载均衡组件)
       const isEmpty = !group.proxies || group.proxies.length === 0;
-      const isExplicitlyHidden = group.hidden && !group.name.includes("负载均衡");
       const isExempt = ["📍 手动选择", "🐟 漏网之鱼"].includes(group.name);
 
       // 执行斩首
-      if ((isEmpty && !isExempt) || isExplicitlyHidden) {
+      if (isEmpty && !isExempt) {
         removedGroups.add(group.name); 
         aliveGroups.delete(group.name);
         changed = true;
@@ -1456,7 +1599,7 @@ function main(config, extConfig) {
     "🚀 自动选择":     { icon: USER_CONFIG.iconRepoOrz + "Urltest.png",      newName: "自动选择" },
     "♻️ 故障转移":     { icon: USER_CONFIG.iconRepoOrz + "Available.png",    newName: "故障转移" },
     "⏬ 下载策略":     { icon: USER_CONFIG.iconRepoOrz + "Roundrobin.png",   newName: "下载策略" },
-    "🏠 家宽专用":     { icon: USER_CONFIG.iconRepoOrz + "Home.png",         newName: "家宽专用" },
+    "🏠 家宽优选":     { icon: USER_CONFIG.iconRepoOrz + "Home.png",         newName: "家宽优选" },
 
     // === 🌐 综合业务大组 ===
     "🇨🇳 中国分流":     { icon: USER_CONFIG.iconRepoKoolson + "China_Map.png", newName: "中国分流" },
@@ -1505,9 +1648,10 @@ function main(config, extConfig) {
   }
 
   // 🆕 4. 动态合并 系统服务 策略组图标
-  if (USER_CONFIG.enableSystemServices) {
-    Object.values(SYSTEM_REGISTRY).forEach(sys => {
-      if (sys.iconUrl) ICON_MAPPING[sys.name] = { icon: sys.iconUrl, newName: sys.cleanName };
+  if (USER_CONFIG.enableSystemServices && SYSTEM_SERVICES) {
+    SYSTEM_SERVICES.forEach(key => {
+      const sys = SYSTEM_REGISTRY[key];
+      if (sys && sys.iconUrl) ICON_MAPPING[sys.name] = { icon: sys.iconUrl, newName: sys.cleanName };
     });
   }
 
@@ -1606,7 +1750,7 @@ function main(config, extConfig) {
       const isTargetType = ["vless", "vmess", "trojan"].includes(p.type);
       const isTlsEnabled = p.tls === true || (["ws", "grpc"].includes(p.network) && p.tls !== false);
       if (isTargetType && isTlsEnabled && !p["client-fingerprint"]) p["client-fingerprint"] = "chrome";
-      if (p.type !== "http") p.udp = true; 
+      if (p.udp === undefined && p.type !== "http") p.udp = true;
     });
   }
 
@@ -1627,6 +1771,7 @@ function main(config, extConfig) {
     if (dedupeCount > 0) stats.push(`去重:${dedupeCount}`);
     if (infoCount > 0) stats.push(`信息:${infoCount}`);
     if (discardedCount > 0) stats.push(`丢弃:${discardedCount}`);
+    if (ipv6DroppedCount > 0) stats.push(`IPv6过滤:${ipv6DroppedCount}`);
     if (BUCKETS.garbage.length > 0) stats.push(`未识别:${BUCKETS.garbage.length}`);
     
     debugLog(stats.join(" | "));

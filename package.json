@@ -1,0 +1,39 @@
+{
+  "name": "mihomo-toolkit",
+  "version": "3.3.0",
+  "description": "Mihomo-Toolkit - 自动化节点清洗与策略组构建工具",
+  "main": "src/builder.js",
+  "bin": {
+    "mihomo-toolkit": "cli.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "build:worker": "esbuild worker.js --bundle --outfile=dist/worker.bundle.js --format=esm --target=es2020 --platform=neutral",
+    "build": "node cli.js -c config.yaml -t full",
+    "build:pure": "node cli.js -c config.yaml -t pure",
+    "build:toolkit": "node cli.js -c config.yaml -t toolkit",
+    "dev": "node --watch server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/XiaoM-OVO/Mihomo-Toolkit.git"
+  },
+  "keywords": ["clash", "mihomo", "proxy", "subscription", "cleaner"],
+  "author": "XiaoM-OVO",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/XiaoM-OVO/Mihomo-Toolkit/issues"
+  },
+  "homepage": "https://github.com/XiaoM-OVO/Mihomo-Toolkit#readme",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}

@@ -1,5 +1,86 @@
 # 更新日志
 
+## 2026-07-27 (主脚本 v3.3.0 | 清洗模块 v1.2.0)
+
+### 🏗️ 项目结构重构
+
+- **目录扁平化**：将 `scripts/` 目录下的 `mihomo-toolkit.js` 和 `pure-nodes.js` 迁移至 `src/` 目录，消除多余的目录层级。
+- **CLI 统一到根目录**：移除独立的 `cli/` 子包（`cli/index.js`、`cli/package.json` 等），改为根级 `cli.js` + 统一的 `package.json`，不再需要双 `npm install`。
+- **新增 `src/builder.js` 构建管线**：将订阅获取、内容解析（Base64→YAML / Base64→URI / 明文）、标签注入、清洗+构建编排等公共逻辑提取为独立的 `buildProfile()` 函数，供 CLI / Server / Worker 三个入口复用。
+- **新增 `server.js` HTTP 服务入口**：内置本地 HTTP Server（默认端口 3000），支持 `?url=` 多订阅传参、`?config=` 远程配置拉取、本地 `config.yaml` 兜底，并自动注入 `Subscription-Userinfo` 流量面板头。
+- **新增 `worker.js` Cloudflare Worker 入口**：ESM 格式，支持 `?url=`、`?config=` 参数及 `DEFAULT_CONFIG_URL` 环境变量，通过 `esbuild` 打包为单文件部署。
+- **配置模板重命名**：`cli/config.template.yaml` → `config.example.yaml`，并大幅扩充注释与配置示例。
+- **移除 `dns/fake-ip.yaml`**：DNS 配置已内置在脚本中，不再需要外部文件。
+
+### ⚙️ 主脚本 (`mihomo-toolkit.js v3.3.0`)
+
+### ✨ 新增
+
+- **IPv6 节点过滤**：`enableIPv6: false` 时会主动剔除纯 IPv6 节点（`server` 字段包含 `:` 且非端口格式），并记录 `ipv6DroppedCount` 统计到调试摘要中。
+- **UDP 默认值保护**：`enableCoreOptimize` 开启时，UDP 默认值设置从 `p.udp = true` 改为 `p.udp === undefined && p.type !== "http" && (p.udp = true)`，避免覆盖用户显式设置的 `udp: false`。
+
+- **服务数组外置化**：`AI_SERVICES`、`STREAMING_SERVICES`、`SOCIAL_SERVICES`、`SYSTEM_SERVICES` 等服务列表现支持通过 `USER_CONFIG.aiServices` / `streamingServices` 等字段从外部配置覆写，无需修改脚本源码。
+- **进程名单外置化**：`PROCESS_DIRECT_WIN/MAC/LIN`、`PROCESS_PROXY_WIN/MAC` 等进程直连/代理名单支持通过 `USER_CONFIG` 外部传入，配合 `config.yaml` 实现完全配置化。
+- **`customNodeGroups` 根级支持**：`customNodeGroups` 现可直接写在 YAML 根级（无需嵌套于 `toolkitConfig`），`builder.js` 会自动透传至主脚本。
+- **`CUSTOM_SERVICES` 外置化**：支持通过 `USER_CONFIG.customServices` 传入自定义服务注册表。
+- **序号编号规则重构**：新增 `indexPrefix` 配置（可直接写在 `subscriptions` 数组项中，与 `tag` 同级），编号方式由「是否配置 `indexPrefix`」自动决定：
+  - **有 `indexPrefix`**：按 `地区+前缀` 独立编号（如 `🇯🇵 日本 L01`、`🇯🇵 日本 I01`），同地区不同前缀互不干扰。
+  - **无 `indexPrefix`**：按地区统一编号（如 `🇯🇵 日本 01`、`🇯🇵 日本 02`），跨机场连续。
+  - **单节点地区**：无论是否有前缀，都不显示序号（如 `🇦🇺 澳大利亚`）。
+  - **隔离节点**（家宽/低倍率）：开启对应开关时使用独立计数器，避免占用标准节点编号导致地区组编号不连续。
+  - 也支持通过根级 `indexPrefixMap` 映射前缀。
+
+### 🚀 优化
+
+- **稳定排序锚点**：节点排序的最终 tiebreaker 从 `rawName` 改为 `server:port`，避免订阅名称变化导致节点顺序漂移，确保 `store-selected` 记忆功能不会因节点改名而失效。
+- **地区编号跨机场连续**：编号生成使用纯地区键（去掉机场前缀），确保不同机场的同类地区节点编号连续不重复（如「🇯🇵 日本节点 01」「🇯🇵 日本节点 02」而非各自从 01 开始）。
+- **白名单匹配增强**：`whitelistKeywords` 现同时检查 `tempName`（去标签后的名称）和 `rawName`（原始带标签名称），解决关键词仅出现在 `[标签]` 前缀中而无法匹配的问题。
+- **家宽节点独立分组**：`enableResidential: true` 时家宽节点不再混入地区桶，独立生成「🏠 家宽优选」组，不参与「🚀 自动选择」与「♻️ 故障转移」，避免开了跟没开一样；关闭开关时家宽节点按普通节点处理。
+- **`residentialNodeGroups` 应用组注入**：新增 `residentialNodeGroups` 配置，键为地区 ID（`hk`/`us`/`all` 等），值为目标应用组数组。支持按地区精细控制家宽节点注入到哪些应用组（如将香港家宽注入「🤖 ChatGPT」）。
+- **标签排序防重名**：开启 `enableAirportTag` 后，节点先按标签分组排序，再按地区编号，确保不同标签的同类地区节点不会因编号冲突产生重名。
+- **动态未知地区处理跳过 special 桶**：动态未知地区折叠逻辑新增对 `special` 桶的跳过，防止注入节点被误移至「🌐 其他节点」。
+- **IPv6 节点过滤日志**：`enableIPv6: false` 时过滤纯 IPv6 节点的行为现输出调试日志，便于排障。
+
+### 🧩 清洗脚本 (`pure-nodes.js v1.2.0`)
+
+### ✨ 新增
+
+- **`enableIpMetadata` 开关**：支持独立控制 IP 元数据（ASN/ISP/ORG）的提取与展示。
+- **`redactLogs` 隐私脱敏**：日志中的 IP / 域名自动脱敏（节点名不脱敏），方便在公开环境分享调试日志。
+
+### 🚀 优化
+
+- **地区匹配策略对齐**：`matchNodeRegion` 从「首个匹配」改为「最长匹配」（长度相同时取最后出现的匹配），与主脚本 `mihomo-toolkit.js` 保持一致，避免「美国-回国」等多地区歧义名在 `full` 模式下两阶段识别结果不一致。
+- **稳定排序锚点**：节点排序的最终 tiebreaker 从 `rawName` 改为 `server:port`，避免订阅名称变化导致节点顺序漂移，确保 `store-selected` 记忆功能不会因节点改名而失效（与主脚本对齐）。
+
+### ⚠️ 破坏性变更
+
+- **移除 `featureBracket` 配置项**：特征文本的括号样式现已完全由 renameTemplate 控制，直接在模板中写 「{features}」 即可，不再支持独立配置括号。
+
+
+### 🖥️ CLI / Server / Worker 三入口统一
+
+- **CLI 工具重构**：`cli.js` 使用 `commander` 库，支持 `-u` / `-o` / `-t` / `-c` / `-m` 参数，`-t` 参数校验防止无效值静默跳过。
+- **Server 模式**：`npm start` 启动，支持 `PORT` 和 `CONFIG_PATH` 环境变量，错误信息不暴露内部实现细节。
+- **Worker 模式**：`npm run build` 生成 `dist/worker.bundle.js`，支持 `DEFAULT_CONFIG_URL` 环境变量实现零参数访问。
+- **防二次污染机制**：`full` 模式下 CLI 自动注入 `enableNodeRename: false`，防止主脚本对已清洗节点二次重命名。
+- **信息节点合成**：`builder.js` 新增 `generateInfoNodes()`，从 HTTP 响应头 `Subscription-Userinfo` 解析流量与到期时间，自动合成「剩余流量」和「套餐到期」信息节点并注入到节点列表中，实现面板内流量状态可视化。
+- **日志脱敏统一**：`builder.js` 新增 `redactUrl()` 统一脱敏函数，订阅 URL 中的 token / 凭据在日志输出时自动脱敏；Server 模式请求日志中的 `?url=` 和 `?config=` 参数默认脱敏显示。
+- **订阅拉取超时与 UA 统一**：`server.js` / `worker.js` 的 `fetchWithAuth` 全部加上 15s `AbortController` 超时熔断，并将 User-Agent 统一为 `clash-verge/v1.3.8`，避免订阅源卡死导致整个服务阻塞、以及不同入口因 UA 差异收到不同订阅内容。
+- **订阅信息解析函数复用**：`builder.js` 抽取 `parseSubscriptionInfo()` 共享函数，供 `generateInfoNodes` 与 `parseSubInfoForGlobal` 复用，消除重复解析逻辑。
+- **Worker 错误信息脱敏**：`worker.js` 异常响应不再直接返回 `err.message`，改为通用提示 `Internal Server Error. Check worker logs for details.`，避免泄露订阅 URL / 文件路径等敏感信息（与 `server.js` 行为对齐）。
+
+### 📝 修复
+
+- 修复 `whitelistKeywords` 仅匹配标签前缀时无法命中白名单的问题。
+- 修复开启 `enableAirportTag` 后不同订阅源同类地区节点编号冲突导致重名的问题。
+- 修复 `enableResidential: true` 时家宽节点未入 `allStandard` 桶，导致「🚀 自动选择」「♻️ 故障转移」等策略组中查无此节点的严重问题（家宽节点独立成组，开启开关时不进 allStandard，关闭时按普通节点处理）。
+- 修复主脚本 `compressLineArr` 在旧逻辑下只在 combo key 已存在时才合并、不会从散原子项合成 combo 的问题（如 `["电","联"]` 未能合并为 `["电联"]`），现与 `pure-nodes.js` 对齐为「先分离原子项与非原子项，再按原子数量自动合成对应 combo」的实现。
+- 修复主脚本动态未知地区对象缺少 `_cleanReg` / `_matchReg` / `_cityReg` 字段，导致后续 `name.replace(regionInfo._cleanReg, "")` 时把 `undefined` 当字符串匹配、动态地区名无法从节点名中清除的问题。
+- 修复 `pure-nodes.js` 内部 IIFE 重复实现已有 `getRegionOnlyKey` / `getAirportTagFromKey` 函数的冗余代码，统一改为直接调用已有函数，并将函数名统一为 `getAirportTagFromGroupKey`（与主脚本对齐）。
+- 修复 `pure-nodes.js` 中 `logger.debug` 外层多余的 `if (CONFIG.logLevel === 'debug')` 级别判断（logger 内部已有级别过滤），清理冗余代码。
+
+
 ## 2026-07-12 (主脚本 v3.2.0 | 清洗模块 v1.1.0 | CLI 命令行工具 v1.0.0)
 
 ### ⚙️ 通用动态策略组全量版 (`mihomo-toolkit.js v3.2.0`)
