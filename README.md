@@ -6,9 +6,8 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/Main_Script-v3.2.0-blue)](CHANGELOG.md)
-[![Version](https://img.shields.io/badge/Pure_Module-v1.1.0-blueviolet)](CHANGELOG.md)
-[![Version](https://img.shields.io/badge/CLI_Tool-v1.0.0-8A2BE2)](CHANGELOG.md)
+[![Toolkit](https://img.shields.io/badge/Toolkit-v3.3.0-blue)](CHANGELOG.md)
+[![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.0-blueviolet)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -29,7 +28,7 @@
 - [✨ 核心特性](#-核心特性)
 - [🚀 快速开始](#-快速开始)
 - [🧩 纯净节点清洗脚本](#-纯净节点清洗脚本)
-- [🖥️ CLI 命令行工具](#️-cli-命令行工具)
+- [🖥️ 详细部署指南](#️-详细部署指南)
 - [⚙️ 配置详解](#️-配置详解)
 - [🧹 节点清洗与分组结构](#-节点清洗与分组结构)
 - [❓ 常见问题](#-常见问题)
@@ -48,29 +47,63 @@
 - ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、流量审计、TUN/DNS/Sniffer 等深度优化。
 - 🔍 **智能 IP 溯源**：纯净版清洗脚本支持接入 ip-api 批量高并发解析，精准纠正 CDN 或虚假定位节点。
 - 🧬 **智能节点裂变**：纯净版脚本支持将域名节点通过 DNS 解析裂变为多个 IP 实体节点（支持 IPv4/IPv6 过滤与数量上限控制），有效应对单域名多 IP、CDN 调度或需物理 IP 直连的高精度分流场景。
-- 🖥️ **命令行工具**：配套 `pure-runner` CLI，可在终端直接运行脚本，支持订阅下载、元数据导出与多种运行模式。
+ - 🖥️ **全场景部署**：提供 `CLI 命令行`（`cli.js`）、`本地 HTTP 服务`（`server.js`）与 `Cloudflare Worker`（`worker.js`）三种运行入口，适配终端调试、自建订阅 API、边缘网络加速等多种使用场景
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 下载脚本
-从 [GitHub Releases](https://github.com/XiaoM-OVO/mihomo-toolkit/releases) 获取最新 `mihomo-toolkit.js`。
+选择适合你的使用场景，三种方式各取所需：
 
-### 2. 客户端应用（以 Clash Verge Rev 为例）
-- 进入「配置」页面，右键订阅 → **编辑拓展脚本**。
-- 将脚本内容粘贴保存，点击「刷新订阅」即可生效。
+### 方式一：客户端拓展脚本（推荐）
+零部署，直接在 Mihomo 客户端中使用。从 [GitHub Releases](https://github.com/XiaoM-OVO/mihomo-toolkit/releases) 获取 `mihomo-toolkit.js`，粘贴到 Clash Verge Rev 等客户端的「扩展脚本」中即可。
 
-> 💡 **全局脚本**：在 Clash Verge Rev 的「订阅」-「全局拓展脚本」中粘贴，可使所有订阅共用同一份逻辑。
+### 方式二：本地 CLI 工具
+适合本地终端或 CI/CD 自动化：
 
-### 3. 个性化配置（可选）
-打开脚本开头 `USER_CONFIG` 对象，按需开关（`true` 开启 / `false` 关闭）。如需添加自定义的新应用分流（例如 HBO、网易云等），请参阅下方 [常见问题](#-常见问题) 中的自定义分流教程。
+```bash
+git clone https://github.com/XiaoM-OVO/mihomo-toolkit.git && cd mihomo-toolkit
+npm install
+node cli.js -u "https://example.com/sub.yaml" -o profile.yaml
+```
+
+### 方式三：自建订阅服务（Server）—— 适合部署在个人VPS或局域网设备
+通过HTTP服务将Mihomo-Toolkit暴露为订阅链接，全平台设备可共用同一份配置：
+
+> 📁 **先决条件**：根目录需存在 `config.yaml`（可参考项目中的 `config.example.yaml` 创建），或通过启动命令中的 `?url=` 参数动态传入订阅（详见下方部署说明）。
+
+```bash
+git clone https://github.com/XiaoM-OVO/mihomo-toolkit.git && cd mihomo-toolkit
+npm install
+
+# 使用默认配置启动（自动读取根目录 config.yaml）
+npm start
+
+# 或自定义端口和配置文件路径
+PORT=8080 CONFIG_PATH=/path/to/config.yaml node server.js
+```
+
+启动后，将 `http://你的IP:3000/sub` 作为远程订阅链接填入Mihomo客户端即可。
+
+### 方式四：边缘部署（Cloudflare Worker）—— 享受全球CDN加速
+将脚本部署在Cloudflare边缘节点，随时随地获取配置：
+
+```bash
+# 1. 构建Worker单文件
+npm run build:worker
+
+# 2. 部署方式：
+#    将 dist/worker.bundle.js 的全部内容复制到 Cloudflare Worker 仪表板中保存并部署即可。
+#    （如需使用 Wrangler CLI 自动化部署，请参考 Cloudflare 官方文档配置 wrangler.toml）
+```
+
+> 💡 **提示**：Worker模式支持环境变量 `DEFAULT_CONFIG_URL`，可免去每次请求带参数，详见下方 [🖥️ 部署与运行](#️-部署与运行)。
 
 ---
 
 ## 🧩 纯净节点清洗脚本
 
-独立节点清洗脚本 (`scripts/pure-nodes.js`)，将主脚本的节点处理核心逻辑解耦为 operator 格式。适用于 Sub-Store、Surge、Loon 等多环境，专为**仅需节点过滤/去重/重命名/IP溯源，不需要完整策略组体系**的场景设计。
+独立节点清洗脚本 (`src/pure-nodes.js`)，将主脚本的节点处理核心逻辑解耦为 operator 格式。适用于 Sub-Store、Surge、Loon 等多环境，专为**仅需节点过滤/去重/重命名/IP溯源，不需要完整策略组体系**的场景设计。
 
 ### 功能对比
 
@@ -89,7 +122,7 @@
 ### 快速使用
 
 1. 以 Sub-Store 为例，进入「订阅管理」→ 选择目标订阅 →「编辑」→「节点操作」
-2. 将 `scripts/pure-nodes.js` 内容粘贴到脚本编辑区
+2. 将 `src/pure-nodes.js` 内容粘贴到脚本编辑区
 3. 可选：修改脚本顶部 `CONFIG` 对象配置（或通过 Sub-Store 外部传入 `userConfig`）
 4. 保存并刷新订阅
 
@@ -114,23 +147,178 @@
 
 ---
 
-## 🖥️ CLI 命令行工具
 
-如果你不想使用 Sub-Store 或客户端，也可以直接在终端中运行本工具：
+## 🖥️ 详细部署指南
+
+以下为三种运行环境的详细用法，CLI 工具和 HTTP 服务均已包含在项目源码中。
+
+### 1. 🖥️ 本地 CLI 命令行工具
+
+适合在本地终端运行，或配合 GitHub Actions 等 CI/CD 工具进行定时自动化构建。`mihomo-toolkit` CLI 工具允许你在本地终端、CI/CD 环境或任何 Node.js 运行时中，一键完成"节点清洗"与"策略构建"的自动化流水线。
+
+**特性：**
+- **灵活的运行模式**：支持单跑"纯净节点清洗"、单跑"主脚本策略构建"，或合并执行。
+- **配置分离**：通过 `config.yaml` 或 CLI 参数覆盖，无需硬编码修改脚本。
+- **本地与远程支持**：可拉取远程机场订阅链接，也可读取本地 YAML 文件。
+
+### 基础调用
+
+提供一个订阅链接或本地配置文件，并指定输出路径：
 
 ```bash
-cd cli
-npm install
-node index.js -u https://example.com/sub.yaml -t full -o final.yaml
+node cli.js -u "https://example.com/sub.yaml" -o final_config.yaml
+```
+> 如果未指定 `-t`（运行模式），默认将执行 `pure` 模式（仅清洗节点）。
+
+### 快捷命令
+
+如果你使用 `config.yaml` 作为配置文件，可以通过以下 npm 快捷命令简化日常操作：
+
+| 命令 | 等价于 | 说明 |
+|---|---|---|
+| `npm run build` | `node cli.js -c config.yaml -t full` | 全流程：深度清洗 + 策略组构建（最常用） |
+| `npm run build:pure` | `node cli.js -c config.yaml -t pure` | 仅深度清洗节点（含IP溯源/裂变） |
+| `npm run build:toolkit` | `node cli.js -c config.yaml -t toolkit` | 主脚本清洗+策略组构建（跳过 pure 深度清洗） |
+| `npm start` | `node server.js` | 启动本地 HTTP 服务 |
+| `npm run dev` | `node --watch server.js` | 开发模式，文件变动自动重启 |
+| `npm run build:worker` | `esbuild worker.js ...` | 编译 Cloudflare Worker 产物 |
+
+### 命令参数详解
+
+| 参数 | 简写 | 必填 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `--url` | `-u` | 否* | 无 | 原始节点配置的数据源（仅单订阅时使用）。**注意：如果 `--config` 文件中配置了 `subscriptions`，则此参数可省略。** |
+| `--output` | `-o` | 否 | `nodes.yaml` | 处理完成后的最终输出文件路径。 |
+| `--type` | `-t` | 否 | `pure` | 运行模式选择。可选：`pure`（仅清洗）、`toolkit`（仅构建策略组）、`full`（全流程）。 |
+| `--config` | `-c` | 否 | 无 | 自定义的外部 YAML/JSON 配置文件路径，用于覆盖内置配置及定义多订阅源。 |
+| `--meta` | `-m` | 否 | 无 | (进阶) 指定一个 JSON 文件路径。开启后会强制输出模式为 Object，并将清洗过程的统计数据（去重数、无效节点数等）以及地区分组信息保存到该文件中。 |
+
+### 🛠️ 运行模式详解 (`-t`)
+
+本工具提供三种运行模式，满足各种定制化需求：
+
+#### 1. `full` 模式
+**行为**：一条龙服务。
+**流程**：`解析原始订阅` -> `调用 pure-nodes 进行节点深度清洗` -> `调用 mihomo-toolkit 构建完整的策略组与分流系统` -> `输出给内核使用的最终配置文件`。
+**使用场景**：日常更新个人专属配置，或自动化构建每日配置。
+
+```bash
+node cli.js -u ./raw-sub.yaml -t full -o final-config.yaml
 ```
 
-📖 详细用法请参阅 [CLI 工具文档](./cli/README.md)。
+#### 2. `pure` 模式 (仅清洗节点)
+**行为**：只运行 `pure-nodes.js` 洗白节点，**不生成**任何策略组和路由规则。
+**输出格式**：一个纯净的 YAML，仅包含 `proxies` 节点数组。
+**使用场景**：你已经有了一套完美的主路由配置，只想借助本工具的“节点清洗、倍率过滤、IP 补全、重命名”功能提纯订阅，然后提供给其他工具（如 Sub-Store 或自建面板）使用。
 
----
+```bash
+node cli.js -u "https://example.com/sub.yaml" -t pure -o pure-proxies.yaml
+```
+
+#### 3. `toolkit` 模式 (主脚本全功能)
+**行为**：直接运行 `mihomo-toolkit.js`，包含节点清洗（去重/重命名/地区匹配/倍率识别）和完整策略组构建。
+**前提条件**：输入的订阅可以是原始状态，主脚本自带清洗能力。
+**使用场景**：你不需要 pure-nodes 的 IP 溯源和节点裂变，只需主脚本的清洗+策略组体系（动态测速大区、流媒体分流、防漏 DNS 等）。注意：此模式下主脚本的重命名和清洗**都会执行**，跳过的只是 pure-nodes 的深度清洗。
+
+```bash
+node cli.js -u ./raw-sub.yaml -t toolkit -o final-config.yaml
+```
+
+### 📝 高级玩法：覆写配置
+
+根目录下可以存在一个 `config.yaml` 文件（你也可以通过 `-c` 指定其他路径，或参考 `config.example.yaml`）。如果此文件存在，CLI 会在运行时读取其中的配置项，**合并/覆盖**到脚本内置的 `USER_CONFIG` 中。
+
+这让你能够分离代码与配置。例如在 `config.yaml` 中写入：
+
+```yaml
+enableIPv6: true
+enableAntiAD: true
+renameTemplate: "[{airport}] {icon} {region} {index} {multi}"
+```
+
+CLI 在运行时就会自动使用上述设定，而完全不需要你去修改源码！
+
+#### 🔀 脚本独立作用域配置（进阶）
+
+如果你需要为清洗脚本（`pure-nodes.js`）和主脚本（`mihomo-toolkit.js`）分别设定不同的配置，你可以使用 `pureConfig` 和 `toolkitConfig` 两个特殊字段进行隔离：
+
+```yaml
+# 根目录的配置会同时应用于两个脚本（共享配置）
+enableAirportTag: true
+adTextThreshold: 10
+
+# 多订阅合并 + 来源标签注入
+subscriptions:
+  - url: "https://example.com/sub1.yaml"
+    tag: "AirportA"  # 会自动补全为 [AirportA] 并注入到节点名前
+    # indexPrefix: "A"  # 可选：序号前缀，配置后按地区+前缀独立编号(如 A01)
+  - url: "https://example.com/sub2.yaml"
+    tag: "AirportB"
+    # indexPrefix: "B"
+  - url: "./local-nodes.yaml"
+
+# 序号规则：有 indexPrefix → 按地区+前缀独立编号(如 A01/B01)，无 indexPrefix → 按地区统一编号(如 01/02)
+
+pureConfig:
+  # 这里的配置仅对纯净节点清洗脚本生效
+  enableIpEnrich: true
+
+toolkitConfig:
+  # 这里的配置仅对主脚本策略构建生效
+  enableNodeRename: false
+```
+
+> 💡 **防二次污染机制**：在 `full`（全自动流水线）模式下，由于清洗脚本已经对节点名进行了深度的打标与洗白，为了防止主脚本接手后进行二次重命名导致名字乱码，CLI 会**自动为 `mihomo-toolkit` 注入 `enableNodeRename: false`**。你可以通过在 `toolkitConfig` 里硬性写明 `enableNodeRename: true` 来覆盖这个智能保护机制。
+
+
+
+### 2. 🌐 本地/云端 HTTP 服务 (Server)
+
+适合本地长期挂机，或部署在个人的 **VPS 服务器** 上。它能在 `3000` 端口启动一个 HTTP 服务，实时处理外部发来的订阅请求。此模式支持向客户端注入 `Subscription-Userinfo` 流量面板信息（推荐使用 `pm2` 等工具进行守护运行）。
+
+**启动方式：**
+
+```bash
+# 启动本地服务（默认端口 3000）
+npm start
+
+# 或自定义端口
+PORT=8080 npm start
+
+# 指定配置文件路径
+CONFIG_PATH=/path/to/config.yaml npm start
+```
+
+启动后，你的订阅链接将变成：
+`http://127.0.0.1:3000/sub`
+
+**支持的请求方式：**
+- 动态传参：`http://127.0.0.1:3000/sub?url=https://a.com/sub&url=https://b.com/sub`
+- 远程配置：`http://127.0.0.1:3000/sub?config=https://gist.github.com/xxx/config.yaml`
+- 默认配置：**前提是根目录已存在 `config.yaml`**（可参考 `config.example.yaml` 创建）；若文件不存在且未传参，服务会返回 400 错误提示。
+
+### 3. ☁️ Cloudflare Worker 云端部署
+
+将清洗引擎部署在 Cloudflare 边缘节点，随时随地在手机或电脑端使用。
+由于采用了纯函数式架构，本项目已通过 `esbuild` 兼容 Cloudflare Worker。
+
+**部署步骤：**
+
+```bash
+# 1. 编译构建 Worker 产物
+npm run build:worker
+
+# 2. 将 `dist/worker.bundle.js` 的内容复制到 Cloudflare Worker 中保存部署即可
+```
+
+**Worker 高级技巧**：
+- 动态传参：`https://your-worker.dev/sub?url=xxx&url=yyy`
+- 远程配置：`https://your-worker.dev/sub?config=https://gist.github.com/xxx/config.yaml`
+- 默认配置：在 Cloudflare 控制台添加环境变量 `DEFAULT_CONFIG_URL`，填入你放在 GitHub Gist 或其他图床上的 `config.yaml` 的直链。这样你连请求参数都不用带，直接访问 Worker 域名就能获得洗白后的配置。
 
 ## ⚙️ 配置详解
 
-📝 **完整配置**：请直接在 `mihomo-toolkit.js` 和 `pure-nodes.js` 顶部的 `USER_CONFIG` / `CONFIG` 对象中查看，所有配置项均有详尽的**中文注释**。
+📝 **完整配置**：请直接在 `src/mihomo-toolkit.js` 和 `src/pure-nodes.js` 顶部的 `USER_CONFIG` / `CONFIG` 对象中查看，所有配置项均有详尽的**中文注释**。
 
 <details>
 <summary><b>🏷️ 节点重命名模板变量 (renameTemplate)</b></summary>
@@ -187,6 +375,7 @@ node index.js -u https://example.com/sub.yaml -t full -o final.yaml
 | `lowMultiThreshold` | `0.99` | 倍率 ≤ 此值的节点自动标记为 `⏬` 下载节点（设为 `0` 关闭） |
 | `testInterval` | `300` | 自动选择组的测速间隔（单位：秒） |
 | `strictRegionMatch` | `false` | `true` 时仅匹配内置字典，`false` 时可动态捕获冷门国家 |
+| `indexPrefix`（subscriptions 内）| _无_ | 序号前缀，配置后按地区+前缀独立编号（如 A01、B01）；不配置则按地区统一编号（如 01、02） |
 
 </details>
 
@@ -361,7 +550,7 @@ CUSTOM_SERVICES.social = {
 - **地区独立组**：节点数 ≥ 阈值时自动生成（如 `🇭🇰 香港`、`🇯🇵 日本`）
 - **大区折叠组**：小众地区收纳至 `🇪🇺 欧洲`、`🏝️ 东南亚`、`🌵 美洲` 或 `🌐 其他节点`
 - **应用场景组**：依配置生成 `🤖 ChatGPT`、`🎬 Netflix`、`▶️ YouTube`、`🪄 Disney+`、`🎵 TikTok`、`🎧 Spotify`、`✈️ Telegram` 等
-- **高级功能组**：`🏠 家宽专用`、`⏬ 下载策略`、`🇨🇳 中国分流` 等
+- **高级功能组**：`🏠 家宽优选`、`⏬ 下载策略`、`🇨🇳 中国分流` 等
 
 ---
 
@@ -451,6 +640,9 @@ v3.0 采用注册表架构，只需两步，无需触碰脚本逻辑：<br>
 3. **CLI 自动化流水线注入**：使用本项目的 CLI 命令行工具，在 `config.yaml` 的 `subscriptions` 数组中为不同订阅链接指定 `tag`，CLI 会在后台自动为它们批量注入标签前缀。
 
 自动打标后，面板中的节点来源一目了然，再也不怕订阅混淆！如需更精细的归属识别（如运营商、ASN），可配合纯净版脚本的 IP-API 检测使用。
+
+> 💡 **按订阅源独立编号**：默认按地区统一编号（如香港 01、02、03，跨机场连续）。如想让每个订阅源独立计数（如 L01、L02 / I01、I02），只需在 `subscriptions` 数组里为每个源指定 `indexPrefix`，即可在节点名中保留来源辨识度。
+
 </details>
 
 ---

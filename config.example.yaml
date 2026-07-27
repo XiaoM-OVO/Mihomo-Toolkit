@@ -1,0 +1,248 @@
+# =====================================================================
+# 📦 Mihomo-Toolkit 配置模板
+# =====================================================================
+# 💡 配置继承规则:
+#    根级配置       → 同时传给 pure-nodes 和 mihomo-toolkit
+#    pureConfig     → 仅传给 pure-nodes，覆盖根级同名配置
+#    toolkitConfig  → 仅传给 mihomo-toolkit，覆盖根级同名配置
+# ---------------------------------------------------------------------
+# ⚠️ full 模式下，toolkit 的 enableNodeRename 强制为 false（防二次清洗）
+# 📌 被注释的行 = 脚本内置默认值，取消注释即可覆盖
+# =====================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ① 订阅源
+# ─────────────────────────────────────────────────────────────────────
+subscriptions:
+  - url: "https://example.com/api/v1/sub1"
+    tag: "机场A"
+    # indexPrefix: "A"         # 序号前缀（仅 indexMode: airport 时生效）
+
+  - url: "https://example.com/api/v1/sub2"
+    tag: "机场B"
+    # indexPrefix: "B"
+
+  # 本地文件也可以
+  # - url: "./my-local-nodes.yaml"
+
+  # 直接注入单节点 URI（适合自建节点）
+  # 使用 uri 字段（而非 url）直接传入节点链接，无需 HTTP fetch
+  # 支持 vless:// vmess:// trojan:// ss://
+  # 节点名（#后面）需命中下方 whitelistKeywords 或 specialNodeRules，否则会被正常清洗流程处理
+  # - uri: "vless://uuid@1.2.3.4:443?security=tls&type=ws&path=/ws#x-ray-HK"
+  #   tag: "自建"
+  #   indexPrefix: "X"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ② 核心运行参数
+# ─────────────────────────────────────────────────────────────────────
+type: "full"                    # 运行模式: pure / toolkit / full
+output: "./dist/output.yaml"    # 输出路径
+# meta: "./stats.json"          # 清洗统计报告导出路径（可选）
+# redactLevel: "partial"        # 日志脱敏级别: off | partial | full（根级设置同时影响 builder 和 pure）
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ③ 全局共享配置（pure + toolkit 共用）
+#    只想改某一侧？放进 pureConfig 或 toolkitConfig 里
+# ─────────────────────────────────────────────────────────────────────
+
+# --- 重命名 ---
+enableNodeRename: true
+# 命名模板变量:
+#   {prefix}    自定义前缀       {airport}   机场标签
+#   {icon}      国旗 emoji       {region}    地区名
+#   {city}      城市名           {index}     排序编号
+#   {features}  解锁特征         {protocol}  协议图标
+#   {transport} 传输层标签       {in}        入口地区
+#   {line}      线路特征         {multi}     倍率
+#   {ip_stack}  IPv6/双栈标识    {isp}       运营商
+#   {asn}       ASN 编号         {org}       组织/数据中心
+# ⚠️ pure 默认 {prefix}{airport}... / toolkit 默认 [{airport}]...
+#    根级写此值会同时覆盖两者。full 模式下 toolkit 不重命名，仅 pure 生效
+renameTemplate: "[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
+# renameSeparators: ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"]
+
+# --- 清洗与过滤 ---
+enableDedupe: true              # 跨机场物理去重
+removeInfoNodes: false          # 移除流量/到期等信息节点
+strictRegionMatch: false        # true=仅匹配预设字典 / false=宽松模式自动捕获冷门国家
+# highMultiThreshold: 2.5       # 高倍率软隔离阈值，超过则同地区内排序下沉
+# 序号规则：有 indexPrefix → 按地区+前缀独立编号(如 L01/I01)，无 indexPrefix → 按地区统一编号(如 01/02)
+# indexPrefixMap:               # 序号前缀映射(推荐直接写在 subscriptions 数组项中，与 tag 同级)
+#   "机场A": "A"                # 键=订阅 tag，值=前缀
+#   "机场B": "B"
+
+# --- 白名单 / 黑名单 ---
+# 白名单关键词: 命中即放行并保留原名，跳过清洗/地区匹配/IP反查
+# 黑名单关键词: 命中即拦截（黑名单优先级高于白名单）
+# 黑名单服务器: 包含即拦截
+# whitelistKeywords:
+#   - "x-ray"
+#   - "测速"
+# blockKeywords: []
+# blockServers: []
+
+# --- 注入节点（URI自建节点专用）---
+# 配合 subscriptions 中的 uri 字段使用：URI节点会被强制重命名并注入到指定应用组
+# 注入节点重命名: 防止URI节点被当垃圾扔掉，强制改名（可选）
+# specialNodeRules: []
+# 注入节点分组: 将注入节点追加到指定应用组，键=关键词(子串匹配)，值=目标组名数组
+# customNodeGroups:
+#   "x-ray": ["🤖 ChatGPT", "♊ Gemini", "🐱 GitHub"]
+
+# --- 测速 ---
+testTolerance: 50               # 延迟容忍度，防止频繁切换
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ④ 清洗脚本专属（pure-nodes.js）
+# ─────────────────────────────────────────────────────────────────────
+pureConfig:
+
+  # --- 基础输出 ---
+  # outputMode: "array"          # array / object
+  # logLevel: "info"             # silent | error | warn | info | debug
+  # redactLevel: "partial"       # 日志脱敏级别: off | partial | full
+  #   off:    builder 隐藏密码/Token，pure 不屏蔽 IP/域名（纯本地开发）
+  #   partial: builder 隐藏密码/Token，pure 不屏蔽 IP/域名（生产首选）
+  #   full:   builder 路径也变 ***，pure 屏蔽所有 IP/域名（分享日志）
+  enableDebugLog: true           # 调试日志：原名→新名→归属
+  # outputGarbage: false         # 输出拦截的广告/假节点
+  # outputUnknown: true          # 输出未识别节点
+
+  # --- 命名与展示 ---
+  # enableStandardRename: true   # 标准化重命名，关闭则保留原名防吞词
+  # renameTemplate: "{prefix}{airport} {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
+  # customPrefix: ""             # 批量自定义前缀
+  # showFeatureIcon: false       # 特征文本替换为 emoji
+  enableAirportTag: true         # 提取原机场标签
+  # airportTag: ""               # 强制覆盖所有节点标签
+
+  # --- 清洗过滤 ---
+  # ⚠️ pure 默认 12 / toolkit 默认 6。full 模式下 pure 先行，toolkit 二次过滤
+  adTextThreshold: 12
+  # 黑名单详见根级 blockKeywords / blockServers
+
+  # --- IP 补充检测（ip-api.com）---
+  enableIpEnrich: true
+  ipEnrichMode: "missing"        # missing=仅检测未知 / all=强制全部
+  # ipEnrichTimeout: 15000       # 全局超时熔断（毫秒）
+  # ipApiKey: ""                 # IP-API Pro 密钥
+  # ipEnrichThreshold: 200       # 超过此节点数自动关闭
+  # enableIpMetadata: false      # ASN/ISP/ORG 等元数据
+  # enableIpv6Tag: false         # IPv6/双栈识别
+  # enableCellularTag: false     # 蜂窝网络识别
+  # enableResidentialTag: false  # 家宽识别
+  # ipApiEndpoint: "http://ip-api.com/batch"
+  # ipApiBatchSize: 100          # 免费版限制 100
+  # ipApiBatchDelay: 4000        # 批次间隔（毫秒），免费版 15次/分钟
+  # ipApiDnsConcurrency: 15      # DNS 并发数
+  # ipApiDnsEndpoint: ""         # DoH 端点，留空自动选择
+
+  # --- 节点裂变（高级）---
+  # enableFission: true          # 将域名节点裂变为多个 IP 节点
+  # fissionStack: "all"          # all / v4 / v6
+  # fissionMaxNodes: 4           # 单节点最大裂变数
+  # fissionExcludeKeywords: ["负载均衡", "故障转移", "自动选择", "自动匹配", "最优选择"]
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ⑤ 主脚本专属（mihomo-toolkit.js）
+# ─────────────────────────────────────────────────────────────────────
+toolkitConfig:
+
+  # --- 基础全局 ---
+  # enableScript: true           # 脚本总控，false 则原样输出
+  enableDebugLog: true
+  osType: "windows"              # windows / mac / linux / all
+  proxyFirst: true               # true=海外优先 / false=国内优先
+  defaultProxyMode: "auto"       # auto / manual / fallback / direct / reject
+  enableIPv6: false              # 本地无物理 IPv6 务必设为 false
+  enableAirportTag: false        # 订阅合并时自动/手动捕捉标签
+  # airportTag: ""               # 强制指定标签（逗号分隔）
+  # airportTagReg: '/^\[([^\]]{1,8})\]/i'
+
+  # --- 节点清洗 ---
+  # enableNodeRename: true       # full 模式下强制为 false
+  # adTextThreshold: 6           # toolkit 侧广告阈值
+  # lowMultiThreshold: 0.99      # 倍率 <= 此值归入下载策略，0 关闭
+  isolateDownload: true          # true=从普通大区剔除 / false=允许进入
+
+  # --- 策略组建组 ---
+  # minorNodeThreshold: 3        # 小众地区建组阈值
+  regionGroupType: "url-test"    # url-test / select / fallback
+  # enableRegionHashLB: false    # 达到阈值的地区组增加哈希负载均衡
+  # hideGarbageGroup: false      # 强制不显示垃圾桶组
+  # groupIconMode: "emoji"       # emoji / icon / both
+  # iconRepoOrz: "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/"
+  # iconRepoKoolson: "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/"
+  # iconRepoLige47: "https://raw.githubusercontent.com/lige47/lige_icon/main/icon/04ProxySoft/"
+
+  # --- 🎯 注入/自定义节点分组 ---
+  # 将指定节点追加到指定应用组，也可以使用标签指定
+  # 也可直接写在 YAML 根级，builder.js 会自动透传
+  # customNodeGroups:
+  #   "x-ray": ["🤖 ChatGPT", "♊ Gemini", "🐱 GitHub"]
+
+  # --- 核心分流开关 ---
+  # enableAdBlock: true          # 广告拦截
+  # enableAI: true               # OpenAI, Gemini, Claude, Copilot
+  # enableTelegram: true         # Telegram 独立分流
+  # enableStreaming: true        # YouTube, Netflix, Disney 等
+  # enableGame: true             # Steam, Epic 等
+  # enableSystemServices: true   # Microsoft, Apple, Google 框架
+  # enableDomesticGroup: false   # 增加"中国"策略组
+
+  # --- 扩展分流开关 ---
+  # enableAntiAD: false          # 激进广告拦截（容易误杀）
+  # enableGitHub: true           # GitHub, GitLab 等
+  enableScholar: false           # Google Scholar
+  # enableSocial: false          # Discord, Messenger, Line 等
+  # enableCrypto: false          # Binance 等交易平台
+  # enablePayPal: false          # PayPal 独立分流
+  # enableResidential: false     # 家宽分流：开启后家宽节点独立成组，不混入地区桶，不参与自动选择，生成「🏠 家宽优选」组
+  # residentialNodeGroups: {}   # 家宽节点注入：键=地区(hk/us/...或"all")，值=目标应用组数组
+  #   "all": ["🤖 ChatGPT", "♊ Gemini", "🐱 GitHub"]  # 全部家宽节点进这些组
+  #   "hk": ["🤖 ChatGPT"]                              # 仅香港家宽进 ChatGPT
+
+  # --- 测速与规则集 ---
+  # testInterval: 300            # 测速间隔（秒）
+  # testURL: "https://cp.cloudflare.com/generate_204"
+  # useMRS: true                 # 极速规则模式: true=MRS / false=YAML
+  # ruleProviderCDN: "https://fastly.jsdelivr.net/gh"
+
+  # --- DNS ---
+  # dnsDefault: ["223.5.5.5", "119.29.29.29"]
+  # dnsDirect: ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"]
+  # dnsProxy: ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"]
+
+  # --- 安全防漏与内核覆写 ---
+  # enableProcessDirect: true    # P2P/BT 强制直连
+  # enableTrafficAudit: true     # 非标流量强制直连
+  # enableQUICReject: false      # 屏蔽 QUIC，强制降级 TCP
+  # overwriteTun: true           # 覆写 TUN 配置
+  # overwriteDns: true           # 覆写 DNS 配置
+  # overwriteSniffer: true       # 覆写 Sniffer 配置
+  # enableCoreOptimize: true     # 核心优化：性能提升、统一延迟、指纹伪装
+
+  # --- 服务注册表（增删 key 即开关）---
+  # AI: chatgpt, gemini, copilot, claude, deepseek, perplexity
+  # aiServices:
+  #   - chatgpt
+  #   - gemini
+  # 流媒体: youtube, netflix, bilibili, disney, twitch, spotify, tiktok, bahamut, pixiv
+  # streamingServices:
+  #   - youtube
+  #   - bilibili
+  # 社交: telegram, discord, messenger, line, whatsapp, signal
+  # socialServices:
+  #   - telegram
+  # 系统服务: microsoft, apple, google
+  # systemServices:
+  #   - microsoft
+  #   - google
+  # 自定义服务注册表（高级，结构同内置服务定义）
+  # customServices: {}
