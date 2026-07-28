@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.3.0 (Build 2026.07.27)
+// 🏷️ 版本: v3.3.2 (Build 2026.07.28)
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -217,7 +217,7 @@ function main(config, extConfig) {
   // =========================================================================
   // --- ⚙️ 预处理阶段一：调试日志辅助模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.3.0";
+  const SCRIPT_VERSION = "v3.3.2";
   const bootTime = new Date().toTimeString().split(' ')[0];
 
   if (USER_CONFIG.enableDebugLog) {
@@ -887,6 +887,7 @@ function main(config, extConfig) {
   
   const isoCounts = {}, groupTrack = {}, isoTrack = {};
   const regionTotals = {}; // 地区总节点数（合并所有前缀）
+  const groupTotals = {}; // 各分组节点数（含前缀分组与隔离分组，用于计算序号补零位数）
   processedData.forEach(d => {
     if (!d.isInfo) {
       const regionKey = getRegionOnlyKey(d.groupKey);
@@ -905,9 +906,15 @@ function main(config, extConfig) {
       if (isIso) {
         const isoKey = `iso_${trackKey}`;
         isoCounts[isoKey] = (isoCounts[isoKey] || 0) + 1;
+        groupTotals[isoKey] = (groupTotals[isoKey] || 0) + 1;
+      } else {
+        groupTotals[trackKey] = (groupTotals[trackKey] || 0) + 1;
       }
     }
   });
+  // 全局统一序号补零位数：取最大分组节点数的位数，最小2位
+  const maxGroupCount = Math.max(...Object.values(groupTotals), 9);
+  const indexPad = Math.max(2, maxGroupCount.toString().length);
 
   // 🔄 第二轮遍历：执行重命名，并把节点扔进对应的桶里
   processedData.forEach(item => {
@@ -937,7 +944,7 @@ function main(config, extConfig) {
     const regionTotal = isIso ? (isoCounts[isoKey] || 1) : (regionTotals[regionOnlyKey] || 1);
     let numStr;
     if (regionTotal > 1) {
-      numStr = prefix ? `${prefix}${idx.toString().padStart(2, "0")}` : ` [${idx.toString().padStart(2, "0")}]`;
+      numStr = prefix ? `${prefix}${idx.toString().padStart(indexPad, "0")}` : ` [${idx.toString().padStart(indexPad, "0")}]`;
     } else {
       numStr = "";
     }

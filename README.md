@@ -6,8 +6,8 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Toolkit](https://img.shields.io/badge/Toolkit-v3.3.0-blue)](CHANGELOG.md)
-[![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.0-blueviolet)](CHANGELOG.md)
+[![Toolkit](https://img.shields.io/badge/Toolkit-v3.3.2-blue)](CHANGELOG.md)
+[![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.1-blueviolet)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -297,6 +297,8 @@ CONFIG_PATH=/path/to/config.yaml npm start
 - 远程配置：`http://127.0.0.1:3000/sub?config=https://gist.github.com/xxx/config.yaml`
 - 默认配置：**前提是根目录已存在 `config.yaml`**（可参考 `config.example.yaml` 创建）；若文件不存在且未传参，服务会返回 400 错误提示。
 
+> 🔒 **URL 传参开关**：在 `config.yaml` 根级写入 `enableUrlParams: false` 可禁用 `?url=` / `?config=` 动态传参，仅允许使用本地配置（默认为 `true`）。适用于公开暴露端口、避免被当作转发代理的场景。
+
 ### 3. ☁️ Cloudflare Worker 云端部署
 
 将清洗引擎部署在 Cloudflare 边缘节点，随时随地在手机或电脑端使用。
@@ -315,6 +317,7 @@ npm run build:worker
 - 动态传参：`https://your-worker.dev/sub?url=xxx&url=yyy`
 - 远程配置：`https://your-worker.dev/sub?config=https://gist.github.com/xxx/config.yaml`
 - 默认配置：在 Cloudflare 控制台添加环境变量 `DEFAULT_CONFIG_URL`，填入你放在 GitHub Gist 或其他图床上的 `config.yaml` 的直链。这样你连请求参数都不用带，直接访问 Worker 域名就能获得洗白后的配置。
+- 禁用传参：在 Cloudflare 控制台添加环境变量 `ENABLE_URL_PARAMS=false` 可禁用 `?url=` / `?config=` 动态传参，仅允许使用 `DEFAULT_CONFIG_URL`，避免 Worker 被当作公开转发代理。
 
 ## ⚙️ 配置详解
 
@@ -642,6 +645,8 @@ v3.0 采用注册表架构，只需两步，无需触碰脚本逻辑：<br>
 自动打标后，面板中的节点来源一目了然，再也不怕订阅混淆！如需更精细的归属识别（如运营商、ASN），可配合纯净版脚本的 IP-API 检测使用。
 
 > 💡 **按订阅源独立编号**：默认按地区统一编号（如香港 01、02、03，跨机场连续）。如想让每个订阅源独立计数（如 L01、L02 / I01、I02），只需在 `subscriptions` 数组里为每个源指定 `indexPrefix`，即可在节点名中保留来源辨识度。
+
+> 💡 **动态序号补零**：脚本会全局扫描所有分组的节点数量，按最大值自动决定补零位数——最大 99 个用 2 位（如 `L01`），最大 100~999 个用 3 位（如 `L001`），以此类推，最低保留 2 位。同一次构建内所有节点序号位数一致，避免出现 `L99 → L100` 的视觉跳变。
 
 </details>
 
