@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
-const { buildProfile, redactUrl } = require('./src/builder.js');
+const { buildProfile, redactUrl, isAllowedUrl } = require('./src/builder.js');
 
 const PORT = process.env.PORT || 3000;
 const CONFIG_PATH = process.env.CONFIG_PATH || path.resolve(__dirname, 'config.yaml');
@@ -32,15 +32,6 @@ async function fetchWithAuth(targetUrl) {
   }
 }
 
-function isAllowedUrl(urlStr) {
-  const parsed = new URL(urlStr);
-  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-  const host = parsed.hostname;
-  if (/^(localhost|127\.|0\.0\.0\.0|::1$)/.test(host)) return false;
-  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) return false;
-  return true;
-}
-
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
   
@@ -55,7 +46,20 @@ const server = http.createServer(async (req, res) => {
       const configUrl = reqUrl.searchParams.get('config');
       const subUrls = reqUrl.searchParams.getAll('url');
       
+      // 先加载本地配置文件获取 enableUrlParams 设置
+      let localConfig = {};
+      if (fs.existsSync(CONFIG_PATH)) {
+        const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
+        if (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml')) {
+          localConfig = yaml.parse(content) || {};
+        } else {
+          localConfig = JSON.parse(content);
+        }
+      }
+      const enableUrlParams = localConfig.enableUrlParams !== false;
+      
       if (configUrl) {
+        if (!enableUrlParams) throw new Error('URL params are disabled by enableUrlParams=false');
         // Fetch remote config.yaml
         if (!isAllowedUrl(configUrl)) throw new Error('Invalid or disallowed config URL');
         const configRes = await fetchWithAuth(configUrl);
@@ -63,16 +67,14 @@ const server = http.createServer(async (req, res) => {
         const content = await configRes.text();
         userConfig = yaml.parse(content) || {};
       } else if (subUrls.length > 0) {
+        if (!enableUrlParams) throw new Error('URL params are disabled by enableUrlParams=false');
         // Build config from ?url=...
+        const blocked = subUrls.filter(u => !isAllowedUrl(u));
+        if (blocked.length > 0) throw new Error(`Invalid or disallowed subscription URL(s): ${blocked.map(redactUrl).join(', ')}`);
         userConfig.subscriptions = subUrls.map(u => ({ url: u }));
-      } else if (fs.existsSync(CONFIG_PATH)) {
-        // Fallback to local config.yaml
-        const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
-        if (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml')) {
-          userConfig = yaml.parse(content) || {};
-        } else {
-          userConfig = JSON.parse(content);
-        }
+      } else if (Object.keys(localConfig).length > 0) {
+        // Use local config.yaml
+        userConfig = localConfig;
       } else {
         console.warn(`[Server] ⚠️ config.yaml not found and no ?url= provided.`);
         res.writeHead(400, { 'Content-Type': 'text/plain' });
@@ -80,8 +82,9 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      console.log(`[Server] Building profile...`);
-      const { yamlStr, userInfo } = await buildProfile(userConfig, { production: true });
+      const debugMode = reqUrl.searchParams.get('debug') === '1';
+      console.log(`[Server] Building profile... (debug=${debugMode})`);
+      const { yamlStr, userInfo } = await buildProfile(userConfig, { production: true, debug: debugMode });
 
       const headers = {
         'Content-Type': 'text/yaml; charset=utf-8',

@@ -42,6 +42,7 @@ type: "full"                    # 运行模式: pure / toolkit / full
 output: "./dist/output.yaml"    # 输出路径
 # meta: "./stats.json"          # 清洗统计报告导出路径（可选）
 # redactLevel: "partial"        # 日志脱敏级别: off | partial | full（根级设置同时影响 builder 和 pure）
+# enableUrlParams: true         # Server/Worker 是否允许 ?url= / ?config= 传参（false 则只读本地配置/环境变量）
 
 
 # ─────────────────────────────────────────────────────────────────────

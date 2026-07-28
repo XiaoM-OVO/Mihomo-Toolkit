@@ -2,7 +2,7 @@
  * =========================================================================
  * 📦 Mihomo-Toolkit | 通用纯净节点清洗脚本 (Pure JS Edition) | MIT 许可证
  * =========================================================================
- * 🏷️ 版本: 1.2.0 (Build 2026.07.27)
+ * 🏷️ 版本: 1.2.1 (Build 2026.07.28)
  * 👤 作者: XiaoM-OVO
  * 🔌 环境: Node.js / Sub-Store / Surge / Loon / 浏览器 等(多端自适应)
  * 📝 描述: 零依赖跨平台节点处理核心，提供过滤、去重、重命名与自动排序功能。
@@ -257,7 +257,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     const LOG_LEVELS = { "silent": 0, "error": 1, "warn": 2, "info": 3, "debug": 4 };
     const currentLogLevel = LOG_LEVELS[CONFIG.logLevel] ?? 3;
 
-    if (currentLogLevel >= 3) console.log("[Pure] 🔧 pure-nodes v1.2.0 已加载");
+    if (currentLogLevel >= 3) console.log("[Pure] 🔧 pure-nodes v1.2.1 已加载");
 
     let redactLevel = CONFIG.redactLevel || 'partial';
 
@@ -1393,8 +1393,6 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             return (a.rawName || '').localeCompare(b.rawName || '', 'zh-CN');
         });
 
-        const groupTrack = {};
-        
         const getRegionOnlyKey = (gk) => {
             const idx = gk.indexOf('__');
             return idx !== -1 ? gk.substring(idx + 2) : gk;
@@ -1406,13 +1404,23 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         };
 
         const regionTotals = {}; // 地区总节点数（合并所有前缀）
+        const groupTrack = {}; // 分组内序号计数器（按 trackKey 独立计数）
+        const groupTotals = {}; // 各分组节点数（含前缀分组，用于计算序号补零位数）
         processedData.forEach(d => {
             if (!d.isInfo && !d.isGarbage && !d.isSpecial) {
                 const regionKey = getRegionOnlyKey(d.groupKey);
+                const airportTag = getAirportTagFromGroupKey(d.groupKey);
+                const prefix = d.proxy._indexPrefix || CONFIG.indexPrefixMap[airportTag];
+                const trackKey = prefix ? `${regionKey}_${prefix}` : regionKey;
                 // 统计地区总节点数
                 regionTotals[regionKey] = (regionTotals[regionKey] || 0) + 1;
+                // 统计各分组节点数
+                groupTotals[trackKey] = (groupTotals[trackKey] || 0) + 1;
             }
         });
+        // 全局统一序号补零位数：取最大分组节点数的位数，最小2位
+        const maxGroupCount = Math.max(...Object.values(groupTotals), 9);
+        const indexPad = Math.max(2, maxGroupCount.toString().length);
 
         // --- ⚙️ 构建多分隔符兜底清理动态正则 ---
         const defaultSeps = ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"];
@@ -1474,7 +1482,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             const regionTotal = regionTotals[regionOnlyKey] || 1;
             let numStr;
             if (regionTotal > 1) {
-              numStr = prefix ? `${prefix}${idx.toString().padStart(2, "0")}` : idx.toString().padStart(2, "0");
+              numStr = prefix ? `${prefix}${idx.toString().padStart(indexPad, "0")}` : idx.toString().padStart(indexPad, "0");
             } else {
               numStr = "";
             }

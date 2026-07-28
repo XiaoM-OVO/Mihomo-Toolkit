@@ -1,4 +1,4 @@
-import { buildProfile } from './src/builder.js';
+import { buildProfile, isAllowedUrl } from './src/builder.js';
 import yaml from 'yaml'; // Requires esbuild/wrangler to bundle
 
 // Set DEFAULT_CONFIG_URL in Cloudflare Workers Environment Variables
@@ -29,15 +29,6 @@ async function fetchWithAuth(targetUrl) {
   }
 }
 
-function isAllowedUrl(urlStr) {
-  const parsed = new URL(urlStr);
-  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-  const host = parsed.hostname;
-  if (/^(localhost|127\.|0\.0\.0\.0|::1$)/.test(host)) return false;
-  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) return false;
-  return true;
-}
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -51,9 +42,12 @@ export default {
         subscriptions: []
       };
 
+      const enableUrlParams = env.ENABLE_URL_PARAMS !== 'false';
+
       // Support ?config=https://...
       const configUrl = url.searchParams.get('config');
       if (configUrl) {
+        if (!enableUrlParams) return new Response('URL params are disabled (ENABLE_URL_PARAMS=false)', { status: 403 });
         if (!isAllowedUrl(configUrl)) return new Response('Invalid or disallowed config URL', { status: 400 });
         const configRes = await fetchWithAuth(configUrl);
         if (!configRes.ok) throw new Error(`Failed to fetch remote config: ${configRes.status}`);
@@ -63,9 +57,13 @@ export default {
         // Support ?url=...&url=...
         const subUrls = url.searchParams.getAll('url');
         if (subUrls.length > 0) {
+          if (!enableUrlParams) return new Response('URL params are disabled (ENABLE_URL_PARAMS=false)', { status: 403 });
+          const blocked = subUrls.filter(u => !isAllowedUrl(u));
+          if (blocked.length > 0) return new Response('Invalid or disallowed subscription URL(s)', { status: 400 });
           userConfig.subscriptions = subUrls.map(u => ({ url: u }));
         } else if (env.DEFAULT_CONFIG_URL) {
           // Support Environment Variable
+          if (!isAllowedUrl(env.DEFAULT_CONFIG_URL)) return new Response('Invalid or disallowed DEFAULT_CONFIG_URL', { status: 400 });
           const configRes = await fetchWithAuth(env.DEFAULT_CONFIG_URL);
           if (!configRes.ok) throw new Error(`Failed to fetch DEFAULT_CONFIG_URL: ${configRes.status}`);
           const content = await configRes.text();
@@ -75,7 +73,8 @@ export default {
         }
       }
 
-      const { yamlStr, userInfo } = await buildProfile(userConfig, { production: true });
+      const debugMode = url.searchParams.get('debug') === '1';
+      const { yamlStr, userInfo } = await buildProfile(userConfig, { production: true, debug: debugMode });
 
       const headers = new Headers({
         'Content-Type': 'text/yaml; charset=utf-8',

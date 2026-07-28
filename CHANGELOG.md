@@ -1,5 +1,25 @@
 # 更新日志
 
+## 2026-07-28 (主脚本 v3.3.2 | 清洗模块 v1.2.1)
+
+### 🔒 安全修复（SSRF 完整加固）
+- 补全 `?url=` 订阅参数的 SSRF 校验（此前 PR #11 仅覆盖了 `?config=`）
+- 补全 `DEFAULT_CONFIG_URL` 环境变量的 SSRF 校验
+- 新增 DNS 解析后 IP 校验（防御 IP 变体绕过与 DNS 重绑定攻击）
+- DNS 解析增加 5s 超时防护，避免网络异常时请求挂死
+- 统一 `isAllowedUrl()` 函数，Server / Worker 复用同一实现
+- worker.js 错误信息不再暴露 `err.message`，防止内部细节泄露
+
+### ✨ 新功能
+- 新增 `enableUrlParams` 配置项（Server: `config.yaml` / Worker: 环境变量）
+  - `true`（默认）：允许通过 `?url=` / `?config=` 传入订阅与配置
+  - `false`：禁止 URL 传参，仅能使用本地配置或 `DEFAULT_CONFIG_URL`
+- 动态序号补零：全局检测最大分组节点数，自动适配 2 位 / 3 位 / 4 位补零
+  - 最大 99 个 → 2 位（L01），最大 100 个 → 3 位（L001），以此类推
+
+### 🐛 调试增强
+- 新增 `?debug=1` 参数，输出订阅响应详情（status / content-length / content-type / 内容预览前 200 字符）
+
 ## v3.3.1 (2026-07-27)
 
 ### 🔒 安全修复

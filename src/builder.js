@@ -2,6 +2,9 @@ const yaml = require('yaml');
 const { operator } = require('./pure-nodes.js');
 const { main: toolkitMain } = require('./mihomo-toolkit.js');
 
+let dns;
+try { dns = require('dns').promises; } catch { dns = null; }
+
 function decodeBase64(str) {
   try {
     if (typeof Buffer !== 'undefined') {
@@ -399,13 +402,75 @@ function redactUrl(url, fullRedact = false) {
   return url;
 }
 
-async function fetchNodes(url, fullRedact = false) {
+function isPrivateIp(ip) {
+  if (ip === '127.0.0.1' || ip === '::1') return true;
+  const [a, b] = ip.split('.').map(Number);
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  return false;
+}
+
+function isAllowedUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    const host = parsed.hostname.toLowerCase();
+    if (/^(localhost|0\.0\.0\.0|::1)$/.test(host)) return false;
+    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchNodes(url, fullRedact = false, debug = false) {
   console.log(`[Builder] Fetching: ${redactUrl(url, fullRedact)}`);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const dnsResolveWithTimeout = async (host, family) => {
+    if (!dns) return [];
+    const dnsPromise = family === 4 ? dns.resolve4(host) : dns.resolve6(host);
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('DNS timeout')), 5000)
+    );
+    try {
+      return await Promise.race([dnsPromise, timeout]);
+    } catch {
+      return [];
+    }
+  };
+
   try {
-    // 处理 URL 中嵌入的 Basic Auth 凭据(支持 Node/Worker/浏览器)
+    // SSRF 防护：DNS 解析后校验（防御 IP 变体与 DNS 重绑定）
     const parsedUrl = new URL(url);
+    const host = parsedUrl.hostname;
+    if (/^(localhost|0\.0\.0\.0|::1)$/i.test(host)) {
+      throw new Error(`SSRF blocked: illegal host ${host}`);
+    }
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      if (isPrivateIp(host)) throw new Error(`SSRF blocked: private IP ${host}`);
+    } else if (/^[0-9a-f:]+$/i.test(host) && host.includes(':')) {
+      if (host === '::1' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
+        throw new Error(`SSRF blocked: private IPv6 ${host}`);
+      }
+    } else if (dns) {
+      const v4 = await dnsResolveWithTimeout(host, 4);
+      for (const ip of v4) { if (isPrivateIp(ip)) throw new Error(`SSRF blocked: ${host} resolved to private IP ${ip}`); }
+      if (v4.length === 0) {
+        const v6 = await dnsResolveWithTimeout(host, 6);
+        for (const ip of v6) {
+          if (ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) {
+            throw new Error(`SSRF blocked: ${host} resolved to private IPv6 ${ip}`);
+          }
+        }
+      }
+    }
+
+    // 处理 URL 中嵌入的 Basic Auth 凭据(支持 Node/Worker/浏览器)
     const fetchOpts = {
       headers: { 'User-Agent': 'clash-verge/v1.3.8' },
       signal: controller.signal
@@ -422,7 +487,13 @@ async function fetchNodes(url, fullRedact = false) {
     }
     const res = await fetch(parsedUrl.toString(), fetchOpts);
     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return { content: await res.text(), subInfo: res.headers.get('subscription-userinfo') };
+    const content = await res.text();
+    const subInfo = res.headers.get('subscription-userinfo');
+    if (debug) {
+      console.log(`[Builder] Debug response: status=${res.status}, content-length=${content.length}, content-type=${res.headers.get('content-type') || 'unknown'}, subInfo=${subInfo ? 'present' : 'missing'}`);
+      console.log(`[Builder] Debug content preview: ${content.substring(0, 200).replace(/\n/g, '\\n')}`);
+    }
+    return { content, subInfo };
   } catch (err) {
     if (err.name === 'AbortError') throw new Error(`Fetch timeout (15s): ${redactUrl(url, fullRedact)}`);
     throw err;
@@ -437,6 +508,7 @@ async function buildProfile(userConfig, options = {}) {
   let globalUpload = 0, globalDownload = 0, globalTotal = 0, globalExpire = 0;
   
   let redactLevel = userConfig.redactLevel || 'partial';
+  const debug = options.debug || false;
 
   if (redactLevel === 'off' && (process.env.NODE_ENV === 'production' || options.production)) {
     throw new Error('[Security] redactLevel=off 不允许在生产环境使用！');
@@ -462,7 +534,7 @@ async function buildProfile(userConfig, options = {}) {
           // uri 字段：直接节点，跳过 HTTP fetch，交给 parseContent 识别
           rawResult = { content: sub.uri, subInfo: null };
         } else {
-          rawResult = await fetchNodes(sub.url, fullRedact);
+          rawResult = await fetchNodes(sub.url, fullRedact, debug);
         }
         parseSubInfoForGlobal(rawResult.subInfo);
       const subConfig = parseContent(rawResult.content);
@@ -656,4 +728,4 @@ async function buildProfile(userConfig, options = {}) {
   };
 }
 
-module.exports = { buildProfile, redactUrl };
+module.exports = { buildProfile, redactUrl, isAllowedUrl };
