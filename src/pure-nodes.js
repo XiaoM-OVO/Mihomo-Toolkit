@@ -2,7 +2,7 @@
  * =========================================================================
  * 📦 Mihomo-Toolkit | 通用纯净节点清洗脚本 (Pure JS Edition) | MIT 许可证
  * =========================================================================
- * 🏷️ 版本: 1.2.1 (Build 2026.07.28)
+ * 🏷️ 版本: 1.2.2 (Build 2026.07.29)
  * 👤 作者: XiaoM-OVO
  * 🔌 环境: Node.js / Sub-Store / Surge / Loon / 浏览器 等(多端自适应)
  * 📝 描述: 零依赖跨平台节点处理核心，提供过滤、去重、重命名与自动排序功能。
@@ -322,32 +322,40 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     }
 
     function compressLineArr(arr) {
-        const atomSet = new Set(["移", "联", "电"]);
+        const FULL_SET = new Set(["电信", "移动", "联通"]);
+        const SHORT_MAP = { "电信": "电", "移动": "移", "联通": "联" };
+        const atomSet = new Set(Object.values(SHORT_MAP));
         const comboMap = {
             "电联": new Set(["电","联"]), "移联": new Set(["移","联"]),
             "电移": new Set(["电","移"]), "三网": new Set(["移","联","电"])
         };
 
-        let atomItems = [], nonAtomItems = [];
-        for (let item of [...new Set(arr)]) {
-            if (atomSet.has(item)) atomItems.push(item);
-            else nonAtomItems.push(item);
+        const deduped = [...new Set(arr)];
+        let carrierItems = [], nonCarrierItems = [];
+        for (let item of deduped) {
+            if (FULL_SET.has(item) || atomSet.has(item)) {
+                carrierItems.push(SHORT_MAP[item] || item);
+            } else {
+                nonCarrierItems.push(item);
+            }
         }
 
-        const atomCount = new Set(atomItems).size;
+        const carrierCount = new Set(carrierItems).size;
         let merged = [];
-        if (atomCount >= 3) {
+        if (carrierCount >= 3) {
             merged = ["三网"];
-        } else if (atomCount === 2) {
+        } else if (carrierCount === 2) {
             const matchCombo = Object.entries(comboMap).find(([k, members]) =>
-                k !== "三网" && members.size === 2 && [...members].every(a => atomItems.includes(a))
+                k !== "三网" && members.size === 2 && [...members].every(a => carrierItems.includes(a))
             );
-            merged = matchCombo ? [matchCombo[0]] : atomItems;
-        } else if (atomCount === 1) {
-            merged = [atomItems[0]];
+            merged = matchCombo ? [matchCombo[0]] : [...new Set(carrierItems)];
+        } else if (carrierCount === 1) {
+            const single = [...new Set(carrierItems)][0];
+            const fullName = Object.keys(SHORT_MAP).find(k => SHORT_MAP[k] === single);
+            merged = [fullName];
         }
 
-        return [...merged, ...nonAtomItems];
+        return [...merged, ...nonCarrierItems];
     }
 
     function extractNodeAttributes(name) {
@@ -391,7 +399,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             let short = LINE_MAP[key];
             if (!short) {
                 const cnKey = Object.keys(CN_MAP).find(k => match.includes(k));
-                if (cnKey) short = CN_MAP[cnKey];
+                if (cnKey) short = cnKey; // 先存全称：电信/移动/联通
             }
             if (short) attrs.lineArr.push(short);
             else if (match.length >= 2) attrs.lineArr.push(key);

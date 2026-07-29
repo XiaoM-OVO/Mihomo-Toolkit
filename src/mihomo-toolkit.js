@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.3.2 (Build 2026.07.28)
+// 🏷️ 版本: v3.3.3 (Build 2026.07.29)
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -51,6 +51,7 @@ const DEFAULT_CONFIG = {
   enableAirportTag: false,     // 🏷️ 标签提取：订阅合并时自动/手动捕捉标签内容
   airportTag: "",              // 🏷️ 手动指定标签（需要节点名字自带标签，逗号分隔），为空则自动正则检测
   airportTagReg: /^\[([^\]]{1,8})\]/i, // 🧩 自定义标签提取正则 (默认提取首部方括号内容)
+  showFeatureIcon: true,       // 🎨 特征图标：true(模板{features}填Emoji如📺), false(填文字如"流媒体")。enableNodeRename=false 时此开关被忽略
 
   // 【2. 节点清洗与处理】
   enableDedupe: false,         // 🧽 节点去重：开启后自动剔除底层完全重复的“注水”节点
@@ -198,9 +199,16 @@ function main(config, extConfig) {
   // 清洗冗余说明文字和推广网址
   const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)`, "ig");
   const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, "i"); // 单独用于判定禁止下载
-
-  // 识别前置入口城市 (如 深圳->香港)
-  const REGEX_ENTRY_CITY = /(深|深圳|广|广州|上海|沪|京|北京|杭|杭州|四川|川|渝|重庆|辽|莞|东莞|苏|江苏|无锡|鲁|徐|湘|宁|南京|汉|武汉|穗|港|香港|台|台湾|日本|日|新加坡|英国|英|韩国|韩|美国|美|Ingress)(?:(?:\s*(?:-|->|—|=|>)\s*)|(?=港|台|美|日|韩|新|英|德|法|俄|印|澳|狮城|多伦多|芝加哥|中|台湾|日本|新加坡|上海|沪|广|深|Exit|Destination))/;
+  // 入口城市关键词
+  const ENTRY_CITIES = ['深','深圳','广','广州','上海','沪','京','北京','杭','杭州','四川','川','渝','重庆','辽','莞','东莞','苏','江苏','无锡','鲁','徐','湘','宁','南京','汉','武汉','穗','港','香港','台','台湾','日本','日','新加坡','英国','英','韩国','韩','美国','美','Ingress'];
+  // 出口地区关键词
+  const EXIT_REGIONS = ['港','台','美','日','韩','新','英','德','法','俄','印','澳','狮城','多伦多','芝加哥','中','台湾','日本','新加坡','上海','沪','广','深','Exit','Destination'];
+  // 转义特殊字符
+  const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const entryPattern = ENTRY_CITIES.map(escapeRegex).join('|');
+  const exitPattern = EXIT_REGIONS.map(escapeRegex).join('|');
+  // 构建入口城市匹配正则
+  const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:-|->|—|=|>)\\s*(?=${exitPattern})|(?=${exitPattern}))`,'i');
   // 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
   const REGEX_MULTI      = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率)(?!\s*\d))/i;
   // 识别线路类型 (如 IEPL, BGP, CN2)
@@ -217,7 +225,7 @@ function main(config, extConfig) {
   // =========================================================================
   // --- ⚙️ 预处理阶段一：调试日志辅助模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.3.2";
+  const SCRIPT_VERSION = "v3.3.3";
   const bootTime = new Date().toTimeString().split(' ')[0];
 
   if (USER_CONFIG.enableDebugLog) {
@@ -338,6 +346,14 @@ function main(config, extConfig) {
   };
 
   // 🏷️ 节点特征识别字典
+  // tag → 文字映射（showFeatureIcon=false 时模板 {features} 用文字代替 Emoji）
+  const FEATURE_TEXT_MAP = {
+    "residential": "家宽", "game": "游戏", "streaming": "流媒体",
+    "chatgpt": "GPT", "gemini": "Gemini", "claude": "Claude", "copilot": "Copilot", "ai": "AI",
+    "download": "下载", "free": "免费", "no_download": "禁止下载",
+    "wap": "WAP", "anytls": "AnyTLS", "cdn中转": "CDN中转",
+    "cellular": "蜂窝", "ipv6": "IPv6", "dualstack": "双栈"
+  };
   const FEATURE_RULES = [
     { reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential", groupName: "🏠 家宽优选" },
     { reg: /(?:游戏|🎮)|\b(?:Game|FullCone)\b/i,              tag: "game", pool: "game", groupName: "🎮 游戏服务" },
@@ -555,13 +571,13 @@ function main(config, extConfig) {
       return "";
     });
 
-    // 3. 提取线路类型并存入 lineArr
+    // 3. 提取线路类型并存入 lineArr（运营商存全称，压缩延迟到 compressLineArr 按需处理）
     cleanName = cleanName.replace(REGEX_TECH_LINE, match => {
       let key = match.toUpperCase();
       let short = LINE_MAP[key];
       if (!short) {
           const cnKey = Object.keys(CN_MAP).find(k => match.includes(k));
-          if (cnKey) short = CN_MAP[cnKey];
+          if (cnKey) short = cnKey; // 先存全称：电信/移动/联通
       }
       if (short) attrs.lineArr.push(short);
       else if (match.length >= 2) attrs.lineArr.push(key);
@@ -621,34 +637,44 @@ function main(config, extConfig) {
     return null;
   }
 
-  // 辅助纯函数 4: 三网合并压缩函数
+  // 辅助纯函数 4: 三网合并压缩函数（运营商全称按需压缩）
   function compressLineArr(arr) {
-    const atomSet = new Set(["移", "联", "电"]);
+    const FULL_SET = new Set(["电信", "移动", "联通"]);
+    const SHORT_MAP = { "电信": "电", "移动": "移", "联通": "联" };
+    const atomSet = new Set(Object.values(SHORT_MAP));
     const comboMap = {
       "电联": new Set(["电","联"]), "移联": new Set(["移","联"]),
       "电移": new Set(["电","移"]), "三网": new Set(["移","联","电"])
     };
 
-    let atomItems = [], nonAtomItems = [];
-    for (let item of [...new Set(arr)]) {
-      if (atomSet.has(item)) atomItems.push(item);
-      else nonAtomItems.push(item);
+    const deduped = [...new Set(arr)];
+    let carrierItems = [], nonCarrierItems = [];
+    for (let item of deduped) {
+      if (FULL_SET.has(item) || atomSet.has(item)) {
+        // 统一成缩写用于合并判定
+        carrierItems.push(SHORT_MAP[item] || item);
+      } else {
+        nonCarrierItems.push(item);
+      }
     }
 
-    const atomCount = new Set(atomItems).size;
+    const carrierCount = new Set(carrierItems).size;
     let merged = [];
-    if (atomCount >= 3) {
+    if (carrierCount >= 3) {
       merged = ["三网"];
-    } else if (atomCount === 2) {
+    } else if (carrierCount === 2) {
       const matchCombo = Object.entries(comboMap).find(([k, members]) =>
-        k !== "三网" && members.size === 2 && [...members].every(a => atomItems.includes(a))
+        k !== "三网" && members.size === 2 && [...members].every(a => carrierItems.includes(a))
       );
-      merged = matchCombo ? [matchCombo[0]] : atomItems;
-    } else if (atomCount === 1) {
-      merged = [atomItems[0]];
+      merged = matchCombo ? [matchCombo[0]] : [...new Set(carrierItems)];
+    } else if (carrierCount === 1) {
+      // 单运营商一律保留全称
+      const single = [...new Set(carrierItems)][0];
+      const fullName = Object.keys(SHORT_MAP).find(k => SHORT_MAP[k] === single);
+      merged = [fullName];
     }
 
-    return [...merged, ...nonAtomItems];
+    return [...merged, ...nonCarrierItems];
   }
 
   // 🔍 标签提取逻辑
@@ -781,11 +807,12 @@ function main(config, extConfig) {
 
     let tags = new Set(), featurePools = [];
     if (regionInfo) {
+      const skipNameClean = USER_CONFIG.enableNodeRename === false;
       FEATURE_RULES.forEach(rule => {
         if (rule.reg.test(name)) {
           tags.add(rule.tag);
           if (rule.pool) featurePools.push(rule.pool);
-          name = name.replace(rule._cleanReg, ""); // 匹配后擦除字符
+          if (!skipNameClean) name = name.replace(rule._cleanReg, ""); // 仅在重命名开启时擦除特征文字
         }
       });
 
@@ -967,15 +994,17 @@ function main(config, extConfig) {
     } else if (!regionInfo) {
       finalName = `${airportTagStr ? `[${airportTagStr}] ` : ""}未知 ${rawName}${numStr}`;
     } else {
-      let featureIcons = "";
-      tags.forEach(tag => { 
-        if (tag !== "ipv6" && tag !== "dualstack" && UI_ICONS.features[tag]) {
-            featureIcons += UI_ICONS.features[tag]; 
-        } 
+      let featuresStr = "";
+      tags.forEach(tag => {
+        if (tag === "ipv6" || tag === "dualstack") return; // 网络栈走 {ip_stack}，不进 {features}
+        if (USER_CONFIG.showFeatureIcon !== false) {
+          if (UI_ICONS.features[tag]) featuresStr += UI_ICONS.features[tag];
+        } else {
+          if (FEATURE_TEXT_MAP[tag]) featuresStr += (featuresStr ? "/" : "") + FEATURE_TEXT_MAP[tag];
+        }
       });
-      
+
       let protocolIcon = UI_ICONS.protocols[pType] || "";
-      let featuresStr = featureIcons || "";
 
       let ipStackStr = "";
       if (tags.includes("dualstack")) ipStackStr = "双栈";

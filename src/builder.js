@@ -427,67 +427,113 @@ function isAllowedUrl(urlStr) {
   }
 }
 
-async function fetchNodes(url, fullRedact = false, debug = false) {
-  console.log(`[Builder] Fetching: ${redactUrl(url, fullRedact)}`);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
-  const dnsResolveWithTimeout = async (host, family) => {
-    if (!dns) return [];
-    const dnsPromise = family === 4 ? dns.resolve4(host) : dns.resolve6(host);
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('DNS timeout')), 5000)
-    );
-    try {
-      return await Promise.race([dnsPromise, timeout]);
-    } catch {
-      return [];
-    }
-  };
+function isPrivateIPv6(ip) {
+  if (ip === '::1') return true;
+  if (ip.startsWith('fe80:')) return true;
+  if (ip.startsWith('fc') || ip.startsWith('fd')) return true;
+  return false;
+}
 
+async function dnsResolveWithTimeout(host, family) {
+  if (!dns) return [];
+  const dnsPromise = family === 4 ? dns.resolve4(host) : dns.resolve6(host);
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('DNS timeout')), 5000)
+  );
   try {
-    // SSRF 防护：DNS 解析后校验（防御 IP 变体与 DNS 重绑定）
-    const parsedUrl = new URL(url);
-    const host = parsedUrl.hostname;
-    if (/^(localhost|0\.0\.0\.0|::1)$/i.test(host)) {
-      throw new Error(`SSRF blocked: illegal host ${host}`);
-    }
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-      if (isPrivateIp(host)) throw new Error(`SSRF blocked: private IP ${host}`);
-    } else if (/^[0-9a-f:]+$/i.test(host) && host.includes(':')) {
-      if (host === '::1' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
-        throw new Error(`SSRF blocked: private IPv6 ${host}`);
-      }
-    } else if (dns) {
-      const v4 = await dnsResolveWithTimeout(host, 4);
-      for (const ip of v4) { if (isPrivateIp(ip)) throw new Error(`SSRF blocked: ${host} resolved to private IP ${ip}`); }
-      if (v4.length === 0) {
-        const v6 = await dnsResolveWithTimeout(host, 6);
-        for (const ip of v6) {
-          if (ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) {
-            throw new Error(`SSRF blocked: ${host} resolved to private IPv6 ${ip}`);
-          }
+    return await Promise.race([dnsPromise, timeout]);
+  } catch {
+    return [];
+  }
+}
+
+async function validateUrlSsrf(urlStr) {
+  const parsedUrl = new URL(urlStr);
+  const host = parsedUrl.hostname;
+  if (/^(localhost|0\.0\.0\.0|::1)$/i.test(host)) {
+    throw new Error(`SSRF blocked: illegal host ${host}`);
+  }
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+    if (isPrivateIp(host)) throw new Error(`SSRF blocked: private IP ${host}`);
+  } else if (/^[0-9a-f:]+$/i.test(host) && host.includes(':')) {
+    if (isPrivateIPv6(host)) throw new Error(`SSRF blocked: private IPv6 ${host}`);
+  } else if (dns) {
+    const v4 = await dnsResolveWithTimeout(host, 4);
+    for (const ip of v4) { if (isPrivateIp(ip)) throw new Error(`SSRF blocked: ${host} resolved to private IP ${ip}`); }
+    if (v4.length === 0) {
+      const v6 = await dnsResolveWithTimeout(host, 6);
+      for (const ip of v6) {
+        if (isPrivateIPv6(ip)) {
+          throw new Error(`SSRF blocked: ${host} resolved to private IPv6 ${ip}`);
         }
       }
     }
+  }
+  return true;
+}
 
-    // 处理 URL 中嵌入的 Basic Auth 凭据(支持 Node/Worker/浏览器)
-    const fetchOpts = {
-      headers: { 'User-Agent': 'clash-verge/v1.3.8' },
-      signal: controller.signal
-    };
-    if (parsedUrl.username || parsedUrl.password) {
-      const user = decodeURIComponent(parsedUrl.username);
-      const pass = decodeURIComponent(parsedUrl.password);
-      const auth = (typeof btoa !== 'undefined')
-        ? btoa(`${user}:${pass}`)
-        : Buffer.from(`${user}:${pass}`).toString('base64');
-      fetchOpts.headers['Authorization'] = `Basic ${auth}`;
-      parsedUrl.username = '';
-      parsedUrl.password = '';
+function buildFetchOpts(parsedUrl, signal) {
+  const fetchOpts = {
+    headers: { 'User-Agent': 'clash-verge/v1.3.8' },
+    signal,
+    redirect: 'manual'
+  };
+  if (parsedUrl.username || parsedUrl.password) {
+    const user = decodeURIComponent(parsedUrl.username);
+    const pass = decodeURIComponent(parsedUrl.password);
+    const auth = (typeof btoa !== 'undefined')
+      ? btoa(`${user}:${pass}`)
+      : Buffer.from(`${user}:${pass}`).toString('base64');
+    fetchOpts.headers['Authorization'] = `Basic ${auth}`;
+    parsedUrl.username = '';
+    parsedUrl.password = '';
+  }
+  return fetchOpts;
+}
+
+async function safeFetchText(url, options = {}) {
+  const { maxRedirects = 5, timeoutMs = 15000, fullRedact = false } = options;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let currentUrl = url;
+  let redirects = 0;
+
+  try {
+    while (true) {
+      await validateUrlSsrf(currentUrl);
+      const parsedUrl = new URL(currentUrl);
+      const fetchOpts = buildFetchOpts(parsedUrl, controller.signal);
+      const res = await fetch(parsedUrl.toString(), fetchOpts);
+
+      if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+        redirects++;
+        if (redirects > maxRedirects) {
+          throw new Error(`Too many redirects (>${maxRedirects})`);
+        }
+        const location = res.headers.get('location');
+        if (!location) throw new Error(`Redirect with no Location header (status ${res.status})`);
+        const nextUrl = new URL(location, currentUrl).toString();
+        currentUrl = nextUrl;
+        continue;
+      }
+
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+      const text = await res.text();
+      return { text, response: res, finalUrl: currentUrl };
     }
-    const res = await fetch(parsedUrl.toString(), fetchOpts);
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    const content = await res.text();
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error(`Fetch timeout (${timeoutMs / 1000}s): ${redactUrl(url, fullRedact)}`);
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function fetchNodes(url, fullRedact = false, debug = false) {
+  console.log(`[Builder] Fetching: ${redactUrl(url, fullRedact)}`);
+  try {
+    const { text: content, response: res } = await safeFetchText(url, { fullRedact });
     const subInfo = res.headers.get('subscription-userinfo');
     if (debug) {
       console.log(`[Builder] Debug response: status=${res.status}, content-length=${content.length}, content-type=${res.headers.get('content-type') || 'unknown'}, subInfo=${subInfo ? 'present' : 'missing'}`);
@@ -495,10 +541,7 @@ async function fetchNodes(url, fullRedact = false, debug = false) {
     }
     return { content, subInfo };
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error(`Fetch timeout (15s): ${redactUrl(url, fullRedact)}`);
     throw err;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
@@ -661,6 +704,10 @@ async function buildProfile(userConfig, options = {}) {
   if (targetType === 'full' && typeof toolkitUserConfig.enableNodeRename === 'undefined') {
     toolkitUserConfig.enableNodeRename = false;
   }
+  // full 模式: pure 强制输出文字特征（不转 Emoji），让 toolkit 能识别文字并正确分桶
+  if (targetType === 'full') {
+    pureUserConfig.showFeatureIcon = false;
+  }
   // full 模式: 同步注入节点规则到双端，确保识别一致
   if (targetType === 'full') {
     const whitelist = userConfig.whitelistKeywords || [];
@@ -728,4 +775,34 @@ async function buildProfile(userConfig, options = {}) {
   };
 }
 
-module.exports = { buildProfile, redactUrl, isAllowedUrl };
+// 单次请求资源限制默认值（保守值，防止恶意 config 注入导致资源耗尽）
+const DEFAULT_REQUEST_LIMITS = {
+  maxSubscriptionUrls: 20,        // ?url= 参数最多允许的订阅数
+  maxRemoteConfigBytes: 1048576,  // ?config= 远程配置文件最大字节数 (1MB)
+  maxTotalNodes: 5000,            // 单次构建允许的最大节点总数
+  perSubscriptionMaxNodes: 3000   // 单个订阅最多允许的节点数
+};
+
+// 校验单次请求的资源限制，返回 null 表示通过，返回 Error 表示超限
+function validateRequestLimits({ subscriptionUrls, remoteConfigSize, totalNodes, perSubCounts, limits = {} }) {
+  const merged = { ...DEFAULT_REQUEST_LIMITS, ...limits };
+  if (subscriptionUrls && subscriptionUrls.length > merged.maxSubscriptionUrls) {
+    return new Error(`Too many subscription URLs: ${subscriptionUrls.length} > ${merged.maxSubscriptionUrls}`);
+  }
+  if (remoteConfigSize && remoteConfigSize > merged.maxRemoteConfigBytes) {
+    return new Error(`Remote config too large: ${remoteConfigSize} > ${merged.maxRemoteConfigBytes} bytes`);
+  }
+  if (totalNodes && totalNodes > merged.maxTotalNodes) {
+    return new Error(`Too many total nodes: ${totalNodes} > ${merged.maxTotalNodes}`);
+  }
+  if (perSubCounts) {
+    for (const [url, count] of Object.entries(perSubCounts)) {
+      if (count > merged.perSubscriptionMaxNodes) {
+        return new Error(`Subscription returned too many nodes: ${count} > ${merged.perSubscriptionMaxNodes}`);
+      }
+    }
+  }
+  return null;
+}
+
+module.exports = { buildProfile, redactUrl, isAllowedUrl, safeFetchText, validateRequestLimits, DEFAULT_REQUEST_LIMITS };

@@ -6,8 +6,8 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Toolkit](https://img.shields.io/badge/Toolkit-v3.3.2-blue)](CHANGELOG.md)
-[![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.1-blueviolet)](CHANGELOG.md)
+[![Toolkit](https://img.shields.io/badge/Toolkit-v3.3.3-blue)](CHANGELOG.md)
+[![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.2-blueviolet)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 

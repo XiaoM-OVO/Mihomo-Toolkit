@@ -43,6 +43,19 @@ output: "./dist/output.yaml"    # 输出路径
 # meta: "./stats.json"          # 清洗统计报告导出路径（可选）
 # redactLevel: "partial"        # 日志脱敏级别: off | partial | full（根级设置同时影响 builder 和 pure）
 # enableUrlParams: true         # Server/Worker 是否允许 ?url= / ?config= 传参（false 则只读本地配置/环境变量）
+# authToken: "your-secret-token" # Server/Worker 访问鉴权 Token（公网部署强烈建议配置）。支持 URL ?token=xxx 或 Header Authorization: Bearer xxx 两种方式传递。未配置时不启用鉴权。
+
+# ─────────────────────────────────────────────────────────────────────
+# 🛡️ 安全护栏（防资源耗尽 / 恶意 config 注入）
+# ─────────────────────────────────────────────────────────────────────
+# 公网部署时建议保留这些限制，防止被攻击者通过 ?config= 远程配置塞入超大
+# 订阅列表或恶意节点，导致 Server/Worker 内存/CPU 占满。
+# 仅影响 Server/Worker（CLI 本地运行不受限制）
+# security:
+#   maxSubscriptionUrls: 20       # ?url= 最多接受 20 个订阅
+#   maxRemoteConfigBytes: 1048576 # ?config= 远程配置最大 1MB
+#   maxTotalNodes: 5000           # 单次构建节点总数上限
+#   perSubscriptionMaxNodes: 3000 # 单个订阅最大节点数
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -165,6 +178,7 @@ toolkitConfig:
   enableAirportTag: false        # 订阅合并时自动/手动捕捉标签
   # airportTag: ""               # 强制指定标签（逗号分隔）
   # airportTagReg: '/^\[([^\]]{1,8})\]/i'
+  showFeatureIcon: true          # 🎨 模板 {features} 填充：true=Emoji(📺) / false=文字(流媒体)。enableNodeRename=false 时被忽略，名字原样保留
 
   # --- 节点清洗 ---
   # enableNodeRename: true       # full 模式下强制为 false

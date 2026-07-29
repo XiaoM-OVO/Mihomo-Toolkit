@@ -1,5 +1,51 @@
 # 更新日志
 
+## 2026-07-29 (主脚本 v3.3.3 | 清洗模块 v1.2.2)
+
+### 🔒 安全增强（访问鉴权）
+
+- **新增 `/sub` 端点 Token 鉴权**：公网部署时建议配置鉴权 Token，防止订阅端点被恶意扫描和滥用。
+  - **Server**：在 `config.yaml` 根级配置 `authToken: "your-secret-token"`。
+  - **Worker**：在 Cloudflare Workers 环境变量中设置 `AUTH_TOKEN`。
+  - **传递方式**：支持 URL 参数 `?token=xxx` 和 HTTP Header `Authorization: Bearer xxx` 两种方式，兼容所有 Clash/Mihomo 客户端。
+  - **默认关闭**：未配置 `authToken` / `AUTH_TOKEN` 时不启用鉴权，保持向后兼容。
+- **新增单次请求资源护栏（防 DoS）**：恶意 config 注入可导致订阅列表塞满超大节点 / 远程 config 撑爆内存，引入保守的资源限制：
+  - `?url=` 最多 20 个订阅（`maxSubscriptionUrls`）
+  - `?config=` 远程配置最大 1MB（`maxRemoteConfigBytes`）
+  - 单次构建节点总数上限 5000（`maxTotalNodes`）
+  - 单订阅节点数上限 3000（`perSubscriptionMaxNodes`）
+  - **Server**：在 `config.yaml` 根级 `security: {}` 中覆盖。
+  - **Worker**：通过环境变量 `SECURITY_LIMITS` 传入 JSON 覆盖。
+  - **超限返回** `400 Bad Request`，不暴露内部细节。
+
+### 🔒 安全修复（SSRF 深度加固）
+
+- **重定向 SSRF 绕过修复**：所有 `fetch` 调用从默认自动跟随重定向改为 `redirect: 'manual'` 手动处理，每次重定向前对目标 URL 进行完整 SSRF 校验（含 DNS 解析），防止通过 302 重定向到内网地址绕过防护
+- **远程配置 DNS 级防护补全**：`?config=` 参数与 `DEFAULT_CONFIG_URL` 环境变量的远程配置获取，此前仅用基础正则校验，现统一改用 `safeFetchText()` 安全函数，获得与订阅 URL 同等强度的 DNS 解析级 SSRF 防护
+- **统一安全 fetch 函数**：提取 `safeFetchText()` 公共函数到 `builder.js`，整合 SSRF 校验 + Basic Auth 处理 + 安全重定向 + 超时控制，Server / Worker / 订阅获取三处复用同一实现，避免各自实现产生差异漏洞
+- **重定向次数限制**：限制最大重定向次数为 5 次，防止重定向循环造成的 DoS
+- **新增 `isPrivateIPv6()` 辅助函数**：IPv6 私有地址判断逻辑独立封装，与 `isPrivateIp()` 对应，提升代码可维护性与一致性
+
+### 📦 代码质量
+
+- 移除 `server.js` 和 `worker.js` 中重复的 `fetchWithAuth()` 实现，统一由 `builder.js` 导出的 `safeFetchText()` 替代
+- 提取 `dnsResolveWithTimeout()`、`validateUrlSsrf()`、`buildFetchOpts()` 等公共函数，职责单一化，降低 SSRF 逻辑遗漏风险
+
+### 📝 修复
+
+- **修复入口城市正则误剥地区名**：`REGEX_ENTRY_CITY` 的分隔符分支仅校验 `-`/`->` 等分隔符本身，未校验后续是否为真正的出口地区，导致形如「🇫🇫地区名-标签」的节点名被错误剥离地区名（残留字母被当成动态地区），修复后两个分支均强制校验出口地区前瞻。
+- **修复三网标识合并逻辑**：此前运营商（电信/移动/联通）在提取阶段即被无条件压缩为单字，导致「仅出现单一运营商且无其他线路」的节点显示为「电/移/联」令人困惑；修复后提取阶段先存全称，仅在 `compressLineArr` 中根据组合数量决定是否合并——单运营商保留全称、两网合并为电联/移联/电移、三网合并为三网。
+- **修复 `enableNodeRename: false` 时特征文字被误擦除**：toolkit 第一轮遍历无论是否开启重命名都会执行 `_cleanReg` 擦除特征文字，导致关闭重命名后节点名丢失「流媒体」「家宽」等关键信息。修复后仅在 `enableNodeRename: true` 时才擦除，关闭时原样保留 pure 输出的名字。
+
+### ✨ 重构（特征识别链路打通）
+
+- **特征识别权统一到 pure**：full 模式下强制 pure 的 `showFeatureIcon: false`，输出文字特征（如「流媒体」「NF」）而非 Emoji，让 toolkit 能正确识别并分入对应特征桶。
+- **toolkit 新增 `showFeatureIcon` 开关**：控制模板 `{features}` 填充内容
+  - `true`（默认）：填 Emoji（📺/🎬/🏠），保持现有行为
+  - `false`：填文字（流媒体/NF/家宽），配合 `enableNodeRename: true` 使用可生成文字版特征
+  - `enableNodeRename: false` 时此开关被忽略，直接继承 pure 输出的名字
+- **新增 `FEATURE_TEXT_MAP`**：toolkit 内置 tag→文字映射表，与 pure 保持一致，避免 emoji 模式下特征识别失效。
+
 ## 2026-07-28 (主脚本 v3.3.2 | 清洗模块 v1.2.1)
 
 ### 🔒 安全修复（SSRF 完整加固）

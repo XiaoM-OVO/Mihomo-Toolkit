@@ -2,51 +2,17 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
-const { buildProfile, redactUrl, isAllowedUrl } = require('./src/builder.js');
+const { buildProfile, redactUrl, isAllowedUrl, safeFetchText, validateRequestLimits } = require('./src/builder.js');
 
 const PORT = process.env.PORT || 3000;
 const CONFIG_PATH = process.env.CONFIG_PATH || path.resolve(__dirname, 'config.yaml');
-
-async function fetchWithAuth(targetUrl) {
-  const parsedUrl = new URL(targetUrl);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
-  const fetchOpts = { 
-    headers: { 'User-Agent': 'clash-verge/v1.3.8' },
-    signal: controller.signal
-  };
-  if (parsedUrl.username || parsedUrl.password) {
-    const user = decodeURIComponent(parsedUrl.username);
-    const pass = decodeURIComponent(parsedUrl.password);
-    const auth = (typeof btoa !== 'undefined') 
-      ? btoa(`${user}:${pass}`)
-      : Buffer.from(`${user}:${pass}`).toString('base64');
-    fetchOpts.headers['Authorization'] = `Basic ${auth}`;
-    parsedUrl.username = '';
-    parsedUrl.password = '';
-  }
-  try {
-    return await fetch(parsedUrl.toString(), fetchOpts);
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
 
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
   
   if (reqUrl.pathname === '/sub') {
     try {
-      const safeUrl = reqUrl.searchParams.getAll('url').length > 0
-        ? `/sub?url=[${reqUrl.searchParams.getAll('url').length} subscriptions]`
-        : (reqUrl.searchParams.get('config') ? `/sub?config=${redactUrl(reqUrl.searchParams.get('config'))}` : req.url);
-      console.log(`[Server] Received request for ${safeUrl}`);
-      
-      let userConfig = { subscriptions: [] };
-      const configUrl = reqUrl.searchParams.get('config');
-      const subUrls = reqUrl.searchParams.getAll('url');
-      
-      // 先加载本地配置文件获取 enableUrlParams 设置
+      // 先加载本地配置文件获取 enableUrlParams 和 authToken 设置
       let localConfig = {};
       if (fs.existsSync(CONFIG_PATH)) {
         const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
@@ -56,15 +22,53 @@ const server = http.createServer(async (req, res) => {
           localConfig = JSON.parse(content);
         }
       }
+
+      // 鉴权检查（支持 URL ?token=xxx 或 Header Authorization: Bearer xxx）
+      const authToken = localConfig.authToken;
+      if (authToken) {
+        const urlToken = reqUrl.searchParams.get('token');
+        const headerAuth = req.headers['authorization'] || '';
+        const bearerToken = headerAuth.startsWith('Bearer ') ? headerAuth.slice(7) : '';
+        const providedToken = urlToken || bearerToken;
+        if (providedToken !== authToken) {
+          res.writeHead(401, { 'Content-Type': 'text/plain' });
+          res.end('Unauthorized: Invalid or missing token. Provide ?token=xxx or Authorization: Bearer xxx');
+          return;
+        }
+      }
+
+      const safeUrl = reqUrl.searchParams.getAll('url').length > 0
+        ? `/sub?url=[${reqUrl.searchParams.getAll('url').length} subscriptions]`
+        : (reqUrl.searchParams.get('config') ? `/sub?config=${redactUrl(reqUrl.searchParams.get('config'))}` : req.url);
+      console.log(`[Server] Received request for ${safeUrl}`);
+
+      let userConfig = { subscriptions: [] };
+      const configUrl = reqUrl.searchParams.get('config');
+      const subUrls = reqUrl.searchParams.getAll('url');
+
       const enableUrlParams = localConfig.enableUrlParams !== false;
-      
+      const securityLimits = localConfig.security || {};
+
+      // 1) 早期快速拦截：?url= 数量超限（避免后续处理浪费）
+      const urlLimitErr = validateRequestLimits({ subscriptionUrls: subUrls, limits: securityLimits });
+      if (urlLimitErr) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end(`Bad Request: ${urlLimitErr.message}`);
+        return;
+      }
+
       if (configUrl) {
         if (!enableUrlParams) throw new Error('URL params are disabled by enableUrlParams=false');
-        // Fetch remote config.yaml
+        // Fetch remote config.yaml using safe fetch with full SSRF protection
         if (!isAllowedUrl(configUrl)) throw new Error('Invalid or disallowed config URL');
-        const configRes = await fetchWithAuth(configUrl);
-        if (!configRes.ok) throw new Error(`Failed to fetch remote config: ${configRes.status}`);
-        const content = await configRes.text();
+        const { text: content } = await safeFetchText(configUrl);
+        // 2) 远程 config 大小校验
+        const sizeLimitErr = validateRequestLimits({ remoteConfigSize: Buffer.byteLength(content, 'utf-8'), limits: securityLimits });
+        if (sizeLimitErr) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end(`Bad Request: ${sizeLimitErr.message}`);
+          return;
+        }
         userConfig = yaml.parse(content) || {};
       } else if (subUrls.length > 0) {
         if (!enableUrlParams) throw new Error('URL params are disabled by enableUrlParams=false');
