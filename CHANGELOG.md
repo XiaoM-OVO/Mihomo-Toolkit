@@ -1,6 +1,29 @@
 # 更新日志
 
-## 2026-08-06 (主脚本 v3.3.4 | 清洗模块 v1.2.3)
+## 2026-08-06 (构建层 v1.3.0 | 主脚本 v3.3.4 | 清洗模块 v1.2.3)
+
+### 🔨 构建层 v1.3.0
+
+#### ✨ 新增
+
+- **简繁转换全链路**：入口处 config 繁→简、pure 处理前节点名繁→简、toolkit 输出后按 `chineseConvertMode` 输出简体或繁体（含节点名、策略组名、组内引用、`use` 引用、`rules` 组名引用同步转换）。依赖 `opencc-js`（`optionalDependencies`），未安装时降级为空函数。
+- **共享代码注入机制**：新增 `scripts/inject-shared.cjs` + `src/_shared/region-defs.js`，地区定义作为唯一真源，通过 `/* INJECT_BEGIN */` 标记注入到 pure/toolkit 双端，消除字典漂移。`npm run build` 系列脚本自动前置 `inject`。
+- **CLI `--debug` 选项**：启用详细 fetch 日志与中间快照。
+- **启动概览日志**：输出依赖状态（opencc-js 就绪/降级）、订阅概况（URL/URI 计数）、版本号标识 `🔨 mihomo-toolkit-builder vX.Y.Z`。
+
+#### 🐛 修复
+
+- **`enableNodeRename` 强制覆盖失效**：原 `typeof === 'undefined'` 判断因根级配置 spread 进入 `toolkitUserConfig` 导致不成立，改为 `full` 模式无条件强制 `false`。
+- **白名单/特殊规则双端不同步**：`pureConfig`/`toolkitConfig` 的 spread 覆盖语义会冲掉根级配置，改为去重合并回填双端。
+
+#### 🧹 重构与优化
+
+- **标签字段化注入**：`[tag]` 名字前缀改为 `proxy._subTag` 字段传输，消除硬编码 `[]` 依赖，单订阅也注入 `_subTag`。多订阅时双端强制 `enableAirportTag: true` 激活读取。
+- **URI 节点自动白名单**：带 `tag` 的 URI 注入节点自动加入 `whitelistKeywords`，无需手动配置即可通过 pure 清洗。
+- **full 模式协调重构**：无条件强制 `enableNodeRename=false` + `showFeatureIcon=false` + 双端规则同步，集中为单一 `if (targetType === 'full')` 块。
+- **配置模板重构**：`config.example.yaml` 从「代码模块视角」改为「功能流程视角」，标注配置作用域，新增概念速览。
+- **Worker 构建排除简繁模块**：`build:worker` 增加 `--external opencc-js --external ./src/chinese-convert.js`，Worker 环境完全禁用简繁转换以减小 bundle。
+- **日志细化**：信息节点过滤、合成节点、订阅处理摘要、URI 节点解析均输出明细日志。
 
 ### ⚙️ 主脚本 v3.3.4
 

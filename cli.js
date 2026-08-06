@@ -8,13 +8,14 @@ const { buildProfile } = require('./src/builder.js');
 program
   .name('mihomo-toolkit')
   .description('Mihomo-Toolkit CLI runner')
-  .version('1.0.0')
+  .version(require('./package.json').version)
   .option('-u, --url <url>', 'Subscription URL or local config file path (optional if config has subscriptions)')
   .option('-o, --out <path>', 'Output file path')
   .option('-t, --type <type>', 'Script to run: "pure", "full", or "toolkit"')
   .option('-c, --config <path>', 'User config JSON/YAML file path (optional)')
   .option('-m, --meta <path>', 'Force object outputMode and save meta info to a JSON file (optional)')
   .option('--prod', 'Simulate production environment (enables security locks)')
+  .option('--debug', 'Enable debug output (verbose fetch logs, intermediate snapshots)')
   .parse(process.argv);
 
 const options = program.opts();

@@ -5,6 +5,10 @@ const { main: toolkitMain } = require('./mihomo-toolkit.js');
 let dns;
 try { dns = require('dns').promises; } catch { dns = null; }
 
+// 简繁转换模块（Worker 环境不可用，构建时排除，运行时降级为空函数）
+let chineseConvert = { toSimplified: (t) => t, toTraditional: (t) => t, deepConvertStrings: (o) => o };
+try { chineseConvert = require('./chinese-convert'); } catch (e) {}
+
 function decodeBase64(str) {
   try {
     if (typeof Buffer !== 'undefined') {
@@ -532,26 +536,45 @@ async function safeFetchText(url, options = {}) {
 
 async function fetchNodes(url, fullRedact = false, debug = false) {
   console.log(`[Builder] Fetching: ${redactUrl(url, fullRedact)}`);
-  try {
-    const { text: content, response: res } = await safeFetchText(url, { fullRedact });
-    const subInfo = res.headers.get('subscription-userinfo');
-    if (debug) {
-      console.log(`[Builder] Debug response: status=${res.status}, content-length=${content.length}, content-type=${res.headers.get('content-type') || 'unknown'}, subInfo=${subInfo ? 'present' : 'missing'}`);
-      console.log(`[Builder] Debug content preview: ${content.substring(0, 200).replace(/\n/g, '\\n')}`);
-    }
-    return { content, subInfo };
-  } catch (err) {
-    throw err;
+  const { text: content, response: res } = await safeFetchText(url, { fullRedact });
+  const subInfo = res.headers.get('subscription-userinfo');
+  if (debug) {
+    console.log(`[Builder] Debug response: status=${res.status}, content-length=${content.length}, content-type=${res.headers.get('content-type') || 'unknown'}, subInfo=${subInfo ? 'present' : 'missing'}`);
+    console.log(`[Builder] Debug content preview: ${content.substring(0, 200).replace(/\n/g, '\\n')}`);
   }
+  return { content, subInfo };
 }
+
+const BUILDER_VERSION = "v1.3.0";
 
 async function buildProfile(userConfig, options = {}) {
   let configData = { proxies: [] };
   let hasInjectedTag = false;
   let globalUpload = 0, globalDownload = 0, globalTotal = 0, globalExpire = 0;
   
+  // 简繁转换：入口处先将 config 中所有字符串值繁→简，确保后续匹配逻辑一致
+  if (userConfig.enableChineseConvert) {
+    userConfig = chineseConvert.deepConvertStrings(userConfig, chineseConvert.toSimplified);
+  }
+
   let redactLevel = userConfig.redactLevel || 'partial';
   const debug = options.debug || false;
+
+  console.log(`[Builder] 🔨 mihomo-toolkit-builder ${BUILDER_VERSION}`);
+
+  // 启动概览：依赖状态 + 订阅概况
+  const openccStatus = (() => {
+    try { require.resolve('opencc-js'); return '已就绪'; } catch { return '未安装(降级)'; }
+  })();
+  const subCount = userConfig.subscriptions ? userConfig.subscriptions.length : 0;
+  const urlSubs = userConfig.subscriptions ? userConfig.subscriptions.filter(s => s.url).length : 0;
+  const uriSubs = userConfig.subscriptions ? userConfig.subscriptions.filter(s => s.uri).length : 0;
+  console.log(`[Builder] 依赖: opencc-js ${openccStatus} | 订阅: ${subCount} 个 (URL ${urlSubs}, URI ${uriSubs})`);
+
+  // 简繁转换开启但未安装依赖时给出明确提示
+  if (userConfig.enableChineseConvert && openccStatus === '未安装(降级)') {
+    console.warn(`[Builder] ⚠️ 已启用简繁转换但 opencc-js 未安装，功能不会生效。执行: npm install opencc-js`);
+  }
 
   if (redactLevel === 'off' && (process.env.NODE_ENV === 'production' || options.production)) {
     throw new Error('[Security] redactLevel=off 不允许在生产环境使用！');
@@ -582,6 +605,17 @@ async function buildProfile(userConfig, options = {}) {
         parseSubInfoForGlobal(rawResult.subInfo);
       const subConfig = parseContent(rawResult.content);
       let subProxies = subConfig.proxies || [];
+      
+      // URI 节点自定义名称覆盖
+      if (sub.uri && sub.name && subProxies.length > 0) {
+        subProxies[0].name = sub.name;
+      }
+
+      // URI 节点日志
+      if (sub.uri) {
+        const nameHint = subProxies[0] ? subProxies[0].name : '未知';
+        console.log(`[Builder] URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
+      }
       
       let effectiveTag = sub.tag;
       let effectiveIndexPrefix = sub.indexPrefix;
@@ -631,16 +665,34 @@ async function buildProfile(userConfig, options = {}) {
         }
 
         const REGEX_INFO = /剩余|到期|套餐|流量|时间|有效|更新|官网|维护|群|发布|节点说明|失效|获取|网址|Q群|电报|Tg群|下次|关注|官方|签到/i;
-        subProxies = subProxies.filter(p => !REGEX_INFO.test(p.name));
+        const rawCount = subProxies.length;
+        subProxies = subProxies.filter(p => {
+          if (REGEX_INFO.test(p.name)) {
+            console.log(`[Builder]   🗑️ [过滤信息] 「${p.name}」`);
+            return false;
+          }
+          return true;
+        });
+        const filteredCount = rawCount - subProxies.length;
         
+        // 通过字段传输订阅标签（不再污染名字），单订阅也打 _subTag 供下游使用
+        // 是否启用标签提取由 enableAirportTag 控制，多订阅时 builder 自动强制开启
         if (sub.tag) {
-          const whitelistLower = (userConfig.whitelistKeywords || []).map(k => k.toLowerCase());
           subProxies.forEach(p => {
-            if (p.name) {
-              if (whitelistLower.some(k => p.name.toLowerCase().includes(k))) return;
-              p.name = `[${sub.tag}] ${p.name}`;
-            }
+            if (!p._subTag) p._subTag = sub.tag;
           });
+        }
+
+        // URI 注入节点自动加入白名单，无需手动配置
+        // 确保节点能通过 pure 清洗并正常注入 customNodeGroups 指定的策略组
+        // pure 白名单匹配会同时检查 proxy._subTag 字段（无需名字包含 tag）
+        if (sub.uri && sub.tag) {
+          const whitelist = userConfig.whitelistKeywords || [];
+          const tagLower = sub.tag.toLowerCase();
+          if (!whitelist.some(k => k.toLowerCase() === tagLower)) {
+            if (!userConfig.whitelistKeywords) userConfig.whitelistKeywords = [];
+            userConfig.whitelistKeywords.push(sub.tag);
+          }
         }
         
         if (effectiveIndexPrefix) {
@@ -659,13 +711,24 @@ async function buildProfile(userConfig, options = {}) {
         }
 
         if (synthNodes.length > 0) {
+          synthNodes.forEach(n => console.log(`[Builder]   ℹ️ [合成信息] 「${n.name}」`));
           subProxies.unshift(...synthNodes);
         }
         
-        if (sub.tag) {
+        if (sub.tag && urlSubs > 1) {
           hasInjectedTag = true;
         }
         configData.proxies = configData.proxies.concat(subProxies);
+        
+        // 订阅处理摘要
+        const nodeCount = subProxies.length;
+        if (sub.uri) {
+          console.log(`[Builder]   → 解析完成: ${nodeCount} 个节点${sub.tag ? ` [${sub.tag}]` : ''}`);
+        } else {
+          const parts = [`${nodeCount} 个节点`];
+          if (filteredCount > 0) parts.push(`过滤 ${filteredCount} 个`);
+          console.log(`[Builder]   → 解析完成: ${parts.join(', ')}${sub.tag ? ` [${sub.tag}]` : ''}`);
+        }
       } catch (e) {
         const subId = sub.uri ? 'direct-uri' : redactUrl(sub.url, fullRedact);
         console.error(`[Builder] Error processing subscription ${subId}: ${e.message}`);
@@ -675,12 +738,15 @@ async function buildProfile(userConfig, options = {}) {
     let rawResult;
     if (/^(vless|vmess|trojan|ss):\/\//i.test(options.url)) {
       // 直接 URI 节点，跳过 HTTP fetch，交给 parseContent 识别
+      console.log(`[Builder] URI 节点: ${options.url.split('#').pop() || '未知'}`);
       rawResult = { content: options.url, subInfo: null };
     } else {
       rawResult = await fetchNodes(options.url, fullRedact);
     }
     parseSubInfoForGlobal(rawResult.subInfo);
     configData = parseContent(rawResult.content);
+    const nodeCount = configData.proxies ? configData.proxies.length : 0;
+    console.log(`[Builder]   → 解析完成: ${nodeCount} 个节点`);
     const { nodes: synthNodes } = generateInfoNodes(rawResult.subInfo, "");
     if (synthNodes.length > 0 && configData.proxies) {
       configData.proxies.unshift(...synthNodes);
@@ -697,19 +763,23 @@ async function buildProfile(userConfig, options = {}) {
   let pureUserConfig = { ...userConfig, ...(userConfig.pureConfig || {}) };
   let toolkitUserConfig = { ...userConfig, ...(userConfig.toolkitConfig || {}) };
 
-  // --- 冲突协调规则 ---
-  if (hasInjectedTag) pureUserConfig.enableAirportTag = true;
+  // 多订阅时强制双端启用标签提取（_subTag 字段已注入，需 enableAirportTag 激活读取）
+  // 标签是否写入最终节点名，由 rename 模板中是否包含 {airport} 决定
+  if (hasInjectedTag) {
+    pureUserConfig.enableAirportTag = true;
+    toolkitUserConfig.enableAirportTag = true;
+  }
+
   const targetType = options.type || userConfig.type || 'pure';
-  // full 模式: toolkit 强制跳过二次重命名，避免覆盖 pure 的清洗结果
-  if (targetType === 'full' && typeof toolkitUserConfig.enableNodeRename === 'undefined') {
+
+  // --- full 模式自动协调（硬约束，无条件强制，防止用户误配破坏两阶段流水线）---
+  if (targetType === 'full') {
+    // toolkit 强制跳过二次重命名，避免覆盖 pure 的清洗结果
     toolkitUserConfig.enableNodeRename = false;
-  }
-  // full 模式: pure 强制输出文字特征（不转 Emoji），让 toolkit 能识别文字并正确分桶
-  if (targetType === 'full') {
+    // pure 强制输出文字特征（不转 Emoji），让 toolkit 能识别文字并正确分桶
     pureUserConfig.showFeatureIcon = false;
-  }
-  // full 模式: 同步注入节点规则到双端，确保识别一致
-  if (targetType === 'full') {
+    // 同步根级白名单/注入规则到双端，确保 pure 放行的节点 toolkit 不会拦截
+    // （spread 是覆盖语义，若 pureConfig/toolkitConfig 各自定义了不同值会冲掉根级，这里合并回去）
     const whitelist = userConfig.whitelistKeywords || [];
     const specialRules = userConfig.specialNodeRules || [];
     if (whitelist.length > 0) {
@@ -717,13 +787,21 @@ async function buildProfile(userConfig, options = {}) {
       toolkitUserConfig.whitelistKeywords = [...new Set([...(toolkitUserConfig.whitelistKeywords || []), ...whitelist])];
     }
     if (specialRules.length > 0) {
-      pureUserConfig.specialNodeRules = [...(pureUserConfig.specialNodeRules || []), ...specialRules];
-      toolkitUserConfig.specialNodeRules = [...(toolkitUserConfig.specialNodeRules || []), ...specialRules];
+      pureUserConfig.specialNodeRules = [...new Set([...(pureUserConfig.specialNodeRules || []), ...specialRules])];
+      toolkitUserConfig.specialNodeRules = [...new Set([...(toolkitUserConfig.specialNodeRules || []), ...specialRules])];
     }
   }
 
   let finalProxies = configData.proxies;
   let result = null;
+
+  // 简繁转换：pure 处理前将节点名统一转为简体，提高 pure 和 toolkit 的识别率
+  if (userConfig.enableChineseConvert) {
+    configData.proxies = configData.proxies.map(proxy => ({
+      ...proxy,
+      name: chineseConvert.toSimplified(proxy.name)
+    }));
+  }
 
   if (targetType === 'pure' || targetType === 'full') {
     if (targetType === 'full') console.log('[Builder] === 阶段 1/2: pure-nodes 节点清洗 ===');
@@ -737,6 +815,44 @@ async function buildProfile(userConfig, options = {}) {
   if (targetType === 'full' || targetType === 'toolkit') {
     if (targetType === 'full') console.log('[Builder] === 阶段 2/2: mihomo-toolkit 策略组构建 ===');
     outputData = toolkitMain(outputData, toolkitUserConfig);
+  }
+
+  // 简繁转换：toolkit 处理后按配置输出简体或繁体
+  if (userConfig.enableChineseConvert) {
+    const modeLabel = userConfig.chineseConvertMode === 's2t' ? '繁体' : '简体';
+    console.log(`[Builder] 简繁转换: 输出 ${modeLabel}`);
+    const convertFn = userConfig.chineseConvertMode === 's2t' ? chineseConvert.toTraditional : chineseConvert.toSimplified;
+    const nameMap = {};
+
+    // 转换节点名
+    for (const proxy of outputData.proxies) {
+      const oldName = proxy.name;
+      proxy.name = convertFn(proxy.name);
+      if (oldName !== proxy.name) nameMap[oldName] = proxy.name;
+    }
+
+    // 转换策略组名 + 组内引用 + use 引用
+    if (outputData['proxy-groups']) {
+      for (const group of outputData['proxy-groups']) {
+        const oldName = group.name;
+        group.name = convertFn(group.name);
+        if (oldName !== group.name) nameMap[oldName] = group.name;
+        if (group.proxies) group.proxies = group.proxies.map(p => convertFn(p));
+        if (group.use) group.use = group.use.map(u => convertFn(u));
+      }
+    }
+
+    // 转换 rules 中的组名引用（如 RULE-SET,ads,🚫 广告拦截 → 🚫 廣告攔截）
+    if (outputData.rules && Object.keys(nameMap).length > 0) {
+      outputData.rules = outputData.rules.map(rule => {
+        for (const [oldName, newName] of Object.entries(nameMap)) {
+          if (rule.includes(oldName)) {
+            rule = rule.replace(oldName, newName);
+          }
+        }
+        return rule;
+      });
+    }
   }
 
   // 构建摘要
