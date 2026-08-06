@@ -1,6 +1,26 @@
 # 更新日志
 
-## 2026-08-06 (清洗模块 v1.2.3)
+## 2026-08-06 (主脚本 v3.3.4 | 清洗模块 v1.2.3)
+
+### ⚙️ 主脚本 v3.3.4
+
+#### 🐛 修复
+
+- **`enableNodeRename: false` 丢失 pure 清洗结果**：原逻辑继承 `_rawName`（原始名），改为继承 `proxy.name`（pure 清洗后的名字），保留清洗成果。
+- **URI 节点白名单匹配失效**：标签字段化后 URI 节点名不含 tag，白名单 `includes` 匹配失败。补 `_subTag` 精确匹配分支。
+- **排序优先级错配**：`bestLineWeight` 线路质量原本位于 `multiNum` 之后，导致高倍率高质线路被误下沉。调整为线路质量优先于倍率判定。
+
+#### 🧹 重构与优化
+
+- **标签字段化读取**：`getAirportTag` 加 `proxy` 参数，优先读 `proxy._subTag` 字段，消除硬编码 `[]` 依赖。split/单跑模式保留关键词 + 正则双轨兜底。
+- **显示层 Emoji 转换**：新增 `FEATURE_TEXT_TO_ICON` 反查表，`enableNodeRename: false` 时将 pure 输出的文字特征（如「流媒体」）转为 Emoji（如 📺），不影响分桶元数据。
+- **日志系统统一**：`debugLog`/`console.log` 统一为 `logger.debug`/`logger.info`/`logger.warn`，去除 `if (USER_CONFIG.enableDebugLog)` 冗余判断。
+- **未知地区兜底合并**：`regionInfo` 为 null 不再走独立分支，统一走模板（`region` 填「未知」），消除代码重复。
+- **分组排序调整**：标签聚合从「优先排序」改为「同质量下聚合」，避免破坏线路质量优先级。
+
+#### ✨ 新增
+
+- **🎮 游戏下载策略组**：与游戏服务共用 `enableGame` 开关，独立分流游戏下载流量。
 
 ### 🧽 清洗模块 v1.2.3
 
