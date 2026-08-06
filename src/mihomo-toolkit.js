@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.3.3 (Build 2026.07.29)
+// 🏷️ 版本: v3.3.4 (Build 2026.08.06)
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -43,7 +43,7 @@ const DEFAULT_CONFIG = {
 // =========================================================================
   // 【1. 基础全局配置】
   enableScript: true,          // 🟢 脚本总控：设为 false 则原样输出订阅内容
-  enableDebugLog: false,       // 📋 清洗日志：设为 true 则输出节点清洗全过程（原名->新名->归属），供排错使用
+  logLevel: "info",            // 📋 日志级别: silent | error | warn | info | debug
   osType: "windows",           // 💻 设备类型: "windows", "mac", "linux", "all"
   proxyFirst: true,            // 🧭 路由偏好：true(海外代理优先)，false(国内直连优先)
   defaultProxyMode: "auto",    // 🔀 默认代理策略: auto(自动) / manual(手动) / fallback(故障转移)  [⚠️特殊: direct / reject]
@@ -223,35 +223,30 @@ function main(config, extConfig) {
   const REGEX_ALL_FLAGS  = /\p{Regional_Indicator}{2}/gu;
 
   // =========================================================================
-  // --- ⚙️ 预处理阶段一：调试日志辅助模块 ---
+  // --- ⚙️ 预处理阶段一：日志模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.3.3";
-  const bootTime = new Date().toTimeString().split(' ')[0];
+  const SCRIPT_VERSION = "v3.3.4";
+  const LOG_LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4 };
+  const currentLevel = LOG_LEVELS[USER_CONFIG.logLevel] ?? 3;
 
-  if (USER_CONFIG.enableDebugLog) {
-    console.log(`[Toolkit] 📦 Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
-    console.log(`[Toolkit] 去重[${USER_CONFIG.enableDedupe?'开':'关'}] | 纯净[${USER_CONFIG.removeInfoNodes?'开':'关'}] | 地区[${USER_CONFIG.strictRegionMatch?'严':'松'}] | 下载[≤${USER_CONFIG.lowMultiThreshold}]`);
-  } else {
-    console.log(`[Toolkit] 📦 Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
-  }
-
-  const debugLog = (...args) => {
-    if (!USER_CONFIG.enableDebugLog) return;
-    try {
-      const message = args.map(arg => typeof arg === 'string' ? arg : 
-        (arg instanceof Error ? `[错] ${arg.message}` : 
-        (function(){ try{ return JSON.stringify(arg); }catch(e){ return '[对象]'; }})())
-      ).join(' ');
-      console.log(message);
-    } catch (err) { /* 忽略错误 */ }
+  const logger = {
+    debug: (...args) => { if (currentLevel >= 4) console.log("[Toolkit] DBG  " + args.join(' ')); },
+    info:  (...args) => { if (currentLevel >= 3) console.log("[Toolkit] INFO " + args.join(' ')); },
+    warn:  (...args) => { if (currentLevel >= 2) console.warn("[Toolkit] WARN " + args.join(' ')); },
+    error: (...args) => { if (currentLevel >= 1) console.error("[Toolkit] ERR  " + args.join(' ')); }
   };
+
+  logger.info(`Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
+  logger.debug(`去重[${USER_CONFIG.enableDedupe?'开':'关'}] | 纯净[${USER_CONFIG.removeInfoNodes?'开':'关'}] | 地区[${USER_CONFIG.strictRegionMatch?'严':'松'}] | 下载[≤${USER_CONFIG.lowMultiThreshold}]`);
 
 
   // =========================================================================
   // --- ⚙️ 预处理阶段二：常量与字典预定义 ---
   // =========================================================================
   // 📍 前置入口城市前缀
+/* ↓↓↓↓↓ INJECT_BEGIN ↓↓↓↓↓ */
   const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|香港|台湾|日本|韩国|新加坡|美国|英国|德国|法国|澳洲|英|德|法|澳|美|日|韩|新|港|台)";
+/* ↑↑↑↑↑ INJECT_END ↑↑↑↑↑ */
   const TAG_MAP = { 
     "深": "深", "深圳": "深", "SZX": "深", "广": "广", "广州": "广", "CAN": "广", 
     "上海": "沪", "沪": "沪", "PVG": "沪", "SHA": "沪", "京": "京", "北京": "京",
@@ -269,67 +264,69 @@ function main(config, extConfig) {
   const IS_LIN = OS === "linux"   || OS === "all";
 
   // 🌏 地区识别字典
+/* ↓↓↓↓↓ INJECT_BEGIN ↓↓↓↓↓ */
   const REGION_DEFS = [
-    //--- 大中华区 ---
-    { id: "cn", name: "中国",   icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
-    { id: "hk", name: "香港",   icon: "🇭🇰", reg: new RegExp(`${IN_PREFIX}港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong`, "i") },
-    { id: "mo", name: "澳门",   icon: "🇲🇴", reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i },
-    { id: "tw", name: "台湾",   icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", reg: new RegExp(`${IN_PREFIX}台|台湾|台灣|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet`, "i") },
+      //--- 大中华区 ---
+      { id: "cn", name: "中国", icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
+      { id: "hk", name: "香港", icon: "🇭🇰", reg: new RegExp(`${IN_PREFIX}港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong`, "i") },
+      { id: "mo", name: "澳门", icon: "🇲🇴", reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i },
+      { id: "tw", name: "台湾", icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", reg: new RegExp(`${IN_PREFIX}台|台湾|台灣|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet`, "i") },
 
-    // --- 亚洲核心区 ---
-    { id: "jp", name: "日本",   icon: "🇯🇵", city: "东京|大阪|埼玉|京都|川崎", reg: new RegExp(`${IN_PREFIX}日|日本|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala`, "i") },
-    { id: "kr", name: "韩国",   icon: "🇰🇷", city: "首尔|春川", reg: new RegExp(`${IN_PREFIX}韩|韩国|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea`, "i") },
-    { id: "sg", name: "新加坡", icon: "🇸🇬", city: "狮城", reg: new RegExp(`${IN_PREFIX}新|新加坡|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest`, "i") },
-    
-    // --- 北美大区 ---
-    { id: "us", name: "美国",   icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", reg: new RegExp(`${IN_PREFIX}美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America`, "i") },
-    
-    // --- 欧洲大区 ---
-    { group: "eu", name: "英国",   icon: "🇬🇧", city: "伦敦|費勒姆", reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
-    { group: "eu", name: "德国",   icon: "🇩🇪", city: "法兰克福", reg: /德国|(?<![a-zA-Z])DE(?![a-zA-Z])|Germany/i },
-    { group: "eu", name: "法国",   icon: "🇫🇷", city: "巴黎", reg: /法国|(?<![a-zA-Z])FR(?![a-zA-Z])|France/i },
-    { group: "eu", name: "俄罗斯", icon: "🇷🇺", city: "莫斯科|伯力|圣彼得堡|新西伯利亚", reg: /俄罗斯|(?<![a-zA-Z])RU(?![a-zA-Z])|Russia/i },
-    { group: "eu", name: "乌克兰", icon: "🇺🇦", city: "基辅", reg: /乌克兰|(?<![a-zA-Z])UA(?![a-zA-Z])|Ukraine/i },
-    { group: "eu", name: "西班牙", icon: "🇪🇸", city: "马德里", reg: /西班牙|(?<![a-zA-Z])ES(?![a-zA-Z])|Spain/i },
-    { group: "eu", name: "荷兰",   icon: "🇳🇱", city: "阿姆斯特丹", reg: /荷兰|(?<![a-zA-Z])NL(?![a-zA-Z])|Netherlands/i },
-    { group: "eu", name: "瑞士",   icon: "🇨🇭", city: "苏黎世|日内瓦", reg: /瑞士|(?<![a-zA-Z])CH(?![a-zA-Z])|Switzerland/i },
-    { group: "eu", name: "意大利", icon: "🇮🇹", city: "米兰|罗马", reg: /意大利|(?<![a-zA-Z])IT(?![a-zA-Z])|Italy/i },
-    { group: "eu", name: "瑞典",   icon: "🇸🇪", city: "斯德哥尔摩", reg: /瑞典|(?<![a-zA-Z])SE(?![a-zA-Z])|Sweden/i },
-    { group: "eu", name: "爱尔兰", icon: "🇮🇪", city: "都柏林", reg: /爱尔兰|(?<![a-zA-Z])IE(?![a-zA-Z])|Ireland/i },
-    { group: "eu", name: "波兰",   icon: "🇵🇱", city: "华沙", reg: /波兰|(?<![a-zA-Z])PL(?![a-zA-Z])|Poland/i },
-    { group: "eu", name: "芬兰",   icon: "🇫🇮", city: "赫尔辛基", reg: /芬兰|(?<![a-zA-Z])FI(?![a-zA-Z])|Finland/i },
+      // --- 亚洲核心区 ---
+      { id: "jp", name: "日本", icon: "🇯🇵", city: "东京|大阪|埼玉|京都|川崎", reg: new RegExp(`${IN_PREFIX}日|日本|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala`, "i") },
+      { id: "kr", name: "韩国", icon: "🇰🇷", city: "首尔|春川", reg: new RegExp(`${IN_PREFIX}韩|韩国|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea`, "i") },
+      { id: "sg", name: "新加坡", icon: "🇸🇬", city: "狮城", reg: new RegExp(`${IN_PREFIX}新|新加坡|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest`, "i") },
 
-    // --- 南亚大区 ---
-    { group: "sa", name: "印度",     icon: "🇮🇳", city: "孟买|新德里", reg: /印度|(?<![a-zA-Z])IN(?![a-zA-Z])|India/i },
-        
-    // --- 东南亚大区 ---
-    { group: "sea", name: "马来西亚", icon: "🇲🇾", city: "吉隆坡", reg: /马来|马来西亚|(?<![a-zA-Z])MY(?![a-zA-Z])|Malaysia/i },
-    { group: "sea", name: "泰国",     icon: "🇹🇭", city: "曼谷", reg: /泰国|(?<![a-zA-Z])TH(?![a-zA-Z])|Thailand/i },
-    { group: "sea", name: "印尼",     icon: "🇮🇩", city: "雅加达", reg: /印尼|印度尼西亚|(?<![a-zA-Z])ID(?![a-zA-Z])|Indonesia/i },
-    { group: "sea", name: "菲律宾",   icon: "🇵🇭", city: "马尼拉", reg: /菲律宾|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i },
-    { group: "sea", name: "越南",     icon: "🇻🇳", city: "胡志明|河内", reg: /越南|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
-    
-    // --- 美洲大区 --
-    { group: "am", name: "加拿大",    icon: "🇨🇦", city: "多伦多|温哥华|蒙特利尔", reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
-    { group: "am", name: "阿根廷",    icon: "🇦🇷", city: "布宜诺斯艾利斯", reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
-    { group: "am", name: "巴西",      icon: "🇧🇷", city: "圣保罗", reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
-    { group: "am", name: "墨西哥",    icon: "🇲🇽", reg: /墨西哥|(?<![a-zA-Z])MX(?![a-zA-Z])|Mexico/i },
-    { group: "am", name: "智利",      icon: "🇨🇱", reg: /智利|(?<![a-zA-Z])CL(?![a-zA-Z])|Chile/i },
+      // --- 北美大区 ---
+      { id: "us", name: "美国", icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", reg: new RegExp(`${IN_PREFIX}美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America`, "i") },
 
-    // --- 中东大区 ---
-    { group: "me", name: "阿联酋",    icon: "🇦🇪", city: "迪拜", reg: /阿联酋|迪拜|(?<![a-zA-Z])(?:AE|UAE)(?![a-zA-Z])/i },
-    { group: "me", name: "土耳其",    icon: "🇹🇷", city: "伊斯坦布尔", reg: /土耳其|(?<![a-zA-Z])TR(?![a-zA-Z])|Turkey/i },
-    { group: "me", name: "沙特",      icon: "🇸🇦", city: "利雅得|吉达", reg: /沙特|阿拉伯|(?<![a-zA-Z])SA(?![a-zA-Z])|Saudi/i },
-    { group: "me", name: "以色列",    icon: "🇮🇱", city: "特拉维夫", reg: /以色列|(?<![a-zA-Z])IL(?![a-zA-Z])|Israel/i },
+      // --- 欧洲大区 ---
+      { group: "eu", name: "英国", icon: "🇬🇧", city: "伦敦|費勒姆", reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
+      { group: "eu", name: "德国", icon: "🇩🇪", city: "法兰克福", reg: /德国|(?<![a-zA-Z])DE(?![a-zA-Z])|Germany/i },
+      { group: "eu", name: "法国", icon: "🇫🇷", city: "巴黎", reg: /法国|(?<![a-zA-Z])FR(?![a-zA-Z])|France/i },
+      { group: "eu", name: "俄罗斯", icon: "🇷🇺", city: "莫斯科|伯力|圣彼得堡|新西伯利亚", reg: /俄罗斯|(?<![a-zA-Z])RU(?![a-zA-Z])|Russia/i },
+      { group: "eu", name: "乌克兰", icon: "🇺🇦", city: "基辅", reg: /乌克兰|(?<![a-zA-Z])UA(?![a-zA-Z])|Ukraine/i },
+      { group: "eu", name: "西班牙", icon: "🇪🇸", city: "马德里", reg: /西班牙|(?<![a-zA-Z])ES(?![a-zA-Z])|Spain/i },
+      { group: "eu", name: "荷兰", icon: "🇳🇱", city: "阿姆斯特丹", reg: /荷兰|(?<![a-zA-Z])NL(?![a-zA-Z])|Netherlands/i },
+      { group: "eu", name: "瑞士", icon: "🇨🇭", city: "苏黎世|日内瓦", reg: /瑞士|(?<![a-zA-Z])CH(?![a-zA-Z])|Switzerland/i },
+      { group: "eu", name: "意大利", icon: "🇮🇹", city: "米兰|罗马", reg: /意大利|(?<![a-zA-Z])IT(?![a-zA-Z])|Italy/i },
+      { group: "eu", name: "瑞典", icon: "🇸🇪", city: "斯德哥尔摩", reg: /瑞典|(?<![a-zA-Z])SE(?![a-zA-Z])|Sweden/i },
+      { group: "eu", name: "爱尔兰", icon: "🇮🇪", city: "都柏林", reg: /爱尔兰|(?<![a-zA-Z])IE(?![a-zA-Z])|Ireland/i },
+      { group: "eu", name: "波兰", icon: "🇵🇱", city: "华沙", reg: /波兰|(?<![a-zA-Z])PL(?![a-zA-Z])|Poland/i },
+      { group: "eu", name: "芬兰", icon: "🇫🇮", city: "赫尔辛基", reg: /芬兰|(?<![a-zA-Z])FI(?![a-zA-Z])|Finland/i },
 
-    // --- 非洲大区 ---
-    { group: "af", name: "南非",      icon: "🇿🇦", city: "约翰内斯堡", reg: /南非|(?<![a-zA-Z])ZA(?![a-zA-Z])|South Africa/i },
-    { group: "af", name: "尼日利亚",  icon: "🇳🇬", reg: /尼日利亚|(?<![a-zA-Z])NG(?![a-zA-Z])|Nigeria/i },
-    { group: "af", name: "埃及",      icon: "🇪🇬", city: "开罗", reg: /埃及|(?<![a-zA-Z])EG(?![a-zA-Z])|Egypt/i },
-    
-    // --- 其他零散地区 ---
-    { name: "澳大利亚", icon: "🇦🇺", city: "悉尼|墨尔本", reg: /澳大利亚|澳洲|(?<![a-zA-Z])AU(?![a-zA-Z])|Australia|Sydney/i },
-  ];
+      // --- 南亚大区 ---
+      { group: "sa", name: "印度", icon: "🇮🇳", city: "孟买|新德里", reg: /印度|(?<![a-zA-Z])IN(?![a-zA-Z])|India/i },
+
+      // --- 东南亚大区 ---
+      { group: "sea", name: "马来西亚", icon: "🇲🇾", city: "吉隆坡", reg: /马来|马来西亚|(?<![a-zA-Z])MY(?![a-zA-Z])|Malaysia/i },
+      { group: "sea", name: "泰国", icon: "🇹🇭", city: "曼谷", reg: /泰国|(?<![a-zA-Z])TH(?![a-zA-Z])|Thailand/i },
+      { group: "sea", name: "印尼", icon: "🇮🇩", city: "雅加达", reg: /印尼|印度尼西亚|(?<![a-zA-Z])ID(?![a-zA-Z])|Indonesia/i },
+      { group: "sea", name: "菲律宾", icon: "🇵🇭", city: "马尼拉", reg: /菲律宾|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i },
+      { group: "sea", name: "越南", icon: "🇻🇳", city: "胡志明|河内", reg: /越南|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
+
+      // --- 美洲大区 --
+      { group: "am", name: "加拿大", icon: "🇨🇦", city: "多伦多|温哥华|蒙特利尔", reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
+      { group: "am", name: "阿根廷", icon: "🇦🇷", city: "布宜诺斯艾利斯", reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
+      { group: "am", name: "巴西", icon: "🇧🇷", city: "圣保罗", reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
+      { group: "am", name: "墨西哥", icon: "🇲🇽", reg: /墨西哥|(?<![a-zA-Z])MX(?![a-zA-Z])|Mexico/i },
+      { group: "am", name: "智利", icon: "🇨🇱", reg: /智利|(?<![a-zA-Z])CL(?![a-zA-Z])|Chile/i },
+
+      // --- 中东大区 ---
+      { group: "me", name: "阿联酋", icon: "🇦🇪", city: "迪拜", reg: /阿联酋|迪拜|(?<![a-zA-Z])(?:AE|UAE)(?![a-zA-Z])/i },
+      { group: "me", name: "土耳其", icon: "🇹🇷", city: "伊斯坦布尔", reg: /土耳其|(?<![a-zA-Z])TR(?![a-zA-Z])|Turkey/i },
+      { group: "me", name: "沙特", icon: "🇸🇦", city: "利雅得|吉达", reg: /沙特|阿拉伯|(?<![a-zA-Z])SA(?![a-zA-Z])|Saudi/i },
+      { group: "me", name: "以色列", icon: "🇮🇱", city: "特拉维夫", reg: /以色列|(?<![a-zA-Z])IL(?![a-zA-Z])|Israel/i },
+
+      // --- 非洲大区 ---
+      { group: "af", name: "南非", icon: "🇿🇦", city: "约翰内斯堡", reg: /南非|(?<![a-zA-Z])ZA(?![a-zA-Z])|South Africa/i },
+      { group: "af", name: "尼日利亚", icon: "🇳🇬", reg: /尼日利亚|(?<![a-zA-Z])NG(?![a-zA-Z])|Nigeria/i },
+      { group: "af", name: "埃及", icon: "🇪🇬", city: "开罗", reg: /埃及|(?<![a-zA-Z])EG(?![a-zA-Z])|Egypt/i },
+
+      // --- 其他零散地区 ---
+      { name: "澳大利亚", icon: "🇦🇺", city: "悉尼|墨尔本", reg: /澳大利亚|澳洲|(?<![a-zA-Z])AU(?![a-zA-Z])|Australia|Sydney/i },
+    ];
+/* ↑↑↑↑↑ INJECT_END ↑↑↑↑↑ */
 
   // 🩲UI 图标映射字典
   const UI_ICONS = {
@@ -354,6 +351,14 @@ function main(config, extConfig) {
     "wap": "WAP", "anytls": "AnyTLS", "cdn中转": "CDN中转",
     "cellular": "蜂窝", "ipv6": "IPv6", "dualstack": "双栈"
   };
+  // 文字 → Emoji：enableNodeRename=false 时纯显示层替换，不影响分桶元数据
+  const FEATURE_TEXT_TO_ICON = (() => {
+    const m = {};
+    for (const [tag, txt] of Object.entries(FEATURE_TEXT_MAP)) {
+      if (UI_ICONS.features[tag]) m[txt] = UI_ICONS.features[tag];
+    }
+    return m;
+  })();
   const FEATURE_RULES = [
     { reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential", groupName: "🏠 家宽优选" },
     { reg: /(?:游戏|🎮)|\b(?:Game|FullCone)\b/i,              tag: "game", pool: "game", groupName: "🎮 游戏服务" },
@@ -400,9 +405,9 @@ function main(config, extConfig) {
 
   // 🎮 动态游戏服务注册表
   const GAME_REGISTRY = {
-    "steam":       { provider: "geosite/steam",       rules: ["RULE-SET,steam,🎮 游戏服务", "DOMAIN-SUFFIX,steamusercontent.com,🎮 游戏服务", "DOMAIN-SUFFIX,steamserver.net,DIRECT", "RULE-SET,steam-cn,DIRECT"] },
+    "steam":       { provider: "geosite/steam",       rules: ["DOMAIN-SUFFIX,steamcontent.com,🎮 游戏下载", "RULE-SET,steam-cn,🎮 游戏下载", "RULE-SET,steam,🎮 游戏服务"] },
     "steam-cn":    { provider: "geosite/steam@cn",    rules: [] }, // 仅作为 provider 依赖
-    "epic":        { provider: "geosite/epicgames",   rules: ["RULE-SET,epic,🎮 游戏服务", "DOMAIN-SUFFIX,epicgames.com,DIRECT"] },
+    "epic":        { provider: "geosite/epicgames",   rules: ["DOMAIN-SUFFIX,download.epicgames.com,🎮 游戏下载", "RULE-SET,epic,🎮 游戏服务", "DOMAIN-SUFFIX,epicgames.com,🎮 游戏服务"] },
     "riot":        { provider: "geosite/riot",        rules: ["RULE-SET,riot,🎮 游戏服务"] },
     "blizzard":    { provider: "geosite/blizzard",    rules: ["RULE-SET,blizzard,🎮 游戏服务"] },
     "nintendo":    { provider: "geosite/nintendo",    rules: ["RULE-SET,nintendo,🎮 游戏服务"] },
@@ -465,12 +470,14 @@ function main(config, extConfig) {
   // --- ⚙️ 预处理阶段三：正则预编译与动态映射构建 ---
   // =========================================================================
   // 🏷️ 预编译清洗正则
+/* ↓↓↓↓↓ INJECT_BEGIN ↓↓↓↓↓ */
   REGION_DEFS.forEach(r => {
     const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
     r._cleanReg = new RegExp(combinedSource, "ig"); // 用于最后擦除名字
     r._matchReg = new RegExp(combinedSource, "i");  // 用于判定节点归属
-    r._cityReg  = r.city ? new RegExp(r.city, "i") : null;
+    r._cityReg = r.city ? new RegExp(r.city, "i") : null;
   });
+/* ↑↑↑↑↑ INJECT_END ↑↑↑↑↑ */
   FEATURE_RULES.forEach(r => r._cleanReg = new RegExp(r.reg.source, "ig"));
 
 
@@ -491,7 +498,7 @@ function main(config, extConfig) {
     if (BASIC_PROXIES.has(proxy.name)) { builtInProxies.push(proxy); return; }
     if (!USER_CONFIG.enableIPv6 && proxy.server && proxy.server.includes(':')) { 
       ipv6DroppedCount++; 
-      if (USER_CONFIG.enableDebugLog) debugLog(`🚫 [丢弃] 「${proxy.name}」 (纯 IPv6 节点)`);
+      logger.debug(`🚫 [丢弃] 「${proxy.name}」 (纯 IPv6 节点)`);
       return;
     }
     if (!proxy.server || REGEX_INFO_NODE.test(proxy.name)) { proxies.push(proxy); return; }
@@ -510,7 +517,7 @@ function main(config, extConfig) {
       } else {
         // 🆕 去重命中，记录日志
         dedupeCount++;
-        debugLog(`🧽 [去重] 「${proxy.name}」 (${proxy.server})`);
+        logger.debug(`🧽 [去重] 「${proxy.name}」 (${proxy.server})`);
       }
     } else {
       proxies.push(proxy);
@@ -678,18 +685,21 @@ function main(config, extConfig) {
   }
 
   // 🔍 标签提取逻辑
-  function getAirportTag(rawName) {
+  function getAirportTag(rawName, proxy) {
       if (!USER_CONFIG.enableAirportTag) return "";
-      
-      // 1. 优先使用关键词强制抓取（不限位置，只要包含就提取）
+
+      // 1. 优先读 builder 注入的 _subTag 字段（full 模式，符号无关）
+      if (proxy && proxy._subTag) return proxy._subTag;
+
+      // 2. 关键词强制抓取（split 场景：用户配置 airportTag 关键词列表）
       if (USER_CONFIG.airportTag) {
           const tags = USER_CONFIG.airportTag.split(",").map(t => t.trim()).filter(Boolean);
           for (const t of tags) {
               if (rawName.includes(t)) return t;
           }
       }
-      
-      // 2. 否则使用正则自动提取（默认提取开头方括号内容）
+
+      // 3. 正则兜底（split/单跑场景：上游或机场自带的 [] 等包裹符号）
       const regStr = USER_CONFIG.airportTagReg;
       let reg = /^\[([^\]]{1,8})\]/i;
       if (typeof regStr === 'string') { const m = regStr.match(/^\/(.*?)\/([a-z]*)$/); reg = m ? new RegExp(m[1], m[2]) : new RegExp(regStr, 'i'); } else if (regStr instanceof RegExp) { reg = regStr; }
@@ -750,11 +760,13 @@ function main(config, extConfig) {
     }
 
     const tempNameLower = tempName.toLowerCase();
-    
+    const subTagLower = (proxy._subTag || '').toLowerCase();
+
     let isSpecial = false;
     let specialTargetName = "";
-    
-    if (whitelistKeywordsLower.some(k => tempNameLower.includes(k) || rawName.toLowerCase().includes(k))) {
+
+    // 白名单匹配：名字包含关键词（split/单跑）或 _subTag 等于关键词（full 模式 URI 节点）
+    if (whitelistKeywordsLower.some(k => tempNameLower.includes(k) || rawName.toLowerCase().includes(k) || (subTagLower && subTagLower === k))) {
         isSpecial = true;
         specialTargetName = proxy.name; // 白名单节点强制保留原名
     }
@@ -772,7 +784,7 @@ function main(config, extConfig) {
       return { 
         proxy, rawName, regionInfo: null, tags: [], featurePools: [], 
         pType: (proxy.type || "").toLowerCase(), transportTag: "", attrs: { multiNum: 1 },
-        _destCity: null, airportTag: getAirportTag(rawName),
+        _destCity: null, airportTag: getAirportTag(rawName, proxy),
         groupKey: "special",
         isSpecial: true
       };
@@ -836,26 +848,25 @@ function main(config, extConfig) {
       ? network.replace(/^ws$/, "WS").replace(/^h2$/, "H2").replace(/^grpc$/, "GRPC").replace(/^quic$/, "QUIC").replace(/^http$/, "HTTP").toUpperCase()
       : "";
     
-    return { 
+    const _airportTag = getAirportTag(rawName, proxy);
+    const _groupKey = (_airportTag ? _airportTag + "__" : "") + (regionInfo ? regionInfo.name : name);
+
+    return {
       proxy, rawName, regionInfo, tags: Array.from(tags), featurePools, pType, transportTag, attrs,
       _destCity: destCityStr || null,
-      airportTag: getAirportTag(rawName),
-      groupKey: (() => {
-        const tag = getAirportTag(rawName);
-        const prefix = tag ? tag + "__" : "";
-        return prefix + (regionInfo ? regionInfo.name : name);
-      })(),
-      multiNum: attrs.multiNum, bestLineWeight: attrs.bestLineWeight, 
+      airportTag: _airportTag,
+      groupKey: _groupKey,
+      multiNum: attrs.multiNum, bestLineWeight: attrs.bestLineWeight,
       cleanLines: attrs.cleanLines, entryStr: attrs.entryStr
     };
   }).filter(d => {
     if (d && d.skip) {
       if (d.blockReason === "信息说明") {
         infoCount++;
-        if (USER_CONFIG.enableDebugLog) debugLog(`🚫 [信息] 「${d.rawName}」`);
+        logger.debug(`🚫 [信息] 「${d.rawName}」`);
       } else {
         discardedCount++;
-        if (USER_CONFIG.enableDebugLog) debugLog(`🚫 [丢弃] 「${d.rawName}」 (${d.blockReason})`);
+        logger.debug(`🚫 [丢弃] 「${d.rawName}」 (${d.blockReason})`);
       }
       return false;
     }
@@ -870,12 +881,6 @@ function main(config, extConfig) {
   processedData.sort((a, b) => {
     if (a.isInfo !== b.isInfo) return a.isInfo ? -1 : 1;
     if (a.isSpecial !== b.isSpecial) return a.isSpecial ? -1 : 1;
-    // 🏷️ 标签功能开启时，按机场分组优先排序（同一机场节点聚合，避免跨机场编号冲突）
-    if (USER_CONFIG.enableAirportTag) {
-      const tagA = a.airportTag || "";
-      const tagB = b.airportTag || "";
-      if (tagA !== tagB) return tagA.localeCompare(tagB, 'zh-CN');
-    }
     const orderA = REGION_ORDER[a.regionInfo?.name || a.groupKey] ?? 999;
     const orderB = REGION_ORDER[b.regionInfo?.name || b.groupKey] ?? 999;
     if (orderA !== orderB) return orderA - orderB;
@@ -884,11 +889,18 @@ function main(config, extConfig) {
       const nameB = b.regionInfo?.name || b.groupKey || "";
       if (nameA !== nameB) return nameA.localeCompare(nameB, 'zh-CN');
     }
+    // ⚡ 线路质量优先（IEPL > CN2/GIA > 专线 > BGP > 中转 > 其他）
+    if (a.bestLineWeight !== b.bestLineWeight) return a.bestLineWeight - b.bestLineWeight;
+    // 🏷️ 同质量下按订阅聚合，避免跨订阅节点交错
+    if (USER_CONFIG.enableAirportTag) {
+      const tagA = a.airportTag || "";
+      const tagB = b.airportTag || "";
+      if (tagA !== tagB) return tagA.localeCompare(tagB, 'zh-CN');
+    }
     const getMultiWeight = (num) => num > (USER_CONFIG.highMultiThreshold || 2.0) ? 1 : 0;
     const multiWeightA = getMultiWeight(a.multiNum);
     const multiWeightB = getMultiWeight(b.multiNum);
     if (multiWeightA !== multiWeightB) return multiWeightA - multiWeightB;
-    if (a.bestLineWeight !== b.bestLineWeight) return a.bestLineWeight - b.bestLineWeight;
     const entryA = a.entryStr || "ZZZ", entryB = b.entryStr || "ZZZ";
     if (entryA !== entryB) return entryA.localeCompare(entryB, 'zh-CN');
     const lineA = a.cleanLines || "ZZZ", lineB = b.cleanLines || "ZZZ";
@@ -947,7 +959,7 @@ function main(config, extConfig) {
   processedData.forEach(item => {
     if (item.isInfo) {
       infoCount++;
-      debugLog(`ℹ️ [保留] 「${item.rawName}」`);
+      logger.debug(`ℹ️ [保留] 「${item.rawName}」`);
       BUCKETS.info.push(item.proxy.name);
       return;
     }
@@ -976,23 +988,17 @@ function main(config, extConfig) {
       numStr = "";
     }
 
-    // 🏷️ 标签前缀提取：优先从 rawName 提取，无结果时回退到 proxy.name（builder.js 打的标签可能不在 _rawName 里）
+    // 🏷️ 标签提取：优先读 _subTag 字段（full 模式），兜底正则（split/单跑）
     let airportTagStr = "";
     if (USER_CONFIG.enableAirportTag) {
-      let tag = getAirportTag(rawName);
-      if (!tag && proxy.name !== rawName) tag = getAirportTag(proxy.name);
-      if (tag) airportTagStr = tag;
+      airportTagStr = getAirportTag(rawName, proxy);
     }
-    // 日志用：剥离标签前缀的原名
+    // 日志用
     const tagDisplay = airportTagStr ? `🏷️${airportTagStr} | ` : "";
-    const displayRaw = airportTagStr
-      ? rawName.replace(new RegExp(`^\\[${airportTagStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\s*`, 'i'), '')
-      : rawName;
+    const displayRaw = rawName;
     let finalName;
     if (item.isSpecial) {
       finalName = proxy.name;
-    } else if (!regionInfo) {
-      finalName = `${airportTagStr ? `[${airportTagStr}] ` : ""}未知 ${rawName}${numStr}`;
     } else {
       let featuresStr = "";
       tags.forEach(tag => {
@@ -1009,11 +1015,11 @@ function main(config, extConfig) {
       let ipStackStr = "";
       if (tags.includes("dualstack")) ipStackStr = "双栈";
       else if (tags.includes("ipv6")) ipStackStr = "IPv6";
-      
+
       const vars = {
         airport: airportTagStr.trim(),
-        icon: regionInfo.icon,
-        region: regionInfo.name,
+        icon: regionInfo ? regionInfo.icon : "",
+        region: regionInfo ? regionInfo.name : "未知",
         index: numStr,
         features: featuresStr,
         protocol: protocolIcon,
@@ -1024,13 +1030,13 @@ function main(config, extConfig) {
         ip_stack: ipStackStr,
         transport: transportTag || ""
       };
-      
+
       if (USER_CONFIG.enableNodeRename !== false) {
         if (typeof USER_CONFIG.renameTemplate === "function") {
           finalName = USER_CONFIG.renameTemplate(vars, proxy);
         } else {
           finalName = USER_CONFIG.renameTemplate.replace(/{(airport|icon|region|index|features|protocol|city|line|in|multi|transport|ip_stack)}/g, (match, key) => vars[key] || "");
-          
+
           // 仅对字符串模板执行分隔符和空括号清理兜底
           if (regAdjacentSeps) {
               finalName = finalName.replace(regAdjacentSeps, "");
@@ -1042,8 +1048,15 @@ function main(config, extConfig) {
           finalName = finalName.replace(/\s{2,}/g, " ");
         }
       } else {
-        // 如果关闭了重命名，则直接继承原始名字
-        finalName = rawName;
+        // 关闭重命名：继承输入名（full 模式下 = pure 清洗后的 proxy.name，非 _rawName）
+        finalName = proxy.name;
+        // 纯显示层：若启用图标且 pure 侧是文字特征（full 模式强制），转成 Emoji
+        // 不影响分桶元数据（FEATURE_RULES 已在前面跑过）
+        if (USER_CONFIG.showFeatureIcon !== false) {
+          for (const [txt, icon] of Object.entries(FEATURE_TEXT_TO_ICON)) {
+            finalName = finalName.split(txt).join(icon);
+          }
+        }
       }
     }
     
@@ -1052,28 +1065,28 @@ function main(config, extConfig) {
     // --- 核心分发 + 归属日志 ---
     if (item.isSpecial) {
       BUCKETS.special.push(finalName);
-      debugLog(`🌟 [自定义] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
+      logger.debug(`🌟 [自定义] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
       return;
     }
 
     if (!regionInfo) {
       BUCKETS.garbage.push(finalName);
       const reasonMsg = USER_CONFIG.strictRegionMatch ? "严格匹配" : "无字典/国旗";
-      debugLog(`🗑️ [未识别] 「${displayRaw}」 → 「${finalName}」 (${reasonMsg})`);
+      logger.debug(`🗑️ [未识别] 「${displayRaw}」 → 「${finalName}」 (${reasonMsg})`);
     } else {
       // 1. ⏬ 低倍率标签处理
       if (tags.includes("download")) {
         BUCKETS.download.push(finalName);
       }
       if (USER_CONFIG.isolateDownload && tags.includes("download")) {
-        debugLog(`⏬ [隔离] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
+        logger.debug(`⏬ [隔离] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
         return;
       }
 
       // 2. 🇨🇳 中国大陆节点隔离
       if (regionInfo.id === "cn") {
         BUCKETS.cn.push(finalName);
-        debugLog(`🇨🇳 [中国] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
+        logger.debug(`🇨🇳 [中国] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
         return;
       }
       
@@ -1084,7 +1097,7 @@ function main(config, extConfig) {
         if (!BUCKETS.resiRegionMap[regionKey]) BUCKETS.resiRegionMap[regionKey] = [];
         BUCKETS.resiRegionMap[regionKey].push(finalName);
         const regionLabel = regionInfo ? regionKey.toUpperCase() : "未知";
-        debugLog(`🏡 [家宽] ${tagDisplay}「${displayRaw}」 → 「${finalName}」 → [🏠 家宽优选(${regionLabel})]`);
+        logger.debug(`🏡 [家宽] ${tagDisplay}「${displayRaw}」 → 「${finalName}」 → [🏠 家宽优选(${regionLabel})]`);
         return;
       }
 
@@ -1097,11 +1110,9 @@ function main(config, extConfig) {
       if (!BUCKETS[regionKey]) BUCKETS[regionKey] = [];
       BUCKETS[regionKey].push(finalName);
       
-      if (USER_CONFIG.enableDebugLog) {
-        let assignedBuckets = featurePools.map(p => POOL_GROUP_MAP[p] || `📦 特征池(${p})`);
-        assignedBuckets.push(`📍 ${regionInfo.icon} ${regionInfo.name}`);
-        debugLog(`✅ [分发] ${tagDisplay}「${displayRaw}」 → 「${finalName}」 → [${assignedBuckets.join(', ')}]`);
-      }
+      let assignedBuckets = featurePools.map(p => POOL_GROUP_MAP[p] || `📦 特征池(${p})`);
+      assignedBuckets.push(`📍 ${regionInfo.icon} ${regionInfo.name}`);
+      logger.debug(`✅ [分发] ${tagDisplay}「${displayRaw}」 → 「${finalName}」 → [${assignedBuckets.join(', ')}]`);
     }
   });
 
@@ -1276,6 +1287,11 @@ function main(config, extConfig) {
     if (USER_CONFIG[key]) appGroups.push(buildSelect(name, proxies));
   });
 
+  // 🎮 游戏下载策略组（与游戏服务共用 enableGame 开关）
+  if (USER_CONFIG.enableGame) {
+    appGroups.push(buildSelect("🎮 游戏下载", ["DIRECT", "⏬ 下载策略", "🚀 自动选择", "📍 手动选择", ...BUCKETS.game]));
+  }
+
   // 系统服务
   if (USER_CONFIG.enableSystemServices && SYSTEM_SERVICES) {
     SYSTEM_SERVICES.forEach(key => {
@@ -1358,14 +1374,14 @@ function main(config, extConfig) {
       if (matchedNodes.length === 0) continue;
       for (const targetName of targetGroups) {
         if (!existingGroupNames.has(targetName)) {
-          console.log(`[Toolkit] ⚠️ [自定义分组] 目标组 "${targetName}" 不存在或未启用，跳过注入`);
+          logger.warn(`[自定义分组] 目标组 "${targetName}" 不存在或未启用，跳过注入`);
           continue;
         }
         const group = finalGroups.find(g => g.name === targetName);
         if (group && group.proxies) {
           const existing = new Set(group.proxies);
           matchedNodes.forEach(n => { if (!existing.has(n)) group.proxies.push(n); });
-          console.log(`[Toolkit] 🎯 [自定义分组] 注入 ${matchedNodes.length} 个节点到 "${targetName}"`);
+          logger.info(`🎯 [自定义分组] 注入 ${matchedNodes.length} 个节点到 "${targetName}"`);
         }
       }
     }
@@ -1386,14 +1402,14 @@ function main(config, extConfig) {
       if (nodesToInject.length === 0) continue;
       for (const targetName of targetGroups) {
         if (!existingGroupNames.has(targetName)) {
-          console.log(`[Toolkit] ⚠️ [家宽注入] 目标组 "${targetName}" 不存在或未启用，跳过注入`);
+          logger.warn(`[家宽注入] 目标组 "${targetName}" 不存在或未启用，跳过注入`);
           continue;
         }
         const group = finalGroups.find(g => g.name === targetName);
         if (group && group.proxies) {
           const existing = new Set(group.proxies);
           nodesToInject.forEach(n => { if (!existing.has(n)) group.proxies.push(n); });
-          console.log(`[Toolkit] 🏠 [家宽注入] 注入 ${nodesToInject.length} 个${regionKey === "all" ? "" : " " + regionKey.toUpperCase()}家宽节点到 "${targetName}"`);
+          logger.info(`🏠 [家宽注入] 注入 ${nodesToInject.length} 个${regionKey === "all" ? "" : " " + regionKey.toUpperCase()}家宽节点到 "${targetName}"`);
         }
       }
     }
@@ -1603,8 +1619,8 @@ function main(config, extConfig) {
       return true;
     });
   }
-  if (maxIterations === 0 && USER_CONFIG.enableDebugLog) {
-    console.log("⚠️ [警告] 策略组嵌套层数过深或存在循环引用，清理已提前终止！");
+  if (maxIterations === 0) {
+    logger.warn("策略组嵌套层数过深或存在循环引用，清理已提前终止！");
   }
 
   // 同步清理殉葬的分流规则与孤儿 Rule Providers
@@ -1642,6 +1658,7 @@ function main(config, extConfig) {
     "🪙 加密货币":     { icon: USER_CONFIG.iconRepoKoolson + "Cryptocurrency.png", newName: "加密货币" },
     "💳 PayPal":       { icon: USER_CONFIG.iconRepoKoolson + "PayPal.png",    newName: "PayPal" },
     "🎮 游戏服务":     { icon: USER_CONFIG.iconRepoKoolson + "Game.png",      newName: "游戏服务" },
+    "🎮 游戏下载":     { icon: USER_CONFIG.iconRepoKoolson + "Game.png",      newName: "游戏下载" },
     "💬 社交平台":     { icon: USER_CONFIG.iconRepoKoolson + "Discord.png",   newName: "社交平台" }, // 社交平台兜底组
     "✈️ Telegram":     { icon: USER_CONFIG.iconRepoKoolson + "Telegram.png",  newName: "Telegram" },
     
@@ -1793,25 +1810,22 @@ function main(config, extConfig) {
   // =========================================================================
   // --- 📋 调试摘要：输出最终建组统计 ---
   // =========================================================================
-  if (USER_CONFIG.enableDebugLog) {
+  // 动态计算真实的有效节点数量
+  const validCount = processedData.length - (USER_CONFIG.removeInfoNodes ? 0 : infoCount);
 
-    // 动态计算真实的有效节点数量
-    const validCount = processedData.length - (USER_CONFIG.removeInfoNodes ? 0 : infoCount);
-
-    // 动态组装需要打印的数组
-    const stats = [
-      `📊 [统计] 策略组:${config["proxy-groups"].length}`,
-      `有效节点:${validCount}`
-    ];
-    
-    if (dedupeCount > 0) stats.push(`去重:${dedupeCount}`);
-    if (infoCount > 0) stats.push(`信息:${infoCount}`);
-    if (discardedCount > 0) stats.push(`丢弃:${discardedCount}`);
-    if (ipv6DroppedCount > 0) stats.push(`IPv6过滤:${ipv6DroppedCount}`);
-    if (BUCKETS.garbage.length > 0) stats.push(`未识别:${BUCKETS.garbage.length}`);
-    
-    debugLog(stats.join(" | "));
-  }
+  // 动态组装需要打印的数组
+  const stats = [
+    `📊 [统计] 策略组:${config["proxy-groups"].length}`,
+    `有效节点:${validCount}`
+  ];
+  
+  if (dedupeCount > 0) stats.push(`去重:${dedupeCount}`);
+  if (infoCount > 0) stats.push(`信息:${infoCount}`);
+  if (discardedCount > 0) stats.push(`丢弃:${discardedCount}`);
+  if (ipv6DroppedCount > 0) stats.push(`IPv6过滤:${ipv6DroppedCount}`);
+  if (BUCKETS.garbage.length > 0) stats.push(`未识别:${BUCKETS.garbage.length}`);
+  
+  logger.debug(stats.join(" | "));
   
   // EOF: May your routing be fast and your connection secure. 🚀
   return config;
