@@ -6,8 +6,8 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Toolkit](https://img.shields.io/badge/Toolkit-v3.3.3-blue)](CHANGELOG.md)
-[![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.2-blueviolet)](CHANGELOG.md)
+[![Toolkit](https://img.shields.io/badge/Toolkit-v3.3.4-blue)](CHANGELOG.md)
+[![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.3-blueviolet)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -182,6 +182,8 @@ node cli.js -u "https://example.com/sub.yaml" -o final_config.yaml
 | `npm start` | `node server.js` | 启动本地 HTTP 服务 |
 | `npm run dev` | `node --watch server.js` | 开发模式，文件变动自动重启 |
 | `npm run build:worker` | `esbuild worker.js ...` | 编译 Cloudflare Worker 产物 |
+
+> **⚠️ 给项目开发者：** `pure-nodes.js` 和 `mihomo-toolkit.js` 中 `INJECT_BEGIN/END` 标记之间的代码由 `npm run inject` 自动生成，手动修改会在下次构建时被覆盖。如需调整地区字典等共享代码，请编辑 `src/_shared/region-defs.js` 后运行 `npm run inject`。即插即用用户无需关注此机制。
 
 ### 命令参数详解
 
