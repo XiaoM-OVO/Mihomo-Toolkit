@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.3.4 (Build 2026.08.06)
+// 🏷️ 版本: v3.3.5 (Build 2026.08.07)
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -225,7 +225,7 @@ function main(config, extConfig) {
   // =========================================================================
   // --- ⚙️ 预处理阶段一：日志模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.3.4";
+  const SCRIPT_VERSION = "v3.3.5";
   const LOG_LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4 };
   const currentLevel = LOG_LEVELS[USER_CONFIG.logLevel] ?? 3;
 
@@ -999,6 +999,8 @@ function main(config, extConfig) {
     let finalName;
     if (item.isSpecial) {
       finalName = proxy.name;
+    } else if (!regionInfo) {
+      finalName = proxy.name;
     } else {
       let featuresStr = "";
       tags.forEach(tag => {
@@ -1050,8 +1052,6 @@ function main(config, extConfig) {
       } else {
         // 关闭重命名：继承输入名（full 模式下 = pure 清洗后的 proxy.name，非 _rawName）
         finalName = proxy.name;
-        // 纯显示层：若启用图标且 pure 侧是文字特征（full 模式强制），转成 Emoji
-        // 不影响分桶元数据（FEATURE_RULES 已在前面跑过）
         if (USER_CONFIG.showFeatureIcon !== false) {
           for (const [txt, icon] of Object.entries(FEATURE_TEXT_TO_ICON)) {
             finalName = finalName.split(txt).join(icon);
