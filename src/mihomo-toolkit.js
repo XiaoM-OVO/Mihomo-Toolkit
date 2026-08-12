@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.3.5 (Build 2026.08.07)
+// 🏷️ 版本: v3.4.0 (Build 2026.08.12)
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -85,7 +85,7 @@ const DEFAULT_CONFIG = {
   enableAI: true,              // 🤖 AI 助手：OpenAI, Gemini, Claude，Copilot 等
   enableTelegram: true,        // ✈️ 社交通讯：Telegram 独立分流
   enableStreaming: true,       // 📺 流媒体服务：具体平台在 STREAMING_SERVICES 中增删（详见下方注册表）
-  enableGame: true,            // 🎮 游戏平台：Steam, Epic 等
+  enableGame: true,            // 🎮 游戏平台：具体平台在 gameServices 中增删（详见下方注册表）
   enableSystemServices: true,  // 🪟 系统服务：Microsoft, Apple, Google 框架服务
   enableDomesticGroup: false,  // 🇨🇳 中国分流：开启后增加专门的"中国"策略组 (配合直连优先使用，触发海外回国模式)
 
@@ -106,21 +106,23 @@ const DEFAULT_CONFIG = {
   testURL: "https://cp.cloudflare.com/generate_204", // 🔗 延迟测速地址
   ruleProviderCDN: "https://fastly.jsdelivr.net/gh", // 🔗 规则集 CDN 节点 (备用选择: https://testingcf.jsdelivr.net/gh 或 https://gcore.jsdelivr.net/gh)
 
-  // 【7 DNS 服务器配置】
+  // 【7. DNS 服务器配置】
+  dnsListen: "127.0.0.1:1053",                     // 📡 DNS 监听（可只写 host，端口从订阅取；软路由改 0.0.0.0:53）
   dnsDefault: ["223.5.5.5", "119.29.29.29"],       // 📡 基础解析 DNS
-  dnsDirect:  ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"], // 📡 直连 DNS (DoH)
+  dnsDirect:  ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query", "223.5.5.5", "119.29.29.29"], // 📡 直连 DNS（DoH 优先 + UDP 兜底）
   dnsProxy:   ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],        // 📡 代理 DNS (DoH)
+  dnsServer:  ["https://223.5.5.5/dns-query", "https://119.29.29.29/dns-query"], // 📡 节点域名解析DNS
 
   // 【8. 安全防漏与底层内核覆写】
   enableProcessDirect: true,   // 🛑 进程直连防漏：强制指定的软件(如P2P/BT等)走直连，防止流量滥用与误代理(关闭后内置BT规则会指向⏬ 下载策略)
   enableTrafficAudit: true,    // 🛡️ 流量审计：非标流量强制直连防断流
-  enableQUICReject: false,     // ⚡ 屏蔽 QUIC 协议: 强制降级至 TCP，避免 UDP 阻断丢包
+  enableQUICReject: false,     // ⚡ QUIC 智能分流：开启后跟随路由模式自动适配，关闭则完全直连（不干预 QUIC）
   overwriteTun: true,          // 🖧 覆写 TUN 配置：注入严格路由与网段排除
-  overwriteDns: true,          // 📡 覆写 DNS 配置：强制使用 Fake-IP 与纯净防污染 DNS
+  overwriteDns: true,          // 📡 覆写 DNS 配置（与下方 dnsMergeMode 配合）
+  dnsMergeMode: "secure",      // 📡 DNS 覆写模式：secure=防泄漏优先（脚本权威写 DNS 服务器，仅订阅有 listen 时保留）；merge=订阅友好（DNS 服务器订阅优先）；passthrough=完全不碰
   overwriteSniffer: true,      // 🔎 覆写 Sniffer 配置：启用深度包检测防 SNI 阻断
   enableCoreOptimize: true     // ⚡ 覆写核心内核优化: 开启提升性能、统一延迟、指纹伪装
 };
-
 
 function main(config, extConfig) {
   const USER_CONFIG = Object.assign({}, DEFAULT_CONFIG, extConfig || {});
@@ -145,6 +147,10 @@ function main(config, extConfig) {
   // 🪟 系统服务加载列表
   const SYSTEM_SERVICES = USER_CONFIG.systemServices || ["microsoft", "apple", "google"];
 
+  // 🎮 游戏服务加载列表
+  //    可用: steam, epic, riot, blizzard, nintendo, playstation, xbox, ubisoft, origin, ea
+  const GAME_SERVICES = USER_CONFIG.gameServices || ["steam", "epic", "riot", "blizzard", "nintendo", "playstation", "xbox", "ubisoft", "origin", "ea"];
+
   // 🛑 指定进程强制直连名单
   const PROCESS_DIRECT_WIN = USER_CONFIG.processDirectWin || ["qBittorrent", "Thunder", "BitComet", "uTorrent", "aria2c"];
   const PROCESS_DIRECT_MAC = USER_CONFIG.processDirectMac || ["Thunder", "BitComet", "uTorrent", "qbittorrent", "aria2c", "transmission-daemon"];
@@ -153,13 +159,7 @@ function main(config, extConfig) {
   // ⏬ 指定进程强制走下载策略
   const PROCESS_PROXY_WIN  = USER_CONFIG.processProxyWin || ["IDMan", "fdm"];
   const PROCESS_PROXY_MAC  = USER_CONFIG.processProxyMac || ["fdm"];
-
-  // 🛑 自定义追加进程名单
-  const CUSTOM_PROCESS_DIRECT_WIN = USER_CONFIG.customProcessDirectWin || [];
-  const CUSTOM_PROCESS_DIRECT_MAC = USER_CONFIG.customProcessDirectMac || [];
-  const CUSTOM_PROCESS_DIRECT_LIN = USER_CONFIG.customProcessDirectLin || [];
-  const CUSTOM_PROCESS_PROXY_WIN  = USER_CONFIG.customProcessProxyWin || [];
-  const CUSTOM_PROCESS_PROXY_MAC  = USER_CONFIG.customProcessProxyMac || [];
+  const PROCESS_PROXY_LIN  = USER_CONFIG.processProxyLin || [];
 
   // 🧩 自定义服务注册表
   const CUSTOM_SERVICES = USER_CONFIG.customServices || {
@@ -191,6 +191,7 @@ function main(config, extConfig) {
   const CUSTOM_DNS_DEFAULT = USER_CONFIG.dnsDefault;
   const CUSTOM_DNS_DIRECT  = USER_CONFIG.dnsDirect;
   const CUSTOM_DNS_PROXY   = USER_CONFIG.dnsProxy;
+  const CUSTOM_DNS_SERVER  = USER_CONFIG.dnsServer;
 
 
   // 🧹 常用正则大礼包 
@@ -198,7 +199,7 @@ function main(config, extConfig) {
   const REGEX_FORBID_DL_STR = "(?:禁止|禁|严禁|请勿|勿|不要|不能|拒绝|屏蔽|防)(?:BT|PT|P2P|下载|测速|迅雷)|(?:仅限|仅供)(?:网页|日常|聊天)|\\b(?:No|Block|Ban)[\\s\\-_]*(?:BT|PT|Torrent|Download)\\b";
   // 清洗冗余说明文字和推广网址
   const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)`, "ig");
-  const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, "i"); // 单独用于判定禁止下载
+  const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, "i");
   // 入口城市关键词
   const ENTRY_CITIES = ['深','深圳','广','广州','上海','沪','京','北京','杭','杭州','四川','川','渝','重庆','辽','莞','东莞','苏','江苏','无锡','鲁','徐','湘','宁','南京','汉','武汉','穗','港','香港','台','台湾','日本','日','新加坡','英国','英','韩国','韩','美国','美','Ingress'];
   // 出口地区关键词
@@ -225,7 +226,7 @@ function main(config, extConfig) {
   // =========================================================================
   // --- ⚙️ 预处理阶段一：日志模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.3.5";
+  const SCRIPT_VERSION = "v3.4.0";
   const LOG_LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4 };
   const currentLevel = LOG_LEVELS[USER_CONFIG.logLevel] ?? 3;
 
@@ -1432,7 +1433,19 @@ function main(config, extConfig) {
 
   const routingRules = ["RULE-SET,lan-domain,DIRECT", "RULE-SET,lan-ip,DIRECT,no-resolve"];
   if (USER_CONFIG.enableIPv6) routingRules.push("IP-CIDR6,::1/128,DIRECT,no-resolve", "IP-CIDR6,fc00::/7,DIRECT,no-resolve", "IP-CIDR6,fe80::/10,DIRECT,no-resolve");
-  if (USER_CONFIG.enableQUICReject) routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT-DROP");
+  // ⚡ QUIC 精细屏蔽：按地域 + 回国模式反向（GEOSITE 抓域名、GEOIP 抓 IP 直连漏网）
+  if (USER_CONFIG.enableQUICReject) {
+    const isReturn = USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst;
+    if (isReturn) {
+      // 回国模式：只屏蔽国内 QUIC（海外 QUIC 直连放行；国内 QUIC 被挡后降级 TCP 走🇨🇳分流）
+      routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443),(GEOSITE,cn)),REJECT-DROP");
+      routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443),(GEOIP,CN)),REJECT-DROP");
+    } else {
+      // 正常模式：只屏蔽海外 QUIC（国内 QUIC 直连放行；海外 QUIC 被挡后降级 TCP 走代理）
+      routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443),(GEOSITE,geolocation-!cn)),REJECT-DROP");
+      routingRules.push("AND,((NETWORK,UDP),(DST-PORT,443),(GEOIP,!CN)),REJECT-DROP");
+    }
+  }
 
   // 🚫 广告拦截
   if (USER_CONFIG.enableAdBlock) {
@@ -1466,7 +1479,7 @@ function main(config, extConfig) {
 
   //组装社交平台规则集资源
   if (USER_CONFIG.enableSocial) {
-  const nonIndependentKeys = SOCIAL_SERVICES.filter(k => !INDEPENDENT_SOCIAL.includes(k));
+  const nonIndependentKeys = SOCIAL_SERVICES.filter(k => !INDEPENDENT_SOCIAL.includes(k) && SOCIAL_REGISTRY[k]);
   const useCombinedGroup = nonIndependentKeys.length > 1; // 仅当 2+ 个非独立App时才使用合并组
 
   SOCIAL_SERVICES.forEach(key => {
@@ -1480,9 +1493,13 @@ function main(config, extConfig) {
   }
 
   // 注入游戏规则集
-  if (USER_CONFIG.enableGame) {
-    Object.entries(GAME_REGISTRY).forEach(([key, conf]) => {
+  if (USER_CONFIG.enableGame && GAME_SERVICES) {
+    GAME_SERVICES.forEach(key => {
+      const conf = GAME_REGISTRY[key];
+      if (!conf) return;
       PROVIDER_BASE[key] = conf.provider;
+      // 特殊依赖：steam rules 引用了 steam-cn，需自动附带其 provider
+      if (key === "steam" && GAME_REGISTRY["steam-cn"]) PROVIDER_BASE["steam-cn"] = GAME_REGISTRY["steam-cn"].provider;
       routingRules.push(...conf.rules);
     });
   }
@@ -1521,17 +1538,18 @@ function main(config, extConfig) {
 
   // 🛑 BT / PT 专属防漏拦截
   if (USER_CONFIG.enableProcessDirect) {
-    if (IS_WIN) routingRules.push(...PROCESS_DIRECT_WIN.concat(CUSTOM_PROCESS_DIRECT_WIN).map(p => `PROCESS-NAME,${p}.exe,DIRECT`));
-    if (IS_MAC) routingRules.push(...PROCESS_DIRECT_MAC.concat(CUSTOM_PROCESS_DIRECT_MAC).map(p => `PROCESS-NAME,${p},DIRECT`));
-    if (IS_LIN) routingRules.push(...PROCESS_DIRECT_LIN.concat(CUSTOM_PROCESS_DIRECT_LIN).map(p => `PROCESS-NAME,${p},DIRECT`));
+    if (IS_WIN) routingRules.push(...PROCESS_DIRECT_WIN.map(p => `PROCESS-NAME,${p}.exe,DIRECT`));
+    if (IS_MAC) routingRules.push(...PROCESS_DIRECT_MAC.map(p => `PROCESS-NAME,${p},DIRECT`));
+    if (IS_LIN) routingRules.push(...PROCESS_DIRECT_LIN.map(p => `PROCESS-NAME,${p},DIRECT`));
     routingRules.push("RULE-SET,bt-trackers-pt,DIRECT", "RULE-SET,bt-trackers-public,DIRECT", "DOMAIN-KEYWORD,tracker,DIRECT", "DOMAIN-KEYWORD,announce,DIRECT");
   } else {
     routingRules.push("RULE-SET,bt-trackers-pt,⏬ 下载策略", "RULE-SET,bt-trackers-public,⏬ 下载策略");
   }
 
   // ⏬ 普通下载软件（HTTP/游戏/应用）依然安全进入下载池
-  if (IS_WIN) routingRules.push(...PROCESS_PROXY_WIN.concat(CUSTOM_PROCESS_PROXY_WIN).map(p => `PROCESS-NAME,${p}.exe,⏬ 下载策略`));
-  if (IS_MAC) routingRules.push(...PROCESS_PROXY_MAC.concat(CUSTOM_PROCESS_PROXY_MAC).map(p => `PROCESS-NAME,${p},⏬ 下载策略`));
+  if (IS_WIN) routingRules.push(...PROCESS_PROXY_WIN.map(p => `PROCESS-NAME,${p}.exe,⏬ 下载策略`));
+  if (IS_MAC) routingRules.push(...PROCESS_PROXY_MAC.map(p => `PROCESS-NAME,${p},⏬ 下载策略`));
+  if (IS_LIN) routingRules.push(...PROCESS_PROXY_LIN.map(p => `PROCESS-NAME,${p},⏬ 下载策略`));
   routingRules.push("RULE-SET,download-games-cn,DIRECT", "RULE-SET,download-games,⏬ 下载策略", "RULE-SET,download-android,⏬ 下载策略");
 
   const isReturn = USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst;
@@ -1688,7 +1706,7 @@ function main(config, extConfig) {
 
   // 3. 动态合并 独立社交App 策略组图标（含自动晋升的单个非独立App）
   if (USER_CONFIG.enableSocial && SOCIAL_SERVICES) {
-    const nonIndependentKeys = SOCIAL_SERVICES.filter(k => !INDEPENDENT_SOCIAL.includes(k));
+    const nonIndependentKeys = SOCIAL_SERVICES.filter(k => !INDEPENDENT_SOCIAL.includes(k) && SOCIAL_REGISTRY[k]);
     const useCombinedGroup = nonIndependentKeys.length > 1;
 
     SOCIAL_SERVICES.forEach(key => {
@@ -1752,28 +1770,65 @@ function main(config, extConfig) {
     };
   }
 
-  // DNS 注入
+  // DNS 注入（三态：secure / merge / passthrough）
   if (USER_CONFIG.overwriteDns) {
-    const isReturn = USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst;
-    const directDNS  = isReturn ? CUSTOM_DNS_PROXY  : CUSTOM_DNS_DIRECT;
-    const proxyDNS   = isReturn ? CUSTOM_DNS_DIRECT : CUSTOM_DNS_PROXY;
-    const serverDNS  = isReturn ? CUSTOM_DNS_PROXY  : CUSTOM_DNS_DEFAULT;
+    const mergeMode = (USER_CONFIG.dnsMergeMode || "secure").toLowerCase();
+    if (mergeMode !== "passthrough") {
+      const isReturn = USER_CONFIG.enableDomesticGroup && !USER_CONFIG.proxyFirst;
+      const directDNS = isReturn ? CUSTOM_DNS_PROXY  : CUSTOM_DNS_DIRECT;
+      const proxyDNS  = isReturn ? CUSTOM_DNS_DIRECT : CUSTOM_DNS_PROXY;
+      const serverDNS = CUSTOM_DNS_SERVER;
+      const sub = config.dns || {};
+      const pick = (k, d) => sub[k] !== undefined ? sub[k] : d;
 
-    config["dns"] = {
-      enable: true, listen: "0.0.0.0:1053", ipv6: USER_CONFIG.enableIPv6, 
-      "enhanced-mode": "fake-ip", "fake-ip-range": "198.18.0.1/16", "fake-ip-filter-mode": "blacklist", 
-      "respect-rules": true, "use-hosts": true,
-      "fake-ip-filter": ["*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com", "localhost.ptlogin2.qq.com", "*.msftncsi.com", "www.msftconnecttest.com", "ipv6.msftncsi.com", "*.ipv6-literal.net", "google.cn", "*.music.163.com", "*.music.126.net", "+.stun.*.*", "+.nintendo.net", "+.playstation.net", "+.xboxlive.com"],
-      "default-nameserver": CUSTOM_DNS_DEFAULT,
-      "direct-nameserver": directDNS,
-      "direct-nameserver-follow-policy": true,
-      "proxy-server-nameserver": serverDNS,
-      "nameserver": proxyDNS,
-      "nameserver-policy": {
-        "rule-set:cn-domain": directDNS,
-        "rule-set:non-cn": proxyDNS
-      }
-    };
+      // dnsListen 拆分：host/port 独立覆盖（支持只写 IP，端口沿用订阅）
+      const splitHostPort = (s) => {
+        if (!s) return { host: null, port: null };
+        const v6Match = s.match(/^\[([^\]]+)\](?::(\d+))?$/);
+        if (v6Match) return { host: `[${v6Match[1]}]`, port: v6Match[2] || null };
+        const idx = s.lastIndexOf(":");
+        if (idx === -1) return { host: s, port: null };
+        return { host: s.slice(0, idx), port: s.slice(idx + 1) };
+      };
+      const userL = splitHostPort(USER_CONFIG.dnsListen);
+      const subL  = splitHostPort(sub.listen);
+      const finalHost = userL.host || subL.host || "127.0.0.1";
+      const finalPort = userL.port || subL.port || "1053";
+      const finalListen = `${finalHost}:${finalPort}`;
+
+      // fake-ip-filter：secure=blacklist 合并；whitelist 时 secure 用脚本、merge 用订阅
+      const scriptFilter = ["*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com", "localhost.ptlogin2.qq.com", "*.msftncsi.com", "www.msftconnecttest.com", "ipv6.msftncsi.com", "*.ipv6-literal.net", "google.cn", "*.music.163.com", "*.music.126.net", "+.stun.*.*", "+.nintendo.net", "+.playstation.net", "+.xboxlive.com"];
+      const subMode = (sub["fake-ip-filter-mode"] || "blacklist").toLowerCase();
+      const finalMode = mergeMode === "secure" ? "blacklist" : subMode;
+      const subList = Array.isArray(sub["fake-ip-filter"]) ? sub["fake-ip-filter"] : [];
+      const finalList = finalMode === "blacklist"
+        ? Array.from(new Set([...scriptFilter, ...subList]))
+        : (mergeMode === "secure" ? scriptFilter : (subList.length ? subList : scriptFilter));
+
+      // DNS 服务器：secure=脚本权威；merge=订阅优先脚本补缺
+      const ns = mergeMode === "secure"
+        ? { "default-nameserver": CUSTOM_DNS_DEFAULT, "direct-nameserver": directDNS, "direct-nameserver-follow-policy": true, "proxy-server-nameserver": serverDNS, "nameserver": proxyDNS }
+        : { "default-nameserver": pick("default-nameserver", CUSTOM_DNS_DEFAULT), "direct-nameserver": pick("direct-nameserver", directDNS), "direct-nameserver-follow-policy": pick("direct-nameserver-follow-policy", true), "proxy-server-nameserver": pick("proxy-server-nameserver", serverDNS), "nameserver": pick("nameserver", proxyDNS) };
+
+      // nameserver-policy：secure=脚本 cn/non-cn 分流；merge=订阅 key 优先覆盖
+      const scriptPolicy = { "rule-set:cn-domain": directDNS, "rule-set:non-cn": proxyDNS };
+      const mergedPolicy = mergeMode === "secure" ? scriptPolicy : { ...scriptPolicy, ...(sub["nameserver-policy"] || {}) };
+
+      config["dns"] = {
+        enable: true,
+        listen: finalListen,
+        ipv6: USER_CONFIG.enableIPv6,
+        "enhanced-mode": "fake-ip",
+        "fake-ip-range": "198.18.0.1/16",
+        "fake-ip-filter-mode": finalMode,
+        "fake-ip-filter": finalList,
+        "respect-rules": true,
+        "use-hosts": mergeMode === "secure" ? true : pick("use-hosts", true),
+        "use-system-hosts": mergeMode === "secure" ? false : pick("use-system-hosts", false),
+        ...ns,
+        "nameserver-policy": mergedPolicy,
+      };
+    }
   }
 
   // sniffer 注入
