@@ -218,7 +218,7 @@ defaultProxyMode: "auto"         # [toolkit] auto / manual / fallback / direct /
 # 扩展分流
 # enableAntiAD: false            # [toolkit] 激进广告拦截（容易误杀）
 # enableGitHub: true             # [toolkit] GitHub, GitLab 等
-enableScholar: false             # [toolkit] Google Scholar
+# enableScholar: false           # [toolkit] Google Scholar
 # enableSocial: false            # [toolkit] Discord, Messenger, Line 等
 # enableCrypto: false            # [toolkit] Binance 等交易平台
 # enablePayPal: false            # [toolkit] PayPal 独立分流
@@ -242,7 +242,19 @@ enableScholar: false             # [toolkit] Google Scholar
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑬ 测速与规则集
+# ⑬ 进程级分流名单
+#    删除注释就整体覆盖内置默认值（含内置项都要自己重新写一遍）
+# ─────────────────────────────────────────────────────────────────────
+# processDirectWin:              # [toolkit] Windows 强制直连（默认: qBittorrent, Thunder, BitComet, uTorrent, aria2c）
+# processDirectMac:              # [toolkit] macOS 强制直连（默认: Thunder, BitComet, uTorrent, qbittorrent, aria2c, transmission-daemon）
+# processDirectLin:              # [toolkit] Linux 强制直连（默认: qbittorrent, aria2c, transmission-daemon）
+# processProxyWin:               # [toolkit] Windows 强制走下载策略（默认: IDMan, fdm）
+# processProxyMac:               # [toolkit] macOS 强制走下载策略（默认: fdm）
+# processProxyLin:               # [toolkit] Linux 强制走下载策略（默认空，按需填写，例: [motrix]）
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ⑭ 测速与规则集
 # ─────────────────────────────────────────────────────────────────────
 testTolerance: 50                # [共享] 延迟容忍度，防止频繁切换
 # testInterval: 300              # [toolkit] 测速间隔（秒）
@@ -252,27 +264,32 @@ testTolerance: 50                # [共享] 延迟容忍度，防止频繁切换
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑭ DNS
+# ⑮ DNS
 # ─────────────────────────────────────────────────────────────────────
+# dnsListen: "127.0.0.1"           # 监听 IP / 地址（可带端口）
+#                                  # 只写 host（如 0.0.0.0）→ IP 用你的，端口从订阅取（缺省 1053）
+#                                  # 写 host:port（如 0.0.0.0:53）→ 整条覆盖，软路由/旁路由推荐
 # dnsDefault: ["223.5.5.5", "119.29.29.29"]
-# dnsDirect: ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"]
+# dnsDirect: ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query", "223.5.5.5", "119.29.29.29"]  # DoH 加密优先 + UDP 兜底
 # dnsProxy: ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"]
+# dnsServer:  ["https://223.5.5.5/dns-query", "https://119.29.29.29/dns-query"]
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑮ 安全防漏与内核覆写
+# ⑯ 安全防漏与内核覆写
 # ─────────────────────────────────────────────────────────────────────
 # enableProcessDirect: true      # [toolkit] P2P/BT 强制直连
 # enableTrafficAudit: true       # [toolkit] 非标流量强制直连
-# enableQUICReject: false        # [toolkit] 屏蔽 QUIC，强制降级 TCP
+# enableQUICReject: false        # [toolkit] QUIC 智能分流
 # overwriteTun: true             # [toolkit] 覆写 TUN 配置
-# overwriteDns: true             # [toolkit] 覆写 DNS 配置
+# overwriteDns: true             # [toolkit] 覆写 DNS 配置（配合下方 dnsMergeMode 使用）
+# dnsMergeMode: secure           # [toolkit] DNS 覆写模式：secure=安全模式；merge=兼容模式；passthrough=关闭覆写
 # overwriteSniffer: true         # [toolkit] 覆写 Sniffer 配置
 # enableCoreOptimize: true       # [toolkit] 核心优化：性能提升、统一延迟、指纹伪装
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑯ 高级：pure / toolkit 差异化覆盖（绝大多数用户无需修改）
+# ⑰ 高级：pure / toolkit 差异化覆盖（绝大多数用户无需修改）
 # ─────────────────────────────────────────────────────────────────────
 # 仅当需要 pure 和 toolkit 两侧读不同值时才用。嵌套对象整体替换非字段级合并。
 # 例：根级 logLevel: "debug" + pureConfig.logLevel: "silent"

@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
 [![Builder](https://img.shields.io/badge/Builder-v1.3.0-9cf)](CHANGELOG.md)
-[![Toolkit](https://img.shields.io/badge/Toolkit-v3.3.5-blue)](CHANGELOG.md)
+[![Toolkit](https://img.shields.io/badge/Toolkit-v3.4.0-blue)](CHANGELOG.md)
 [![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.3-blueviolet)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
@@ -38,17 +38,14 @@
 
 ## ✨ 核心特性
 
-- 🧩 **注册表驱动架构**：六维自定义服务注册表（AI / 流媒体 / 社交 / 游戏 / 系统 / 学术），填入定义即启用，无需触碰脚本逻辑。
-- 🧹 **深度清洗去重**：去除冗余广告/倍率，拦截纯文本引流节点，保留落地城市。
-- 🌍 **动态地区折叠**：小众地区自动归入大洲组，支持 Emoji 国旗动态捕获冷门国家。
-- 🔀 **全场景分流**：内置广告、AI、游戏、影音、社交、金融等 20+ 常用分流，支持自定义规则与远程规则集注入。
-- 🎨 **协议与状态图标**：支持展示节点底层协议（🦊/🛸/🐴等）及业务解锁状态。
-- 🏷️ **机场标签前缀**：多机场订阅合并时自动/手动标注节点来源，面板来源一目了然。
-- 🗑️ **DAG 级联清理**：自动删减空策略组与孤儿规则，保持内核配置纯净。
-- ⚡ **性能防漏**：BT 直连防封、精准 TLS 指纹伪装、流量审计、TUN/DNS/Sniffer 等深度优化。
-- 🔍 **智能 IP 溯源**：纯净版清洗脚本支持接入 ip-api 批量高并发解析，精准纠正 CDN 或虚假定位节点。
-- 🧬 **智能节点裂变**：纯净版脚本支持将域名节点通过 DNS 解析裂变为多个 IP 实体节点（支持 IPv4/IPv6 过滤与数量上限控制），有效应对单域名多 IP、CDN 调度或需物理 IP 直连的高精度分流场景。
- - 🖥️ **全场景部署**：提供 `CLI 命令行`（`cli.js`）、`本地 HTTP 服务`（`server.js`）与 `Cloudflare Worker`（`worker.js`）三种运行入口，适配终端调试、自建订阅 API、边缘网络加速等多种使用场景
+- 🧹 **节点深度清洗**：自动剔除广告引流与高倍率节点，精准识别落地城市与底层协议（🦊/🛸/🐴），支持多机场订阅合并标注来源。
+- 🌍 **动态地区折叠**：热门地区独立建组，小众国家自动归入大洲组，结合 Emoji 国旗直观显示。
+- 🔀 **开箱即用分流**：内置 AI 助手 (ChatGPT/Claude)、流媒体 (Netflix/Disney+)、游戏、社交与学术等 20+ 常用分流，无节点策略组自动隐藏。
+- ⚡ **DNS 防漏与 BT 保护**：深度优化 Mihomo 内核性能，提供智能 Fake-IP 防泄漏防护，BT/PT 下载自动直连防封号。
+- 🖥️ **全场景部署**：支持客户端直接加载脚本、CLI 命令行、自建 VPS 订阅 API 与 Cloudflare Worker 边缘零成本部署。
+- 🔄 **全链路简繁转换**：支持繁体节点名与配置自动转简体识别清洗，最终按需输出简体或繁体。
+
+> 💡 **极客进阶**：支持纯净清洗模式（`pure-nodes.js`）、IP-API 物理定位纠偏、域名 DNS 裂变多 IP、自定义六维服务注册表等深度定制能力。
 
 ---
 
@@ -98,7 +95,7 @@ npm run build:worker
 #    （如需使用 Wrangler CLI 自动化部署，请参考 Cloudflare 官方文档配置 wrangler.toml）
 ```
 
-> 💡 **提示**：Worker模式支持环境变量 `DEFAULT_CONFIG_URL`，可免去每次请求带参数，详见下方 [🖥️ 部署与运行](#️-部署与运行)。
+> 💡 **提示**：Worker模式支持环境变量 `DEFAULT_CONFIG_URL`，可免去每次请求带参数，详见下方 [🖥️ 详细部署指南](#️-详细部署指南)。
 
 ---
 
@@ -386,7 +383,7 @@ npm run build:worker
 </details>
 
 <details>
-<summary><b>🧩 自定义服务注册表 (v3.0 新增)</b></summary>
+<summary><b>🧩 自定义服务注册表</b></summary>
 
 `CUSTOM_SERVICES` 是 v3.0 的核心升级——六维注册表让你无需修改脚本逻辑即可无限扩展新服务。只需两步：**① 在对应分类中填入定义** → **② 将 key 加入对应服务数组**，即可零侵入启用。
 
@@ -503,27 +500,64 @@ CUSTOM_SERVICES.social = {
 </details>
 
 <details>
-<summary><b>📋 自定义规则与规则集 (v3.0 新增)</b></summary>
+<summary><b>📋 自定义规则与规则集</b></summary>
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `CUSTOM_RULES` | `[]` | 原始分流规则数组，支持 `DOMAIN-SUFFIX`/`IP-CIDR`/`RULE-SET`/`PROCESS-NAME` 等任意格式，注入到 MATCH 之前，优先级高于所有内置规则 |
 | `CUSTOM_RULE_PROVIDERS` | `{}` | 远程 rule-provider 注册表，必填 `url`/`behavior`/`format`，可选 `interval`/`path`/`proxy` |
-| `CUSTOM_PROCESS_DIRECT_WIN/MAC/LIN` | `[]` | 追加进程直连名单（自动合并到内置 BT 进程之后） |
-| `CUSTOM_PROCESS_PROXY_WIN/MAC` | `[]` | 追加进程强制走下载策略名单 |
+| `processDirectWin/Mac/Lin` | 内置 BT 软件名单 | 进程强制直连名单（直接覆盖内置列表，不需要 concat 追加） |
+| `processProxyWin/Mac/Lin` | `["IDMan", "fdm"]` 等 | 进程强制走下载策略名单（v3.4.0 新增 Lin 支持） |
+
+> ⚠️ **v3.4.0 破坏性变更**：移除了 `customProcessDirectWin/Mac/Lin` 和 `customProcessProxyWin/Mac` 共 6 个追加变量，统一改为直接覆盖 `processDirect*` / `processProxy*`。
 
 </details>
 
 <details>
-<summary><b>📡 DNS 服务器配置 (v3.0 新增)</b></summary>
+<summary><b>📡 DNS 服务器配置</b></summary>
+
+v3.4.0 将 DNS 系统从「脚本硬编码覆写」重构为三态可选模式，订阅兼容性大幅提升。
+
+**DNS 覆写模式（`dnsMergeMode`）：**
+
+| 模式 | 行为 | 适用场景 |
+|------|------|----------|
+| `secure`（默认） | 脚本权威写入 DNS 服务器，仅保留订阅的 `listen` 地址；`fake-ip-filter` 合并订阅列表；`use-system-hosts` 强制关闭 | 防泄漏优先，不信任订阅 DNS |
+| `merge` | 所有 DNS 字段以订阅优先、脚本兜底补缺 | 订阅自带定制 DoH/DoT 时友好共存 |
+| `passthrough` | 跳过脚本一切 DNS 覆写，`config.dns` 原样保留 | 不希望脚本干预 DNS |
+
+**DNS 服务器配置项：**
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
+| `dnsListen` | `127.0.0.1:1053` | DNS 监听地址，支持 host/port 拆分（只写 IP 沿用订阅端口；软路由可改 `0.0.0.0:53`） |
 | `dnsDefault` | `["223.5.5.5", "119.29.29.29"]` | 基础解析 DNS（UDP） |
-| `dnsDirect` | `["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"]` | 直连 DNS（DoH），国内域名解析 |
+| `dnsDirect` | `["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query", "223.5.5.5", "119.29.29.29"]` | 直连 DNS（DoH 优先 + UDP 兜底） |
 | `dnsProxy` | `["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"]` | 代理 DNS（DoH），海外域名解析 |
+| `dnsServer` | `["https://223.5.5.5/dns-query", "https://119.29.29.29/dns-query"]` | 节点域名解析 DNS（`proxy-server-nameserver`），不受回国模式影响 |
 
-> 💡 回国模式下直连/代理 DNS 会自动交换，无需手动调整。
+> ⚠️ **v3.4.0 破坏性变更**：`dnsListen` 默认从 `0.0.0.0:1053` 收紧为 `127.0.0.1:1053`，软路由场景请显式改为 `0.0.0.0:1053`。详见 [CHANGELOG.md](CHANGELOG.md)。
+> 💡 回国模式下直连/代理 DNS 会自动交换，`dnsServer` 始终独立不受影响。
+
+</details>
+
+<details>
+<summary><b>🔄 简繁转换</b></summary>
+
+构建层支持中文简繁转换全链路：入口处将 config 与节点名繁→简（确保清洗识别一致），toolkit 输出后按配置输出简体或繁体（含节点名、策略组名、组内引用、`use` 引用、`rules` 组名引用同步转换）。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `enableChineseConvert` | `false` | 是否启用简繁转换 |
+| `chineseConvertMode` | `"t2s"` | 输出模式：`t2s`=简体 / `s2t`=繁体 |
+
+**安装依赖：**
+
+```bash
+npm install opencc-js
+```
+
+> ⚠️ `opencc-js` 为可选依赖（`optionalDependencies`），未安装时简繁转换自动降级为空函数（不转换，不影响运行）。Worker 环境完全禁用此功能（构建时排除 `opencc-js`）。
 
 </details>
 

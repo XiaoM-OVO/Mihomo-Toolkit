@@ -1,5 +1,41 @@
 # 更新日志
 
+## 2026-08-12 (主脚本 v3.4.0)
+
+### ⚙️ 主脚本 v3.4.0
+
+#### ✨ 新增
+
+- **DNS 三态覆写模式**（`dnsMergeMode`）：DNS 系统从「脚本硬编码覆写」重构为三态可选，订阅兼容性大幅提升：
+  - `secure`（默认，防泄漏优先）：脚本权威写入 DNS 服务器，仅当订阅已有 `listen` 时保留地址；`fake-ip-filter-mode` 强制 `blacklist` 并合并订阅列表；`nameserver-policy` 使用脚本的 cn/non-cn 分流策略；`use-system-hosts` 强制关闭杜绝本地 hosts 污染。
+  - `merge`（订阅友好）：所有 DNS 字段均以订阅配置优先、脚本作兜底补缺；`fake-ip-filter`、`nameserver-policy`、`use-hosts`、`use-system-hosts` 均为订阅 key 覆盖脚本默认值。
+  - `passthrough`（完全不干预）：跳过脚本一切 DNS 覆写逻辑，`config.dns` 原样保留。
+- **DNS 监听独立配置**（`dnsListen`）：从原先硬编码 `0.0.0.0:1053` 改为用户可配置，且支持 host/port 智能拆分合并——例如只写 `127.0.0.1` 沿用订阅端口，或写 `:53` 改端口不改 host，软路由场景也能一键改 `0.0.0.0:53`。
+- **节点域名解析 DNS 独立配置**（`dnsServer` / `CUSTOM_DNS_SERVER`）：原先与 `dnsDefault` / 回国模式耦合，现独立为 `proxy-server-nameserver` 专用字段，节点域名（SNI/Server）解析路径不再受回国开关影响，解析稳定性提升。
+- **直连 DNS 增加 UDP 兜底**：`dnsDirect` 在 DoH（`https://223.5.5.5/dns-query` + `https://120.53.53.53/dns-query`）基础上追加 `223.5.5.5`、`119.29.29.29` 两个纯 UDP 地址，DoH 链路异常时自动回退，防止直连域名完全断解析。
+- **QUIC 智能分流**（`enableQUICReject` 升级）：从之前全局屏蔽 QUIC 改为按地域精确屏蔽，默认模式只挡海外 QUIC（国内直连），开启回国模式时自动反向只挡国内 QUIC（海外直连）；关闭则完全不干预 QUIC（行为与 `false` 注释对齐）。
+- **游戏分流按需加载**（`gameServices` 列表）：从 GAME_REGISTRY 全量 provider + rules 改为按列表按需加载，和 aiServices / streamingServices 风格对齐；选 `steam` 时自动附带 `steam-cn` 依赖，避免规则引用不存在的 provider。
+- **Linux 强制下载进程分流**：补齐 `processProxyLin` 配置项及 `IS_LIN` 规则注入，此前 WIN/MAC 已有、Linux 全缺。
+
+#### 🧹 重构与优化
+
+- **DNS 覆写逻辑大重构**：引入 `splitHostPort()` 解析监听地址、`pick()` 订阅优先取值、`fake-ip-filter` blacklist/whitelist 双模式合并策略、`nameserver-policy` 字典深合并等辅助函数，三态模式逻辑清晰可维护，不再有散落的硬编码字段。
+- **进程名单精简**：移除 6 个 `customProcess*` 系列追加变量（`customProcessDirectWin/Mac/Lin` + `customProcessProxyWin/Mac/Lin`），统一走 `processDirect*` / `processProxy*` 直接覆盖，减少一层 concat 调用。
+- **社交注册表防越界**：`SOCIAL_SERVICES` 过滤时追加 `&& SOCIAL_REGISTRY[k]` 校验，避免用户配置了注册表不存在的 key 时 `undefined` 传值。
+- **注释同步更新**：`enableQUICReject`、`overwriteDns`、`enableGame` 等开关的注释文字与新行为对齐，DNS 章节标题统一为「【7. DNS 服务器配置】」。
+
+#### 🐛 修复
+
+- **回国模式节点 DNS 解析异常**：3.3.5 及之前 `proxy-server-nameserver` 在回国模式下会切到 `CUSTOM_DNS_DEFAULT`（国内 DNS），可能导致海外节点域名被污染，v3.4.0 改为独立的 `dnsServer` 配置始终不受回国开关影响。
+- **DNS listen 与订阅冲突**：3.3.5 硬编码 `0.0.0.0:1053` 会覆盖订阅指定的监听地址/端口，v3.4.0 `dnsListen` 支持 host/port 拆分合并，`secure` 模式下也会优先使用订阅的 listen 作为兜底。
+
+#### ⚠️ 破坏性变更
+
+- **移除 `customProcess*` 追加变量**：`customProcessDirectWin` / `customProcessDirectMac` / `customProcessDirectLin` / `customProcessProxyWin` / `customProcessProxyMac`（Linux 原本就没有）共 6 个字段已删除。如果你的配置中使用了这些字段追加进程，请改为直接覆盖对应基础变量：`processDirectWin` / `processDirectMac` / `processDirectLin` / `processProxyWin` / `processProxyMac` / `processProxyLin`。
+- **DNS listen 默认地址收紧**：原先硬编码 `0.0.0.0:1053`（开放到所有网卡），v3.4.0 `dnsListen` 默认值为 `127.0.0.1:1053`。如果你的部署是软路由/旁路由场景、需要局域网内其他设备查询 Mihomo 的 DNS 端口，请显式改为 `dnsListen: "0.0.0.0:1053"`（软路由可直接写 `0.0.0.0:53`）。
+- **DNS 覆写默认模式为 `secure`**：`dnsMergeMode` 默认为 `secure`，即脚本权威写入 DNS 服务器配置，订阅自带的 DNS 字段（除 listen 外）会被覆盖。若你需要保留订阅的 DNS 配置（例如订阅自带了定制的 DoH/DoT），请显式设置 `dnsMergeMode: "merge"`；不希望脚本改任何 DNS 时设为 `dnsMergeMode: "passthrough"`。
+- **回国模式 `proxy-server-nameserver` 不再交叉切换**：3.3.5 及之前，开启回国（`enableDomesticGroup && !proxyFirst`）时 `proxy-server-nameserver` 会自动切到国际 DNS 再切到国内 DNS 的交叉逻辑已移除，现统一使用独立的 `dnsServer` 配置（默认 DoH：223.5.5.5 + 119.29.29.29）。若你是回国用户并使用海外 DNS 解析节点，请按需调整 `dnsServer` 值。
+
 ## 2026-08-07 (主脚本 v3.3.5)
 
 ### ⚙️ 主脚本 v3.3.5
