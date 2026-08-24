@@ -38,6 +38,7 @@ const REGION_DEFS_RAW = [
   { group: "eu", name: "爱尔兰", icon: "🇮🇪", city: "都柏林", reg: /爱尔兰|(?<![a-zA-Z])IE(?![a-zA-Z])|Ireland/i },
   { group: "eu", name: "波兰",   icon: "🇵🇱", city: "华沙", reg: /波兰|(?<![a-zA-Z])PL(?![a-zA-Z])|Poland/i },
   { group: "eu", name: "芬兰",   icon: "🇫🇮", city: "赫尔辛基", reg: /芬兰|(?<![a-zA-Z])FI(?![a-zA-Z])|Finland/i },
+  { group: "eu", name: "冰岛",   icon: "🇮🇸", city: "雷克雅未克", reg: /冰岛|(?<![a-zA-Z])IS(?![a-zA-Z])|Iceland/i },
 
   // --- 南亚大区 ---
   { group: "sa", name: "印度",     icon: "🇮🇳", city: "孟买|新德里", reg: /印度|(?<![a-zA-Z])IN(?![a-zA-Z])|India/i },
