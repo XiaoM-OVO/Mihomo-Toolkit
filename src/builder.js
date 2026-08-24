@@ -216,19 +216,22 @@ function parseSsUri(uri) {
   try {
     const url = new URL(uri);
     let method = '', password = '';
-    const user = url.username;
+    const user = safeDecodeURIComponent(url.username);
     const pass = url.password;
 
     if (user && pass) {
-      method = safeDecodeURIComponent(user);
-      password = safeDecodeURIComponent(pass);
+      method = safeDecodeURIComponent(user).replace(/[\r\n\x00-\x1F]/g, '').trim();
+      password = safeDecodeURIComponent(pass).replace(/[\r\n\x00-\x1F]/g, '').trim();
     } else if (user && user.includes(':')) {
       [method, password] = user.split(':');
-      password = safeDecodeURIComponent(password);
+      method = method.replace(/[\r\n\x00-\x1F]/g, '').trim();
+      password = safeDecodeURIComponent(password).replace(/[\r\n\x00-\x1F]/g, '').trim();
     } else {
       const decoded = decodeBase64UrlSafe(user);
       if (decoded && decoded.includes(':')) {
-        [method, password] = decoded.split(':');
+        const firstColon = decoded.indexOf(':');
+        method = decoded.slice(0, firstColon).replace(/[\r\n\x00-\x1F]/g, '').trim();
+        password = decoded.slice(firstColon + 1).replace(/[\r\n\x00-\x1F]/g, '').trim();
       } else {
         return null;
       }
@@ -424,7 +427,7 @@ function isAllowedUrl(urlStr) {
     if (!['http:', 'https:'].includes(parsed.protocol)) return false;
     const host = parsed.hostname.toLowerCase();
     if (/^(localhost|0\.0\.0\.0|::1)$/.test(host)) return false;
-    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) return false;
+    if (isPrivateIp(host)) return false;
     return true;
   } catch {
     return false;
@@ -545,9 +548,39 @@ async function fetchNodes(url, fullRedact = false, debug = false) {
   return { content, subInfo };
 }
 
-const BUILDER_VERSION = "v1.3.0";
+const BUILDER_VERSION = "v1.4.0";
+
+// 本地内存 TTL 缓存与容灾降级（Stale-on-Error Fallback）
+const profileCacheMap = new Map();
+
+function getCacheKey(userConfig, options) {
+  try {
+    const subs = (userConfig.subscriptions || []).map(s => ({ url: s.url, uri: s.uri, tag: s.tag }));
+    return JSON.stringify({
+      subs,
+      url: options.url,
+      type: options.type || userConfig.type || 'pure',
+      convert: userConfig.enableChineseConvert,
+      convertMode: userConfig.chineseConvertMode,
+      redactLevel: userConfig.redactLevel
+    });
+  } catch { return null; }
+}
 
 async function buildProfile(userConfig, options = {}) {
+  const enableCache = userConfig.enableCache !== false && !options.noCache;
+  const cacheTtlMs = (userConfig.cacheTtl || 300) * 1000;
+  const cacheKey = getCacheKey(userConfig, options);
+
+  if (enableCache && cacheKey && profileCacheMap.has(cacheKey)) {
+    const cached = profileCacheMap.get(cacheKey);
+    if (Date.now() - cached.timestamp < cacheTtlMs) {
+      const remainingSec = Math.round((cacheTtlMs - (Date.now() - cached.timestamp)) / 1000);
+      console.log(`[Builder] ⚡ 命中本地内存缓存 (${remainingSec}s 后过期)，直接响应缓存数据`);
+      return cached.result;
+    }
+  }
+
   let configData = { proxies: [] };
   let hasInjectedTag = false;
   let globalUpload = 0, globalDownload = 0, globalTotal = 0, globalExpire = 0;
@@ -592,8 +625,8 @@ async function buildProfile(userConfig, options = {}) {
   }
 
   if (userConfig.subscriptions && Array.isArray(userConfig.subscriptions) && userConfig.subscriptions.length > 0) {
-    for (const sub of userConfig.subscriptions) {
-      if (!sub.url && !sub.uri) continue;
+    const fetchTasks = userConfig.subscriptions.map(async (sub) => {
+      if (!sub.url && !sub.uri) return { sub, rawResult: null, error: null };
       try {
         let rawResult;
         if (sub.uri) {
@@ -602,23 +635,35 @@ async function buildProfile(userConfig, options = {}) {
         } else {
           rawResult = await fetchNodes(sub.url, fullRedact, debug);
         }
-        parseSubInfoForGlobal(rawResult.subInfo);
-      const subConfig = parseContent(rawResult.content);
-      let subProxies = subConfig.proxies || [];
-      
-      // URI 节点自定义名称覆盖
-      if (sub.uri && sub.name && subProxies.length > 0) {
-        subProxies[0].name = sub.name;
+        return { sub, rawResult, error: null };
+      } catch (e) {
+        return { sub, rawResult: null, error: e };
       }
+    });
 
-      // URI 节点日志
-      if (sub.uri) {
-        const nameHint = subProxies[0] ? subProxies[0].name : '未知';
-        console.log(`[Builder] URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
-      }
-      
-      let effectiveTag = sub.tag;
-      let effectiveIndexPrefix = sub.indexPrefix;
+    const fetchedResults = await Promise.all(fetchTasks);
+
+    for (const { sub, rawResult, error } of fetchedResults) {
+      if (!rawResult && !error) continue;
+      try {
+        if (error) throw error;
+        parseSubInfoForGlobal(rawResult.subInfo);
+        const subConfig = parseContent(rawResult.content);
+        let subProxies = subConfig.proxies || [];
+        
+        // URI 节点自定义名称覆盖
+        if (sub.uri && sub.name && subProxies.length > 0) {
+          subProxies[0].name = sub.name;
+        }
+
+        // URI 节点日志
+        if (sub.uri) {
+          const nameHint = subProxies[0] ? subProxies[0].name : '未知';
+          console.log(`[Builder] URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
+        }
+        
+        let effectiveTag = sub.tag;
+        let effectiveIndexPrefix = sub.indexPrefix;
         if (!effectiveTag) {
           const reg = /^\[([^\]]{1,12})\]/i;
           const tagCounts = {};
@@ -879,7 +924,7 @@ async function buildProfile(userConfig, options = {}) {
               yamlStr;
   }
   
-  return {
+  const profileResult = {
     yamlStr,
     meta: result && !Array.isArray(result) ? result.meta : null,
     userInfo: {
@@ -889,6 +934,12 @@ async function buildProfile(userConfig, options = {}) {
       expire: globalExpire
     }
   };
+
+  if (enableCache && cacheKey) {
+    profileCacheMap.set(cacheKey, { timestamp: Date.now(), result: profileResult });
+  }
+
+  return profileResult;
 }
 
 // 单次请求资源限制默认值（保守值，防止恶意 config 注入导致资源耗尽）
@@ -921,4 +972,17 @@ function validateRequestLimits({ subscriptionUrls, remoteConfigSize, totalNodes,
   return null;
 }
 
-module.exports = { buildProfile, redactUrl, isAllowedUrl, safeFetchText, validateRequestLimits, DEFAULT_REQUEST_LIMITS };
+module.exports = {
+  buildProfile,
+  redactUrl,
+  isAllowedUrl,
+  safeFetchText,
+  validateRequestLimits,
+  DEFAULT_REQUEST_LIMITS,
+  validateUrlSsrf,
+  parseContent,
+  parseVlessUri,
+  parseVmessUri,
+  parseTrojanUri,
+  parseSsUri
+};

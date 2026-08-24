@@ -8,6 +8,17 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    if (url.pathname === '/healthz' || url.pathname === '/ping') {
+      return new Response(JSON.stringify({
+        status: 'ok',
+        service: 'mihomo-toolkit-worker',
+        version: '1.4.0'
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+      });
+    }
+
     if (url.pathname !== '/sub') {
       return new Response('Mihomo-Toolkit Worker is running. Request /sub?url=... or /sub?config=...', { status: 200 });
     }

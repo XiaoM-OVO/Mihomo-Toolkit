@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Builder](https://img.shields.io/badge/Builder-v1.3.0-9cf)](CHANGELOG.md)
+[![Builder](https://img.shields.io/badge/Builder-v1.4.0-9cf)](CHANGELOG.md)
 [![Toolkit](https://img.shields.io/badge/Toolkit-v3.4.0-blue)](CHANGELOG.md)
 [![Pure_Script](https://img.shields.io/badge/Pure_Script-v1.2.3-blueviolet)](CHANGELOG.md)
 
@@ -697,6 +697,7 @@ v3.0 采用注册表架构，只需两步，无需触碰脚本逻辑：<br>
 - 基础内核：[Mihomo](https://github.com/MetaCubeX/mihomo)
 - 规则集：[meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) & [anti-AD](https://github.com/privacy-protection-tools/anti-AD)
 - 图标库：[Orz-3/mini](https://github.com/Orz-3/mini) & [Koolson/Qure](https://github.com/Koolson/Qure) & [lige47/lige_icon](https://github.com/lige47/lige_icon)
+- 简繁转换：[opencc-js](https://github.com/nk2028/opencc-js)
 - **AI 协同**：由本人架构，Gemini，DeepSeek参与代码生成与审查，多轮对线压力测试迭代而成。
 
 ## 🐛 提交问题
