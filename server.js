@@ -10,6 +10,17 @@ const CONFIG_PATH = process.env.CONFIG_PATH || path.resolve(__dirname, 'config.y
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
   
+  if (reqUrl.pathname === '/healthz' || reqUrl.pathname === '/ping') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: 'mihomo-toolkit-server',
+      version: '1.4.0',
+      uptime: Math.floor(process.uptime())
+    }));
+    return;
+  }
+
   if (reqUrl.pathname === '/sub') {
     try {
       // 先加载本地配置文件获取 enableUrlParams 和 authToken 设置
