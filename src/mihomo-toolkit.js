@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.4.0 (Build 2026.08.12)
+// 🏷️ 版本: v3.4.1 (Build 2026.08.24)
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -10,12 +10,12 @@
 // 💡 【节点清洗图标说明】
 // 🤖 : OpenAI / ChatGPT      ♊ : Google Gemini       🦀 : Anthropic Claude
 // 📺 : 流媒体访问 (NF/P+)     🎮 : 游戏 / FullCone     ⏬ : 下载 / BT 专用
-// 🛡️ : AnyTLS / 安全协议      📱 : WAP 移动优化         🏠 ：住宅IP / 家宽
+// 📱 : WAP 移动优化            🏠 ：住宅IP / 家宽
 // 🆓 : 免费 / 公益节点         🗑️ : 清洗失败节点
 // ------------------------------------------------------------------------
 // 💡 【底层协议图标说明】
-// 🛩️ : SS/SSR    🦊 : VMess     🛸 : VLESS      🐎 : Trojan
-// ⚡ : HY/HY2     💨 : TUIC      🕸️ : WireGuard  📡 : Snell
+// 🛩️ : SS/SSR    🦊 : VMess    🛸 : VLESS     🐎 : Trojan    🛡️ : AnyTLS
+// ⚡ : HY/HY2     💨 : TUIC     🕸️ : WireGuard 📡 : Snell
 // ------------------------------------------------------------------------
 // 💡 【传输层标签说明】(由 renameTemplate 中的 {transport} 控制)
 // TCP 默认隐藏 | WS / H2 / GRPC / QUIC / HTTP 展示在节点名末尾 · 之后
@@ -118,7 +118,7 @@ const DEFAULT_CONFIG = {
   enableTrafficAudit: true,    // 🛡️ 流量审计：非标流量强制直连防断流
   enableQUICReject: false,     // ⚡ QUIC 智能分流：开启后跟随路由模式自动适配，关闭则完全直连（不干预 QUIC）
   overwriteTun: true,          // 🖧 覆写 TUN 配置：注入严格路由与网段排除
-  overwriteDns: true,          // 📡 覆写 DNS 配置（与下方 dnsMergeMode 配合）
+  overwriteDns: true,          // 📡 覆写 DNS 总开关（拉闸即完全不干预；开启后由下方 dnsMergeMode 分级控制）
   dnsMergeMode: "secure",      // 📡 DNS 覆写模式：secure=防泄漏优先（脚本权威写 DNS 服务器，仅订阅有 listen 时保留）；merge=订阅友好（DNS 服务器订阅优先）；passthrough=完全不碰
   overwriteSniffer: true,      // 🔎 覆写 Sniffer 配置：启用深度包检测防 SNI 阻断
   enableCoreOptimize: true     // ⚡ 覆写核心内核优化: 开启提升性能、统一延迟、指纹伪装
@@ -134,7 +134,7 @@ function main(config, extConfig) {
   // 🤖 AI 服务加载列表（受 enableAI 总开关控制，删 key 即关闭）
   //    可用: chatgpt, gemini, claude, copilot (+ CUSTOM_SERVICES.ai)
   const AI_SERVICES = USER_CONFIG.aiServices || ["chatgpt", "gemini", "claude", "copilot"];
-  const AI_PREFERRED_REGIONS = USER_CONFIG.aiPreferredRegions || ["us", "jp", "tw", "sg", "hk", "kr", "eu"];
+  const AI_PREFERRED_REGIONS = USER_CONFIG.aiPreferredRegions || ["us", "jp", "tw", "sg", "kr", "eu"];
 
   // 💬 海外社交 App 列表
   const SOCIAL_SERVICES = USER_CONFIG.socialServices || ["twitter", "facebook", "instagram", "discord"];
@@ -295,6 +295,7 @@ function main(config, extConfig) {
       { group: "eu", name: "爱尔兰", icon: "🇮🇪", city: "都柏林", reg: /爱尔兰|(?<![a-zA-Z])IE(?![a-zA-Z])|Ireland/i },
       { group: "eu", name: "波兰", icon: "🇵🇱", city: "华沙", reg: /波兰|(?<![a-zA-Z])PL(?![a-zA-Z])|Poland/i },
       { group: "eu", name: "芬兰", icon: "🇫🇮", city: "赫尔辛基", reg: /芬兰|(?<![a-zA-Z])FI(?![a-zA-Z])|Finland/i },
+      { group: "eu", name: "冰岛", icon: "🇮🇸", city: "雷克雅未克", reg: /冰岛|(?<![a-zA-Z])IS(?![a-zA-Z])|Iceland/i },
 
       // --- 南亚大区 ---
       { group: "sa", name: "印度", icon: "🇮🇳", city: "孟买|新德里", reg: /印度|(?<![a-zA-Z])IN(?![a-zA-Z])|India/i },
@@ -334,11 +335,12 @@ function main(config, extConfig) {
     protocols: {
       "ss": "🛩️", "ssr": "🚀", "vmess": "🦊", "vless": "🛸",
       "trojan": "🐴", "hysteria": "⚡", "hysteria2": "⚡",
-      "tuic": "💨", "wireguard": "🕸️", "snell": "📡", "http": "🌐", "https": "🔒"
+      "tuic": "💨", "wireguard": "🕸️", "snell": "📡", "http": "🌐", "https": "🔒",
+      "anytls": "🛡️"
     },
     features: {
       "residential": "🏠", "game": "🎮", "streaming": "📺", "download": "⏬", 
-      "free": "🆓", "wap": "📱", "anytls": "🛡️", "cdn中转": "☁️",
+      "free": "🆓", "wap": "📱", "CDN": "☁️", "aws": "🛰️", "AWS": "🛰️",
       "cellular": "📱",
     }
   };
@@ -349,25 +351,17 @@ function main(config, extConfig) {
     "residential": "家宽", "game": "游戏", "streaming": "流媒体",
     "chatgpt": "GPT", "gemini": "Gemini", "claude": "Claude", "copilot": "Copilot", "ai": "AI",
     "download": "下载", "free": "免费", "no_download": "禁止下载",
-    "wap": "WAP", "anytls": "AnyTLS", "cdn中转": "CDN中转",
+    "wap": "WAP", "CDN": "CDN", "AWS": "AWS",
     "cellular": "蜂窝", "ipv6": "IPv6", "dualstack": "双栈"
   };
-  // 文字 → Emoji：enableNodeRename=false 时纯显示层替换，不影响分桶元数据
-  const FEATURE_TEXT_TO_ICON = (() => {
-    const m = {};
-    for (const [tag, txt] of Object.entries(FEATURE_TEXT_MAP)) {
-      if (UI_ICONS.features[tag]) m[txt] = UI_ICONS.features[tag];
-    }
-    return m;
-  })();
   const FEATURE_RULES = [
     { reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential", groupName: "🏠 家宽优选" },
     { reg: /(?:游戏|🎮)|\b(?:Game|FullCone)\b/i,              tag: "game", pool: "game", groupName: "🎮 游戏服务" },
     { reg: /(?:下载|⏬)|\bBT\b/i,                             tag: "download" },
     { reg: /(?:免费|白嫖|公益|🆓)/i,                           tag: "free" },
     { reg: /(?:📱)|\bWAP\b/i,                                 tag: "wap" },
-    { reg: /-A$|(?:🛡️)|\bAnyTLS\b/i,                          tag: "anytls" },
-    { reg: /(?:cdn中转|CDN中转|中转CDN|CDN加速|☁️)/i,         tag: "cdn中转" },
+    { reg: /(?:CDN中转|中转CDN|CDN加速|☁️)/i,        tag: "CDN" },
+    { reg: /(?:\bAmazon\b|\bAWS\b|🛰️)/i,             tag: "AWS" },
     { reg: /(?:流媒体|解锁|📺)/i,                             tag: "streaming" },
     { reg: /\b(?:IPv6|v6)\b/i,                                tag: "ipv6" },
     { reg: /(?:双栈|DualStack)/i,                             tag: "dualstack" },
@@ -550,7 +544,10 @@ function main(config, extConfig) {
     let name = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
     name = name.replace(/\p{Extended_Pictographic}/gu, m => {
       const cp = m.codePointAt(0);
-      return (cp >= 0x1F1E6 && cp <= 0x1F1FF) ? m : "";
+      // 保留地区国旗 + 🏠(家宽标识, U+1F3E0)，其余 emoji 当噪声删除
+      if (cp >= 0x1F1E6 && cp <= 0x1F1FF) return m;
+      if (cp === 0x1F3E0) return m;
+      return "";
     });
     name = name.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, "");
     name = name.replace(/[\u2190-\u21FF\u2460-\u24FF\u2500-\u27BF\u2B00-\u2BFF]/g, " ");
@@ -811,7 +808,10 @@ function main(config, extConfig) {
     name = cleanName;
 
     // --- 步骤 4: 地区匹配与落地城市提取 ---
-    const regionInfo = matchNodeRegion(name);
+    // regionInfo 优先基于 pure 清洗名(proxy.name)识别，能看到 IP 反查/标准化地区结果；
+    // 识别不到再回退原始名。split/单跑时 proxy.name===rawName，行为不变。
+    let regionInfo = matchNodeRegion(sanitizeNodeName(proxy.name));
+    if (!regionInfo) regionInfo = matchNodeRegion(name);
     let destCityStr = "";
     if (regionInfo && regionInfo.city) {
       const cityMatch = rawName.match(regionInfo._cityReg); 
@@ -1051,13 +1051,8 @@ function main(config, extConfig) {
           finalName = finalName.replace(/\s{2,}/g, " ");
         }
       } else {
-        // 关闭重命名：继承输入名（full 模式下 = pure 清洗后的 proxy.name，非 _rawName）
+        // 关闭重命名：完全继承输入名，不做任何替换（full 模式下 = pure 清洗后的 proxy.name）
         finalName = proxy.name;
-        if (USER_CONFIG.showFeatureIcon !== false) {
-          for (const [txt, icon] of Object.entries(FEATURE_TEXT_TO_ICON)) {
-            finalName = finalName.split(txt).join(icon);
-          }
-        }
       }
     }
     
@@ -1770,7 +1765,7 @@ function main(config, extConfig) {
     };
   }
 
-  // DNS 注入（三态：secure / merge / passthrough）
+  // DNS 注入（总开关: overwriteDns；分级: dnsMergeMode secure/merge/passthrough）
   if (USER_CONFIG.overwriteDns) {
     const mergeMode = (USER_CONFIG.dnsMergeMode || "secure").toLowerCase();
     if (mergeMode !== "passthrough") {
@@ -1806,9 +1801,16 @@ function main(config, extConfig) {
         : (mergeMode === "secure" ? scriptFilter : (subList.length ? subList : scriptFilter));
 
       // DNS 服务器：secure=脚本权威；merge=订阅优先脚本补缺
+      const extractPolicyDNS = (policy) => {
+        if (!policy || typeof policy !== "object") return [];
+        return [...new Set(Object.values(policy).flat().filter(s => typeof s === "string"))];
+      };
+      const subProxyServer = sub["proxy-server-nameserver"]
+        || (extractPolicyDNS(sub["nameserver-policy"]).length ? extractPolicyDNS(sub["nameserver-policy"]) : undefined)
+        || serverDNS;
       const ns = mergeMode === "secure"
         ? { "default-nameserver": CUSTOM_DNS_DEFAULT, "direct-nameserver": directDNS, "direct-nameserver-follow-policy": true, "proxy-server-nameserver": serverDNS, "nameserver": proxyDNS }
-        : { "default-nameserver": pick("default-nameserver", CUSTOM_DNS_DEFAULT), "direct-nameserver": pick("direct-nameserver", directDNS), "direct-nameserver-follow-policy": pick("direct-nameserver-follow-policy", true), "proxy-server-nameserver": pick("proxy-server-nameserver", serverDNS), "nameserver": pick("nameserver", proxyDNS) };
+        : { "default-nameserver": pick("default-nameserver", CUSTOM_DNS_DEFAULT), "direct-nameserver": pick("direct-nameserver", directDNS), "direct-nameserver-follow-policy": pick("direct-nameserver-follow-policy", true), "proxy-server-nameserver": subProxyServer, "nameserver": pick("nameserver", proxyDNS) };
 
       // nameserver-policy：secure=脚本 cn/non-cn 分流；merge=订阅 key 优先覆盖
       const scriptPolicy = { "rule-set:cn-domain": directDNS, "rule-set:non-cn": proxyDNS };

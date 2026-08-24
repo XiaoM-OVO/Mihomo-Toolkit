@@ -282,8 +282,8 @@ testTolerance: 50                # [共享] 延迟容忍度，防止频繁切换
 # enableTrafficAudit: true       # [toolkit] 非标流量强制直连
 # enableQUICReject: false        # [toolkit] QUIC 智能分流
 # overwriteTun: true             # [toolkit] 覆写 TUN 配置
-# overwriteDns: true             # [toolkit] 覆写 DNS 配置（配合下方 dnsMergeMode 使用）
-# dnsMergeMode: secure           # [toolkit] DNS 覆写模式：secure=安全模式；merge=兼容模式；passthrough=关闭覆写
+# overwriteDns: true             # [toolkit] 覆写 DNS 总开关（拉闸即完全不干预，开启后由下方 dnsMergeMode 分级控制）
+# dnsMergeMode: secure           # [toolkit] DNS 覆写模式：secure=安全模式；merge=兼容模式；passthrough=完全不干预 DNS
 # overwriteSniffer: true         # [toolkit] 覆写 Sniffer 配置
 # enableCoreOptimize: true       # [toolkit] 核心优化：性能提升、统一延迟、指纹伪装
 
