@@ -2,7 +2,7 @@
  * =========================================================================
  * 📦 Mihomo-Toolkit | 通用纯净节点清洗脚本 (Pure JS Edition) | MIT 许可证
  * =========================================================================
- * 🏷️ 版本: 1.2.3 (Build 2026.08.06)
+ * 🏷️ 版本: 1.2.4 (Build 2026.08.24)
  * 👤 作者: XiaoM-OVO
  * 🔌 环境: Node.js / Sub-Store / Surge / Loon / 浏览器 等(多端自适应)
  * 📝 描述: 零依赖跨平台节点处理核心，提供过滤、去重、重命名与自动排序功能。
@@ -120,7 +120,7 @@ const UI_ICONS = {
         "家宽": "🏠", "游戏": "🎮", "流媒体": "📺", "下载": "⏬", "免费": "🆓",
         "gpt": "🤖", "gemini": "♊", "claude": "🦀", "ai": "✨",
         "nf": "🎬", "d+": "🐭", "yt": "▶️", "tk": "🎵", "sp": "🎧",
-        "no_download": "🚫", "cdn": "☁️", "cdn中转": "☁️", "蜂窝": "📱"
+        "no_download": "🚫", "cdn": "☁️", "CDN": "☁️", "aws": "🛰️", "AWS": "🛰️", "蜂窝": "📱"
     }
 };
 
@@ -154,7 +154,7 @@ STREAMING_SERVICES.forEach(s => s.keys.forEach(k => {
 
 const FEATURE_RULES_RAW = [
     { source: REGEX_FORBID_DL_STR, tag: "no_download" }, 
-    { source: "(?:家宽|住宅|宽带|原生|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)", tag: "residential" },
+    { source: "(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)", tag: "residential" },
     { source: "(?:游戏)|Game|FullCone", tag: "game" },
     { source: "(?:下载)|BT", tag: "download" },
     { source: "(?:免费|白嫖|公益)", tag: "free" },
@@ -205,6 +205,7 @@ const REGION_DEFS = [
     { group: "eu", name: "爱尔兰", icon: "🇮🇪", city: "都柏林", reg: /爱尔兰|(?<![a-zA-Z])IE(?![a-zA-Z])|Ireland/i },
     { group: "eu", name: "波兰", icon: "🇵🇱", city: "华沙", reg: /波兰|(?<![a-zA-Z])PL(?![a-zA-Z])|Poland/i },
     { group: "eu", name: "芬兰", icon: "🇫🇮", city: "赫尔辛基", reg: /芬兰|(?<![a-zA-Z])FI(?![a-zA-Z])|Finland/i },
+    { group: "eu", name: "冰岛", icon: "🇮🇸", city: "雷克雅未克", reg: /冰岛|(?<![a-zA-Z])IS(?![a-zA-Z])|Iceland/i },
 
     // --- 南亚大区 ---
     { group: "sa", name: "印度", icon: "🇮🇳", city: "孟买|新德里", reg: /印度|(?<![a-zA-Z])IN(?![a-zA-Z])|India/i },
@@ -277,7 +278,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         error: (...args) => { if (currentLogLevel >= 1) console.error("[Pure]    ERR  " + args.map(redact).join(' ')); }
     };
 
-    logger.info("pure-nodes v1.2.3 已加载");
+    logger.info("pure-nodes v1.2.4 已加载");
 
     // =========================================================================
     // 🪛 构建动态字典
@@ -315,7 +316,10 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         let name = rawName.replace(REGEX_ZERO_WIDTH, "");
         name = name.replace(/\p{Extended_Pictographic}/gu, m => {
             const cp = m.codePointAt(0);
-            return (cp >= 0x1F1E6 && cp <= 0x1F1FF) ? m : ""; 
+            // 保留地区国旗 + 🏠(家宽标识, U+1F3E0)，其余 emoji 当噪声删除
+            if (cp >= 0x1F1E6 && cp <= 0x1F1FF) return m;
+            if (cp === 0x1F3E0) return m;
+            return "";
         });
         name = name.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, "");
         name = name.replace(/[\u2190-\u21FF\u2460-\u24FF\u2500-\u27BF\u2B00-\u2BFF]/g, " ");
@@ -363,7 +367,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         let attrs = { multiStr: "", entryStr: "", lineArr: [], multiNum: 1.0, bestLineWeight: 99, ispStr: "", asnStr: "" };
         
         // 0. 提取 ISP 和 ASN 信息 (避免被当成无用后缀丢弃)
-        name = name.replace(/(Akamai|Cloudflare|Amazon|Oracle|Google|Microsoft|Tencent|Alibaba|DigitalOcean|Linode|Hetzner|OVH|Vultr|Fastly|Edgio|Gcore|Misaka|Kirino)/i, match => {
+        name = name.replace(/(Akamai|Cloudflare|Amazon|AWS|Oracle|Google|Microsoft|Tencent|Alibaba|DigitalOcean|Linode|Hetzner|OVH|Vultr|Fastly|Edgio|Gcore|Misaka|Kirino)/i, match => {
             attrs.ispStr = match;
             return "";
         });
@@ -803,7 +807,8 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         const targetStr = `${ipInfo.isp} ${ipInfo.org} ${ipInfo.as}`.toLowerCase();
         const cdnKeywords = [
             'cloudflare', 'cloudfront', 'fastly', 'akamai', 'gcore', 
-            'imperva', 'edgio', 'ddos-guard', 'sucuri', 'incapsula'
+            'imperva', 'edgio', 'ddos-guard', 'sucuri', 'incapsula',
+            'amazon', 'aws'   // AWS/骁云等云厂商：和 CDN 一桌，不信任其反查定位
         ];
         return cdnKeywords.some(kw => targetStr.includes(kw));
     }
@@ -816,8 +821,12 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
         const isCDN = isCdnOrAnycast(ipInfo);
         if (isCDN) {
-            if (!item.tags.includes("cdn")) item.tags.push("cdn");
-            if (!item.specificFeatures.includes("CDN中转")) item.specificFeatures.push("CDN中转");
+            // CDN 走通用 ☁️ 标；AWS/云厂家单独 🛰️ 标，两不同供应商透明区分
+            const isAws = /(amazon|aws)/.test(`${ipInfo.isp} ${ipInfo.org} ${ipInfo.as}`.toLowerCase());
+            const tag = isAws ? "aws" : "cdn";
+            const feat = isAws ? "AWS" : "CDN";
+            if (!item.tags.includes(tag)) item.tags.push(tag);
+            if (!item.specificFeatures.includes(feat)) item.specificFeatures.push(feat);
         }
 
         // --- 1. 保存 IP 元数据与特征打标 (无视地区覆盖策略，只要进来了就必打标) ---
