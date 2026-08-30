@@ -6,8 +6,14 @@ let dns;
 try { dns = require('dns').promises; } catch { dns = null; }
 
 // 简繁转换模块（Worker 环境不可用，构建时排除，运行时降级为空函数）
-let chineseConvert = { toSimplified: (t) => t, toTraditional: (t) => t, deepConvertStrings: (o) => o };
+let chineseConvert = { toSimplified: (t) => t, toTraditional: (t) => t, deepConvertStrings: (o) => o, isAvailable: () => false };
 try { chineseConvert = require('./chinese-convert'); } catch (e) {}
+
+// undici 代理（Node 内置 fetch 不读系统代理；Worker 环境构建排除后运行时段降级为直连）
+let undici = { ProxyAgent: null };
+try { undici = require('./fetch-proxy'); } catch (e) {}
+const { ProxyAgent } = undici;
+const proxyAgentCache = new Map();
 
 function decodeBase64(str) {
   try {
@@ -214,7 +220,22 @@ function parseTrojanUri(uri) {
 
 function parseSsUri(uri) {
   try {
-    const url = new URL(uri);
+    let normalizedUri = uri.trim();
+    // 兼容老旧 SIP001 格式: ss://BASE64(method:password@hostname:port)#name
+    // 若 ss:// 到 # 或 ? 之间不包含 @ 符号，则整段是 Base64 编码的主体
+    const match = normalizedUri.match(/^ss:\/\/([^?#]+)(.*)$/i);
+    if (match) {
+      const body = match[1];
+      const rest = match[2] || '';
+      if (!body.includes('@')) {
+        const decodedBody = decodeBase64UrlSafe(body);
+        if (decodedBody && decodedBody.includes('@')) {
+          normalizedUri = `ss://${decodedBody}${rest}`;
+        }
+      }
+    }
+
+    const url = new URL(normalizedUri);
     let method = '', password = '';
     const user = safeDecodeURIComponent(url.username);
     const pass = url.password;
@@ -237,7 +258,10 @@ function parseSsUri(uri) {
       }
     }
 
-    const server = url.hostname;
+    let server = url.hostname;
+    if (server.startsWith('[') && server.endsWith(']')) {
+      server = server.slice(1, -1);
+    }
     const port = parseInt(url.port) || 443;
     const name = safeDecodeURIComponent(url.hash.slice(1)) || `${server}:${port}`;
     const params = url.searchParams;
@@ -383,28 +407,13 @@ function generateInfoNodes(subInfo, tag) {
   return { nodes, expireDays };
 }
 
-function redactUrl(url, fullRedact = false) {
+function redactUrl(url, showFull = false) {
+  // redactLevel=off（仅本地，生产被拒）时允许展示完整 URL 便于调试；partial/full 均只保留协议与域名，
+  // 路径与全部参数隐藏（机场 token 位置千奇百怪，全隐藏最稳，无需正则抓取）
+  if (showFull) return url;
   try {
     const parsed = new URL(url);
-    if (fullRedact) {
-      // 完整脱敏：只保留协议和域名，路径和参数全部隐藏
-      return `${parsed.protocol}//${parsed.hostname}/***`;
-    }
-    let changed = false;
-    if (parsed.username || parsed.password) {
-      parsed.username = '***';
-      parsed.password = '***';
-      changed = true;
-    }
-    // partial 模式：脱敏所有 query 参数值（机场 token 参数名千奇百怪，无法靠枚举覆盖）
-    for (const key of parsed.searchParams.keys()) {
-      const vals = parsed.searchParams.getAll(key);
-      if (vals.some(v => v !== '')) {
-        parsed.searchParams.set(key, '***');
-        changed = true;
-      }
-    }
-    if (changed) return parsed.toString();
+    return `${parsed.protocol}//${parsed.hostname}/***`;
   } catch (e) {}
   return url;
 }
@@ -441,9 +450,32 @@ function isPrivateIPv6(ip) {
   return false;
 }
 
+const dnsCache = new Map();
+const DNS_CACHE_TTL_MS = 30000;
+
 async function dnsResolveWithTimeout(host, family) {
   if (!dns) return [];
-  const dnsPromise = family === 4 ? dns.resolve4(host) : dns.resolve6(host);
+  const now = Date.now();
+  const cached = dnsCache.get(host);
+  if (cached && cached.expireAt > now) {
+    return family === 4 ? cached.v4 : cached.v6;
+  }
+
+  const dnsPromise = (async () => {
+    try {
+      const [v4Result, v6Result] = await Promise.allSettled([
+        dns.resolve4(host),
+        dns.resolve6(host)
+      ]);
+      const v4 = v4Result.status === 'fulfilled' ? v4Result.value : [];
+      const v6 = v6Result.status === 'fulfilled' ? v6Result.value : [];
+      dnsCache.set(host, { v4, v6, expireAt: Date.now() + DNS_CACHE_TTL_MS });
+      return family === 4 ? v4 : v6;
+    } catch {
+      return [];
+    }
+  })();
+
   const timeout = new Promise((_, reject) =>
     setTimeout(() => reject(new Error('DNS timeout')), 5000)
   );
@@ -499,9 +531,21 @@ function buildFetchOpts(parsedUrl, signal) {
 }
 
 async function safeFetchText(url, options = {}) {
-  const { maxRedirects = 5, timeoutMs = 15000, fullRedact = false } = options;
+  const { maxRedirects = 5, timeoutMs = 15000, showFullUrl = false, proxyUrl = '' } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // 校验代理端点只能为本地可信地址（防止任意代理劫持），并解析其 Basic Auth 供传入
+  let proxyDispatcher = null;
+  if (proxyUrl) {
+    if (!ProxyAgent) throw new Error('Proxy support unavailable (undici not loaded)');
+    const pUrl = new URL(proxyUrl);
+    const isLocalTrusted = pUrl.hostname === '127.0.0.1' || pUrl.hostname === 'localhost' || pUrl.hostname === '::1';
+    if (!isLocalTrusted) throw new Error(`SSRF blocked: proxy must be local, got ${pUrl.hostname}`);
+    const cached = proxyAgentCache.get(proxyUrl);
+    proxyDispatcher = cached || new ProxyAgent(proxyUrl);
+    proxyAgentCache.set(proxyUrl, proxyDispatcher);
+  }
 
   let currentUrl = url;
   let redirects = 0;
@@ -511,7 +555,7 @@ async function safeFetchText(url, options = {}) {
       await validateUrlSsrf(currentUrl);
       const parsedUrl = new URL(currentUrl);
       const fetchOpts = buildFetchOpts(parsedUrl, controller.signal);
-      const res = await fetch(parsedUrl.toString(), fetchOpts);
+      const res = await fetch(parsedUrl.toString(), proxyDispatcher ? { ...fetchOpts, dispatcher: proxyDispatcher } : fetchOpts);
 
       if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
         redirects++;
@@ -530,44 +574,96 @@ async function safeFetchText(url, options = {}) {
       return { text, response: res, finalUrl: currentUrl };
     }
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error(`Fetch timeout (${timeoutMs / 1000}s): ${redactUrl(url, fullRedact)}`);
+    if (err.name === 'AbortError') throw new Error(`Fetch timeout (${timeoutMs / 1000}s): ${redactUrl(url, showFullUrl)}`);
     throw err;
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-async function fetchNodes(url, fullRedact = false, debug = false) {
-  console.log(`[Builder] Fetching: ${redactUrl(url, fullRedact)}`);
-  const { text: content, response: res } = await safeFetchText(url, { fullRedact });
-  const subInfo = res.headers.get('subscription-userinfo');
-  if (debug) {
-    console.log(`[Builder] Debug response: status=${res.status}, content-length=${content.length}, content-type=${res.headers.get('content-type') || 'unknown'}, subInfo=${subInfo ? 'present' : 'missing'}`);
-    console.log(`[Builder] Debug content preview: ${content.substring(0, 200).replace(/\n/g, '\\n')}`);
-  }
-  return { content, subInfo };
+// 解析订阅抓取方式：每订阅显式 proxy 覆盖全局策略，未显式时遵循全局三态
+function resolveFetchPlan({ strategy, perSubProxy }) {
+  if (perSubProxy === true) return { mode: 'proxy' };
+  if (perSubProxy === false) return { mode: 'direct' };
+  if (strategy === 'proxy') return { mode: 'proxy' };
+  if (strategy === 'auto') return { mode: 'auto' };
+  return { mode: 'direct' };
 }
 
-const BUILDER_VERSION = "v1.4.0";
+// 代理端点强制本地回环：只暴露端口配置，不允许指定任意地址（防远程代理被滥用/反连内网）
+function resolveProxyUrl(userConfig) {
+  return userConfig.fetchProxyPort ? `http://127.0.0.1:${userConfig.fetchProxyPort}` : '';
+}
+
+function createLogger(prefix, levelName = 'info') {
+  const LOG_LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4 };
+  const currentLevel = LOG_LEVELS[levelName] ?? 3;
+  return {
+    debug: (...args) => { if (currentLevel >= 4) console.log(`${prefix} DBG  ${args.join(' ')}`); },
+    info:  (...args) => { if (currentLevel >= 3) console.log(`${prefix} INFO ${args.join(' ')}`); },
+    log:   (...args) => { if (currentLevel >= 3) console.log(`${prefix} ${args.join(' ')}`); },
+    warn:  (...args) => { if (currentLevel >= 2) console.warn(`${prefix} WARN ${args.join(' ')}`); },
+    error: (...args) => { if (currentLevel >= 1) console.error(`${prefix} ERR  ${args.join(' ')}`); }
+  };
+}
+
+async function fetchNodes(url, options = {}) {
+  const { showFullUrl = false, debug = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger } = options;
+  const { mode } = resolveFetchPlan({ strategy, perSubProxy });
+  const useProxy = mode === 'proxy';
+  if (logger) {
+    logger.debug(`Fetching${useProxy && proxyUrl ? `(via proxy)` : ''}: ${redactUrl(url, showFullUrl)}`);
+  }
+  const doFetch = async (p) => {
+    const { text: content, response: res } = await safeFetchText(url, { showFullUrl, proxyUrl: p ? proxyUrl : '' });
+    const subInfo = res.headers.get('subscription-userinfo');
+    if (debug && logger) {
+      logger.debug(`Debug response: status=${res.status}, content-length=${content.length}, content-type=${res.headers.get('content-type') || 'unknown'}, subInfo=${subInfo ? 'present' : 'missing'}`);
+      logger.debug(`Debug content preview: ${content.substring(0, 200).replace(/\n/g, '\\n')}`);
+    }
+    return { content, subInfo };
+  };
+  if (mode === 'auto') {
+    try {
+      return await doFetch(false);
+    } catch (err) {
+      if (!proxyUrl) throw err;
+      try { return await doFetch(true); }
+      catch (e2) { throw e2; }
+    }
+  }
+  return doFetch(useProxy);
+}
+
+let BUILDER_VERSION = "v1.4.1";
+try {
+  const pkg = require('../package.json');
+  if (pkg && pkg.version) BUILDER_VERSION = `v${pkg.version}`;
+} catch (e) {}
 
 // 本地内存 TTL 缓存与容灾降级（Stale-on-Error Fallback）
 const profileCacheMap = new Map();
 
 function getCacheKey(userConfig, options) {
   try {
-    const subs = (userConfig.subscriptions || []).map(s => ({ url: s.url, uri: s.uri, tag: s.tag }));
+    const subs = (userConfig.subscriptions || []).map(s => ({ url: s.url, uri: s.uri, tag: s.tag, proxy: s.proxy }));
     return JSON.stringify({
       subs,
       url: options.url,
       type: options.type || userConfig.type || 'pure',
       convert: userConfig.enableChineseConvert,
       convertMode: userConfig.chineseConvertMode,
-      redactLevel: userConfig.redactLevel
+      redactLevel: userConfig.redactLevel,
+      fetchProxyPort: userConfig.fetchProxyPort,
+      fetchProxyStrategy: userConfig.fetchProxyStrategy
     });
   } catch { return null; }
 }
 
 async function buildProfile(userConfig, options = {}) {
+  const effectiveLogLevel = options.debug ? 'debug' : (userConfig.logLevel || 'info');
+  const logger = createLogger('[Builder]', effectiveLogLevel);
+
   const enableCache = userConfig.enableCache !== false && !options.noCache;
   const cacheTtlMs = (userConfig.cacheTtl || 300) * 1000;
   const cacheKey = getCacheKey(userConfig, options);
@@ -576,7 +672,7 @@ async function buildProfile(userConfig, options = {}) {
     const cached = profileCacheMap.get(cacheKey);
     if (Date.now() - cached.timestamp < cacheTtlMs) {
       const remainingSec = Math.round((cacheTtlMs - (Date.now() - cached.timestamp)) / 1000);
-      console.log(`[Builder] ⚡ 命中本地内存缓存 (${remainingSec}s 后过期)，直接响应缓存数据`);
+      logger.log(`⚡ 命中本地内存缓存 (${remainingSec}s 后过期)，直接响应缓存数据`);
       return cached.result;
     }
   }
@@ -585,35 +681,38 @@ async function buildProfile(userConfig, options = {}) {
   let hasInjectedTag = false;
   let globalUpload = 0, globalDownload = 0, globalTotal = 0, globalExpire = 0;
   
+  const isOpenccReady = !!(chineseConvert.isAvailable && chineseConvert.isAvailable());
+  const canConvert = !!(userConfig.enableChineseConvert && isOpenccReady);
+
+  // 简繁转换开启但未安装依赖时给出明确提示
+  if (userConfig.enableChineseConvert && !isOpenccReady) {
+    logger.warn(`已配置 enableChineseConvert=true 但 opencc-js 依赖未就绪，已跳过简繁转换。执行: npm install opencc-js`);
+  }
+
   // 简繁转换：入口处先将 config 中所有字符串值繁→简，确保后续匹配逻辑一致
-  if (userConfig.enableChineseConvert) {
+  if (canConvert) {
     userConfig = chineseConvert.deepConvertStrings(userConfig, chineseConvert.toSimplified);
   }
 
   let redactLevel = userConfig.redactLevel || 'partial';
   const debug = options.debug || false;
 
-  console.log(`[Builder] 🔨 mihomo-toolkit-builder ${BUILDER_VERSION}`);
+  logger.log(`🔨 mihomo-toolkit-builder ${BUILDER_VERSION}`);
 
   // 启动概览：依赖状态 + 订阅概况
-  const openccStatus = (() => {
-    try { require.resolve('opencc-js'); return '已就绪'; } catch { return '未安装(降级)'; }
-  })();
+  const openccStatus = userConfig.enableChineseConvert
+    ? (isOpenccReady ? '已就绪' : '未安装(降级)')
+    : (isOpenccReady ? '已就绪(未启用)' : '未启用');
   const subCount = userConfig.subscriptions ? userConfig.subscriptions.length : 0;
   const urlSubs = userConfig.subscriptions ? userConfig.subscriptions.filter(s => s.url).length : 0;
   const uriSubs = userConfig.subscriptions ? userConfig.subscriptions.filter(s => s.uri).length : 0;
-  console.log(`[Builder] 依赖: opencc-js ${openccStatus} | 订阅: ${subCount} 个 (URL ${urlSubs}, URI ${uriSubs})`);
-
-  // 简繁转换开启但未安装依赖时给出明确提示
-  if (userConfig.enableChineseConvert && openccStatus === '未安装(降级)') {
-    console.warn(`[Builder] ⚠️ 已启用简繁转换但 opencc-js 未安装，功能不会生效。执行: npm install opencc-js`);
-  }
+  logger.log(`依赖: opencc-js ${openccStatus} | 订阅: ${subCount} 个 (URL ${urlSubs}, URI ${uriSubs})`);
 
   if (redactLevel === 'off' && (process.env.NODE_ENV === 'production' || options.production)) {
     throw new Error('[Security] redactLevel=off 不允许在生产环境使用！');
   }
   
-  const fullRedact = (redactLevel === 'full');
+  const showFullUrl = (redactLevel === 'off');
   
   function parseSubInfoForGlobal(subInfo) {
     if (!subInfo) return;
@@ -633,7 +732,13 @@ async function buildProfile(userConfig, options = {}) {
           // uri 字段：直接节点，跳过 HTTP fetch，交给 parseContent 识别
           rawResult = { content: sub.uri, subInfo: null };
         } else {
-          rawResult = await fetchNodes(sub.url, fullRedact, debug);
+          // url 字段：HTTP 抓取，代理策略 = per-sub proxy 覆盖全局 fetchProxyStrategy
+          rawResult = await fetchNodes(sub.url, {
+            showFullUrl, debug,
+            proxyUrl: resolveProxyUrl(userConfig),
+            strategy: userConfig.fetchProxyStrategy,
+            perSubProxy: sub.proxy
+          });
         }
         return { sub, rawResult, error: null };
       } catch (e) {
@@ -643,6 +748,7 @@ async function buildProfile(userConfig, options = {}) {
 
     const fetchedResults = await Promise.all(fetchTasks);
 
+    const subSummaries = [];
     for (const { sub, rawResult, error } of fetchedResults) {
       if (!rawResult && !error) continue;
       try {
@@ -659,7 +765,7 @@ async function buildProfile(userConfig, options = {}) {
         // URI 节点日志
         if (sub.uri) {
           const nameHint = subProxies[0] ? subProxies[0].name : '未知';
-          console.log(`[Builder] URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
+          logger.debug(`URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
         }
         
         let effectiveTag = sub.tag;
@@ -713,7 +819,7 @@ async function buildProfile(userConfig, options = {}) {
         const rawCount = subProxies.length;
         subProxies = subProxies.filter(p => {
           if (REGEX_INFO.test(p.name)) {
-            console.log(`[Builder]   🗑️ [过滤信息] 「${p.name}」`);
+            logger.debug(`🗑️ [过滤信息] 「${p.name}」`);
             return false;
           }
           return true;
@@ -756,7 +862,7 @@ async function buildProfile(userConfig, options = {}) {
         }
 
         if (synthNodes.length > 0) {
-          synthNodes.forEach(n => console.log(`[Builder]   ℹ️ [合成信息] 「${n.name}」`));
+          synthNodes.forEach(n => logger.debug(`ℹ️ [合成信息] 「${n.name}」`));
           subProxies.unshift(...synthNodes);
         }
         
@@ -765,33 +871,52 @@ async function buildProfile(userConfig, options = {}) {
         }
         configData.proxies = configData.proxies.concat(subProxies);
         
-        // 订阅处理摘要
         const nodeCount = subProxies.length;
-        if (sub.uri) {
-          console.log(`[Builder]   → 解析完成: ${nodeCount} 个节点${sub.tag ? ` [${sub.tag}]` : ''}`);
-        } else {
-          const parts = [`${nodeCount} 个节点`];
-          if (filteredCount > 0) parts.push(`过滤 ${filteredCount} 个`);
-          console.log(`[Builder]   → 解析完成: ${parts.join(', ')}${sub.tag ? ` [${sub.tag}]` : ''}`);
-        }
+        subSummaries.push({
+          type: sub.uri ? 'uri' : 'url',
+          nameHint: sub.uri ? (subProxies[0] ? subProxies[0].name : '未知') : '',
+          tag: sub.tag || effectiveTag,
+          total: nodeCount,
+          filtered: filteredCount,
+          synth: synthNodes.length
+        });
       } catch (e) {
-        const subId = sub.uri ? 'direct-uri' : redactUrl(sub.url, fullRedact);
-        console.error(`[Builder] Error processing subscription ${subId}: ${e.message}`);
+        const subId = sub.uri ? 'direct-uri' : redactUrl(sub.url, showFullUrl);
+        logger.error(`Error processing subscription ${subId}: ${e.message}`);
       }
+    }
+
+    if (subSummaries.length > 0) {
+      logger.log(`📡 订阅解析完成 (${subSummaries.length} 个源):`);
+      subSummaries.forEach((s, idx) => {
+        const isLast = idx === subSummaries.length - 1;
+        const branch = isLast ? '└──' : '├──';
+        const icon = s.type === 'uri' ? '📌' : '🌐';
+        const details = [];
+        if (s.filtered > 0) details.push(`过滤 ${s.filtered}`);
+        if (s.synth > 0) details.push(`合成 ${s.synth}`);
+        const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
+        const namePart = s.type === 'uri' ? `${s.nameHint}${s.tag ? ` [${s.tag}]` : ''}` : `[${s.tag}]`;
+        logger.log(`    ${branch} ${icon} ${namePart}: ${s.total} 个节点${detailStr}`);
+      });
     }
   } else if (options.url) {
     let rawResult;
     if (/^(vless|vmess|trojan|ss):\/\//i.test(options.url)) {
       // 直接 URI 节点，跳过 HTTP fetch，交给 parseContent 识别
-      console.log(`[Builder] URI 节点: ${options.url.split('#').pop() || '未知'}`);
+      logger.debug(`URI 节点: ${options.url.split('#').pop() || '未知'}`);
       rawResult = { content: options.url, subInfo: null };
     } else {
-      rawResult = await fetchNodes(options.url, fullRedact);
+      rawResult = await fetchNodes(options.url, {
+        showFullUrl, debug, logger,
+        proxyUrl: resolveProxyUrl(userConfig),
+        strategy: userConfig.fetchProxyStrategy
+      });
     }
     parseSubInfoForGlobal(rawResult.subInfo);
     configData = parseContent(rawResult.content);
     const nodeCount = configData.proxies ? configData.proxies.length : 0;
-    console.log(`[Builder]   → 解析完成: ${nodeCount} 个节点`);
+    logger.log(`📡 节点解析完成: ${nodeCount} 个节点`);
     const { nodes: synthNodes } = generateInfoNodes(rawResult.subInfo, "");
     if (synthNodes.length > 0 && configData.proxies) {
       configData.proxies.unshift(...synthNodes);
@@ -841,7 +966,7 @@ async function buildProfile(userConfig, options = {}) {
   let result = null;
 
   // 简繁转换：pure 处理前将节点名统一转为简体，提高 pure 和 toolkit 的识别率
-  if (userConfig.enableChineseConvert) {
+  if (canConvert) {
     configData.proxies = configData.proxies.map(proxy => ({
       ...proxy,
       name: chineseConvert.toSimplified(proxy.name)
@@ -849,7 +974,7 @@ async function buildProfile(userConfig, options = {}) {
   }
 
   if (targetType === 'pure' || targetType === 'full') {
-    if (targetType === 'full') console.log('[Builder] === 阶段 1/2: pure-nodes 节点清洗 ===');
+    if (targetType === 'full') logger.log('🔄 阶段 1/2: pure-nodes 节点清洗');
     result = await operator(configData.proxies, "clash", pureUserConfig);
     finalProxies = Array.isArray(result) ? result : result.proxies;
   }
@@ -858,14 +983,14 @@ async function buildProfile(userConfig, options = {}) {
   let outputData = configData;
   
   if (targetType === 'full' || targetType === 'toolkit') {
-    if (targetType === 'full') console.log('[Builder] === 阶段 2/2: mihomo-toolkit 策略组构建 ===');
+    if (targetType === 'full') logger.log('🔄 阶段 2/2: mihomo-toolkit 策略组构建');
     outputData = toolkitMain(outputData, toolkitUserConfig);
   }
 
   // 简繁转换：toolkit 处理后按配置输出简体或繁体
-  if (userConfig.enableChineseConvert) {
+  if (canConvert) {
     const modeLabel = userConfig.chineseConvertMode === 's2t' ? '繁体' : '简体';
-    console.log(`[Builder] 简繁转换: 输出 ${modeLabel}`);
+    logger.log(`🔤 简繁转换: 输出 ${modeLabel}`);
     const convertFn = userConfig.chineseConvertMode === 's2t' ? chineseConvert.toTraditional : chineseConvert.toSimplified;
     const nameMap = {};
 
@@ -911,7 +1036,7 @@ async function buildProfile(userConfig, options = {}) {
       toolkitUserConfig.enableSystemServices && '系统', toolkitUserConfig.enableDomesticGroup && '中国分流',
       toolkitUserConfig.enableAdBlock && '广告拦截'
     ].filter(Boolean);
-    console.log(`[Builder] ✅ 构建完成: ${proxies.length} 个节点, ${groups.length} 个策略组` +
+    logger.log(`✅ 构建完成: ${proxies.length} 个节点, ${groups.length} 个策略组` +
       (featureSwitches.length > 0 ? ` | ${featureSwitches.join(' ')}` : ''));
   }
   

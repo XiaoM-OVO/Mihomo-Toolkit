@@ -64,7 +64,7 @@ describe('🧩 URI 节点协议解析模块', () => {
     assert.equal(proxy.sni, 'trojan.example.com');
   });
 
-  test('parseSsUri - Shadowsocks 节点解析', () => {
+  test('parseSsUri - Shadowsocks 节点解析 (SIP002)', () => {
     const userpass = Buffer.from('aes-256-gcm:sspassword').toString('base64');
     const uri = `ss://${userpass}@ss.example.com:8388#SS-Node`;
     const proxy = parseSsUri(uri);
@@ -76,6 +76,32 @@ describe('🧩 URI 节点协议解析模块', () => {
     assert.equal(proxy.port, 8388);
     assert.equal(proxy.cipher, 'aes-256-gcm');
     assert.equal(proxy.password, 'sspassword');
+  });
+
+  test('parseSsUri - Shadowsocks 老式单 Base64 格式 (SIP001)', () => {
+    const rawPayload = 'chacha20-ietf-poly1305:mypassword@legacy.example.com:8443';
+    const base64Str = Buffer.from(rawPayload).toString('base64');
+    const uri = `ss://${base64Str}#SIP001-Node`;
+    const proxy = parseSsUri(uri);
+
+    assert.notEqual(proxy, null);
+    assert.equal(proxy.name, 'SIP001-Node');
+    assert.equal(proxy.type, 'ss');
+    assert.equal(proxy.server, 'legacy.example.com');
+    assert.equal(proxy.port, 8443);
+    assert.equal(proxy.cipher, 'chacha20-ietf-poly1305');
+    assert.equal(proxy.password, 'mypassword');
+  });
+
+  test('parseSsUri - IPv6 地址主机名方括号去除', () => {
+    const userpass = Buffer.from('aes-128-gcm:pass').toString('base64');
+    const uri = `ss://${userpass}@[2001:db8::1]:8388#SS-IPv6`;
+    const proxy = parseSsUri(uri);
+
+    assert.notEqual(proxy, null);
+    assert.equal(proxy.name, 'SS-IPv6');
+    assert.equal(proxy.server, '2001:db8::1');
+    assert.equal(proxy.port, 8388);
   });
 
   test('parseContent - 多行 URI 批量识别解析', () => {

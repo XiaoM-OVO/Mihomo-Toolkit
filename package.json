@@ -1,15 +1,16 @@
 {
   "name": "mihomo-toolkit",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Mihomo-Toolkit - 自动化节点清洗与策略组构建工具",
   "main": "src/builder.js",
+  "types": "index.d.ts",
   "bin": {
     "mihomo-toolkit": "cli.js"
   },
   "scripts": {
     "start": "node server.js",
     "test": "node --test --test-reporter=spec test/*.test.js",
-    "build:worker": "esbuild worker.js --bundle --outfile=dist/worker.bundle.js --format=esm --target=es2020 --platform=neutral --external:opencc-js --external:./src/chinese-convert.js",
+    "build:worker": "esbuild worker.js --bundle --outfile=dist/worker.bundle.js --format=esm --target=es2020 --platform=neutral --external:opencc-js --external:./src/chinese-convert.js --external:./src/fetch-proxy.js",
     "inject": "node scripts/inject-shared.cjs",
     "build": "node scripts/inject-shared.cjs && node cli.js -c config.yaml -t full",
     "build:pure": "node scripts/inject-shared.cjs && node cli.js -c config.yaml -t pure",
@@ -39,10 +40,11 @@
   "homepage": "https://github.com/XiaoM-OVO/Mihomo-Toolkit#readme",
   "dependencies": {
     "commander": "^15.0.0",
+    "undici": "^8.10.0",
     "yaml": "^2.9.0"
   },
   "optionalDependencies": {
-    "opencc-js": "^1.4.1"
+    "opencc-js": "^1.4.2"
   },
   "devDependencies": {
     "esbuild": "^0.28.1"

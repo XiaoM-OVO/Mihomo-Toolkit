@@ -42,7 +42,7 @@ async function main() {
       } else {
         userConfig = JSON.parse(content);
       }
-      console.log(`[CLI] Loaded user config from ${options.config}`);
+      console.log(`[CLI]     📄 已加载配置文件: ${options.config}`);
     }
 
     if (options.meta) {
@@ -50,7 +50,7 @@ async function main() {
     }
 
     // Call the builder
-    console.log(`[CLI] Starting build process...`);
+    console.log(`[CLI]     🚀 开始构建流程...`);
     const buildOptions = { ...options };
     if (buildOptions.prod) buildOptions.production = true;
     const { yamlStr, meta } = await buildProfile(userConfig, buildOptions);
@@ -58,7 +58,7 @@ async function main() {
     if (options.meta && meta) {
       const metaPath = path.resolve(process.cwd(), options.meta);
       fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
-      console.log(`[CLI] Saved meta object (buckets, stats, etc.) to ${metaPath}`);
+      console.log(`[CLI]     💾 清洗报告已保存至: ${metaPath}`);
       
       if (meta.stats) {
         console.log(`\n=== 📊 数据清洗统计 ===`);
@@ -73,10 +73,10 @@ async function main() {
     const targetOut = options.out || userConfig.output || 'nodes.yaml';
     const outPath = path.resolve(process.cwd(), targetOut);
     fs.writeFileSync(outPath, yamlStr, 'utf-8');
-    console.log(`[CLI] Saved result to ${outPath}`);
+    console.log(`[CLI]     ✅ 配置文件已输出至: ${outPath}`);
 
   } catch (err) {
-    console.error(`[CLI] Error:`, err.message);
+    console.error(`[CLI]     ❌ Error:`, err.message);
     process.exit(1);
   }
 }
