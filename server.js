@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 const { buildProfile, redactUrl, isAllowedUrl, safeFetchText, validateRequestLimits } = require('./src/builder.js');
+const pkg = require('./package.json');
 
 const PORT = process.env.PORT || 3000;
 const CONFIG_PATH = process.env.CONFIG_PATH || path.resolve(__dirname, 'config.yaml');
@@ -15,7 +16,7 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       status: 'ok',
       service: 'mihomo-toolkit-server',
-      version: '1.4.0',
+      version: pkg.version,
       uptime: Math.floor(process.uptime())
     }));
     return;

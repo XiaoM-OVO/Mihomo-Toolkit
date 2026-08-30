@@ -34,14 +34,26 @@
 # ─────────────────────────────────────────────────────────────────────
 # ① 订阅源与节点注入
 # ─────────────────────────────────────────────────────────────────────
+# 订阅抓取代理（强制本地回环代理，仅填端口）
+#   端口留空 = 全部直连（等同于 fetchProxyStrategy: direct）
+#   每订阅项可写 proxy: true/false 强制该订阅走代理/直连（覆盖全局，且不尝试回退）
+# strategy:
+#   direct   所有订阅直连（全局默认）
+#   proxy    所有订阅走代理
+#   auto     先直连，失败自动用代理重试一次（只对失败的订阅多一跳，平时零开销）
+fetchProxyPort: 7890
+fetchProxyStrategy: "auto"
+
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "机场A"
     # indexPrefix: "A"           # 序号前缀，如A01/B01，不写则按地区统一编号
+    # proxy: true/false
 
   - url: "https://example.com/api/v1/sub2"
     tag: "机场B"
     # indexPrefix: "B"
+    # proxy: true/false
 
   # 本地文件也可以
   # - url: "./my-local-nodes.yaml"
@@ -65,12 +77,10 @@ type: "full"                    # [共享] pure / toolkit / full
 output: "./dist/output.yaml"    # [共享] 输出路径
 # meta: "./stats.json"          # [共享] 清洗统计报告导出路径（可选）
 # logLevel: "debug"             # [共享] silent | error | warn | info | debug
-# redactLevel: "partial"        # [共享] 日志脱敏: off | partial | full
-#   off     本地开发：builder 隐藏密码/Token，pure 不屏蔽 IP/域名
-#           ⚠️ 生产环境（server/worker）下 off 会被拒绝，必须用 partial 或 full
-#   partial 生产首选：脱敏行为同 off，但允许生产环境
-#   full    分享日志：builder 路径也变 ***，pure 屏蔽所有 IP/域名
-#   ℹ️ toolkit 日志不受 redactLevel 影响
+# redactLevel: "partial"        # [共享] 日志脱敏：三档由弱到强（各级只增不减，凭据/Token 始终隐藏）
+#   off     本地裸奔调试档：订阅 URL 完整展示，不屏蔽任何 IP/域名 | ⚠️ 生产（server/worker）拒绝 off，必须 partial/full
+#   partial 生产首选：订阅 URL 只留协议+域名（路径/参数全隐藏），IP/域名原样
+#   full    分享日志档：在 partial 之上，屏蔽所有 IP/域名（pure 与 toolkit 阶段均生效）
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -184,13 +194,15 @@ regionGroupType: "url-test"      # [toolkit] url-test / select / fallback
 # groupIconMode: "emoji"         # [toolkit] emoji / icon / both
 # iconRepoOrz: "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/"
 # iconRepoKoolson: "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/"
-# iconRepoLige47: "https://raw.githubusercontent.com/lige47/lige_icon/main/icon/04ProxySoft/"
+# iconRepoLige47: "https://raw.githubusercontent.com/lige47/lige_icon/main/icon/"   # lige_icon 仓库 icon 根目录（子目录：04ProxySoft=应用图标，05icon=其他）
 
 # 节点展示与下载隔离
 showFeatureIcon: true            # [toolkit] 模板 {features}: true=Emoji(📺) / false=文字(流媒体)。full 模式下 pure 自动置 false
 # enableIPv6: false              # [toolkit] 本地无物理 IPv6 务必设为 false（会剔除纯 IPv6 节点）
 # lowMultiThreshold: 0.99        # [toolkit] 倍率 <= 此值归入下载策略，0 关闭
 isolateDownload: true            # [toolkit] true=从普通大区剔除下载节点 / false=允许进入
+# isolateHighMulti: false        # [toolkit] true=将超过 highMultiThreshold 的高倍率节点从普通池剔除，聚合「🚀 高倍率优选」（组引用进手动选择与各应用组可点名）/ false=仅排序下沉留在普通池
+# highMultiThreshold: 2.5        # [toolkit] 高倍率沉底/隔离共用阈值，超过则排序下沉（配合 isolateHighMulti 时剔除独立成组）
 
 # 家宽分流（需配合 ⑦ enableResidentialTag: true）
 # enableResidential: false       # [toolkit] 家宽节点独立成组「🏠 家宽优选」，不混入地区桶，不参与自动选择
@@ -219,7 +231,8 @@ defaultProxyMode: "auto"         # [toolkit] auto / manual / fallback / direct /
 # enableAntiAD: false            # [toolkit] 激进广告拦截（容易误杀）
 # enableGitHub: true             # [toolkit] GitHub, GitLab 等
 # enableScholar: false           # [toolkit] Google Scholar
-# enableSocial: false            # [toolkit] Discord, Messenger, Line 等
+# enableSocial: false            # [toolkit] 海外社交：twitter, facebook, instagram, discord（twitter 独立成组，其余合并到"💬 社交平台"）
+# enableWebRTC: false            # [toolkit] WebRTC 专项分流：会议/浏览器/STUN-TURN（默认目标随路由：回国→直连，正常→代理）
 # enableCrypto: false            # [toolkit] Binance 等交易平台
 # enablePayPal: false            # [toolkit] PayPal 独立分流
 
@@ -230,11 +243,16 @@ defaultProxyMode: "auto"         # [toolkit] auto / manual / fallback / direct /
 # aiServices:                    # [toolkit] AI: chatgpt, gemini, claude, copilot
 #   - chatgpt
 #   - gemini
+# aiPreferredRegions:            # [toolkit] AI 优选地区（默认: us, jp, tw, sg, kr, eu；地区无节点时自动下沉到该地区组）
 # streamingServices:             # [toolkit] 流媒体: youtube, netflix, bilibili, disney, twitch, spotify, tiktok, bahamut, pixiv
 #   - youtube
 #   - bilibili
-# socialServices:                # [toolkit] 社交: telegram, discord, messenger, line, whatsapp, signal
-#   - telegram
+# biliPreferredRegions:          # [toolkit] Bili 港澳台分部优选用组（默认: 🇹🇼 台湾节点, 🇲🇴 澳门节点, 🇭🇰 香港节点）
+# socialServices:                # [toolkit] 社交: twitter, facebook, instagram, discord（暂不支持 telegram/line/signal 等）
+#   - twitter
+#   - discord
+# independentSocial:             # [toolkit] 独立成组的社交应用（默认 twitter），其余自动合并到"💬 社交平台"
+#   - twitter
 # systemServices:                # [toolkit] 系统: microsoft, apple, google
 #   - microsoft
 #   - google

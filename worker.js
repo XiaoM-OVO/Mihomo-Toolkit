@@ -1,5 +1,6 @@
 import { buildProfile, isAllowedUrl, safeFetchText, validateRequestLimits } from './src/builder.js';
 import yaml from 'yaml'; // Requires esbuild/wrangler to bundle
+import pkg from './package.json';
 
 // Set DEFAULT_CONFIG_URL in Cloudflare Workers Environment Variables
 // to use a remote config.yaml without passing ?config= every time.
@@ -12,7 +13,7 @@ export default {
       return new Response(JSON.stringify({
         status: 'ok',
         service: 'mihomo-toolkit-worker',
-        version: '1.4.0'
+        version: pkg.version
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json; charset=utf-8' }

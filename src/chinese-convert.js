@@ -49,4 +49,9 @@ function deepConvertStrings(obj, convertFn) {
   return obj;
 }
 
-module.exports = { toSimplified, toTraditional, deepConvertStrings };
+function isAvailable() {
+  ensureLoaded();
+  return _t2s !== null && _s2t !== null;
+}
+
+module.exports = { toSimplified, toTraditional, deepConvertStrings, isAvailable };
