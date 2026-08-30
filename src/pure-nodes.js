@@ -2,7 +2,7 @@
  * =========================================================================
  * 📦 Mihomo-Toolkit | 通用纯净节点清洗脚本 (Pure JS Edition) | MIT 许可证
  * =========================================================================
- * 🏷️ 版本: 1.2.4 (Build 2026.08.24)
+ * 🏷️ 版本: 1.3.0 (Build 2026.08.30)
  * 👤 作者: XiaoM-OVO
  * 🔌 环境: Node.js / Sub-Store / Surge / Loon / 浏览器 等(多端自适应)
  * 📝 描述: 零依赖跨平台节点处理核心，提供过滤、去重、重命名与自动排序功能。
@@ -247,6 +247,15 @@ REGION_DEFS.forEach(r => {
 });
 /* ↑↑↑↑↑ INJECT_END ↑↑↑↑↑ */
 
+/**
+ * outputMode:"object" 时返回的 meta 元数据结构。
+ * @typedef {Object} PureMeta
+ * @property {{[key:string]: number[]}} buckets 各分桶的节点，值为 nodeMeta 数组索引，可直接关联 nodeMeta 溯源
+ * @property {Object} stats 统计计数（total/outputCount/regionCounts/featureCounts 等）
+ * @property {string} humanReport 人类可读的处理报告
+ * @property {Array<Object>} nodeMeta 逐节点处理履历（rawName/cleanName/proxyIndex/regionMeta/tags/ipIsp 等），proxyIndex 指向 proxies 数组下标，被排除节点为 -1
+ */
+
 function operator(proxies, targetPlatform, userConfig = {}) {
 
     if (!Array.isArray(proxies)) proxies = [];
@@ -278,7 +287,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         error: (...args) => { if (currentLogLevel >= 1) console.error("[Pure]    ERR  " + args.map(redact).join(' ')); }
     };
 
-    logger.info("pure-nodes v1.2.4 已加载");
+    logger.info("pure-nodes v1.3.0 已加载");
 
     // =========================================================================
     // 🪛 构建动态字典
@@ -960,17 +969,28 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         // 第二步：收集需要检测的 server
         const serverToNodes = new Map();
         const hasTagFeature = CONFIG.enableIpv6Tag || CONFIG.enableCellularTag || CONFIG.enableResidentialTag;
+        // 裂变去重缓存：同一 server 域名只裂变一次（函数内局部，避免与调用方共享可变状态）
+        const fissionTrack = {};
         
         for (const item of nodes) {
             if (item.isInfo || item.isGarbage || item.isSpecial) continue;
             
-            // 如果既没有打标需求，又处于 missing 模式且已有地区，则不需要探测
-            if (!hasTagFeature && CONFIG.ipEnrichMode !== "all" && item.regionInfo && !item.regionInfo.isUnknown) {
-                continue;
-            }
-            
             const server = item.proxy?.server;
             if (!server) continue;
+
+            const isDomain = looksLikeDomain(server);
+            const needsFission = CONFIG.enableFission && isDomain;
+            const needsIpCheck = CONFIG.enableIpEnrich && (
+                hasTagFeature || 
+                CONFIG.ipEnrichMode === "all" || 
+                !item.regionInfo || 
+                item.regionInfo.isUnknown
+            );
+
+            // 如果既不需要裂变，又不需要 IP 检测，则跳过
+            if (!needsFission && !needsIpCheck) {
+                continue;
+            }
             
             if (!serverToNodes.has(server)) serverToNodes.set(server, []);
             serverToNodes.get(server).push(item);
@@ -1063,6 +1083,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
                         // 2. 裂变生成克隆节点
                         const maxClones = Math.min(fissionIps.length, CONFIG.fissionMaxNodes);
+                        let nodeFissionCount = 0;
                         for (let j = 1; j < maxClones; j++) {
                             const cloneIp = fissionIps[j];
                             if (isPrivateIP(cloneIp)) continue;
@@ -1082,6 +1103,24 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                             
                             nodes.push(cloneItem);
                             fissionCount++;
+                            nodeFissionCount++;
+                        }
+                        if (nodeFissionCount > 0) {
+                            const v4Count = fissionIps.slice(0, maxClones).filter(ip => !ip.includes(':')).length;
+                            const v6Count = fissionIps.slice(0, maxClones).filter(ip => ip.includes(':')).length;
+                            if (redactLevel === 'off') {
+                                logger.debug(`🧬 [裂变] 「${item.rawName}」(${server}) 增殖 ${nodeFissionCount} 个实体:`);
+                                for (let k = 0; k < maxClones; k++) {
+                                    const ip = fissionIps[k];
+                                    const isLast = k === maxClones - 1;
+                                    const branch = isLast ? '└──' : '├──';
+                                    const stackLabel = ip.includes(':') ? 'IPv6' : 'IPv4';
+                                    const role = k === 0 ? '(主)' : '(分身)';
+                                    logger.debug(`          ${branch} 🔹 ${ip} [${stackLabel}] ${role}`);
+                                }
+                            } else {
+                                logger.debug(`🧬 [裂变] 「${item.rawName}」增殖 ${nodeFissionCount} 个实体 (IPv4: ${v4Count}, IPv6: ${v6Count})`);
+                            }
                         }
                     }
                     domainCount++;
@@ -1103,6 +1142,11 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         logger.info(`🌐 DNS 解析完成: ${domainCount} 域名→IP, ${directIpCount} 直连, ${ipToNodes.size} 个唯一 IP (${ipNodesTotal} 节点)`);
         if (fissionCount > 0) {
             logger.info(`🧬 节点裂变已触发: 共增殖产生了 ${fissionCount} 个新实体节点`);
+        }
+
+        // 如果未开启 enableIpEnrich，仅做域名 DNS 解析与节点裂变，跳过外部 IP API 请求
+        if (!CONFIG.enableIpEnrich) {
+            return;
         }
 
         // 第四步：分批批量查询（避免超限）
@@ -1160,7 +1204,6 @@ function operator(proxies, targetPlatform, userConfig = {}) {
     // =========================================================================
     const proxySet = new Map();
     const processedData = [];
-    const fissionTrack = {};
     let dedupeCount = 0;
     let infoCount = 0;
     let discardedCount = 0;
@@ -1466,7 +1509,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         const charClass = charSeps.length > 0 ? `[${charSeps.join('')}]` : '';
         const wordStr = wordSeps.join('|');
         const combined = wordSeps.length > 0 ? (charClass ? `(?:${charClass}|${wordStr})` : `(?:${wordStr})`) : charClass;
-        const regAdjacentSeps = combined ? new RegExp(`\\s*${combined}\\s*(?=${combined})`, 'g') : null;
+        const regAdjacentSeps = combined ? new RegExp(`${combined}(?=\\s*${combined})`, 'g') : null;
         const regEdgeSeps = combined ? new RegExp(`^(?:\\s|${combined})+|(?:\\s|${combined})+$`, 'g') : null;
 
         // 🚀 第二阶遍历: 执行重命名与组装
@@ -1478,7 +1521,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 if (CONFIG.customPrefix) item.proxy.name = CONFIG.customPrefix + item.proxy.name;
                 finalProxies.push(item.proxy);
                 BUCKETS.info.push(item.proxy.name);
-                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionInfo: null, tags: [], groupKey: "info", isInfo: true });
+                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionMeta: null, tags: [], groupKey: "info", isInfo: true });
                 return;
             }
 
@@ -1486,7 +1529,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 item.proxy.name = item.specialTargetName;
                 BUCKETS.special.push(item.proxy.name);
                 finalProxies.push(item.proxy);
-                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionInfo: null, tags: [], groupKey: "special", isInfo: false, isGarbage: false, isSpecial: true });
+                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionMeta: null, tags: [], groupKey: "special", isInfo: false, isGarbage: false, isSpecial: true });
                 return;
             }
 
@@ -1495,7 +1538,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 item.proxy.name = garbageName;
                 BUCKETS.garbage.push(garbageName);
                 if (CONFIG.outputGarbage) finalProxies.push(item.proxy);
-                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionInfo: null, tags: [], groupKey: "garbage", isInfo: false, isGarbage: true });
+                nodeMeta.push({ rawName: item.rawName, cleanName: item.proxy.name, proxy: item.proxy, regionMeta: null, tags: [], groupKey: "garbage", isInfo: false, isGarbage: true });
                 return;
             }
 
@@ -1569,15 +1612,14 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                         .replace(/\{isp\}/g, ispStr)
                         .replace(/\{asn\}/g, asnStr)
                         .replace(/\{asname\}/g, asnameStr)
-                        .replace(/\{org\}/g, orgStr)
-                        .replace(/\s{2,}/g, " ");
+                        .replace(/\{org\}/g, orgStr);
                 if (regAdjacentSeps) {
                     finalName = finalName.replace(regAdjacentSeps, "");
                 }
                 if (regEdgeSeps) {
                     finalName = finalName.replace(regEdgeSeps, "");
                 }
-                finalName = finalName.trim();
+                finalName = finalName.replace(/\s{2,}/g, " ").trim();
                 } else {
                     finalName = `${myPrefix}${item.rawName}`;
                 }
@@ -1607,9 +1649,15 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 if (CONFIG.outputUnknown) finalProxies.push(proxy);
             }
 
+            // regionInfo 内含 RegExp（_cleanReg/_matchReg/_cityReg 等），JSON 序列化会退化为 {}
+            // 且属于内部实现细节；对外只抛精简快照，保证元数据可读、便于二次开发。
+            const regionMeta = regionInfo
+                ? { id: regionInfo.id, name: regionInfo.name, icon: regionInfo.icon }
+                : null;
+
             nodeMeta.push({
                 rawName: item.rawName, cleanName: proxy.name,
-                proxy, regionInfo, tags, groupKey,
+                proxy, regionMeta, tags, groupKey,
                 isInfo: false, isGarbage: false, isFission: !!item._isFission,
                 ipIsp: item._ipIsp || null,
                 ipAsn: item._ipAsn || null,
@@ -1642,9 +1690,23 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             if (BUCKETS[r.tag] && BUCKETS[r.tag].length > 0) stats.featureCounts[r.tag] = BUCKETS[r.tag].length;
         });
 
+        // nodeMeta 不内嵌 proxy 对象（避免带着 _rawName 等内部字段），改为 proxyIndex 指向 proxies 数组下标
+        // 被排除的 info/special/garbage 节点未进入 proxies，标记 -1
+        const proxyIndexMap = new Map(finalProxies.map((p, i) => [p, i]));
+        nodeMeta.forEach(m => {
+            const idx = proxyIndexMap.get(m.proxy);
+            m.proxyIndex = idx !== undefined ? idx : -1;
+            delete m.proxy;
+        });
+
+        // cleanBuckets 改为存 nodeMeta 数组索引，便于二次开发直接关联 nodeMeta 溯源
+        // （每个节点的 BUCKETS 值即其 cleanName，且总先于 nodeMeta push 写入，映射必然对齐）
+        const nameIdx = new Map();
+        nodeMeta.forEach((m, i) => { if (!nameIdx.has(m.cleanName)) nameIdx.set(m.cleanName, i); });
+
         const cleanBuckets = {};
         Object.keys(BUCKETS).forEach(key => {
-            if (BUCKETS[key].length > 0) cleanBuckets[key] = BUCKETS[key];
+            if (BUCKETS[key].length > 0) cleanBuckets[key] = BUCKETS[key].map(name => nameIdx.get(name));
         });
 
         const reportLines = [
@@ -1669,12 +1731,12 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         reportLines.push('============================================');
 
         return CONFIG.outputMode === "object"
-            ? { proxies: finalProxies, meta: { buckets: cleanBuckets, stats: stats, humanReport: reportLines.join('\n'), fissionTrack, nodeMeta: nodeMeta } }
+            ? { proxies: finalProxies, meta: { buckets: cleanBuckets, stats: stats, humanReport: reportLines.join('\n'), nodeMeta: nodeMeta } }
             : finalProxies;
     }
 
-    // 🧩 IP API 补充检测：仅在启用且 HTTP 客户端可用时走异步路径
-    if (CONFIG.enableIpEnrich) {
+    // 🧩 IP API 补充检测 / 节点裂变：仅在启用且 HTTP 客户端可用时走异步路径
+    if (CONFIG.enableIpEnrich || CONFIG.enableFission) {
         return (async () => {
             try {
                 if (CONFIG.ipEnrichTimeout > 0) {
