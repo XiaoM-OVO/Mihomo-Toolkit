@@ -1,5 +1,61 @@
 # 更新日志
 
+# 更新日志
+
+## 2026-08-30（构建层 v1.5.0 | 主脚本 v3.5.0 | 清洗模块 v1.3.0）
+
+### ⚙️ 构建层 v1.5.0
+
+#### ✨ 新增
+
+* **订阅抓取代理**（`fetchProxyPort` / `fetchProxyStrategy`）：解决"部分订阅需代理、部分直连友好"的混合抓取场景。策略三态——`direct`（全直连）/ `proxy`（全走代理）/ `auto`（先直连，失败自动经代理重试一次，仅失败订阅多一跳）；每个订阅项可再写 `proxy: true/false` 强制该订阅走代理/直连且不尝试回退。代理端点**强制本地回环**（仅暴露端口配置 `fetchProxyPort`，内部固定 `127.0.0.1`），杜绝远程代理被滥用/反连内网；`undici` 缺失的环境（如 Worker 边缘运行时）自动降级直连。新增运行时依赖 `undici`。
+* **Shadowsocks SIP001 老式 URI 兼容与 IPv6 规范化**：`parseSsUri` 兼容老式整段 Base64 编码格式（`ss://BASE64(method:password@host:port)#name`），并自动去除 IPv6 地址两端的方括号 `[2001:db8::1]` $\to$ `2001:db8::1`。
+* **SSRF DNS 30s 内存短缓存**：`dnsResolveWithTimeout` 引入 30s 内存 TTL 缓存与并发 IPv4/IPv6 查询，避免多订阅高频请求时发生重复 DNS 阻塞。
+* **全链路版本号自动化同步**：通过 `package.json` 单一真值源，驱动 CLI、Server `/healthz`、Worker Bundle 与 Builder 的版本统一同步。
+* **TypeScript 类型声明支持**（`index.d.ts`）：新增全局类型声明文件并配置 `package.json` 的 `types` 入口，提供全量配置项、节点结构与清洗报告元数据的 TypeScript 类型定义与中文智能补全。
+* **自动化测试套件扩充**：新增策略组生成、高倍率隔离、自定义分组注入以及单域名多 IP 节点裂变增殖等单测集，自动化测试用例数扩充至 21 项（7 个测试套件全部通过）。
+
+#### 🧹 重构与优化
+
+* **全端零依赖日志系统与优雅树状汇总**：构建轻量分级 Logger，多端 100% 兼容（纯 `console` 实现，零 Node.js 模块依赖）；日常 `info` 下收敛过滤/合成节点刷屏为直观的树状概览，9 字符固定等宽对齐前缀（`[CLI]    `             / `[Builder]` / `[Pure]   `          / `[Toolkit]`）。
+* **日志脱敏向单一真值提升**：订阅 URL 脱敏不再按机场 token 参数名逐个匹配，改为路径与全部 query 统一整体隐藏（规避参数名多样导致的 token 残留泄漏）；并重构 `redactLevel` 为三档递进——`off`（本地调试，URL 完整展示）< `partial`（生产首选，隐藏 URL 路径/参数）< `full`（分享日志，额外屏蔽 pure 与 toolkit 阶段的 IP/域名）。
+* **简繁转换依赖状态解耦**：修复 `opencc-js` 未安装时的假阳性输出提示，彻底解耦物理安装状态与功能开关。
+
+### ⚙️ 主脚本 v3.5.0
+
+#### ✨ 新增
+
+* **高倍率隔离配置**（`isolateHighMulti` / `highMultiThreshold`）：可将超过阈值的高倍率节点从普通池剔除，聚合进「🚀 高倍率优选」独立组，组引用进手动选择与各应用组可点名；关闭时仅排序下沉留在普通池。
+* **WebRTC 专项分流**（`enableWebRTC`）：为视频会议 / 浏览器 / STUN-TURN 协商单独建组分流（仅分流控制，不防泄漏），默认目标随路由方向自动：回国→直连，正常→代理。
+
+#### 🧹 重构与优化
+
+* **策略组容量分布与分流去向汇总**：重构底部调试与统计输出，`[Toolkit]` 在 debug 模式下以树状形式展现各策略组的类型（`[select]` / `[url-test]` 等）与容量；在 info 模式下输出精炼的 `📊 [统计摘要]`、`🧩 [分流去向]` 与 `🗺️ 地区分布` 占比。
+* **内置逻辑拆分**：将分桶路由（`routeNodeToBucket`）与 AI / 流媒体 / 社交策略组构建（`buildAIGroups` / `buildStreamingGroups` / `buildSocialGroups`）、规则构建（`buildRoutingRules`）抽为独立函数，降低追踪排查难度，行为与产物保持基线一致。
+* **Pixiv 降级为普通组**：移除硬编码日/台节点，与其他社交平台一致走标准选项，可手动切换全部节点，规避硬编码节点长期失效问题。
+
+#### 🐛 修复
+
+* **宽松匹配国旗反查**：地区宽松匹配遇到 `🇺🇸 AWS-Oregon` 这类带国旗的厂商节点时，通过国旗反查预设字典直接归组，不再被误判进「🌐 其他节点」。
+* **`FLAG_LOOKUP`** **注入块外定义**：国旗反查 Map 移至注入标记对之外，避免构建产物中被 inject 覆盖导致运行时抛错。
+
+### 🧼 清洗脚本 v1.3.0
+
+#### 🧹 重构与优化
+
+* **object 输出元数据净化**（`outputMode: "object"`）：移除内部 RegExp 字段（`regionInfo` 收敛为 `regionMeta` 精简快照 `{id, name, icon}`，info/special/garbage 分支同步统一该字段名），JSON 序列化不再退化为 `{}`、可读性增强；`buckets` 由节点名改为存 `nodeMeta` 数组索引，二次开发可直接关联溯源；`nodeMeta` 不再内嵌 `proxy` 对象（避免带着 `_rawName` 等内部字段），改为 `proxyIndex` 指向 `proxies` 数组下标、被排除节点为 `-1`；meta 不再外泄内部临时统计 `fissionTrack`。
+* **JSDoc 类型注释**：为 object 模式返回的 `meta` 结构补 `@typedef PureMeta` 声明，配合 VSCode 智能提示。
+* **裂变去重缓存局部化**：`fissionTrack` 由 operator 顶层收窄到 `ipEnrichPhase` 函数作用域内，不再与调用方共享可变状态，符合局部快照防竞态约束。
+
+#### 🐛 修复
+
+* **节点裂变（`enableFission`）全链路修复与脱敏联动**：
+  1. 修复主流程入口未包含 `enableFission` 导致仅开启裂变时被同步返回跳过的 Bug；
+  2. 修复待解析 server 收集阶段因默认 `ipEnrichMode: "missing"` 误杀已含地区名节点的问题；
+  3. 实现裂变与 `ip-api.com` 请求彻底解耦，单开裂变时不发起外部 IP 探测，零 429 风险；
+  4. 裂变日志与脱敏（`redactLevel`）联动：脱敏开启时不暴露物理 IP/域名，脱敏关闭时输出树状结构明细。
+* **重命名分隔符规整**：修正相邻分隔符（`regAdjacentSeps`）命中与多空格规整的顺序，避免残留多余空格。
+
 ## 2026-08-24（构建层 v1.4.0 | 主脚本 v3.4.1 | 清洗模块 v1.2.4）
 
 ### 🧼 清洗脚本 v1.2.4
