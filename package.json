@@ -1,6 +1,6 @@
 {
   "name": "mihomo-toolkit",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Mihomo-Toolkit - 自动化节点清洗与策略组构建工具",
   "main": "src/builder.js",
   "types": "index.d.ts",
