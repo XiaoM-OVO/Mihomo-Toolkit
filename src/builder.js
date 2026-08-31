@@ -373,16 +373,22 @@ function generateInfoNodes(subInfo, tag) {
   const { upload, download, total, expire } = parseSubscriptionInfo(subInfo);
 
   const nodes = [];
-  const formatBytes = (bytes) => {
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  const formatBytes = (bytes, fractionDigits = 2) => {
+    const units = ['MB', 'GB', 'TB', 'PB'];
+    let value = bytes / (1024 * 1024);
+    let i = 0;
+    while (value >= 1024 && i < units.length - 1) {
+      value /= 1024;
+      i++;
+    }
+    return value.toFixed(fractionDigits) + ' ' + units[i];
   };
-  
+
   if (total > 0) {
     const used = upload + download;
     const remaining = total - used;
     nodes.push({
-      name: `${tag ? '[' + tag + '] ' : ''}剩余流量：${formatBytes(remaining)}`,
+      name: `${tag ? '[' + tag + '] ' : ''}剩余流量：${formatBytes(remaining)} / ${formatBytes(total)}`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
@@ -405,6 +411,27 @@ function generateInfoNodes(subInfo, tag) {
     });
   }
   return { nodes, expireDays };
+}
+
+/**
+ * 计算距下次每月流量重置的天数：每月 resetDay 天重置，今日恰为重置日则顺延到下月。
+ * resetDay 不在 1-31 或未配置时返回 null。
+ */
+function calcResetDays({ resetDay } = {}) {
+  if (typeof resetDay !== 'number' || resetDay < 1 || resetDay > 31) return null;
+  const DAY = 86400000;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const today = new Date(y, m, now.getDate());
+  const lastThis = new Date(y, m + 1, 0).getDate();
+  const candidate = new Date(y, m, Math.min(resetDay, lastThis));
+  if (candidate > today) {
+    return Math.round((candidate - today) / DAY);
+  }
+  const lastNext = new Date(y, m + 2, 0).getDate();
+  const next = new Date(y, m + 1, Math.min(resetDay, lastNext));
+  return Math.round((next - today) / DAY);
 }
 
 function redactUrl(url, showFull = false) {
@@ -452,6 +479,7 @@ function isPrivateIPv6(ip) {
 
 const dnsCache = new Map();
 const DNS_CACHE_TTL_MS = 30000;
+const DNS_CACHE_MAX = 1000;
 
 async function dnsResolveWithTimeout(host, family) {
   if (!dns) return [];
@@ -469,6 +497,8 @@ async function dnsResolveWithTimeout(host, family) {
       ]);
       const v4 = v4Result.status === 'fulfilled' ? v4Result.value : [];
       const v6 = v6Result.status === 'fulfilled' ? v6Result.value : [];
+      // 缓存设置前先按 FIFO 淘汰最旧条目，防止长驻进程内存无限增长
+      if (dnsCache.size >= DNS_CACHE_MAX) dnsCache.delete(dnsCache.keys().next().value);
       dnsCache.set(host, { v4, v6, expireAt: Date.now() + DNS_CACHE_TTL_MS });
       return family === 4 ? v4 : v6;
     } catch {
@@ -560,21 +590,35 @@ async function safeFetchText(url, options = {}) {
       if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
         redirects++;
         if (redirects > maxRedirects) {
-          throw new Error(`Too many redirects (>${maxRedirects})`);
+          const err = new Error(`Too many redirects (>${maxRedirects})`);
+          err.retryable = false;
+          throw err;
         }
         const location = res.headers.get('location');
-        if (!location) throw new Error(`Redirect with no Location header (status ${res.status})`);
+        if (!location) {
+          const err = new Error(`Redirect with no Location header (status ${res.status})`);
+          err.retryable = false;
+          throw err;
+        }
         const nextUrl = new URL(location, currentUrl).toString();
         currentUrl = nextUrl;
         continue;
       }
 
-      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+      if (!res.ok) {
+        const err = new Error(`HTTP Error: ${res.status}`);
+        err.retryable = res.status >= 500; // 5xx 可重试，4xx 等确定性错误不重试
+        throw err;
+      }
       const text = await res.text();
       return { text, response: res, finalUrl: currentUrl };
     }
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error(`Fetch timeout (${timeoutMs / 1000}s): ${redactUrl(url, showFullUrl)}`);
+    if (err.name === 'AbortError') {
+      const e = new Error(`Fetch timeout (${timeoutMs / 1000}s): ${redactUrl(url, showFullUrl)}`);
+      e.retryable = true;
+      throw e;
+    }
     throw err;
   } finally {
     clearTimeout(timeoutId);
@@ -608,14 +652,14 @@ function createLogger(prefix, levelName = 'info') {
 }
 
 async function fetchNodes(url, options = {}) {
-  const { showFullUrl = false, debug = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger } = options;
+  const { showFullUrl = false, debug = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, retry = 2, timeoutMs = 15000 } = options;
   const { mode } = resolveFetchPlan({ strategy, perSubProxy });
   const useProxy = mode === 'proxy';
   if (logger) {
     logger.debug(`Fetching${useProxy && proxyUrl ? `(via proxy)` : ''}: ${redactUrl(url, showFullUrl)}`);
   }
   const doFetch = async (p) => {
-    const { text: content, response: res } = await safeFetchText(url, { showFullUrl, proxyUrl: p ? proxyUrl : '' });
+    const { text: content, response: res } = await safeFetchText(url, { showFullUrl, proxyUrl: p ? proxyUrl : '', timeoutMs });
     const subInfo = res.headers.get('subscription-userinfo');
     if (debug && logger) {
       logger.debug(`Debug response: status=${res.status}, content-length=${content.length}, content-type=${res.headers.get('content-type') || 'unknown'}, subInfo=${subInfo ? 'present' : 'missing'}`);
@@ -623,16 +667,36 @@ async function fetchNodes(url, options = {}) {
     }
     return { content, subInfo };
   };
+
+  // 拉取失败重试：仅对可重试错误（超时/网络抖动/5xx）重试，4xx 等确定性错误直接放弃
+  const attemptFetch = async (p) => {
+    const attempts = Math.max(1, (retry || 0) + 1);
+    let lastErr;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await doFetch(p);
+      } catch (err) {
+        lastErr = err;
+        if (err && err.retryable === false) throw err;
+        if (i < attempts - 1) {
+          if (logger) logger.warn(`订阅抓取失败，第 ${i + 1}/${attempts - 1} 次重试: ${err.message}`);
+          await new Promise(r => setTimeout(r, 500 * (i + 1)));
+        }
+      }
+    }
+    throw lastErr;
+  };
+
   if (mode === 'auto') {
     try {
-      return await doFetch(false);
+      return await attemptFetch(false);
     } catch (err) {
       if (!proxyUrl) throw err;
-      try { return await doFetch(true); }
+      try { return await attemptFetch(true); }
       catch (e2) { throw e2; }
     }
   }
-  return doFetch(useProxy);
+  return attemptFetch(useProxy);
 }
 
 let BUILDER_VERSION = "v1.4.1";
@@ -641,8 +705,25 @@ try {
   if (pkg && pkg.version) BUILDER_VERSION = `v${pkg.version}`;
 } catch (e) {}
 
-// 本地内存 TTL 缓存与容灾降级（Stale-on-Error Fallback）
+// 本地内存 TTL 缓存
 const profileCacheMap = new Map();
+
+// 订阅抓取容灾：保留每个订阅最近一次成功抓取的内容，抓取失败时降级复用，避免缺节点
+const subStaleCache = new Map(); // url -> { content, subInfo, timestamp }
+const DEFAULT_SUB_STALE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 兜底数据默认最长保留 24h（可用 fetchStaleTtl 覆盖）
+const SUB_STALE_MAX_ENTRIES = 200;
+
+function pruneSubStaleCache(maxAgeMs = DEFAULT_SUB_STALE_MAX_AGE_MS) {
+  const now = Date.now();
+  for (const [k, v] of subStaleCache) {
+    if (now - v.timestamp > maxAgeMs) subStaleCache.delete(k);
+  }
+  if (subStaleCache.size > SUB_STALE_MAX_ENTRIES) {
+    const sorted = [...subStaleCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const excess = subStaleCache.size - SUB_STALE_MAX_ENTRIES;
+    for (let i = 0; i < excess; i++) subStaleCache.delete(sorted[i][0]);
+  }
+}
 
 function getCacheKey(userConfig, options) {
   try {
@@ -713,6 +794,12 @@ async function buildProfile(userConfig, options = {}) {
   }
   
   const showFullUrl = (redactLevel === 'off');
+
+  // 订阅抓取容灾配置：重试次数与单次拉取超时（秒），可被每个订阅项的 retry 字段覆盖
+  const fetchRetry = typeof userConfig.fetchRetry === 'number' ? userConfig.fetchRetry : 2;
+  const fetchTimeoutSec = typeof userConfig.fetchTimeout === 'number' ? userConfig.fetchTimeout : 15;
+  const staleMaxAgeMs = (typeof userConfig.fetchStaleTtl === 'number' ? userConfig.fetchStaleTtl : 24) * 60 * 60 * 1000; // 兜底数据保留时长（小时）
+  let hasFailedSub = false; // 存在最终失败的订阅（无兜底可用）时，构建结果不完整，不写入缓存
   
   function parseSubInfoForGlobal(subInfo) {
     if (!subInfo) return;
@@ -733,15 +820,38 @@ async function buildProfile(userConfig, options = {}) {
           rawResult = { content: sub.uri, subInfo: null };
         } else {
           // url 字段：HTTP 抓取，代理策略 = per-sub proxy 覆盖全局 fetchProxyStrategy
-          rawResult = await fetchNodes(sub.url, {
-            showFullUrl, debug,
-            proxyUrl: resolveProxyUrl(userConfig),
-            strategy: userConfig.fetchProxyStrategy,
-            perSubProxy: sub.proxy
-          });
+          const subKey = sub.url;
+          try {
+            rawResult = await fetchNodes(sub.url, {
+              showFullUrl, debug,
+              proxyUrl: resolveProxyUrl(userConfig),
+              strategy: userConfig.fetchProxyStrategy,
+              perSubProxy: sub.proxy,
+              retry: typeof sub.retry === 'number' ? sub.retry : fetchRetry,
+              timeoutMs: fetchTimeoutSec * 1000
+            });
+            // 内容有效性校验：解析不出节点视为抓取失败（订阅源可能返回了限流页/错误页）
+            if (!rawResult.content || (parseContent(rawResult.content).proxies || []).length === 0) {
+              throw new Error('Subscription returned no nodes');
+            }
+          } catch (e) {
+            // 容灾降级：复用该订阅上次成功抓取的内容，避免节点消失
+            const stale = subStaleCache.get(subKey);
+            if (stale && Date.now() - stale.timestamp < staleMaxAgeMs) {
+              logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
+              rawResult = { content: stale.content, subInfo: stale.subInfo, stale: true };
+            } else {
+              throw e;
+            }
+          }
+          if (rawResult && !rawResult.stale) {
+            subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
+            pruneSubStaleCache(staleMaxAgeMs);
+          }
         }
         return { sub, rawResult, error: null };
       } catch (e) {
+        hasFailedSub = true;
         return { sub, rawResult: null, error: e };
       }
     });
@@ -794,23 +904,24 @@ async function buildProfile(userConfig, options = {}) {
           if (!effectiveTag) effectiveTag = "订阅";
         }
 
-        let resetNodeName = "";
-        const resetNode = subProxies.find(p => p.name && (p.name.includes('重置') || p.name.toLowerCase().includes('reset')));
-        if (resetNode) {
-          let cleanName = resetNode.name.replace(/^\[.*?\]\s*/, '').trim();
-          const daysMatch = cleanName.match(/(\d+)\s*(?:天|Days?)/i);
-          const dateMatch = cleanName.match(/\d{4}[-\/]\d{2}[-\/]\d{2}/);
-          
-          if (daysMatch) {
-            resetNodeName = `距离重置剩余：${daysMatch[1]} 天`;
-          } else if (dateMatch) {
-            resetNodeName = `流量重置时间：${dateMatch[0]}`;
-          } else {
-            const numMatch = cleanName.match(/\d+/);
-            if (numMatch) {
-              resetNodeName = `距离重置剩余：${numMatch[0]} 天`;
+        // 重置信息：优先订阅配置（resetDay），未配置则自动捕捉机场重置节点名
+        const cfgResetDays = calcResetDays({ resetDay: sub.resetDay });
+        let resetText = "";
+        if (cfgResetDays != null) {
+          resetText = `距离重置剩余：${cfgResetDays} 天`;
+        } else {
+          const resetNode = subProxies.find(p => p.name && (p.name.includes('重置') || p.name.toLowerCase().includes('reset')));
+          if (resetNode) {
+            let cleanName = resetNode.name.replace(/^\[.*?\]\s*/, '').trim();
+            const daysMatch = cleanName.match(/(\d+)\s*(?:天|Days?)/i);
+            const dateMatch = cleanName.match(/\d{4}[-\/]\d{2}[-\/]\d{2}/);
+            if (daysMatch) {
+              resetText = `距离重置剩余：${daysMatch[1]} 天`;
+            } else if (dateMatch) {
+              resetText = `流量重置时间：${dateMatch[0]}`;
             } else {
-              resetNodeName = cleanName;
+              const numMatch = cleanName.match(/\d+/);
+              resetText = numMatch ? `距离重置剩余：${numMatch[0]} 天` : cleanName;
             }
           }
         }
@@ -851,9 +962,10 @@ async function buildProfile(userConfig, options = {}) {
         }
         
         const { nodes: synthNodes, expireDays } = generateInfoNodes(rawResult.subInfo, effectiveTag);
-        if (resetNodeName && (expireDays === -1 || expireDays > 30)) {
+        // 到期临近（≤30 天）时不显示重置——到期信息已够，重置无意义
+        if (resetText && (expireDays === -1 || expireDays > 30)) {
           synthNodes.push({
-            name: `[${effectiveTag}] ${resetNodeName}`,
+            name: `[${effectiveTag}] ${resetText}`,
             type: 'direct',
             server: '1.0.0.1',
             port: 80,
@@ -910,7 +1022,9 @@ async function buildProfile(userConfig, options = {}) {
       rawResult = await fetchNodes(options.url, {
         showFullUrl, debug, logger,
         proxyUrl: resolveProxyUrl(userConfig),
-        strategy: userConfig.fetchProxyStrategy
+        strategy: userConfig.fetchProxyStrategy,
+        retry: fetchRetry,
+        timeoutMs: fetchTimeoutSec * 1000
       });
     }
     parseSubInfoForGlobal(rawResult.subInfo);
@@ -948,18 +1062,19 @@ async function buildProfile(userConfig, options = {}) {
     toolkitUserConfig.enableNodeRename = false;
     // pure 强制输出文字特征（不转 Emoji），让 toolkit 能识别文字并正确分桶
     pureUserConfig.showFeatureIcon = false;
-    // 同步根级白名单/注入规则到双端，确保 pure 放行的节点 toolkit 不会拦截
-    // （spread 是覆盖语义，若 pureConfig/toolkitConfig 各自定义了不同值会冲掉根级，这里合并回去）
-    const whitelist = userConfig.whitelistKeywords || [];
-    const specialRules = userConfig.specialNodeRules || [];
-    if (whitelist.length > 0) {
-      pureUserConfig.whitelistKeywords = [...new Set([...(pureUserConfig.whitelistKeywords || []), ...whitelist])];
-      toolkitUserConfig.whitelistKeywords = [...new Set([...(toolkitUserConfig.whitelistKeywords || []), ...whitelist])];
-    }
-    if (specialRules.length > 0) {
-      pureUserConfig.specialNodeRules = [...new Set([...(pureUserConfig.specialNodeRules || []), ...specialRules])];
-      toolkitUserConfig.specialNodeRules = [...new Set([...(toolkitUserConfig.specialNodeRules || []), ...specialRules])];
-    }
+  }
+
+  // 根级白名单/注入规则同步合并进双端（任意模式生效，pureConfig/toolkitConfig 是覆盖语义，
+  // 会冲掉根级同名配置，这里按并集合并回去，保证根级共享规则不被吞掉）
+  const whitelist = userConfig.whitelistKeywords || [];
+  const specialRules = userConfig.specialNodeRules || [];
+  if (whitelist.length > 0) {
+    pureUserConfig.whitelistKeywords = [...new Set([...(pureUserConfig.whitelistKeywords || []), ...whitelist])];
+    toolkitUserConfig.whitelistKeywords = [...new Set([...(toolkitUserConfig.whitelistKeywords || []), ...whitelist])];
+  }
+  if (specialRules.length > 0) {
+    pureUserConfig.specialNodeRules = [...new Set([...(pureUserConfig.specialNodeRules || []), ...specialRules])];
+    toolkitUserConfig.specialNodeRules = [...new Set([...(toolkitUserConfig.specialNodeRules || []), ...specialRules])];
   }
 
   let finalProxies = configData.proxies;
@@ -1040,6 +1155,17 @@ async function buildProfile(userConfig, options = {}) {
       (featureSwitches.length > 0 ? ` | ${featureSwitches.join(' ')}` : ''));
   }
   
+  // 移除内部私有字段（_ 前缀，如 _subTag/_indexPrefix/_rawName），防止泄漏到最终 YAML
+  if (Array.isArray(outputData.proxies)) {
+    for (const p of outputData.proxies) {
+      if (p && typeof p === 'object') {
+        for (const key of Object.keys(p)) {
+          if (key.startsWith('_')) delete p[key];
+        }
+      }
+    }
+  }
+
   let yamlStr = yaml.stringify(outputData);
     
   if (globalTotal > 0) {
@@ -1060,7 +1186,7 @@ async function buildProfile(userConfig, options = {}) {
     }
   };
 
-  if (enableCache && cacheKey) {
+  if (enableCache && cacheKey && !hasFailedSub) {
     profileCacheMap.set(cacheKey, { timestamp: Date.now(), result: profileResult });
   }
 

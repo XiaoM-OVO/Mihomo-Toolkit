@@ -34,40 +34,32 @@
 # ─────────────────────────────────────────────────────────────────────
 # ① 订阅源与节点注入
 # ─────────────────────────────────────────────────────────────────────
-# 订阅抓取代理（强制本地回环代理，仅填端口）
-#   端口留空 = 全部直连（等同于 fetchProxyStrategy: direct）
-#   每订阅项可写 proxy: true/false 强制该订阅走代理/直连（覆盖全局，且不尝试回退）
-# strategy:
-#   direct   所有订阅直连（全局默认）
-#   proxy    所有订阅走代理
-#   auto     先直连，失败自动用代理重试一次（只对失败的订阅多一跳，平时零开销）
-fetchProxyPort: 7890
-fetchProxyStrategy: "auto"
+# 抓取设置（代理 + 容灾）
+fetchProxyPort: 7890          # 抓取代理端口，留空=全部直连；每订阅可写 proxy 单独覆盖
+fetchProxyStrategy: "auto"    # direct=全直连 / proxy=全走代理 / auto=先直连，失败自动用代理重试一次
+# fetchRetry: 2               # 拉取失败重试次数（超时/网络/5xx 重试，4xx 不重试）
+# fetchTimeout: 15            # 单次拉取超时秒数
+# fetchStaleTtl: 24           # 失败时复用上次成功内容的小时数（0=关闭兜底）
 
+# 订阅清单（每项一条 - 即一个订阅/文件；url 为远程订阅或本地文件）
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "机场A"
-    # indexPrefix: "A"           # 序号前缀，如A01/B01，不写则按地区统一编号
-    # proxy: true/false
-
+    # indexPrefix: "A"          # 序号前缀（A01/B01），不写则按地区统一编号
+    # proxy: false              # 强走代理/直连，覆盖全局
+    # retry: 3                  # 单独重试次数，覆盖 fetchRetry
+    # resetDay: 19              # 每月该日重置流量（自动显示"重置剩余 X 天"，仅长命订阅需要）
   - url: "https://example.com/api/v1/sub2"
     tag: "机场B"
-    # indexPrefix: "B"
-    # proxy: true/false
 
-  # 本地文件也可以
+  # 本地文件（无需代理）
   # - url: "./my-local-nodes.yaml"
 
-  # 直接注入单节点 URI（适合自建节点，无需 HTTP fetch）
-  # 支持 vless:// vmess:// trojan:// ss://，用 uri 字段（而非 url）
-  # ⚠️ 指定 tag 后：
-  #   1. tag 自动加入 whitelistKeywords → 跳过 pure 清洗（保留原名、不做地区匹配/IP反查）
-  #      若要"既要标签、又要走清洗"，不要指定 tag，改用 name 手动命名
-  #   2. 节点被标记为注入节点，可通过 customNodeGroups 指定策略组（见 ⑨）
+  # 直接注入单节点 URI（支持 vless:// vmess:// trojan:// ss://，用 uri 字段）
+  # ⚠️ 指定 tag 会跳过 pure 清洗（保留原名）；不想跳过就别写 tag，用 name 手动命名
   # - uri: "vless://uuid@1.2.3.4:443?security=tls&type=ws&path=/ws#x-ray-HK"
   #   tag: "自建"
-  #   indexPrefix: "X"
-  #   name: "我的自建节点"         # 可选，覆盖 URI 中的节点名（#后面的部分）
+  #   name: "我的自建节点"       # 可选，覆盖 URI 中的节点名
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -88,6 +80,8 @@ output: "./dist/output.yaml"    # [共享] 输出路径
 # ─────────────────────────────────────────────────────────────────────
 # ⚠️ server.js 读 config.yaml 的这些字段；worker.js 读环境变量
 #    （AUTH_TOKEN / SECURITY_LIMITS / ENABLE_URL_PARAMS）
+# enableCache: true                # 是否启用本地内存缓存（默认 true；CLI 单次运行无效，仅常驻 server/worker 生效）
+# cacheTtl: 300                    # 本地缓存过期秒数（默认 300，即 5 分钟；5 分钟内同一请求直接返回缓存，不重新拉取）
 # authToken: "your-secret-token"   # 公网部署鉴权 Token，支持 ?token=xxx 或 Header Authorization: Bearer xxx。未配置则不启用鉴权
 # enableUrlParams: true            # 是否允许 ?url= / ?config= 传参（false 则只读本地配置/环境变量）
 # security:

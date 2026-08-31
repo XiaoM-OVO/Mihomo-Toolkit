@@ -59,4 +59,23 @@ describe('🔨 端到端构建流程集成测试模块', () => {
     assert.ok(Array.isArray(outputData.proxies));
     assert.equal(outputData['proxy-groups'], undefined);
   });
+
+  test('buildProfile - 订阅配置 resetDay 生成重置节点，未配置时自动捕捉', async () => {
+    const today = new Date();
+    const userConfig = {
+      subscriptions: [
+        {
+          uri: 'vless://11111111-2222-3333-4444-555555555555@hk.domain.com:443?security=tls#🇭🇰 香港 01',
+          tag: 'Sub1',
+          resetDay: today.getDate() // 每月今天重置
+        }
+      ]
+    };
+
+    const { yamlStr } = await buildProfile(userConfig, { type: 'full', production: true });
+    const outputData = yaml.parse(yamlStr);
+    const resetNode = (outputData.proxies || []).find(p => /距离重置剩余：\d+ 天/.test(p.name));
+    assert.ok(resetNode, '应生成"距离重置剩余 X 天"节点');
+    assert.match(resetNode.name, /\[Sub1\] 距离重置剩余：\d+ 天/);
+  });
 });

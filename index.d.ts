@@ -35,8 +35,10 @@ export interface SubscriptionConfig {
   headers?: Record<string, string>;
   /** 自定义 User-Agent 字符串 */
   userAgent?: string;
-  /** 订阅解析失败重试次数 */
+  /** 订阅解析失败重试次数（覆盖全局 fetchRetry，默认继承全局值） */
   retry?: number;
+  /** 每月重置日（1-31），用于自动计算"距离重置剩余 X 天" */
+  resetDay?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,6 +198,12 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   fetchProxyPort?: number;
   /** 本地订阅抓取代理策略：direct (直连) | proxy (代理) | auto (自动重试) */
   fetchProxyStrategy?: ProxyStrategy;
+  /** 订阅拉取失败自动重试次数（默认 2，即最多尝试 3 次；超时/网络抖动/5xx 会重试，4xx 不重试） */
+  fetchRetry?: number;
+  /** 单次订阅拉取超时秒数（默认 15） */
+  fetchTimeout?: number;
+  /** 上次成功内容兜底保留小时数（默认 24；设为 0 关闭"失败复用旧数据"降级） */
+  fetchStaleTtl?: number;
 
   // 🔤 简繁中文转换
   /** 是否开启简繁中文全链路转换（需 opencc-js 依赖） */
