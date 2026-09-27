@@ -8,7 +8,7 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
       // 纯文本引流/广告节点 (应被剔除)
       { name: '📢 官方网址：https://example.com 优惠码9折 点击加入Q群', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p' },
       { name: '⚠️ 节点定期更新，请关注 Telegram 频道 @example', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p' },
-      // 订阅自带的信息说明节点 (removeInfoNodes=true 且非 synthetic 时应被剔除)
+      // 订阅自带的信息说明节点 (原生说明节点应被默认剔除)
       { name: '剩余流量：999.50 GB | 到期时间：2026-12-31', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p' },
       // 正常节点 (带复杂花里胡哨的前缀与繁体修饰词)
       { name: '🇭🇰 [机场A] 香港專線 01 [家寬/BGP] 🚀 x1.5', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-256-gcm', password: 'pass1' },
@@ -18,7 +18,7 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
     ];
 
     const config = {
-      removeInfoNodes: true,
+      enableDashboard: true,
       enableDedupe: true,
       strictRegionMatch: false
     };
@@ -48,5 +48,17 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
     // 重复节点应只保留 1 个
     const hkNodes = cleanProxies.filter(p => p.server === 'hk.domain.com');
     assert.equal(hkNodes.length, 1);
+  });
+
+  test('pure-nodes - removeInfoNodes: false 显式保留原生说明节点', async () => {
+    const rawProxies = [
+      { name: '剩余流量：500 GB', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p' },
+      { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-256-gcm', password: 'p' }
+    ];
+
+    const result = await operator(rawProxies, 'clash', { removeInfoNodes: false });
+    const proxies = Array.isArray(result) ? result : result.proxies;
+    assert.equal(proxies.length, 2);
+    assert.ok(proxies.some(p => p.name.includes('剩余流量')));
   });
 });
