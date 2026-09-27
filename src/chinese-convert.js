@@ -9,13 +9,13 @@ let _loaded = false;
 
 function ensureLoaded() {
   if (_loaded) return;
-  _loaded = true;
   try {
     const OpenCC = require('opencc-js');
     _t2s = OpenCC.Converter({ from: 'tw', to: 'cn' });
     _s2t = OpenCC.Converter({ from: 'cn', to: 'tw' });
+    _loaded = true;
   } catch (e) {
-    // opencc-js 未安装，保持 null
+    // opencc-js 未安装或加载失败，保持 null
   }
 }
 
@@ -39,6 +39,10 @@ function deepConvertStrings(obj, convertFn) {
   if (typeof obj === 'string') return convertFn(obj);
   if (Array.isArray(obj)) return obj.map(item => deepConvertStrings(item, convertFn));
   if (obj && typeof obj === 'object') {
+    // 防御复杂对象：RegExp、Date、Buffer 等不转换，保持原样
+    if (obj instanceof RegExp || obj instanceof Date) return obj;
+    if (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(obj)) return obj;
+
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
       // 键和值都转换（customNodeGroups 等配置的 key 是匹配关键词，也必须转）

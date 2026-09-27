@@ -1,8 +1,7 @@
 /**
  * 📦 Mihomo-Toolkit | 地区识别字典（唯一真源）
  * 改完本文件后运行 `npm run inject` 自动同步到 pure-nodes.js / mihomo-toolkit.js
- * 注：模板式条目（reg 用了 `${IN_PREFIX}` 插值）需同步补 `_regTemplate` 字段，
- *     存 `${IN_PREFIX}` 之后的模式串，用于注入脚本还原 `new RegExp(...)` 源码
+ * 注：模板式条目只需声明 `_regTemplate`，`reg` 属性会自动派生，避免双份维护
  */
 
 // 入口地区/运营商前缀正则片段
@@ -12,17 +11,17 @@ const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|�
 const REGION_DEFS_RAW = [
   //--- 大中华区 ---
   { id: "cn", name: "中国",   icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
-  { id: "hk", name: "香港",   icon: "🇭🇰", reg: new RegExp(`${IN_PREFIX}港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong`, "i"), _regTemplate: "港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong" },
+  { id: "hk", name: "香港",   icon: "🇭🇰", _regTemplate: "港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong" },
   { id: "mo", name: "澳门",   icon: "🇲🇴", reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i },
-  { id: "tw", name: "台湾",   icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", reg: new RegExp(`${IN_PREFIX}台|台湾|台灣|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet`, "i"), _regTemplate: "台|台湾|台灣|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet" },
+  { id: "tw", name: "台湾",   icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", _regTemplate: "台|台湾|台灣|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet" },
 
   // --- 亚洲核心区 ---
-  { id: "jp", name: "日本",   icon: "🇯🇵", city: "东京|大阪|埼玉|京都|川崎", reg: new RegExp(`${IN_PREFIX}日|日本|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala`, "i"), _regTemplate: "日|日本|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala" },
-  { id: "kr", name: "韩国",   icon: "🇰🇷", city: "首尔|春川", reg: new RegExp(`${IN_PREFIX}韩|韩国|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea`, "i"), _regTemplate: "韩|韩国|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea" },
-  { id: "sg", name: "新加坡", icon: "🇸🇬", city: "狮城", reg: new RegExp(`${IN_PREFIX}新|新加坡|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest`, "i"), _regTemplate: "新|新加坡|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest" },
+  { id: "jp", name: "日本",   icon: "🇯🇵", city: "东京|大阪|埼玉|京都|川崎", _regTemplate: "日|日本|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala" },
+  { id: "kr", name: "韩国",   icon: "🇰🇷", city: "首尔|春川", _regTemplate: "韩|韩国|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea" },
+  { id: "sg", name: "新加坡", icon: "🇸🇬", city: "狮城", _regTemplate: "新|新加坡|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest" },
 
   // --- 北美大区 ---
-  { id: "us", name: "美国",   icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", reg: new RegExp(`${IN_PREFIX}美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America`, "i"), _regTemplate: "美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America" },
+  { id: "us", name: "美国",   icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", _regTemplate: "美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America" },
 
   // --- 欧洲大区 ---
   { group: "eu", name: "英国",   icon: "🇬🇧", city: "伦敦|費勒姆", reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
@@ -50,7 +49,7 @@ const REGION_DEFS_RAW = [
   { group: "sea", name: "菲律宾",   icon: "🇵🇭", city: "马尼拉", reg: /菲律宾|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i },
   { group: "sea", name: "越南",     icon: "🇻🇳", city: "胡志明|河内", reg: /越南|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
 
-  // --- 美洲大区 --
+  // --- 美洲大区 ---
   { group: "am", name: "加拿大",    icon: "🇨🇦", city: "多伦多|温哥华|蒙特利尔", reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
   { group: "am", name: "阿根廷",    icon: "🇦🇷", city: "布宜诺斯艾利斯", reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
   { group: "am", name: "巴西",      icon: "🇧🇷", city: "圣保罗", reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
@@ -72,6 +71,13 @@ const REGION_DEFS_RAW = [
   { name: "澳大利亚", icon: "🇦🇺", city: "悉尼|墨尔本", reg: /澳大利亚|澳洲|(?<![a-zA-Z])AU(?![a-zA-Z])|Australia|Sydney/i },
 ];
 
+// 动态派生未定义 reg 的模板项，避免双份维护
+for (const r of REGION_DEFS_RAW) {
+  if (r._regTemplate && !r.reg) {
+    r.reg = new RegExp(IN_PREFIX + r._regTemplate, "i");
+  }
+}
+
 /** 运行时增强：预生成每个地区的 _cleanReg / _matchReg / _cityReg */
 function enhanceRegionDefs(defs) {
   defs.forEach(r => {
@@ -92,7 +98,10 @@ function enhanceRegionDefs(defs) {
 /** 把条目 reg 还原为可注入的 JS 源码字符串 */
 function _regToSource(r) {
   if (r._regTemplate != null) {
-    // 外层用单引号：`${IN_PREFIX}` 在单引号字符串里就是字面量字符，不会被当作模板插值
+    // 校验模板串防范未转义反引号
+    if (r._regTemplate.includes('`') || r._regTemplate.includes('${')) {
+      throw new Error(`[region-defs] 非法模板字符: ${r.name}`);
+    }
     return 'new RegExp(`${IN_PREFIX}' + r._regTemplate + '`, "i")';
   }
   const flags = r.reg.flags || "i";
@@ -114,15 +123,15 @@ function _defItemToSource(r, indent) {
 
 // ---- 分节注释（与 REGION_DEFS_RAW 的 name 对应插入位置） ----
 const _SECTION_COMMENTS = [
-  { beforeName: "中国",   comment: "//--- 大中华区 ---" },
-  { beforeName: "日本",   comment: "// --- 亚洲核心区 ---" },
-  { beforeName: "美国",   comment: "// --- 北美大区 ---" },
-  { beforeName: "英国",   comment: "// --- 欧洲大区 ---" },
-  { beforeName: "印度",   comment: "// --- 南亚大区 ---" },
+  { beforeName: "中国",     comment: "//--- 大中华区 ---" },
+  { beforeName: "日本",     comment: "// --- 亚洲核心区 ---" },
+  { beforeName: "美国",     comment: "// --- 北美大区 ---" },
+  { beforeName: "英国",     comment: "// --- 欧洲大区 ---" },
+  { beforeName: "印度",     comment: "// --- 南亚大区 ---" },
   { beforeName: "马来西亚", comment: "// --- 东南亚大区 ---" },
-  { beforeName: "加拿大", comment: "// --- 美洲大区 --" },
-  { beforeName: "阿联酋", comment: "// --- 中东大区 ---" },
-  { beforeName: "南非",   comment: "// --- 非洲大区 ---" },
+  { beforeName: "加拿大",   comment: "// --- 美洲大区 ---" },
+  { beforeName: "阿联酋",   comment: "// --- 中东大区 ---" },
+  { beforeName: "南非",     comment: "// --- 非洲大区 ---" },
   { beforeName: "澳大利亚", comment: "// --- 其他零散地区 ---" },
 ];
 
@@ -149,16 +158,52 @@ function generateInPrefixSource() {
 }
 
 /** 生成 REGION_DEFS.forEach(...) 的运行时增强代码源码 */
-function generateEnhanceForEachSource(arrayName, indent) {
+function generateEnhanceForEachSource(arrayName, indent, options = {}) {
   const pad = " ".repeat(indent || 0);
+  const innerPad = " ".repeat((indent || 0) + (options.innerIndent || 2));
+  const comment1 = options.withComments ? " // 用于最后擦除名字" : "";
+  const comment2 = options.withComments ? "  // 用于判定节点归属" : "";
   return [
     `${pad}${arrayName}.forEach(r => {`,
-    `${pad}    const combinedSource = r.city ? \`\${r.reg.source}|\${r.city}\` : r.reg.source;`,
-    `${pad}    r._cleanReg = new RegExp(combinedSource, "ig");`,
-    `${pad}    r._matchReg = new RegExp(combinedSource, "i");`,
-    `${pad}    r._cityReg = r.city ? new RegExp(r.city, "i") : null;`,
+    `${innerPad}const combinedSource = r.city ? \`\${r.reg.source}|\${r.city}\` : r.reg.source;`,
+    `${innerPad}r._cleanReg = new RegExp(combinedSource, "ig");${comment1}`,
+    `${innerPad}r._matchReg = new RegExp(combinedSource, "i");${comment2}`,
+    `${innerPad}r._cityReg = r.city ? new RegExp(r.city, "i") : null;`,
     `${pad}});`,
   ].join("\n");
+}
+
+// ---- Node 调试导出 & 自检 ----
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    IN_PREFIX,
+    REGION_DEFS_RAW,
+    enhanceRegionDefs,
+    generateRegionDefsSource,
+    generateInPrefixSource,
+    generateEnhanceForEachSource,
+    /**
+     * 自检：确保使用了 _regTemplate 的条目，运行时 reg.source 与
+     * 「IN_PREFIX + _regTemplate」拼接结果完全一致
+     */
+    validateMapping() {
+      const mismatches = [];
+      for (const r of REGION_DEFS_RAW) {
+        if (r._regTemplate != null) {
+          const expectedSource = (IN_PREFIX + r._regTemplate);
+          const actualSource = r.reg.source;
+          const rebuiltSource = new RegExp(expectedSource, "i").source;
+          if (actualSource !== rebuiltSource) {
+            mismatches.push(`${r.name}: reg.source 与 IN_PREFIX + _regTemplate 不一致`);
+          }
+        }
+      }
+      if (mismatches.length) {
+        throw new Error("[region-defs] _regTemplate 校验失败:\n  " + mismatches.join("\n  "));
+      }
+      return true;
+    },
+  };
 }
 
 // ---- Node 调试导出 & 自检 ----

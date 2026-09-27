@@ -27,7 +27,7 @@ jobs:
         run: npm ci || npm install
 
       - name: Run code injection check
-        run: npm run inject
+        run: npm run inject:check
 
       - name: Run unit & integration test suite
         run: npm test

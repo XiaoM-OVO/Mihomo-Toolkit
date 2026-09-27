@@ -45,7 +45,11 @@ export default {
       // 资源限制：Worker 端通过 SECURITY_LIMITS 环境变量以 JSON 传入，如 '{"maxSubscriptionUrls":20,"maxTotalNodes":5000}'
       let securityLimits = {};
       if (env.SECURITY_LIMITS) {
-        try { securityLimits = JSON.parse(env.SECURITY_LIMITS); } catch (e) { /* ignore */ }
+        try {
+          securityLimits = JSON.parse(env.SECURITY_LIMITS);
+        } catch (e) {
+          console.warn('[Worker] ⚠️ Failed to parse SECURITY_LIMITS environment variable as JSON:', e.message);
+        }
       }
 
       // 1) 早期快速拦截：?url= 数量超限
@@ -90,7 +94,7 @@ export default {
         'Profile-Update-Interval': '24'
       });
 
-      if (userInfo && userInfo.total > 0) {
+      if (userInfo && (userInfo.total > 0 || userInfo.expire > 0)) {
         headers.set('Subscription-Userinfo', `upload=${userInfo.upload}; download=${userInfo.download}; total=${userInfo.total}; expire=${userInfo.expire}`);
       }
 

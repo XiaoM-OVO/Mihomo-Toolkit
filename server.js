@@ -36,7 +36,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // 鉴权检查（支持 URL ?token=xxx 或 Header Authorization: Bearer xxx）
-      const authToken = localConfig.authToken;
+      const authToken = process.env.AUTH_TOKEN || localConfig.authToken;
       if (authToken) {
         const urlToken = reqUrl.searchParams.get('token');
         const headerAuth = req.headers['authorization'] || '';
@@ -49,9 +49,15 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const safeUrl = reqUrl.searchParams.getAll('url').length > 0
-        ? `/sub?url=[${reqUrl.searchParams.getAll('url').length} subscriptions]`
-        : (reqUrl.searchParams.get('config') ? `/sub?config=${redactUrl(reqUrl.searchParams.get('config'))}` : req.url);
+      // 构造安全日志 URL，防止 token 泄漏和长 URL 刷屏
+      let safeUrl = reqUrl.pathname;
+      const safeParams = [];
+      const subCount = reqUrl.searchParams.getAll('url').length;
+      if (subCount > 0) safeParams.push(`url=[${subCount} subscriptions]`);
+      if (reqUrl.searchParams.get('config')) safeParams.push(`config=${redactUrl(reqUrl.searchParams.get('config'))}`);
+      if (reqUrl.searchParams.has('token')) safeParams.push('token=***');
+      if (reqUrl.searchParams.has('debug')) safeParams.push(`debug=${reqUrl.searchParams.get('debug')}`);
+      if (safeParams.length > 0) safeUrl += `?${safeParams.join('&')}`;
       console.log(`[Server] Received request for ${safeUrl}`);
 
       let userConfig = { subscriptions: [] };
@@ -87,7 +93,7 @@ const server = http.createServer(async (req, res) => {
         // Build config from ?url=...
         const blocked = subUrls.filter(u => !isAllowedUrl(u));
         if (blocked.length > 0) throw new Error(`Invalid or disallowed subscription URL(s): ${blocked.map(redactUrl).join(', ')}`);
-        userConfig.subscriptions = subUrls.map(u => ({ url: u }));
+        userConfig = { ...localConfig, subscriptions: subUrls.map(u => ({ url: u })) };
       } else if (Object.keys(localConfig).length > 0) {
         // Use local config.yaml
         userConfig = localConfig;
@@ -107,7 +113,7 @@ const server = http.createServer(async (req, res) => {
         'Profile-Update-Interval': '24'
       };
 
-      if (userInfo && userInfo.total > 0) {
+      if (userInfo && (userInfo.total > 0 || userInfo.expire > 0)) {
         headers['Subscription-Userinfo'] = `upload=${userInfo.upload}; download=${userInfo.download}; total=${userInfo.total}; expire=${userInfo.expire}`;
       }
 
@@ -116,9 +122,10 @@ const server = http.createServer(async (req, res) => {
       console.log(`[Server] Successfully served profile. (Total: ${userInfo?.total || 0})`);
     } catch (err) {
       console.error(`[Server] Error:`, err.message);
-      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      const isForbidden = /disabled by enableUrlParams/.test(err.message);
+      res.writeHead(isForbidden ? 403 : 500, { 'Content-Type': 'text/plain' });
       // 不向客户端暴露内部错误细节,防止信息泄漏
-      res.end(`Internal Server Error. Check server logs for details.`);
+      res.end(isForbidden ? 'Forbidden: URL params are disabled by enableUrlParams=false' : 'Internal Server Error. Check server logs for details.');
     }
   } else {
     res.writeHead(404, { 'Content-Type': 'text/plain' });

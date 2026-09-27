@@ -27,8 +27,12 @@ export interface SubscriptionConfig {
   url?: string;
   /** 单个或多个自建节点 URI（如 ss://, vmess://, vless://, trojan://） */
   uri?: string;
-  /** 是否启用该订阅项（默认为 true） */
+  /** 是否启用该订阅项（默认为 true，支持 enable 或 enabled: false 禁用） */
   enable?: boolean;
+  /** 是否启用该订阅项（默认为 true，设为 false 临时停用） */
+  enabled?: boolean;
+  /** 是否停用该订阅项（设为 true 临时停用） */
+  disabled?: boolean;
   /** 抓取代理开关：true 走代理，false 强制直连，省略则继承全局 fetchProxyStrategy */
   proxy?: boolean;
   /** 自定义请求头（如 User-Agent、Authorization 等） */
@@ -55,8 +59,8 @@ export interface CustomRegexRule {
 }
 
 export interface PureConfig {
-  /** 是否剔除订阅中的说明/流量/到期等非节点信息（默认为 true） */
-  removeInfoNodes?: boolean;
+  /** 是否启用「📊 订阅与状态看板」独立展示策略组（展示流量/到期/重置，不污染主力节点池） */
+  enableDashboard?: boolean;
   /** 是否开启物理参数去重（默认为 true） */
   enableDedupe?: boolean;
   /** 严格地区匹配模式：为 true 时仅匹配完全确信的地区名 */
@@ -161,6 +165,8 @@ export interface ToolkitConfig {
   highMultiThreshold?: number;
   /** 是否开启低倍率/下载专用节点隔离分组 */
   isolateDownload?: boolean;
+  /** 是否开启实验节点隔离独立分组（含 测试/实验/备用/测速 字样的节点聚合为「🧪 实验节点」） */
+  isolateExperimental?: boolean;
   /** 是否开启家宽/住宅 IP 节点隔离分组 */
   enableResidential?: boolean;
   /** 是否为 TLS 节点注入客户端指纹与 TCP 并发优化 */
@@ -204,6 +210,8 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   fetchTimeout?: number;
   /** 上次成功内容兜底保留小时数（默认 24；设为 0 关闭"失败复用旧数据"降级） */
   fetchStaleTtl?: number;
+  /** 多订阅到期时间聚合策略：min (临近到期优先预警，默认) | max (最晚到期) | first (首个订阅优先) */
+  expireAggregation?: 'min' | 'max' | 'first';
 
   // 🔤 简繁中文转换
   /** 是否开启简繁中文全链路转换（需 opencc-js 依赖） */
