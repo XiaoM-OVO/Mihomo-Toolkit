@@ -2,7 +2,7 @@
  * =========================================================================
  * 📦 Mihomo-Toolkit | 通用纯净节点清洗脚本 (Pure JS Edition) | MIT 许可证
  * =========================================================================
- * 🏷️ 版本: 1.3.0 (Build 2026.08.30)
+ * 🏷️ 版本: 1.3.1 (Build 2026.09.01)
  * 👤 作者: XiaoM-OVO
  * 🔌 环境: Node.js / Sub-Store / Surge / Loon / 浏览器 等(多端自适应)
  * 📝 描述: 零依赖跨平台节点处理核心，提供过滤、去重、重命名与自动排序功能。
@@ -21,7 +21,7 @@ const DEFAULT_CONFIG = {
     outputMode: "array",          // 输出模式: "array"纯节点数组, "object"包含 meta 元数据的对象
     logLevel: "info",             // 日志级别: "silent" | "error" | "warn" | "info" | "debug"
     redactLevel: "partial",       // 日志脱敏级别: off | partial | full
-    removeInfoNodes: false,       // 纯净模式: 直接删除"到期时间/剩余流量"等说明节点
+    removeInfoNodes: false,       // 说明节点控制: 默认保留"到期时间/剩余流量"等原生说明节点防丢信息 (设为 true 可直接剔除)
     outputGarbage: false,         // 垃圾输出: 是否将拦截的广告/假节点也输出(默认不输出,但会进桶)
     outputUnknown: true,          // 未知输出: 是否将未识别的节点输出(默认输出)
 
@@ -54,7 +54,8 @@ const DEFAULT_CONFIG = {
     showFeatureIcon: false,       // 替换特征文本为 Emoji (开启后"流媒体"变为📺)
 
     enableAirportTag: false,      // 提取原机场标签 (例: 提取 [AirportA] 并在同组节点排序)
-    airportTag: "",               // 强制覆盖/指定所有节点的机场标签
+    airportTag: "",               // 机场标签关键词(逗号分隔): 命中节点名即作为该节点标签; 仅用于未注入 _subTag 的裸跑场景
+    airportTagReg: /^\[([^\]]{1,8})\]/i, // 识别节点名首部方括号标签的正则(配合 airportTag 使用,裸跑时才有意义)
 
     // ---------------------------------------------------------------------
     // 🧽 三、清洗、过滤与去重
@@ -102,11 +103,13 @@ const REGEX_ENTRY_CITY = /(深圳|广州|上海|北京|杭州|四川|江苏|宁�
 const REGEX_MULTI = /(?:倍率|Rate)\s*[:：]?\s*(\d+(?:\.\d+)?)|(?<![a-zA-Z])(?:[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率|倍)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率|倍))(?!\s*\d)/i;
 
 const REGEX_TECH_LINE = /(IEPL|IPLC|CMIN2|CMI|CN2\s*GIA|CN2|GIA|9929|4837|CUG|BGP|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|IIJ|NTT|OCN|Softbank|Transit|Relay|隧道|Direct|HGC|HKBN|PCCW|WTT|HKT|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CTCM|CMCT|三网|电联|移联|电移|移动|联通|电信|专线|测试|实验|备用|测速)/gi;
+const REGEX_TECH_LINE_TEST = new RegExp(REGEX_TECH_LINE.source, "i");
 const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
+const REGEX_FLUFF_LINE_TEST = new RegExp(REGEX_FLUFF_LINE.source, "i");
 const REGEX_UNKNOWN_FLAG = /(\p{Regional_Indicator}{2})\s*([A-Za-z\u4e00-\u9fa5]+(?:[\s-][A-Za-z\u4e00-\u9fa5]+)*)/u;
 const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
 
-const REGEX_FAKE_IP = /^(127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|198\.1[8-9]\.|1\.1\.1\.1|8\.8\.8\.8|1\.2\.3\.4|2\.2\.2\.2|3\.3\.3\.3)/;
+const REGEX_FAKE_IP = /^(?:127\.|0\.|10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[0-1])\.|198\.1[8-9]\.|(?:1\.1\.1\.1|8\.8\.8\.8|1\.2\.3\.4|2\.2\.2\.2|3\.3\.3\.3)(?:$|:))/;
 const REGEX_DUMMY_AUTH = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i;
 
 const UI_ICONS = {
@@ -174,7 +177,7 @@ const FEATURE_RULES = FEATURE_RULES_RAW.map(r => ({
     tag: r.tag
 }));
 
-/* ↓↓↓↓↓ INJECT_BEGIN ↓↓↓↓↓ */
+/* ↓↓↓↓↓ INJECT_BEGIN:PURE_SHARED ↓↓↓↓↓ */
 const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|香港|台湾|日本|韩国|新加坡|美国|英国|德国|法国|澳洲|英|德|法|澳|美|日|韩|新|港|台)";
 const REGION_DEFS = [
     //--- 大中华区 ---
@@ -217,7 +220,7 @@ const REGION_DEFS = [
     { group: "sea", name: "菲律宾", icon: "🇵🇭", city: "马尼拉", reg: /菲律宾|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i },
     { group: "sea", name: "越南", icon: "🇻🇳", city: "胡志明|河内", reg: /越南|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
 
-    // --- 美洲大区 --
+    // --- 美洲大区 ---
     { group: "am", name: "加拿大", icon: "🇨🇦", city: "多伦多|温哥华|蒙特利尔", reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
     { group: "am", name: "阿根廷", icon: "🇦🇷", city: "布宜诺斯艾利斯", reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
     { group: "am", name: "巴西", icon: "🇧🇷", city: "圣保罗", reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
@@ -240,12 +243,12 @@ const REGION_DEFS = [
 ];
 
 REGION_DEFS.forEach(r => {
-    const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
-    r._cleanReg = new RegExp(combinedSource, "ig");
-    r._matchReg = new RegExp(combinedSource, "i");
-    r._cityReg = r.city ? new RegExp(r.city, "i") : null;
+  const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
+  r._cleanReg = new RegExp(combinedSource, "ig");
+  r._matchReg = new RegExp(combinedSource, "i");
+  r._cityReg = r.city ? new RegExp(r.city, "i") : null;
 });
-/* ↑↑↑↑↑ INJECT_END ↑↑↑↑↑ */
+/* ↑↑↑↑↑ INJECT_END:PURE_SHARED ↑↑↑↑↑ */
 
 /**
  * outputMode:"object" 时返回的 meta 元数据结构。
@@ -287,7 +290,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         error: (...args) => { if (currentLogLevel >= 1) console.error("[Pure]    ERR  " + args.map(redact).join(' ')); }
     };
 
-    logger.info("pure-nodes v1.3.0 已加载");
+    logger.info("pure-nodes v1.3.1 已加载");
 
     // =========================================================================
     // 🪛 构建动态字典
@@ -559,13 +562,19 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
         // IPv4 检测
         const v4Parts = ip.trim().split('.').map(Number);
-        if (v4Parts.length === 4 && !v4Parts.some(isNaN)) {
+        if (v4Parts.length === 4 && !v4Parts.some(n => isNaN(n) || n < 0 || n > 255)) {
+            if (v4Parts[0] === 0) return true;
             if (v4Parts[0] === 10) return true;
             if (v4Parts[0] === 127) return true;
-            if (v4Parts[0] === 0) return true;
             if (v4Parts[0] === 100 && v4Parts[1] >= 64 && v4Parts[1] <= 127) return true;
+            if (v4Parts[0] === 169 && v4Parts[1] === 254) return true;
             if (v4Parts[0] === 172 && v4Parts[1] >= 16 && v4Parts[1] <= 31) return true;
             if (v4Parts[0] === 192 && v4Parts[1] === 168) return true;
+            if (v4Parts[0] === 192 && v4Parts[1] === 0 && v4Parts[2] === 2) return true;
+            if (v4Parts[0] === 198 && (v4Parts[1] === 18 || v4Parts[1] === 19)) return true;
+            if (v4Parts[0] === 198 && v4Parts[1] === 51 && v4Parts[2] === 100) return true;
+            if (v4Parts[0] === 203 && v4Parts[1] === 0 && v4Parts[2] === 113) return true;
+            if (v4Parts[0] >= 224) return true;
             return false;
         }
 
@@ -859,7 +868,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 if (CONFIG.enableCellularTag && ipInfo.mobile) {
                     if (!item.tags.includes("cellular")) item.tags.push("cellular");
                     if (!item.specificFeatures.includes("蜂窝")) item.specificFeatures.push("蜂窝");
-                } else if (CONFIG.enableResidentialTag && ipInfo.hosting === false) {
+                } else if (CONFIG.enableResidentialTag && (ipInfo.hosting === false || ipInfo.hosting === undefined)) {
                     let isRes = false;
                     const ptr = (ipInfo.reverse || "").toLowerCase();
                     const isp = (ipInfo.isp || "").toLowerCase();
@@ -1225,7 +1234,21 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         proxy._rawName = rawName;  // 保存原始名，供下游脚本追溯
         const tempName = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
 
-        if (REGEX_INFO_NODE.test(tempName) || proxy.isSyntheticInfo) { if (!CONFIG.removeInfoNodes || proxy.isSyntheticInfo) { processedData.push({ proxy, isInfo: true, rawName }); infoCount++; } else { discardedCount++; } return; }
+        // 1. 合成信息节点（来自 builder 或 sub-info）：协同放行，交由下游处理
+        if (proxy.isSyntheticInfo) {
+            processedData.push({ proxy, isInfo: true, rawName });
+            infoCount++;
+            return;
+        }
+        if (REGEX_INFO_NODE.test(tempName)) {
+            if (CONFIG.removeInfoNodes === false) {
+                processedData.push({ proxy, isInfo: true, rawName });
+                infoCount++;
+            } else {
+                discardedCount++;
+            }
+            return;
+        }
 
         if (CONFIG.enableDedupe) {
             const server = (proxy.server || "").toLowerCase();
@@ -1292,8 +1315,8 @@ function operator(proxies, targetPlatform, userConfig = {}) {
 
         if (!isGarbage) {
             const hasDigit = /\d/.test(tempName);
-            const hasTechLine = REGEX_TECH_LINE.test(tempName);
-            const hasFluff = REGEX_FLUFF_LINE.test(tempName);
+            const hasTechLine = REGEX_TECH_LINE_TEST.test(tempName);
+            const hasFluff = REGEX_FLUFF_LINE_TEST.test(tempName);
             const hasValidRegion = REGION_DEFS.some(r => r._matchReg.test(tempName));
             const hasFeature = FEATURE_RULES.some(rule => rule.reg.test(tempName)); 
 
@@ -1443,7 +1466,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
                 if (nameA !== nameB) return nameA.localeCompare(nameB, 'zh-CN');
             }
 
-            const getMultiWeight = (num) => num > (CONFIG.highMultiThreshold || 99) ? 1 : 0;
+            const getMultiWeight = (num) => num > (CONFIG.highMultiThreshold ?? 99) ? 1 : 0;
             const mwA = getMultiWeight(a.attrs?.multiNum || 1);
             const mwB = getMultiWeight(b.attrs?.multiNum || 1);
             if (mwA !== mwB) return mwA - mwB;
