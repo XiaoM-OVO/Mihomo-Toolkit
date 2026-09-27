@@ -1,7 +1,7 @@
 // =========================================================================
 //  📦 Mihomo-Toolkit | 通用动态策略组脚本 | ALL-IN-ONE | MIT 许可证
 // ------------------------------------------------------------------------
-// 🏷️ 版本: v3.5.0 (Build 2026.08.30)
+// 🏷️ 版本: v3.6.0
 // 👤 作者: XiaoM-OVO
 // 📝 描述: 专为 Mihomo 内核客户端设计的简易动态路由策略组脚本。
 // 🛠️ 功能: 动态清洗 / 智能分流 / 自动容错 / 多场景适配 / 动态图标组装
@@ -10,7 +10,7 @@
 // 💡 【节点清洗图标说明】
 // 🤖 : OpenAI / ChatGPT      ♊ : Google Gemini       🦀 : Anthropic Claude
 // 📺 : 流媒体访问 (NF/P+)     🎮 : 游戏 / FullCone     ⏬ : 下载 / BT 专用
-// 📱 : WAP 移动优化            🏠 ：住宅IP / 家宽
+// 📱 : WAP 移动优化            🏠 ：住宅IP / 家宽      🧪 : 测试/实验节点
 // 🆓 : 免费 / 公益节点         🗑️ : 清洗失败节点
 // ------------------------------------------------------------------------
 // 💡 【底层协议图标说明】
@@ -55,7 +55,7 @@ const DEFAULT_CONFIG = {
 
   // 【2. 节点清洗与处理】
   enableDedupe: false,         // 🧽 节点去重：开启后自动剔除底层完全重复的“注水”节点
-  removeInfoNodes: false,      // 🗑️ 纯净节点: 隐藏流量/到期时间等信息节点
+  enableDashboard: true,       // 📊 订阅看板: 开启后为流量/到期等信息建立独立的「📊 订阅与状态看板」策略组（不污染主力组）
 
   renameTemplate: "[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}", // 🔤 节点重命名模板
   renameSeparators: ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"], // 🧹 允许作为分隔符被自动清理的悬空符号列表
@@ -70,6 +70,7 @@ const DEFAULT_CONFIG = {
   isolateDownload: false,      // ⏬ 低倍率节点隔离：设为 true 从普通大区池中剔除，设为 false 则允许进入普通池
   highMultiThreshold: 2.5,     // 🚩 高倍率沉底/隔离阈值：倍率超过此值排序自动下沉；配合 isolateHighMulti 时从普通池剔除独立成组
   isolateHighMulti: false,     // 🚀 高倍率节点隔离：设为 true 将超过 highMultiThreshold 的节点从普通池剔除，聚合为「🚀 高倍率优选」组（false 时仅排序下沉，留在普通池）
+  isolateExperimental: false,  // 🧪 实验节点隔离：设为 true 将含 测试/实验/备用/测速 字样的节点从普通池剔除，聚合为「🧪 实验节点」组（false 时仅打 🧪 标签，留在普通池）
 
   // 【3. 策略组建组与 UI 面板】
   minorNodeThreshold: 3,       // 📊 小众地区建组阈值：节点数 >= 此值则独立建组，否则折叠至大区组
@@ -79,7 +80,7 @@ const DEFAULT_CONFIG = {
   groupIconMode: "emoji",      // 🎨 策略组图标: "emoji"(仅保留Emoji), "icon"(仅在线图标), "both"(同时保留)
   iconRepoOrz: "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/",
   iconRepoKoolson: "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/",
-  iconRepoLige47: "https://raw.githubusercontent.com/lige47/lige_icon/main/icon/",
+  iconRepoLige47: "https://fastly.jsdelivr.net/gh/lige47/lige_icon@main/icon/",
 
   // 【4. 核心分流开关】
   enableAdBlock: true,         // 🚫 广告拦截：去除网页及 APP 广告
@@ -208,10 +209,12 @@ function main(config, extConfig) {
   const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:-|->|—|=|>)\\s*(?=${exitPattern})|(?=${exitPattern}))`,'i');
   // 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
   const REGEX_MULTI      = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率)(?!\s*\d))/i;
-  // 识别线路类型 (如 IEPL, BGP, CN2)
-  const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMI|CMIN2|CUG|PCCW|9929|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|专线|测试|实验|备用|测速)/gi;
-  // 识别营销标识
+  // 识别线路类型 (如 IEPL, BGP, CN2)；带 gi 供 .replace() 全量擦除，_TEST 副本去除 g 供 .test() 判定避免 lastIndex 状态残留
+  const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMI|CMIN2|CUG|PCCW|9929|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|专线)/gi;
+  const REGEX_TECH_LINE_TEST = new RegExp(REGEX_TECH_LINE.source, "i");
+  // 识别营销标识；带 gi 供 .replace() 全量擦除，_TEST 副本去除 g 供 .test() 判定避免 lastIndex 状态残留
   const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
+  const REGEX_FLUFF_LINE_TEST = new RegExp(REGEX_FLUFF_LINE.source, "i");
   // 识别抽象黑话
   const LINE_MAP = { "CTCUCM": "三网", "CTCUM": "三网","CTCU": "电联", "CUCT": "电联","CMCU": "移联", "CUCM": "移联","CTCM": "电移", "CMCT": "电移"};
   const CN_MAP   = { "移动": "移", "联通": "联", "电信": "电" };
@@ -222,7 +225,7 @@ function main(config, extConfig) {
   // =========================================================================
   // --- ⚙️ 预处理阶段一：日志模块 ---
   // =========================================================================
-  const SCRIPT_VERSION = "v3.5.0";
+  const SCRIPT_VERSION = "v3.6.0";
   const LOG_LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4 };
   const currentLevel = LOG_LEVELS[USER_CONFIG.logLevel] ?? 3;
 
@@ -243,16 +246,16 @@ function main(config, extConfig) {
   };
 
   logger.info(`Mihomo-Toolkit ${SCRIPT_VERSION} 已加载`);
-  logger.debug(`去重[${USER_CONFIG.enableDedupe?'开':'关'}] | 纯净[${USER_CONFIG.removeInfoNodes?'开':'关'}] | 地区[${USER_CONFIG.strictRegionMatch?'严':'松'}] | 下载[≤${USER_CONFIG.lowMultiThreshold}]`);
+  logger.debug(`去重[${USER_CONFIG.enableDedupe?'开':'关'}] | 看板[${USER_CONFIG.enableDashboard!==false?'开':'关'}] | 地区[${USER_CONFIG.strictRegionMatch?'严':'松'}] | 下载[≤${USER_CONFIG.lowMultiThreshold}]`);
 
 
   // =========================================================================
   // --- ⚙️ 预处理阶段二：常量与字典预定义 ---
   // =========================================================================
   // 📍 前置入口城市前缀
-/* ↓↓↓↓↓ INJECT_BEGIN ↓↓↓↓↓ */
+/* ↓↓↓↓↓ INJECT_BEGIN:TOOLKIT_IN_PREFIX ↓↓↓↓↓ */
   const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|香港|台湾|日本|韩国|新加坡|美国|英国|德国|法国|澳洲|英|德|法|澳|美|日|韩|新|港|台)";
-/* ↑↑↑↑↑ INJECT_END ↑↑↑↑↑ */
+/* ↑↑↑↑↑ INJECT_END:TOOLKIT_IN_PREFIX ↑↑↑↑↑ */
   const TAG_MAP = {
     "深": "深", "深圳": "深", "SZX": "深", "广": "广", "广州": "广", "CAN": "广",
     "上海": "沪", "沪": "沪", "PVG": "沪", "SHA": "沪", "京": "京", "北京": "京",
@@ -270,7 +273,7 @@ function main(config, extConfig) {
   const IS_LIN = OS === "linux"   || OS === "all";
 
   // 🌏 地区识别字典
-/* ↓↓↓↓↓ INJECT_BEGIN ↓↓↓↓↓ */
+/* ↓↓↓↓↓ INJECT_BEGIN:TOOLKIT_REGION_DEFS ↓↓↓↓↓ */
   const REGION_DEFS = [
       //--- 大中华区 ---
       { id: "cn", name: "中国", icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
@@ -312,7 +315,7 @@ function main(config, extConfig) {
       { group: "sea", name: "菲律宾", icon: "🇵🇭", city: "马尼拉", reg: /菲律宾|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i },
       { group: "sea", name: "越南", icon: "🇻🇳", city: "胡志明|河内", reg: /越南|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
 
-      // --- 美洲大区 --
+      // --- 美洲大区 ---
       { group: "am", name: "加拿大", icon: "🇨🇦", city: "多伦多|温哥华|蒙特利尔", reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
       { group: "am", name: "阿根廷", icon: "🇦🇷", city: "布宜诺斯艾利斯", reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
       { group: "am", name: "巴西", icon: "🇧🇷", city: "圣保罗", reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
@@ -333,7 +336,7 @@ function main(config, extConfig) {
       // --- 其他零散地区 ---
       { name: "澳大利亚", icon: "🇦🇺", city: "悉尼|墨尔本", reg: /澳大利亚|澳洲|(?<![a-zA-Z])AU(?![a-zA-Z])|Australia|Sydney/i },
     ];
-/* ↑↑↑↑↑ INJECT_END ↑↑↑↑↑ */
+/* ↑↑↑↑↑ INJECT_END:TOOLKIT_REGION_DEFS ↑↑↑↑↑ */
 
   // 🩲UI 图标映射字典
   const UI_ICONS = {
@@ -346,7 +349,7 @@ function main(config, extConfig) {
     features: {
       "residential": "🏠", "game": "🎮", "streaming": "📺", "download": "⏬",
       "free": "🆓", "wap": "📱", "CDN": "☁️", "aws": "🛰️", "AWS": "🛰️",
-      "cellular": "📱",
+      "cellular": "📱", "experimental": "🧪",
     }
   };
 
@@ -357,7 +360,8 @@ function main(config, extConfig) {
     "chatgpt": "GPT", "gemini": "Gemini", "claude": "Claude", "copilot": "Copilot", "ai": "AI",
     "download": "下载", "free": "免费", "no_download": "禁止下载",
     "wap": "WAP", "CDN": "CDN", "AWS": "AWS",
-    "cellular": "蜂窝", "ipv6": "IPv6", "dualstack": "双栈"
+    "cellular": "蜂窝", "ipv6": "IPv6", "dualstack": "双栈",
+    "experimental": "实验"
   };
   const FEATURE_RULES = [
     { reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i, tag: "residential", pool: "residential", groupName: "🏠 家宽优选" },
@@ -470,14 +474,14 @@ function main(config, extConfig) {
   // --- ⚙️ 预处理阶段三：正则预编译与动态映射构建 ---
   // =========================================================================
   // 🏷️ 预编译清洗正则
-/* ↓↓↓↓↓ INJECT_BEGIN ↓↓↓↓↓ */
+/* ↓↓↓↓↓ INJECT_BEGIN:TOOLKIT_ENHANCE ↓↓↓↓↓ */
   REGION_DEFS.forEach(r => {
     const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
     r._cleanReg = new RegExp(combinedSource, "ig"); // 用于最后擦除名字
     r._matchReg = new RegExp(combinedSource, "i");  // 用于判定节点归属
     r._cityReg = r.city ? new RegExp(r.city, "i") : null;
   });
-/* ↑↑↑↑↑ INJECT_END ↑↑↑↑↑ */
+/* ↑↑↑↑↑ INJECT_END:TOOLKIT_ENHANCE ↑↑↑↑↑ */
   // 国旗反查表：预建 icon → entry 映射，避免 matchNodeRegion 内线性扫描
   const FLAG_LOOKUP = new Map(REGION_DEFS.map(r => [r.icon, r]));
   FEATURE_RULES.forEach(r => r._cleanReg = new RegExp(r.reg.source, "ig"));
@@ -532,7 +536,7 @@ function main(config, extConfig) {
   // 🧠 动态提取所有混合大区的 ID（如 "eu", "sea", "am"）并加入兜底的 "other"
   const MIXED_REGION_IDS = [...new Set(REGION_DEFS.map(r => r.group).filter(Boolean)), "other"];
   // 🪣 预设分发桶 (用于把清洗后的节点按特征分类存放)
-  const BUCKETS = { garbage: [], download: [], highMulti: [], info: [], allStandard: [], special: [], resiRegionMap: {} };
+  const BUCKETS = { garbage: [], download: [], highMulti: [], experimental: [], info: [], allStandard: [], special: [], resiRegionMap: {} };
   // 自动接管所有地区、特征池、混合大区的桶
   [...new Set([
     ...REGION_DEFS.map(r => r.id || r.name),
@@ -542,6 +546,8 @@ function main(config, extConfig) {
 
   // 🚀 高倍率隔离组名（提前定义，供分发与建组阶段复用）
   const HIGH_MULTI_GROUP = "🚀 高倍率优选";
+  // 🧪 实验节点隔离组名
+  const EXPERIMENTAL_GROUP = "🧪 实验节点";
 
 
   // 辅助纯函数 1: 基础字符清洗
@@ -701,6 +707,10 @@ function main(config, extConfig) {
     return fallback;
   };
 
+  // 预编译标签正则，避免在节点遍历与属性提取的循环中重复编译
+  const airportTagRegCompiled = compileTagReg(USER_CONFIG.airportTagReg, /^\[([^\]]{1,8})\]/i);
+  const airportTagAdRegCompiled = compileTagReg(USER_CONFIG.airportTagReg, /^\[([^\]]{1,12})\]\s*/i);
+
   // 🔍 标签提取逻辑
   function getAirportTag(rawName, proxy) {
       if (!USER_CONFIG.enableAirportTag) return "";
@@ -717,8 +727,7 @@ function main(config, extConfig) {
       }
 
       // 3. 正则兜底（split/单跑场景：上游或机场自带的 [] 等包裹符号）
-      const reg = compileTagReg(USER_CONFIG.airportTagReg, /^\[([^\]]{1,8})\]/i);
-      const m = rawName.match(reg);
+      const m = rawName.match(airportTagRegCompiled);
       return m ? (m[1] || m[0]) : "";
   }
 
@@ -747,7 +756,7 @@ function main(config, extConfig) {
     const rawName = proxy._rawName || proxy.name;
 
     // --- 步骤 1: 垃圾/广告/内置节点前置拦截 ---
-    const isFakeServer = /^(127\.|0\.|1\.1\.1\.1|8\.8\.8\.8|10\.|192\.168\.)/.test(proxy.server || "") || proxy.port === 0;
+    const isFakeServer = /^(?:127\.|0\.|10\.|192\.168\.|(?:1\.1\.1\.1|8\.8\.8\.8)(?:$|:))/.test(proxy.server || "") || proxy.port === 0;
     const isDummyAuth = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i.test(proxy.uuid || proxy.password || "");
     const isAdTypo = /防.{0,3}失|失.{0,3}联|地.{0,3}[址止]|官.{0,3}[网罔]|发.{0,3}[布步]|交.{0,3}流|群.{0,3}组|客.{0,3}服|定.{0,3}制/i.test(rawName)
               || (
@@ -757,19 +766,22 @@ function main(config, extConfig) {
 
     // 🏷️ 广告判定前剥离标签文字
     let tempNameForAd = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, "");
-    const reg = compileTagReg(USER_CONFIG.airportTagReg, /^\[([^\]]{1,12})\]\s*/i);
-    tempNameForAd = tempNameForAd.replace(reg, "");
+    tempNameForAd = tempNameForAd.replace(airportTagAdRegCompiled, "");
 
     let tempName = tempNameForAd.replace(REGEX_ALL_FLAGS, "").replace(/[\[\]{}()<>【】]/g, "").trim();
 
-    const isOrphanAd = !(/\d/.test(tempName) || REGEX_TECH_LINE.test(tempName) || REGEX_FLUFF_LINE.test(tempName)) &&
+    const isOrphanAd = !(/\d/.test(tempName) || REGEX_TECH_LINE_TEST.test(tempName) || REGEX_FLUFF_LINE_TEST.test(tempName)) &&
                       tempNameForAd.replace(/[\[\]{}()<>【】]/g, "").replace(/\p{Extended_Pictographic}/gu, "").replace(/\p{Regional_Indicator}/gu, "").trim().length > USER_CONFIG.adTextThreshold;
-    const isInfoNode = REGEX_INFO_NODE.test(tempName) || proxy.isSyntheticInfo;
-
-    if (isInfoNode) {
-      if (USER_CONFIG.removeInfoNodes) return { skip: true, rawName, blockReason: "信息说明" };
+    if (proxy.isSyntheticInfo) {
+      if (USER_CONFIG.enableDashboard === false) {
+        return { skip: true, rawName, blockReason: "看板关闭" };
+      }
       proxy.server = "127.0.0.1"; proxy.port = 80;
       return { isInfo: true, proxy, rawName };
+    }
+
+    if (REGEX_INFO_NODE.test(tempName)) {
+      return { skip: true, rawName, blockReason: "信息说明" };
     }
 
     const tempNameLower = tempName.toLowerCase();
@@ -846,13 +858,11 @@ function main(config, extConfig) {
 
       if (attrs.isLowMulti && !isForbidDownload && !tags.has("download")) tags.add("download");
 
-      // 擦除地名文字
-      if (regionInfo.id !== "other") {
-        name = name.replace(REGEX_ALL_FLAGS, "").replace(regionInfo._cleanReg, "");
-      } else {
-        // 动态/其他地区：全量擦除地名（字符串 replace 只删第一处，改用全局正则）
-        name = name.replace(REGEX_ALL_FLAGS, "").replace(new RegExp(escapeRegex(regionInfo.name), "g"), "");
-      }
+      // 🧪 实验节点识别：基于原始名匹配（这些词会在属性提取阶段被擦除，需用 rawName 判定）
+      if (!tags.has("experimental") && /(?:测试|实验|备用|测速)/i.test(rawName)) tags.add("experimental");
+
+      // 擦除地名文字（静态与动态地区统一由 _cleanReg 全局正则安全擦除）
+      name = name.replace(REGEX_ALL_FLAGS, "").replace(regionInfo._cleanReg, "");
     }
 
     name = name.replace(/[\[\]{}()<>（）【】]/g, "").replace(/\b\d{1,3}\b/g, "").replace(/[-_\|\s]+/g, " ").trim() || "其他";
@@ -897,6 +907,39 @@ function main(config, extConfig) {
   // 🧹 多维排序逻辑
   processedData.sort((a, b) => {
     if (a.isInfo !== b.isInfo) return a.isInfo ? -1 : 1;
+    if (a.isInfo && b.isInfo) {
+      const getTag = (name) => {
+        const m = (name || '').match(/\[([^\]]+)\]/);
+        return m ? m[1] : '';
+      };
+      const getTypeOrder = (name) => {
+        if (/剩余流量|流量告急/.test(name)) return 1;
+        if (/套餐到期|即将到期|订阅已过期|全线过期|临近到期|最晚到期|首项到期/.test(name)) return 2;
+        if (/重置/.test(name)) return 3;
+        if (/启用缓存兜底/.test(name)) return 4;
+        if (/拉取失败/.test(name)) return 5;
+        return 9;
+      };
+      const nameA = a.rawName || a.proxy?.name || '';
+      const nameB = b.rawName || b.proxy?.name || '';
+      const tagA = getTag(nameA);
+      const tagB = getTag(nameB);
+
+      // 1. [全局] 统计条目最高优先级，绝对置顶
+      const isTotalA = tagA === '全局';
+      const isTotalB = tagB === '全局';
+      if (isTotalA !== isTotalB) return isTotalA ? -1 : 1;
+
+      // 2. 同 Tag 聚类：相同订阅标签的节点排在一起
+      if (tagA !== tagB) return tagA.localeCompare(tagB, 'zh-CN');
+
+      // 3. 同订阅内部对齐：左列流量 (1)，右列到期 (2)，其后重置/容灾/失败
+      const typeA = getTypeOrder(nameA);
+      const typeB = getTypeOrder(nameB);
+      if (typeA !== typeB) return typeA - typeB;
+
+      return nameA.localeCompare(nameB, 'zh-CN');
+    }
     if (a.isSpecial !== b.isSpecial) return a.isSpecial ? -1 : 1;
     const orderA = REGION_ORDER[a.regionInfo?.name || a.groupKey] ?? 999;
     const orderB = REGION_ORDER[b.regionInfo?.name || b.groupKey] ?? 999;
@@ -914,7 +957,7 @@ function main(config, extConfig) {
       const tagB = b.airportTag || "";
       if (tagA !== tagB) return tagA.localeCompare(tagB, 'zh-CN');
     }
-    const getMultiWeight = (num) => num > (USER_CONFIG.highMultiThreshold || 2.0) ? 1 : 0;
+    const getMultiWeight = (num) => num > (USER_CONFIG.highMultiThreshold ?? 2.0) ? 1 : 0;
     const multiWeightA = getMultiWeight(a.multiNum);
     const multiWeightB = getMultiWeight(b.multiNum);
     if (multiWeightA !== multiWeightB) return multiWeightA - multiWeightB;
@@ -998,20 +1041,27 @@ function main(config, extConfig) {
     }
 
     // 3. 🚀 高倍率节点隔离：超过 highMultiThreshold 则独立为「高倍率优选」，从普通池剔除
-    if (USER_CONFIG.isolateHighMulti && (item.multiNum || 1) > (USER_CONFIG.highMultiThreshold || 2.0)) {
+    if (USER_CONFIG.isolateHighMulti && (item.multiNum || 1) > (USER_CONFIG.highMultiThreshold ?? 2.0)) {
       BUCKETS.highMulti.push(finalName);
       logger.debug(`🚀 [隔离] ${tagDisplay}「${displayRaw}」 → 「${finalName}」 → [${HIGH_MULTI_GROUP}]`);
       return;
     }
 
-    // 4. 🇨🇳 中国大陆节点隔离
+    // 4. 🧪 实验节点隔离：含 测试/实验/备用/测速 则独立为「实验节点」，从普通池剔除
+    if (USER_CONFIG.isolateExperimental && tags.includes("experimental")) {
+      BUCKETS.experimental.push(finalName);
+      logger.debug(`🧪 [隔离] ${tagDisplay}「${displayRaw}」 → 「${finalName}」 → [${EXPERIMENTAL_GROUP}]`);
+      return;
+    }
+
+    // 5. 🇨🇳 中国大陆节点隔离
     if (regionInfo.id === "cn") {
       BUCKETS.cn.push(finalName);
       logger.debug(`🇨🇳 [中国] ${tagDisplay}「${displayRaw}」 → 「${finalName}」`);
       return;
     }
 
-    // 5. 🌏 标准节点入池
+    // 6. 🌏 标准节点入池
     BUCKETS.allStandard.push(finalName);
     featurePools.forEach(p => BUCKETS[p].push(finalName));
     const regKey = regionInfo.id || regionInfo.name;
@@ -1161,7 +1211,7 @@ function main(config, extConfig) {
 
   // 处理动态生成的未知地区（宽松模式下提取出来的）
   Object.keys(BUCKETS).forEach(key => {
-    if (key === "garbage" || key === "download" || key === "highMulti" || key === "cn" || key === "info" || key === "allStandard" || key === "other" || key === "residential" || key === "special") return;
+    if (key === "garbage" || key === "download" || key === "highMulti" || key === "experimental" || key === "cn" || key === "info" || key === "allStandard" || key === "other" || key === "residential" || key === "special") return;
     if (MIXED_REGION_IDS.includes(key) || POOL_GROUP_MAP[key] || REGION_NAMES[key]) return;
     if (REGION_DEFS.some(r => r.id === key || r.name === key)) return;
 
@@ -1208,10 +1258,12 @@ function main(config, extConfig) {
   const proxyTarget = MODE_MAP[USER_CONFIG.defaultProxyMode] || "🚀 自动选择";
   // 🚀 高倍率隔离组引用（隔离开启且有节点时，+手动选择与各应用组能手动点名走这批节点）
   const highMultiRef = (USER_CONFIG.isolateHighMulti && BUCKETS.highMulti.length > 0) ? [HIGH_MULTI_GROUP] : [];
+  // 🧪 实验节点隔离组引用（隔离开启且有节点时，可手动点名走这批实验节点）
+  const experimentalRef = (USER_CONFIG.isolateExperimental && BUCKETS.experimental.length > 0) ? [EXPERIMENTAL_GROUP] : [];
 
-  const baseOptions = ["📍 手动选择", "🚀 自动选择", "♻️ 故障转移", ...highMultiRef, ...resiPrefix, ...activeRegionGroups];
+  const baseOptions = ["📍 手动选择", "🚀 自动选择", "♻️ 故障转移", ...highMultiRef, ...experimentalRef, ...resiPrefix, ...activeRegionGroups];
   const standardOptions = dedupe([proxyTarget, ...baseOptions]);
-  const coreSelectProxies = ["🚀 自动选择", "♻️ 故障转移", ...resiPrefix, ...highMultiRef, ...BUCKETS.special, ...activeRegionGroups, "DIRECT", ...BUCKETS.info];
+  const coreSelectProxies = ["🚀 自动选择", "♻️ 故障转移", ...resiPrefix, ...highMultiRef, ...experimentalRef, ...BUCKETS.special, ...activeRegionGroups, "DIRECT"];
 
   const buildSelect = (name, proxies, hidden = false) => ({ name, type: "select", proxies: dedupe(proxies), hidden });
   const buildRegionGroup = (id, name, proxies) => {
@@ -1350,11 +1402,18 @@ function main(config, extConfig) {
   }
 
   // 核心基础策略组
-  const finalGroups = [
+  const finalGroups = [];
+
+  // 📊 订阅与状态看板：专设独立展示型策略组，置于最顶层便于一眼查看
+  if (USER_CONFIG.enableDashboard !== false && BUCKETS.info && BUCKETS.info.length > 0) {
+    finalGroups.push(buildSelect("📊 订阅与状态看板", [...BUCKETS.info, "DIRECT"]));
+  }
+
+  finalGroups.push(
     buildSelect("📍 手动选择", coreSelectProxies),
     { name: "🚀 自动选择", type: "url-test", url: testURL, interval: testInterval, tolerance: testTolerance, proxies: BUCKETS.allStandard },
     { name: "♻️ 故障转移", type: "fallback", url: testURL, interval: testInterval, proxies: activeRegionGroups }
-  ];
+  );
 
   // 家宽
   if (USER_CONFIG.enableResidential) {
@@ -1368,6 +1427,11 @@ function main(config, extConfig) {
   // 高倍率优选（隔离后跨地区聚合；专用组仅含高倍率节点，组引用进手动选择与各应用组便于点名）
   if (USER_CONFIG.isolateHighMulti && BUCKETS.highMulti.length > 0) {
     finalGroups.push(buildSelect(HIGH_MULTI_GROUP, BUCKETS.highMulti));
+  }
+
+  // 实验节点（隔离后跨地区聚合；专用组仅含实验节点，组引用进手动选择与各应用组便于点名）
+  if (USER_CONFIG.isolateExperimental && BUCKETS.experimental.length > 0) {
+    finalGroups.push(buildSelect(EXPERIMENTAL_GROUP, BUCKETS.experimental));
   }
 
   // 中国分流
@@ -1671,7 +1735,7 @@ function main(config, extConfig) {
   (config.proxies || []).forEach(p => validBasics.add(p.name));
 
   let changed = true;
-  let maxIterations = 20;
+  let maxIterations = 50;
   const removedGroups = new Set();
 
   while (changed && maxIterations > 0) {
@@ -1734,6 +1798,8 @@ function main(config, extConfig) {
     "⏬ 下载策略":     { icon: USER_CONFIG.iconRepoOrz + "Roundrobin.png",   newName: "下载策略" },
     "🏠 家宽优选":     { icon: USER_CONFIG.iconRepoLige47  + "05icon/home.png",   newName: "家宽优选" },
     "🚀 高倍率优选":   { icon: USER_CONFIG.iconRepoKoolson + "Speedtest.png",newName: "高倍率优选" },
+    "📊 订阅与状态看板": { icon: USER_CONFIG.iconRepoKoolson + "Airport.png", newName: "订阅与状态看板" },
+    "🧪 实验节点":     { icon: USER_CONFIG.iconRepoKoolson + "Lab.png",     newName: "实验节点" },
 
     // === 🌐 综合业务大组 ===
     "🇨🇳 中国分流":     { icon: USER_CONFIG.iconRepoKoolson + "China_Map.png", newName: "中国分流" },
@@ -1849,7 +1915,7 @@ function main(config, extConfig) {
     const proxyDNS  = isReturn ? CUSTOM_DNS_DIRECT : CUSTOM_DNS_PROXY;
     const serverDNS = CUSTOM_DNS_SERVER;
     const sub = config.dns || {};
-    const pick = (k, d) => sub[k] !== undefined ? sub[k] : d;
+    const pick = (k, d) => (sub[k] !== undefined && sub[k] !== null && (!Array.isArray(sub[k]) || sub[k].length > 0)) ? sub[k] : d;
 
     // dnsListen 拆分：host/port 独立覆盖（支持只写 IP，端口沿用订阅）
     const splitHostPort = (s) => {
@@ -1956,7 +2022,7 @@ function main(config, extConfig) {
   }
 
   // 2. 动态计算真实的有效节点数量
-  const validCount = processedData.length - (USER_CONFIG.removeInfoNodes ? 0 : infoCount);
+  const validCount = processedData.length - infoCount;
 
   // 3. 基础统计
   const statsParts = [
@@ -1977,6 +2043,8 @@ function main(config, extConfig) {
     flows.push(`🏠 家宽 ${BUCKETS.residential.length}`);
   if (USER_CONFIG.isolateHighMulti && BUCKETS.highMulti && BUCKETS.highMulti.length) 
     flows.push(`🚀 高倍 ${BUCKETS.highMulti.length}`);
+  if (USER_CONFIG.isolateExperimental && BUCKETS.experimental && BUCKETS.experimental.length) 
+    flows.push(`🧪 实验 ${BUCKETS.experimental.length}`);
   if (BUCKETS.special && BUCKETS.special.length) 
     flows.push(`⭐ 特殊 ${BUCKETS.special.length}`);
   if (USER_CONFIG.isolateDownload && BUCKETS.download && BUCKETS.download.length) 
