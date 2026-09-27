@@ -6,9 +6,9 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Builder](https://img.shields.io/badge/Builder-v1.6.0-9cf)](CHANGELOG.md)
-[![Toolkit](https://img.shields.io/badge/Toolkit-v3.5.0-blue)](CHANGELOG.md)
-[![Pure\_Script](https://img.shields.io/badge/Pure_Script-v1.3.0-blueviolet)](CHANGELOG.md)
+[![Builder](https://img.shields.io/badge/Builder-v1.7.0-9cf)](CHANGELOG.md)
+[![Toolkit](https://img.shields.io/badge/Toolkit-v3.6.0-blue)](CHANGELOG.md)
+[![Pure\_Script](https://img.shields.io/badge/Pure_Script-v1.3.1-blueviolet)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -38,11 +38,11 @@ mihomo-toolkit/
 │   ├── server.js           # 本地/VPS HTTP 订阅服务（常驻）
 │   └── worker.js           # Cloudflare Worker 部署入口
 ├── 🧠 src/                 # 核心代码
-│   ├── builder.js          # 编排层：订阅抓取 + pure 清洗 + toolkit 策略构建流水线
+│   ├── builder.js          # 编排层：订阅抓取 + pure 清洗 + toolkit 策略构建流水线 (含 DNS 防 SSRF 与安全重定向)
 │   ├── pure-nodes.js       # 节点清洗：去重 / 打标 / 地区识别 / IP 补全 / 裂变
-│   ├── mihomo-toolkit.js   # 策略层：策略组 / 分流规则 / DNS / 内核覆写
-│   ├── chinese-convert.js  # 简繁转换
-│   ├── fetch-proxy.js      # 订阅抓取代理调度与 DNS 防 SSRF
+│   ├── mihomo-toolkit.js   # 策略层：轻量节点清洗 / 策略组 / 分流规则 / DNS / 内核覆写
+│   ├── chinese-convert.js  # 简繁转换 (支持 RegExp/Date 安全跳过)
+│   ├── fetch-proxy.js      # 订阅抓取本地代理调度封装 (undici ProxyAgent)
 │   └── _shared/
 │       └── region-defs.js  # 地区字典 / 国旗映射（INJECT 同步源）
 ├── 🎁 substore/
@@ -94,7 +94,7 @@ node cli.js -u "https://example.com/sub.yaml" -o profile.yaml
 
 通过HTTP服务将Mihomo-Toolkit暴露为订阅链接，全平台设备可共用同一份配置：
 
-> 📁 **先决条件**：根目录需存在 `config.yaml`（可参考项目中的 `config.example.yaml` 创建），或通过启动命令中的 `?url=` 参数动态传入订阅（详见下方部署说明）。
+> 📁 **先决条件**：根目录需存在 `config.yaml`（可参考项目中的 `config.example.yaml` 创建），或通过启动命令中的 `?url=` 参数动态传入订阅（详见下方部署说明）。若当前运行环境直连拉取机场订阅受阻，可配置 `fetchProxyPort` 指向本地前置代理端口（或客户端先手动配置一个可用节点）。如需访问鉴权，可通过系统环境变量 `AUTH_TOKEN=xxx` 或在 `config.yaml` 中设置 `authToken: xxx`。
 
 ```bash
 git clone https://github.com/XiaoM-OVO/mihomo-toolkit.git && cd mihomo-toolkit
@@ -159,7 +159,7 @@ npm run build:worker
 | ------------------ | --------- | ----------------------------------------------------------------------------------- |
 | `outputMode`       | `"array"` | `"array"` 输出纯节点数组，`"object"` 额外返回 `meta` 元数据（含统计信息与分桶结果） |
 | `enableDedupe`     | `false`   | 开启物理去重（基于 Server/Port/UUID 等多维度）                                      |
-| `removeInfoNodes`  | `false`   | 开启后直接删除“到期时间/剩余流量”等说明节点                                         |
+| `removeInfoNodes`  | `false`   | 说明节点控制：默认保留原生"到期时间/剩余流量"说明假节点防丢信息（设为 true 可直接剔除） |
 | `blockKeywords`    | `[]`      | 黑名单关键词（命中即拦截），如 `["免费领取", "点击购买"]`                           |
 | `blockServers`     | `[]`      | 黑名单服务器地址（命中即拦截），如 `["123.123.123.123"]`                            |
 | `adTextThreshold`  | `12`      | 纯文本广告判定阈值（无数字/线路特征且长度超过此值视为广告，比主脚本默认 6 更宽松）  |
@@ -168,7 +168,7 @@ npm run build:worker
 | `enableIpEnrich`   | `false`   | 开启 IP-API 补充检测（自动纠正 CDN/虚假定位，需注意免费版有频率限制）               |
 | `enableFission`    | `false`   | 开启域名裂变（将域名节点解析为多个 IP 实体节点，详见下方裂变配置）                  |
 
-> 💡 **快速上手**：大多数情况下只需调整 `enableDedupe`（去重）和 `removeInfoNodes`（去掉说明节点）即可获得整洁的节点列表。如需精准定位，可开启 `enableIpEnrich`；如需裂变多 IP，请同时配置 `enableFission` 及相关参数。
+> 💡 **快速上手**：大多数情况下只需调整 `enableDedupe`（去重）和 `removeInfoNodes`（说明节点剔除）即可获得整洁的节点列表。如需精准定位，可开启 `enableIpEnrich`；如需裂变多 IP，请同时配置 `enableFission` 及相关参数。
 
 ---
 
@@ -403,10 +403,12 @@ npm run build:worker
 | --------------------------------- | ------- | --------------------------------------------------------------------------------------- |
 | `proxyFirst`                      | `true`  | 路由策略：`true` 为海外代理优先，`false` 为国内直连优先                                 |
 | `enableDedupe`                    | `false` | 开启后基于底层参数（Server/Port/UUID等）物理去重                                        |
-| `removeInfoNodes`                 | `false` | 开启后自动剔除“到期时间/剩余流量”等说明节点                                             |
+| `enableDashboard`                 | `true`  | 开启后生成独立「📊 订阅与状态看板」策略组展示流量/到期/重置，不污染主力节点池           |
 | `enableAirportTag`                | `false` | 开启后自动提取节点来源标签（多订阅合并时非常有用）                                      |
 | `minorNodeThreshold`              | `3`     | 小众地区独立建组的最小节点数（低于此值折叠至大洲组）                                    |
 | `lowMultiThreshold`               | `0.99`  | 倍率 ≤ 此值的节点自动标记为 `⏬` 下载节点（设为 `0` 关闭）                              |
+| `isolateHighMulti`                | `false` | 开启后高倍率节点独立建组（聚合为「🚀 高倍率优选」），否则仅排序下沉                    |
+| `isolateExperimental`             | `false` | 开启后含「测试/实验/备用/测速」字样的节点独立建组（聚合为「🧪 实验节点」），否则仅打 🧪 标签 |
 | `testInterval`                    | `300`   | 自动选择组的测速间隔（单位：秒）                                                        |
 | `strictRegionMatch`               | `false` | `true` 时仅匹配内置字典，`false` 时可动态捕获冷门国家                                   |
 | `indexPrefix`（subscriptions 内） | _无_    | 序号前缀，配置后按地区+前缀独立编号（如 A01、B01）；不配置则按地区统一编号（如 01、02） |
@@ -605,7 +607,7 @@ npm install opencc-js
 | 🦀   | Anthropic Claude | ⏬   | 下载 / BT（低倍率） |
 | 📺   | 流媒体解锁       | 🆓   | 免费/公益节点       |
 | 🎮   | 游戏 / FullCone  | 🏠   | 住宅 IP / 家宽      |
-| ⚡   | HY2 / TUIC       | 🗑️   | 未识别/清洗失败节点 |
+| ⚡   | HY2 / TUIC       | 🧪   | 测试/实验/备用 节点 |
 
 ### 🏷️ 底层协议图标 (需开启 `showProtocolIcon`)
 
