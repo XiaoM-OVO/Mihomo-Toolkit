@@ -40,11 +40,13 @@ fetchProxyStrategy: "auto"    # direct=全直连 / proxy=全走代理 / auto=先
 # fetchRetry: 2               # 拉取失败重试次数（超时/网络/5xx 重试，4xx 不重试）
 # fetchTimeout: 15            # 单次拉取超时秒数
 # fetchStaleTtl: 24           # 失败时复用上次成功内容的小时数（0=关闭兜底）
+# expireAggregation: "min"    # [共享] 多订阅到期聚合策略：min=临近到期优先(预警防断供，推荐) / max=最晚到期 / first=首个订阅优先
 
 # 订阅清单（每项一条 - 即一个订阅/文件；url 为远程订阅或本地文件）
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "机场A"
+    # enabled: true             # 是否启用该订阅（设为 false 可临时停用，免去整段注释）
     # indexPrefix: "A"          # 序号前缀（A01/B01），不写则按地区统一编号
     # proxy: false              # 强走代理/直连，覆盖全局
     # retry: 3                  # 单独重试次数，覆盖 fetchRetry
@@ -105,7 +107,7 @@ output: "./dist/output.yaml"    # [共享] 输出路径
 # ⑤ 节点清洗（去重 / 过滤 / 黑白名单）
 # ─────────────────────────────────────────────────────────────────────
 enableDedupe: true              # [pure] 跨机场物理去重
-removeInfoNodes: false          # [pure] 移除流量/到期等信息节点
+enableDashboard: true           # [共享] 启用「📊 订阅与状态看板」独立展示策略组（展示流量/到期/重置，不污染主力节点池）
 strictRegionMatch: false        # [pure] true=仅匹配预设字典 / false=宽松模式自动捕获冷门国家
 # highMultiThreshold: 2.5       # [pure] 高倍率软隔离阈值，超过则同地区内排序下沉
 
@@ -188,7 +190,7 @@ regionGroupType: "url-test"      # [toolkit] url-test / select / fallback
 # groupIconMode: "emoji"         # [toolkit] emoji / icon / both
 # iconRepoOrz: "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/"
 # iconRepoKoolson: "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/"
-# iconRepoLige47: "https://raw.githubusercontent.com/lige47/lige_icon/main/icon/"   # lige_icon 仓库 icon 根目录（子目录：04ProxySoft=应用图标，05icon=其他）
+# iconRepoLige47: "https://fastly.jsdelivr.net/gh/lige47/lige_icon@main/icon/"   # lige_icon 仓库 icon 根目录（子目录：04ProxySoft=应用图标，05icon=其他）
 
 # 节点展示与下载隔离
 showFeatureIcon: true            # [toolkit] 模板 {features}: true=Emoji(📺) / false=文字(流媒体)。full 模式下 pure 自动置 false
@@ -311,7 +313,7 @@ testTolerance: 50                # [共享] 延迟容忍度，防止频繁切换
 #   # outputMode: "array"        # array / object（pure 专属）
 #   # outputGarbage: false       # 输出拦截的广告/假节点（pure 专属）
 #   # outputUnknown: true        # 输出未识别节点（pure 专属）
-#   # airportTag: ""             # 强制覆盖所有节点标签（高级，慎用）
+#   # airportTag: ""             # 机场标签关键词(逗号分隔)，命中节点名即作为该节点标签（裸跑时才有意义，高级慎用）
 #   # airportTagReg: '/^\[([^\]]{1,8})\]/i'
 #
 # toolkitConfig:

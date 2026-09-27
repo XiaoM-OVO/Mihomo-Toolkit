@@ -368,27 +368,41 @@ function parseSubscriptionInfo(subInfo) {
   return { upload, download, total, expire };
 }
 
-function generateInfoNodes(subInfo, tag) {
+// 判定订阅是否已过期：expire>0 且到期时间戳已过（expire=0 未知，不做判定）
+function isExpiredNow(expireEpochSec) {
+  return expireEpochSec > 0 && Date.now() >= expireEpochSec * 1000;
+}
+
+function formatBytes(bytes, fractionDigits = 2) {
+  const units = ['MB', 'GB', 'TB', 'PB'];
+  let value = bytes / (1024 * 1024);
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return value.toFixed(fractionDigits) + ' ' + units[i];
+}
+
+function generateInfoNodes(subInfo, tag, options = {}) {
   if (!subInfo) return { nodes: [], expireDays: -1 };
   const { upload, download, total, expire } = parseSubscriptionInfo(subInfo);
+  const isStale = !!options.isStale;
+  const tagPrefix = tag ? `[${tag}] ` : '';
 
   const nodes = [];
-  const formatBytes = (bytes, fractionDigits = 2) => {
-    const units = ['MB', 'GB', 'TB', 'PB'];
-    let value = bytes / (1024 * 1024);
-    let i = 0;
-    while (value >= 1024 && i < units.length - 1) {
-      value /= 1024;
-      i++;
-    }
-    return value.toFixed(fractionDigits) + ' ' + units[i];
-  };
+  const expired = isExpiredNow(expire);
 
-  if (total > 0) {
+  // 1. 流量状态节点（仅在未过期且总流量 > 0 时生成）
+  if (!expired && total > 0) {
     const used = upload + download;
-    const remaining = total - used;
+    const remaining = Math.max(0, total - used);
+    const percent = ((remaining / total) * 100).toFixed(1);
+    const isLow = remaining <= 5 * 1024 * 1024 * 1024 || (remaining / total) <= 0.05;
+    const icon = isLow ? '🪫' : '🏷️';
+    const label = isLow ? '流量告急' : '剩余流量';
     nodes.push({
-      name: `${tag ? '[' + tag + '] ' : ''}剩余流量：${formatBytes(remaining)} / ${formatBytes(total)}`,
+      name: `${icon} ${tagPrefix}${label}：${formatBytes(remaining)} / ${formatBytes(total)} (${percent}%)`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
@@ -396,20 +410,52 @@ function generateInfoNodes(subInfo, tag) {
     });
   }
 
+  // 2. 到期状态节点
   let expireDays = -1;
   if (expire > 0) {
     const d = new Date(expire * 1000);
     const dateStr = d.toISOString().split('T')[0];
     const now = new Date();
     expireDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+    if (expired || expireDays <= 0) {
+      const expiredDays = Math.max(1, Math.floor((now - d) / (1000 * 60 * 60 * 24)));
+      nodes.push({
+        name: `🛑 ${tagPrefix}套餐到期：${dateStr} (已失效 ${expiredDays} 天)`,
+        type: 'direct',
+        server: '1.0.0.1',
+        port: 80,
+        isSyntheticInfo: true
+      });
+    } else if (expireDays <= 3) {
+      nodes.push({
+        name: `⚠️ ${tagPrefix}即将到期：${dateStr} (仅剩 ${expireDays} 天，请及时续费)`,
+        type: 'direct',
+        server: '1.0.0.1',
+        port: 80,
+        isSyntheticInfo: true
+      });
+    } else {
+      nodes.push({
+        name: `📅 ${tagPrefix}套餐到期：${dateStr} (余 ${expireDays} 天)`,
+        type: 'direct',
+        server: '1.0.0.1',
+        port: 80,
+        isSyntheticInfo: true
+      });
+    }
+  }
+
+  // 3. 容灾降级标记（命中 stale 缓存时）
+  if (isStale) {
     nodes.push({
-      name: `${tag ? '[' + tag + '] ' : ''}套餐到期：${dateStr}${expireDays > 0 ? ` (余 ${expireDays} 天)` : ''}`,
+      name: `🔄 ${tagPrefix}抓取异常 · 启用缓存兜底`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
       isSyntheticInfo: true
     });
   }
+
   return { nodes, expireDays };
 }
 
@@ -446,14 +492,71 @@ function redactUrl(url, showFull = false) {
 }
 
 function isPrivateIp(ip) {
-  if (ip === '127.0.0.1' || ip === '::1') return true;
-  const [a, b] = ip.split('.').map(Number);
-  if (a === 10) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 169 && b === 254) return true;
-  if (a === 127) return true;
-  if (a === 0) return true;
+  if (!ip || typeof ip !== 'string') return false;
+  const trimmed = ip.trim();
+  if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(trimmed)) return false;
+  const parts = trimmed.split('.').map(Number);
+  if (parts.some(n => isNaN(n) || n < 0 || n > 255)) return false;
+  const [a, b] = parts;
+  if (a === 0) return true; // 0.0.0.0/8 本地网络
+  if (a === 10) return true; // 10.0.0.0/8 私网
+  if (a === 127) return true; // 127.0.0.0/8 回环
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+  if (a === 169 && b === 254) return true; // 169.254.0.0/16 链路本地 / 云元数据
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 私网
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16 私网
+  if (a === 192 && b === 0 && parts[2] === 2) return true; // 192.0.2.0/24 TEST-NET-1
+  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 基准测试
+  if (a === 198 && b === 51 && parts[2] === 100) return true; // 198.51.100.0/24 TEST-NET-2
+  if (a === 203 && b === 0 && parts[2] === 113) return true; // 203.0.113.0/24 TEST-NET-3
+  if (a >= 224) return true; // 224.0.0.0/4 组播 (224-239) 与 240.0.0.0/4 保留/广播 (240-255)
+  return false;
+}
+
+function isPrivateIPv6(ip) {
+  if (!ip || typeof ip !== 'string') return false;
+  let v6 = ip.trim().toLowerCase();
+  if (v6.startsWith('[') && v6.endsWith(']')) v6 = v6.slice(1, -1);
+  if (!v6.includes(':')) return false;
+
+  if (v6 === '::1' || v6 === '::') return true;
+  // 完整未压缩格式 ::1 展开形如 0:0:0:0:0:0:0:1 或包含多个 0
+  if (/^(0+:){7}0*1$/.test(v6) || /^(0+:){7}0*0$/.test(v6)) return true;
+  // 链路本地 (fe80::/10 -> fe80: ~ febf:)
+  if (/^fe[89ab][0-9a-f]{0,2}:/i.test(v6) || v6.startsWith('fe80:')) return true;
+  // 唯一本地地址 (fc00::/7 -> fc00: ~ fdff:)
+  if (/^f[cd][0-9a-f]{0,2}:/i.test(v6) || v6.startsWith('fc') || v6.startsWith('fd')) return true;
+
+  // IPv4 映射 IPv6 (点分十进制形式: ::ffff:127.0.0.1)
+  const v4Dot = v6.match(/^::ffff:(?:0:)?(\d+\.\d+\.\d+\.\d+)$/i);
+  if (v4Dot) return isPrivateIp(v4Dot[1]);
+
+  // IPv4 映射 IPv6 (十六进制形式: ::ffff:7f00:1 或 0:0:0:0:0:ffff:7f00:1)
+  const v4Hex = v6.match(/^(?:::|(?:0:)+)ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (v4Hex) {
+    const hi = parseInt(v4Hex[1], 16);
+    const lo = parseInt(v4Hex[2], 16);
+    const ipStr = [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff].join('.');
+    return isPrivateIp(ipStr);
+  }
+
+  // 6to4 映射地址 2002::/16
+  if (v6.startsWith('2002:')) {
+    const parts = v6.split(':');
+    if (parts.length >= 3) {
+      const hexA = parseInt(parts[1], 16);
+      if (!isNaN(hexA)) {
+        const ipA = (hexA >> 8) & 0xff;
+        const ipB = hexA & 0xff;
+        if (isPrivateIp(`${ipA}.${ipB}.0.1`)) return true;
+      }
+    }
+  }
+  // NAT64 前缀 (64:ff9b::/96)
+  if (v6.startsWith('64:ff9b::')) {
+    const rest = v6.slice(9);
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(rest)) return isPrivateIp(rest);
+  }
   return false;
 }
 
@@ -461,20 +564,15 @@ function isAllowedUrl(urlStr) {
   try {
     const parsed = new URL(urlStr);
     if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-    const host = parsed.hostname.toLowerCase();
+    let host = parsed.hostname.toLowerCase();
+    if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
     if (/^(localhost|0\.0\.0\.0|::1)$/.test(host)) return false;
     if (isPrivateIp(host)) return false;
+    if (isPrivateIPv6(host)) return false;
     return true;
   } catch {
     return false;
   }
-}
-
-function isPrivateIPv6(ip) {
-  if (ip === '::1') return true;
-  if (ip.startsWith('fe80:')) return true;
-  if (ip.startsWith('fc') || ip.startsWith('fd')) return true;
-  return false;
 }
 
 const dnsCache = new Map();
@@ -518,23 +616,22 @@ async function dnsResolveWithTimeout(host, family) {
 
 async function validateUrlSsrf(urlStr) {
   const parsedUrl = new URL(urlStr);
-  const host = parsedUrl.hostname;
+  let host = parsedUrl.hostname.toLowerCase();
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
   if (/^(localhost|0\.0\.0\.0|::1)$/i.test(host)) {
     throw new Error(`SSRF blocked: illegal host ${host}`);
   }
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
     if (isPrivateIp(host)) throw new Error(`SSRF blocked: private IP ${host}`);
-  } else if (/^[0-9a-f:]+$/i.test(host) && host.includes(':')) {
+  } else if (host.includes(':')) {
     if (isPrivateIPv6(host)) throw new Error(`SSRF blocked: private IPv6 ${host}`);
   } else if (dns) {
     const v4 = await dnsResolveWithTimeout(host, 4);
     for (const ip of v4) { if (isPrivateIp(ip)) throw new Error(`SSRF blocked: ${host} resolved to private IP ${ip}`); }
-    if (v4.length === 0) {
-      const v6 = await dnsResolveWithTimeout(host, 6);
-      for (const ip of v6) {
-        if (isPrivateIPv6(ip)) {
-          throw new Error(`SSRF blocked: ${host} resolved to private IPv6 ${ip}`);
-        }
+    const v6 = await dnsResolveWithTimeout(host, 6);
+    for (const ip of v6) {
+      if (isPrivateIPv6(ip)) {
+        throw new Error(`SSRF blocked: ${host} resolved to private IPv6 ${ip}`);
       }
     }
   }
@@ -548,8 +645,8 @@ function buildFetchOpts(parsedUrl, signal) {
     redirect: 'manual'
   };
   if (parsedUrl.username || parsedUrl.password) {
-    const user = decodeURIComponent(parsedUrl.username);
-    const pass = decodeURIComponent(parsedUrl.password);
+    const user = safeDecodeURIComponent(parsedUrl.username);
+    const pass = safeDecodeURIComponent(parsedUrl.password);
     const auth = (typeof btoa !== 'undefined')
       ? btoa(`${user}:${pass}`)
       : Buffer.from(`${user}:${pass}`).toString('base64');
@@ -691,7 +788,7 @@ async function fetchNodes(url, options = {}) {
     try {
       return await attemptFetch(false);
     } catch (err) {
-      if (!proxyUrl) throw err;
+      if (!proxyUrl || err?.retryable === false) throw err;
       try { return await attemptFetch(true); }
       catch (e2) { throw e2; }
     }
@@ -699,7 +796,7 @@ async function fetchNodes(url, options = {}) {
   return attemptFetch(useProxy);
 }
 
-let BUILDER_VERSION = "v1.4.1";
+let BUILDER_VERSION = "v1.7.0";
 try {
   const pkg = require('../package.json');
   if (pkg && pkg.version) BUILDER_VERSION = `v${pkg.version}`;
@@ -725,9 +822,14 @@ function pruneSubStaleCache(maxAgeMs = DEFAULT_SUB_STALE_MAX_AGE_MS) {
   }
 }
 
+function isSubEnabled(s) {
+  if (!s || typeof s !== 'object') return false;
+  return s.enable !== false && s.enabled !== false && s.disabled !== true;
+}
+
 function getCacheKey(userConfig, options) {
   try {
-    const subs = (userConfig.subscriptions || []).map(s => ({ url: s.url, uri: s.uri, tag: s.tag, proxy: s.proxy }));
+    const subs = (userConfig.subscriptions || []).filter(isSubEnabled).map(s => ({ url: s.url, uri: s.uri, tag: s.tag, proxy: s.proxy }));
     return JSON.stringify({
       subs,
       url: options.url,
@@ -736,7 +838,9 @@ function getCacheKey(userConfig, options) {
       convertMode: userConfig.chineseConvertMode,
       redactLevel: userConfig.redactLevel,
       fetchProxyPort: userConfig.fetchProxyPort,
-      fetchProxyStrategy: userConfig.fetchProxyStrategy
+      fetchProxyStrategy: userConfig.fetchProxyStrategy,
+      enableDashboard: userConfig.enableDashboard,
+      expireAggregation: userConfig.expireAggregation
     });
   } catch { return null; }
 }
@@ -744,6 +848,14 @@ function getCacheKey(userConfig, options) {
 async function buildProfile(userConfig, options = {}) {
   const effectiveLogLevel = options.debug ? 'debug' : (userConfig.logLevel || 'info');
   const logger = createLogger('[Builder]', effectiveLogLevel);
+
+  // 资源限制纵深防御：拦截订阅数量异常
+  const securityLimits = userConfig.security || {};
+  const limitErr = validateRequestLimits({
+    subscriptionUrls: (userConfig.subscriptions || []).filter(isSubEnabled).map(s => s.url).filter(Boolean),
+    limits: securityLimits
+  });
+  if (limitErr) throw limitErr;
 
   const enableCache = userConfig.enableCache !== false && !options.noCache;
   const cacheTtlMs = (userConfig.cacheTtl || 300) * 1000;
@@ -784,12 +896,17 @@ async function buildProfile(userConfig, options = {}) {
   const openccStatus = userConfig.enableChineseConvert
     ? (isOpenccReady ? '已就绪' : '未安装(降级)')
     : (isOpenccReady ? '已就绪(未启用)' : '未启用');
-  const subCount = userConfig.subscriptions ? userConfig.subscriptions.length : 0;
-  const urlSubs = userConfig.subscriptions ? userConfig.subscriptions.filter(s => s.url).length : 0;
-  const uriSubs = userConfig.subscriptions ? userConfig.subscriptions.filter(s => s.uri).length : 0;
-  logger.log(`依赖: opencc-js ${openccStatus} | 订阅: ${subCount} 个 (URL ${urlSubs}, URI ${uriSubs})`);
+  const allSubs = userConfig.subscriptions || [];
+  const activeSubs = allSubs.filter(isSubEnabled);
+  const disabledCount = allSubs.length - activeSubs.length;
+  const subCount = activeSubs.length;
+  const urlSubs = activeSubs.filter(s => s.url).length;
+  const uriSubs = activeSubs.filter(s => s.uri).length;
+  const disabledInfo = disabledCount > 0 ? ` (已停用 ${disabledCount})` : '';
+  logger.log(`依赖: opencc-js ${openccStatus} | 订阅: ${subCount} 个有效${disabledInfo} (URL ${urlSubs}, URI ${uriSubs})`);
 
-  if (redactLevel === 'off' && (process.env.NODE_ENV === 'production' || options.production)) {
+  const isProd = (typeof process !== 'undefined' && process?.env?.NODE_ENV === 'production') || !!options.production;
+  if (redactLevel === 'off' && isProd) {
     throw new Error('[Security] redactLevel=off 不允许在生产环境使用！');
   }
   
@@ -800,18 +917,63 @@ async function buildProfile(userConfig, options = {}) {
   const fetchTimeoutSec = typeof userConfig.fetchTimeout === 'number' ? userConfig.fetchTimeout : 15;
   const staleMaxAgeMs = (typeof userConfig.fetchStaleTtl === 'number' ? userConfig.fetchStaleTtl : 24) * 60 * 60 * 1000; // 兜底数据保留时长（小时）
   let hasFailedSub = false; // 存在最终失败的订阅（无兜底可用）时，构建结果不完整，不写入缓存
-  
-  function parseSubInfoForGlobal(subInfo) {
+
+  const enableDashboard = userConfig.enableDashboard !== false;
+  const expireAggregation = userConfig.expireAggregation || 'min'; // 'min' | 'max' | 'first'
+  const collectedSubInfos = [];
+
+  function recordSubInfo(subInfo, subTag) {
     if (!subInfo) return;
     const { upload, download, total, expire } = parseSubscriptionInfo(subInfo);
-    globalUpload += upload;
-    globalDownload += download;
-    globalTotal += total;
-    if (expire > globalExpire) globalExpire = expire;
+    collectedSubInfos.push({
+      tag: subTag,
+      upload,
+      download,
+      total,
+      expire,
+      expired: isExpiredNow(expire)
+    });
+  }
+
+  function finalizeGlobalSubInfo() {
+    if (collectedSubInfos.length === 0) return;
+
+    // 1. 流量聚合：已过期的订阅不参与综合流量聚合，避免把失效套餐流量算进总和
+    const activeSubs = collectedSubInfos.filter(s => !s.expired && s.total > 0);
+    const expiredSubs = collectedSubInfos.filter(s => s.expired);
+
+    expiredSubs.forEach(s => {
+      logger.warn(`↩️ 订阅${s.tag ? ` [${s.tag}]` : ''}已过期，跳过其流量聚合`);
+    });
+
+    globalUpload = activeSubs.reduce((acc, s) => acc + s.upload, 0);
+    globalDownload = activeSubs.reduce((acc, s) => acc + s.download, 0);
+    globalTotal = activeSubs.reduce((acc, s) => acc + s.total, 0);
+
+    // 2. 到期时间聚合：支持 min / max / first
+    const subsWithExpire = collectedSubInfos.filter(s => s.expire > 0);
+    if (subsWithExpire.length > 0) {
+      const validSubs = subsWithExpire.filter(s => !s.expired);
+      const candidatePool = validSubs.length > 0 ? validSubs : subsWithExpire;
+
+      if (expireAggregation === 'max') {
+        globalExpire = Math.max(...candidatePool.map(s => s.expire));
+      } else if (expireAggregation === 'first') {
+        globalExpire = candidatePool[0].expire;
+      } else {
+        // 默认 min：未过期取最早到期(Math.min)预警，全过期取最近失效历史时间戳(Math.max)
+        globalExpire = validSubs.length > 0
+          ? Math.min(...candidatePool.map(s => s.expire))
+          : Math.max(...candidatePool.map(s => s.expire));
+      }
+    }
   }
 
   if (userConfig.subscriptions && Array.isArray(userConfig.subscriptions) && userConfig.subscriptions.length > 0) {
     const fetchTasks = userConfig.subscriptions.map(async (sub) => {
+      if (!isSubEnabled(sub)) {
+        return { sub, rawResult: null, error: null, disabled: true };
+      }
       if (!sub.url && !sub.uri) return { sub, rawResult: null, error: null };
       try {
         let rawResult;
@@ -859,11 +1021,16 @@ async function buildProfile(userConfig, options = {}) {
     const fetchedResults = await Promise.all(fetchTasks);
 
     const subSummaries = [];
-    for (const { sub, rawResult, error } of fetchedResults) {
+    for (const { sub, rawResult, error, disabled } of fetchedResults) {
+      if (disabled) {
+        const tag = sub.tag || (sub.url ? redactUrl(sub.url, showFullUrl) : (sub.name || '自建'));
+        subSummaries.push({ disabled: true, tag, type: sub.uri ? 'uri' : 'url' });
+        continue;
+      }
       if (!rawResult && !error) continue;
       try {
         if (error) throw error;
-        parseSubInfoForGlobal(rawResult.subInfo);
+        recordSubInfo(rawResult.subInfo, sub.tag);
         const subConfig = parseContent(rawResult.content);
         let subProxies = subConfig.proxies || [];
         
@@ -926,7 +1093,7 @@ async function buildProfile(userConfig, options = {}) {
           }
         }
 
-        const REGEX_INFO = /剩余|到期|套餐|流量|时间|有效|更新|官网|维护|群|发布|节点说明|失效|获取|网址|Q群|电报|Tg群|下次|关注|官方|签到/i;
+        const REGEX_INFO = /剩余|到期|过期|套餐|流量|时间|有效|更新|官网|维护|群|发布|节点说明|失效|获取|网址|Q群|电报|Tg群|下次|关注|官方|签到/i;
         const rawCount = subProxies.length;
         subProxies = subProxies.filter(p => {
           if (REGEX_INFO.test(p.name)) {
@@ -961,11 +1128,14 @@ async function buildProfile(userConfig, options = {}) {
           subProxies.forEach(p => { p._indexPrefix = effectiveIndexPrefix; });
         }
         
-        const { nodes: synthNodes, expireDays } = generateInfoNodes(rawResult.subInfo, effectiveTag);
+        const { nodes: synthNodes, expireDays } = enableDashboard
+          ? generateInfoNodes(rawResult.subInfo, effectiveTag, { isStale: !!rawResult.stale })
+          : { nodes: [], expireDays: -1 };
+
         // 到期临近（≤30 天）时不显示重置——到期信息已够，重置无意义
-        if (resetText && (expireDays === -1 || expireDays > 30)) {
+        if (enableDashboard && resetText && (expireDays === -1 || expireDays > 30)) {
           synthNodes.push({
-            name: `[${effectiveTag}] ${resetText}`,
+            name: `🔄 [${effectiveTag}] ${resetText}`,
             type: 'direct',
             server: '1.0.0.1',
             port: 80,
@@ -995,7 +1165,92 @@ async function buildProfile(userConfig, options = {}) {
       } catch (e) {
         const subId = sub.uri ? 'direct-uri' : redactUrl(sub.url, showFullUrl);
         logger.error(`Error processing subscription ${subId}: ${e.message}`);
+
+        let effectiveTag = sub.tag;
+        if (!effectiveTag && sub.url && sub.url.startsWith('http')) {
+          try { effectiveTag = new URL(sub.url).hostname; } catch(err) {}
+        }
+        if (!effectiveTag) effectiveTag = "订阅";
+
+        const errorMsg = e.message || '抓取失败';
+        let shortMsg = errorMsg;
+        if (/fetch failed/i.test(errorMsg)) shortMsg = '网络连接失败';
+        else if (/timeout/i.test(errorMsg)) shortMsg = '拉取超时';
+        else if (/HTTP Error: (\d+)/i.test(errorMsg)) shortMsg = `HTTP ${errorMsg.match(/HTTP Error: (\d+)/i)[1]}`;
+        else if (/no nodes/i.test(errorMsg)) shortMsg = '未解析到有效节点';
+
+        if (enableDashboard) {
+          const failNode = {
+            name: `❌ [${effectiveTag}] 拉取失败：${shortMsg}`,
+            type: 'direct',
+            server: '1.0.0.1',
+            port: 80,
+            isSyntheticInfo: true
+          };
+          configData.proxies.push(failNode);
+        }
+
+        subSummaries.push({
+          type: sub.uri ? 'uri' : 'url',
+          nameHint: '',
+          tag: effectiveTag,
+          total: 0,
+          failed: true,
+          failReason: shortMsg
+        });
       }
+    }
+
+    finalizeGlobalSubInfo();
+
+    // 仅在多订阅 (>=2 个有流量的有效源) 且启用看板时，在最顶部注入一组「全局总额」配对节点（流量 + 到期）
+    // 完美契合客户端常见的 2 列网格布局 (左列流量 / 右列到期)
+    const activeSubsWithTraffic = collectedSubInfos.filter(s => !s.expired && s.total > 0);
+    if (enableDashboard && activeSubsWithTraffic.length > 1 && globalTotal > 0) {
+      const globalRemaining = Math.max(0, globalTotal - (globalUpload + globalDownload));
+      const globalPercent = ((globalRemaining / globalTotal) * 100).toFixed(1);
+      const isLow = globalRemaining <= 10 * 1024 * 1024 * 1024 || (globalRemaining / globalTotal) <= 0.05;
+      const globalIcon = isLow ? '🪫' : '📈';
+      const globalTrafficNode = {
+        name: `${globalIcon} [全局] 剩余流量：${formatBytes(globalRemaining)} / ${formatBytes(globalTotal)} (${globalPercent}%)`,
+        type: 'direct',
+        server: '1.0.0.1',
+        port: 80,
+        isSyntheticInfo: true
+      };
+
+      const topNodes = [globalTrafficNode];
+
+      if (globalExpire > 0) {
+        const d = new Date(globalExpire * 1000);
+        const dateStr = d.toISOString().split('T')[0];
+        const now = new Date();
+        const days = Math.ceil((d - now) / 86400000);
+        let expireLabel = '临近到期';
+        if (expireAggregation === 'max') expireLabel = '最晚到期';
+        else if (expireAggregation === 'first') expireLabel = '首项到期';
+
+        let expireIcon = '⌛';
+        let expireDesc = `(余 ${days} 天)`;
+        if (days <= 0) {
+          expireIcon = '🛑';
+          expireDesc = `(已失效 ${Math.max(1, Math.floor((now - d) / 86400000))} 天)`;
+        } else if (days <= 3) {
+          expireIcon = '⚠️';
+          expireDesc = `(仅剩 ${days} 天)`;
+        }
+
+        const globalExpireNode = {
+          name: `${expireIcon} [全局] ${expireLabel}：${dateStr} ${expireDesc}`,
+          type: 'direct',
+          server: '1.0.0.1',
+          port: 80,
+          isSyntheticInfo: true
+        };
+        topNodes.push(globalExpireNode);
+      }
+
+      configData.proxies.unshift(...topNodes);
     }
 
     if (subSummaries.length > 0) {
@@ -1003,13 +1258,19 @@ async function buildProfile(userConfig, options = {}) {
       subSummaries.forEach((s, idx) => {
         const isLast = idx === subSummaries.length - 1;
         const branch = isLast ? '└──' : '├──';
-        const icon = s.type === 'uri' ? '📌' : '🌐';
-        const details = [];
-        if (s.filtered > 0) details.push(`过滤 ${s.filtered}`);
-        if (s.synth > 0) details.push(`合成 ${s.synth}`);
-        const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-        const namePart = s.type === 'uri' ? `${s.nameHint}${s.tag ? ` [${s.tag}]` : ''}` : `[${s.tag}]`;
-        logger.log(`    ${branch} ${icon} ${namePart}: ${s.total} 个节点${detailStr}`);
+        if (s.disabled) {
+          logger.log(`    ${branch} ⏸️ [${s.tag}]: 已停用 (跳过)`);
+        } else if (s.failed) {
+          logger.log(`    ${branch} ❌ [${s.tag}]: 拉取失败 (${s.failReason})`);
+        } else {
+          const icon = s.type === 'uri' ? '📌' : '🌐';
+          const details = [];
+          if (s.filtered > 0) details.push(`过滤 ${s.filtered}`);
+          if (s.synth > 0) details.push(`合成 ${s.synth}`);
+          const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
+          const namePart = s.type === 'uri' ? `${s.nameHint}${s.tag ? ` [${s.tag}]` : ''}` : `[${s.tag}]`;
+          logger.log(`    ${branch} ${icon} ${namePart}: ${s.total} 个节点${detailStr}`);
+        }
       });
     }
   } else if (options.url) {
@@ -1027,13 +1288,16 @@ async function buildProfile(userConfig, options = {}) {
         timeoutMs: fetchTimeoutSec * 1000
       });
     }
-    parseSubInfoForGlobal(rawResult.subInfo);
+    recordSubInfo(rawResult.subInfo, "");
+    finalizeGlobalSubInfo();
     configData = parseContent(rawResult.content);
     const nodeCount = configData.proxies ? configData.proxies.length : 0;
     logger.log(`📡 节点解析完成: ${nodeCount} 个节点`);
-    const { nodes: synthNodes } = generateInfoNodes(rawResult.subInfo, "");
-    if (synthNodes.length > 0 && configData.proxies) {
-      configData.proxies.unshift(...synthNodes);
+    if (enableDashboard) {
+      const { nodes: synthNodes } = generateInfoNodes(rawResult.subInfo, "");
+      if (synthNodes.length > 0 && configData.proxies) {
+        configData.proxies.unshift(...synthNodes);
+      }
     }
   } else {
     throw new Error("No URL or subscriptions provided.");
@@ -1062,6 +1326,8 @@ async function buildProfile(userConfig, options = {}) {
     toolkitUserConfig.enableNodeRename = false;
     // pure 强制输出文字特征（不转 Emoji），让 toolkit 能识别文字并正确分桶
     pureUserConfig.showFeatureIcon = false;
+    // full 模式默认剔除机场原生说明假节点（由 builder 统一合成高颜值彩色状态看板，避免双重展示）
+    pureUserConfig.removeInfoNodes = userConfig.removeInfoNodes ?? true;
   }
 
   // 根级白名单/注入规则同步合并进双端（任意模式生效，pureConfig/toolkitConfig 是覆盖语义，
@@ -1168,7 +1434,7 @@ async function buildProfile(userConfig, options = {}) {
 
   let yamlStr = yaml.stringify(outputData);
     
-  if (globalTotal > 0) {
+  if (globalTotal > 0 || globalExpire > 0) {
     yamlStr = `# subscription-userinfo: upload=${globalUpload}; download=${globalDownload}; total=${globalTotal}; expire=${globalExpire}\n` +
               `# profile-web-page-url: https://github.com/mihomo-toolkit\n` +
               `# upload=${globalUpload}; download=${globalDownload}; total=${globalTotal}; expire=${globalExpire}\n` +

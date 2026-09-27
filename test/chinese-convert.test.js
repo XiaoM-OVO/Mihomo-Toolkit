@@ -11,11 +11,20 @@ describe('🔄 简繁中文全链路转换模块', () => {
   });
 
   test('chineseConvert - 对象结构递归转换逻辑', () => {
+    const reg = /^测试\d+$/i;
+    const date = new Date(1700000000000);
     const obj = {
-      "香港專線": ["日本高速", "美國節點"]
+      "香港專線": ["日本高速", "美國節點"],
+      filterReg: reg,
+      createdAt: date
     };
     const converted = chineseConvert.deepConvertStrings(obj, chineseConvert.toSimplified);
     assert.notEqual(converted, null);
     assert.ok(typeof converted === 'object');
+    // RegExp 和 Date 必须保持原型对象，不得退化为空对象 {}
+    assert.ok(converted.filterReg instanceof RegExp);
+    assert.equal(converted.filterReg.source, reg.source);
+    assert.ok(converted.createdAt instanceof Date);
+    assert.equal(converted.createdAt.getTime(), date.getTime());
   });
 });
