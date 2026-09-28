@@ -23,81 +23,88 @@ const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../
  * @param {object} [extConfig={}] 用户外部配置参数
  * @returns {object} 构建完毕的 Mihomo 配置
  */
-function runStrategyPipeline(config = {}, extConfig = {}) {
+function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) {
   const userConfig = resolveConfig(extConfig);
   if (!userConfig.enableScript) return config;
 
-  // 1. 节点底层去重
-  const rawProxies = config.proxies || [];
-  let proxies = rawProxies;
-  if (userConfig.enableDedupe) {
-    proxies = dedupeNodes(rawProxies);
-  }
+  let classifiedNodes = pipelineContext.classifiedNodes;
 
-  // 2. 节点深度清洗与特征打标
-  const regionDefs = getEnhancedRegionDefs();
-  const classifiedNodes = proxies.map(p => classifyNode(p, userConfig, { regionDefs }));
+  // 若上游流水线未提供已分类打标的节点（如 Clash Verge 独立脚本入口），则在本地执行打标与格式化
+  if (!classifiedNodes) {
+    const rawProxies = config.proxies || [];
+    const isPreCleaned = rawProxies.some(p => p && p._cleaned);
+    let proxies = rawProxies;
 
-  // 3. 节点重命名与模板渲染 (可选)
-  const templateCleaners = createSeparatorCleaners(userConfig.renameSeparators);
-  const renameTemplate = userConfig.renameTemplate;
-  const isRenameEnabled = userConfig.enableNodeRename !== false;
-
-  const regionCounts = {};
-  classifiedNodes.forEach(item => {
-    if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
-    const rKey = item.regionInfo.id || item.regionInfo.name;
-    regionCounts[rKey] = (regionCounts[rKey] || 0) + 1;
-  });
-  const maxCount = Math.max(...Object.values(regionCounts), 9);
-  const indexPad = Math.max(2, maxCount.toString().length);
-  const regionTracker = {};
-
-  classifiedNodes.forEach(item => {
-    if (item.skip || item.isSpecial || item.isInfo) return;
-    if (!item.regionInfo) return;
-
-    const rKey = item.regionInfo.id || item.regionInfo.name;
-    const total = regionCounts[rKey] || 1;
-    let numStr = '';
-    if (total > 1) {
-      regionTracker[rKey] = (regionTracker[rKey] || 0) + 1;
-      numStr = String(regionTracker[rKey]).padStart(indexPad, '0');
+    // 1. 节点底层去重（已清洗节点跳过）
+    if (userConfig.enableDedupe && !isPreCleaned) {
+      proxies = dedupeNodes(rawProxies);
     }
 
-    if (isRenameEnabled && renameTemplate) {
-      let featureStr = '';
-      (item.tags || []).forEach(t => {
-        if (t === 'ipv6' || t === 'dualstack') return;
-        if (userConfig.showFeatureIcon !== false) {
-          if (FEATURE_ICONS[t]) featureStr += FEATURE_ICONS[t];
-        } else {
-          if (FEATURE_TEXT_MAP[t]) featureStr += (featureStr ? '/' : '') + FEATURE_TEXT_MAP[t];
-        }
-      });
+    // 2. 节点深度清洗与特征打标
+    const regionDefs = getEnhancedRegionDefs();
+    classifiedNodes = proxies.map(p => classifyNode(p, userConfig, { regionDefs }));
 
-      const protocolIcon = PROTOCOL_ICONS[item.pType] || '';
-      const vars = {
-        airport: item.airportTag || '',
-        icon: item.regionInfo.icon || '',
-        region: item.regionInfo.name || '',
-        index: numStr,
-        features: featureStr,
-        protocol: protocolIcon,
-        multi: item.attrs?.multiStr || '',
-        in: item.attrs?.entryStr || '',
-        city: item.destCity || '',
-        line: item.attrs?.cleanLines || '',
-        ip_stack: item.tags?.includes('dualstack') ? '双栈' : (item.tags?.includes('ipv6') ? 'IPv6' : ''),
-        transport: item.transportTag || ''
-      };
+    // 3. 节点重命名与模板渲染（已清洗节点跳过，防二次重命名污染）
+    const templateCleaners = createSeparatorCleaners(userConfig.renameSeparators);
+    const renameTemplate = userConfig.renameTemplate;
+    const isRenameEnabled = !isPreCleaned && userConfig.enableNodeRename !== false;
 
-      const newName = renderTemplate(renameTemplate, vars, item.proxy, templateCleaners);
-      if (newName) {
-        item.proxy.name = newName;
+    const regionCounts = {};
+    classifiedNodes.forEach(item => {
+      if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
+      const rKey = item.regionInfo.id || item.regionInfo.name;
+      regionCounts[rKey] = (regionCounts[rKey] || 0) + 1;
+    });
+    const maxCount = Math.max(...Object.values(regionCounts), 9);
+    const indexPad = Math.max(2, maxCount.toString().length);
+    const regionTracker = {};
+
+    classifiedNodes.forEach(item => {
+      if (item.skip || item.isSpecial || item.isInfo) return;
+      if (!item.regionInfo) return;
+
+      const rKey = item.regionInfo.id || item.regionInfo.name;
+      const total = regionCounts[rKey] || 1;
+      let numStr = '';
+      if (total > 1) {
+        regionTracker[rKey] = (regionTracker[rKey] || 0) + 1;
+        numStr = String(regionTracker[rKey]).padStart(indexPad, '0');
       }
-    }
-  });
+
+      if (isRenameEnabled && renameTemplate) {
+        let featureStr = '';
+        (item.tags || []).forEach(t => {
+          if (t === 'ipv6' || t === 'dualstack') return;
+          if (userConfig.showFeatureIcon !== false) {
+            if (FEATURE_ICONS[t]) featureStr += FEATURE_ICONS[t];
+          } else {
+            if (FEATURE_TEXT_MAP[t]) featureStr += (featureStr ? '/' : '') + FEATURE_TEXT_MAP[t];
+          }
+        });
+
+        const protocolIcon = PROTOCOL_ICONS[item.pType] || '';
+        const vars = {
+          airport: item.airportTag || '',
+          icon: item.regionInfo.icon || '',
+          region: item.regionInfo.name || '',
+          index: numStr,
+          features: featureStr,
+          protocol: protocolIcon,
+          multi: item.attrs?.multiStr || '',
+          in: item.attrs?.entryStr || '',
+          city: item.destCity || '',
+          line: item.attrs?.cleanLines || '',
+          ip_stack: item.tags?.includes('dualstack') ? '双栈' : (item.tags?.includes('ipv6') ? 'IPv6' : ''),
+          transport: item.transportTag || ''
+        };
+
+        const newName = renderTemplate(renameTemplate, vars, item.proxy, templateCleaners);
+        if (newName) {
+          item.proxy.name = newName;
+        }
+      }
+    });
+  }
 
   // 4. 组装服务注册表与策略拓扑
   const registries = createServiceRegistries(userConfig);
