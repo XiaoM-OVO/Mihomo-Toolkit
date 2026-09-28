@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * -----------------------------------------------------------------------------
  * Target: CLI 命令行构建工具 (mihomo-tk / mtk / mihomo-toolkit)
@@ -8,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 const { program } = require('commander');
-const { buildProfile } = require('../pipeline/full');
+const { buildProfile } = require('../pipeline/config');
 
 function run(argv = process.argv) {
   program
