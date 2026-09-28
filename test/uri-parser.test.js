@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseVlessUri, parseVmessUri, parseTrojanUri, parseSsUri, parseContent } = require('../src/builder.js');
+const { parseVlessUri, parseVmessUri, parseTrojanUri, parseSsUri, parseContent } = require('../src/index.js');
 
 describe('🧩 URI 节点协议解析模块', () => {
   test('parseVlessUri - 基础 TLS 节点解析', () => {

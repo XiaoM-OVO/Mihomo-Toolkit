@@ -1,11 +1,21 @@
 /**
- * Mihomo-Toolkit 流水线统一入口
+ * -----------------------------------------------------------------------------
+ * Mihomo-Toolkit 流水线统一入口 (Pipeline Engine)
+ * -----------------------------------------------------------------------------
  */
 
-const { runToolkitPipeline } = require('./toolkit');
-const { runPurePipeline } = require('./pure');
+const { runCleanerPipeline } = require('./cleaner');
+const { runProfilePipeline } = require('./profile');
+const { buildProfile } = require('./full');
 
 module.exports = {
-  runToolkitPipeline,
-  runPurePipeline
+  // 现代三大核心流水线
+  runCleanerPipeline,
+  runProfilePipeline,
+  runFullPipeline: buildProfile,
+  buildProfile,
+
+  // 语义别名
+  runNodePipeline: runCleanerPipeline,
+  runStrategyPipeline: runProfilePipeline
 };

@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { validateUrlSsrf, isAllowedUrl } = require('../src/builder.js');
+const { validateUrlSsrf, isAllowedUrl } = require('../src/index.js');
 
 describe('🔐 SSRF 安全拦截与 URL 校验模块', () => {
   test('isAllowedUrl - 拦截私网与非法协议', () => {

@@ -6,17 +6,17 @@
 
 ## 🧭 架构设计原则
 
-1. **单一职责 (Single Responsibility)**：每个模块只专注于解决一个问题（如：去重、地区识别、DNS 覆写、协议解析）。
+1. **单一职责 (Single Responsibility)**：每个模块只专注于解决一个问题（如：去重、地区识别、DNS 覆写、协议解析、看板合成）。
 2. **单向依赖 (Unidirectional Dependency)**：高层调用低层，底层**严禁**反向引用高层。
    ```text
-   targets (运行时适配器)
+   targets (多端运行时适配器)
       │
       ▼
-   pipeline (流程编排引擎)
+   pipeline (流程编排引擎: pure / toolkit / builder)
       │
       ├──────────────────────┬──────────────────────┐
       ▼                      ▼                      ▼
-   strategy (策略与拓扑)   core (清洗与纯算法)     io (网络与解析)
+   strategy (策略与拓扑)   core (清洗与纯算法)     io (网络、容灾与解析)
       │                      │                      │
       └──────────────────────┴──────────────────────┘
                              ▼
@@ -36,18 +36,21 @@
 [输入] 远程 URL / 本地 YAML / URI 列表
   │
   ├─▶ 1. IO 阶段 (src/io/)
-  │     • SSRF 防护校验与重试抓取 (ssrf.js)
+  │     • SSRF 防护校验与重试抓取 (ssrf.js, fetcher.js)
   │     • 多协议/Base64/YAML 解析为标准节点数组 (parsers/)
   │     • 订阅流量与重置天数虚拟节点生成 (sub-info.js)
+  │     • 资源限制与安全配额校验 (limits.js)
   │
   ├─▶ 2. Core 阶段 (src/core/)
   │     • 节点物理特征指纹提取与去重 (dedupe.js)
   │     • 广告/引流/失效节点前置拦截 (cleaner.js)
+  │     • 域名并发多 IP 裂变增殖 (fission.js)
   │     • 地区与城市匹配 (geo.js)
   │     • 协议/特征/倍率/线路/入口提取并打标 (cleaner.js)
   │     • 节点重命名与模板渲染 (rename.js)
   │
   ├─▶ 3. Strategy 拓扑阶段 (src/strategy/)
+  │     • 多订阅流量与到期状态看板合成 (dashboard.js)
   │     • 六维服务注册表初始化 (registries.js)
   │     • 动态大区折叠与策略组装配 (topology.js)
   │     • 路由分流规则与 Rule-Providers 组装 (rules.js)
@@ -68,94 +71,75 @@
 * **`defaults.js`**
   - `DEFAULT_CONFIG: object`：全局默认配置项定义。
 * **`index.js`**
-  - `resolveConfig(userConfig?: object): object`
-    - **入参**：用户自定义配置覆盖对象。
-    - **出参**：深合并、补全默认值且保证数组/对象类型安全的最终配置。
+  - `resolveConfig(userConfig?: object): object`：合并补全默认配置。
 
 ---
 
 ### 2. `src/core/` (纯计算与清洗算法)
-* **`core/shared/regions.js`**
-  - `IN_PREFIX: string`：入口前缀正则片段。
-  - `REGION_DEFS_RAW: Array<RegionDef>`：地区原始字典。
-  - `CONTINENT_DEFS: Array<ContinentDef>`：六大洲折叠大区配置。
-  - `getEnhancedRegionDefs(): Array<RegionDef>`：获取带有预编译正则的地区定义列表。
-* **`core/shared/icons.js`**
-  - `PROTOCOL_ICONS: Record<string, string>`：协议 Emoji 字典。
-  - `FEATURE_ICONS: Record<string, string>`：特征 Emoji 字典。
-  - `FEATURE_TEXT_MAP: Record<string, string>`：特征文字标签字典。
+* **`core/cleaner.js`**
+  - `classifyNode(proxy: object, userConfig: object): NodeClassificationResult`：安全检测、属性抽取与打标。
 * **`core/dedupe.js`**
-  - `getNodeFingerprint(proxy: object): string`：提取底层网络特征指纹。
-  - `dedupeNodes(proxies: object[], options?: { onDuplicate?: Function }): object[]`：物理去重。
+  - `dedupeNodes(proxies: object[], options?: object): object[]`：物理特征去重。
+* **`core/fission.js`**
+  - `fissionNodeMultiIp(proxy: object, options?: object): Promise<object[]>`：域名并发多 IP 裂变增殖。
 * **`core/geo.js`**
   - `matchNodeRegion(name: string, regionDefs?: object[], options?: object): object | null`：智能匹配地区。
   - `extractCity(name: string, regionDef: object): string`：提取落地城市。
 * **`core/rename.js`**
-  - `createSeparatorCleaners(separators?: string[]): { regAdjacent, regEdge }`：构建悬空分隔符清理正则。
   - `renderTemplate(template: string|Function, vars: object, proxy: object, cleaners?: object): string`：模板渲染与清理。
-* **`core/cleaner.js`** *(待构建)*
-  - `classifyNode(proxy: object, userConfig: object): NodeClassificationResult`
-    - 对单个节点进行安全检测、属性抽取、地区与特征分类打标。
 
 ---
 
 ### 3. `src/io/` (外部交互、网络与解析)
+* **`io/fetcher.js`**
+  - `safeFetchText(url: string, options?: object): Promise<{ text, response, finalUrl }>`：安全抓取。
+  - `fetchNodes(url: string, options?: object): Promise<{ content, subInfo }>`：抓取调度与 Stale 容灾降级。
 * **`io/ssrf.js`**
-  - `isPrivateIp(ip: string): boolean`：判断是否为私网/回环 IPv4。
-  - `isPrivateIPv6(ip: string): boolean`：判断是否为私网/特殊 IPv6。
-  - `isAllowedUrl(url: string): boolean`：静态协议与主机名安全校验。
-  - `validateUrlSsrf(url: string): Promise<boolean>`：包含 DNS 解析的动态 SSRF 拦截。
+  - `validateUrlSsrf(url: string): Promise<boolean>`：DNS 动态私网拦截。
+  - `isAllowedUrl(url: string): boolean`：协议与地址快速合法性校验。
   - `redactUrl(url: string, showFull?: boolean): string`：敏感 Token 脱敏打印。
+* **`io/limits.js`**
+  - `validateRequestLimits(params: object): Error | null`：请求配额与资源限制防御。
 * **`io/parsers/`**
   - `parseContent(rawText: string): { proxies: object[] }`：全格式自动解析。
-  - `parseVlessUri(uri: string): object | null`
-  - `parseVmessUri(uri: string): object | null`
-  - `parseTrojanUri(uri: string): object | null`
-  - `parseSsUri(uri: string): object | null`
 * **`io/sub-info.js`**
-  - `parseSubscriptionInfo(subInfo: string): { upload, download, total, expire }`
-  - `formatBytes(bytes: number, fractionDigits?: number): string`
-  - `calcResetDays(options: { resetDay?: number }): number | null`
   - `generateInfoNodes(subInfo: string, tag: string, options?: object): { nodes: object[], expireDays: number }`
 
 ---
 
 ### 4. `src/strategy/` (策略拓扑与内核优化)
-* **`strategy/registries.js`**
-  - `createServiceRegistries(userConfig: object): { ai, streaming, social, game, dev, system }`：初始化并融合自定义注册表。
-* **`strategy/dns.js`**
-  - `applyDnsOverlay(config: object, userConfig: object): void`：注入 DNS / Fake-IP / 分流解析配置。
-* **`strategy/kernel.js`**
-  - `applyTunOverlay(config: object, userConfig: object): void`：注入 TUN 配置。
-  - `applySnifferOverlay(config: object, userConfig: object): void`：注入 Sniffer 域名嗅探配置。
-  - `applyCoreOptimize(config: object, userConfig: object): void`：注入性能优化与客户端指纹。
+* **`strategy/dashboard.js`**
+  - `aggregateSubscriptions(collectedSubInfos: object[], options?: object): object`：多订阅流量与到期聚合。
+  - `buildGlobalDashboardNodes(params: object): object[]`：双列网格高颜值全局看板节点。
+* **`strategy/topology.js`**
+  - `buildProxyTopology(classifiedNodes: object[], userConfig: object, registries: object): { proxyGroups: object[] }`：策略组装配。
 * **`strategy/rules.js`**
-  - `buildRoutingRules(userConfig: object, registries: object, options?: object): { rules: string[], providers: object }`：构建分流规则与规则集资源。
-* **`strategy/prune.js`**
-  - `pruneEmptyGroups(params: { proxyGroups, proxies, rules, ruleProviders, exemptGroups?, maxIterations? }): object`：DAG 级联空组与殉葬规则清理。
-* **`strategy/topology.js`** *(待构建)*
-  - `buildProxyTopology(classifiedNodes: object[], userConfig: object, registries: object): { proxyGroups: object[] }`：生成完整策略组拓扑。
+  - `buildRoutingRules(userConfig: object, registries: object, options?: object): { rules: string[], providers: object }`：分流规则生成。
+* **`strategy/dns.js`** 与 **`strategy/kernel.js`**：DNS 与 TUN / Sniffer 调优注入。
+* **`strategy/prune.js`**：DAG 级联空组与殉葬规则清理。
 
 ---
 
-### 5. `src/pipeline/` (编排流水线) *(待构建)*
-* **`pipeline/toolkit.js`**：连接 Core 清洗、Strategy 拓扑与 Kernel 覆写的全流程编排引擎。
-* **`pipeline/pure.js`**：仅执行清洗、去重与重命名，输出干净节点数组的精简流水线。
+### 5. `src/pipeline/` (编排流水线)
+* **`pipeline/cleaner.js`**：节点清洗与标准化流水线 (`runCleanerPipeline` / 别名 `runNodePipeline`)，输出干净节点。
+* **`pipeline/profile.js`**：策略拓扑流水线 (`runProfilePipeline` / 别名 `runStrategyPipeline`)，输出带策略组的完整配置。
+* **`pipeline/full.js`**：端到端全链路构建流水线 (`buildProfile` / `runFullPipeline`)，负责网络拉取、容灾、看板、阶段串联。支持三态输出交付物（`full` 全量配置 / `nodes` 纯节点并支持 `preserveRawConfig` 透传 / `meta` 审计报告）。
+* **`src/index.js`**：全库顶层统一门面入口 (Facade)。
 
 ---
 
-### 6. `src/targets/` (多端适配入口) *(待构建)*
-* **`targets/verge.js`**：导出 `main(config, extConfig)`，打包为单文件供 Clash Verge / 客户端扩展脚本使用。
-* **`targets/operator.js`**：导出 `operator(proxies, targetPlatform)`，打包为单文件供 Sub-Store 节点操作使用。
-* **`targets/server.js`**：常驻 HTTP 订阅服务器，供 VPS / 本地网络部署。
-* **`targets/cli.js`**：终端与 CI/CD 自动化构建命令行工具。
+### 6. `src/targets/` (多端适配入口)
+* **`targets/operator.js`**：导出 `operator(proxies, targetPlatform, userConfig)`，供 Sub-Store 使用。
+* **`targets/verge.js`**：导出 `main(config, extConfig)`，供 Clash Verge Rev 扩展脚本使用。
+* **`targets/cli.js`**：终端自动化构建命令行。
+* **`targets/server.js`**：常驻 HTTP 订阅服务器。
+* **`targets/worker.js`**：Cloudflare Worker 边缘函数。
 
 ---
 
 ## 🛡️ 开发防跑偏自检清单 (Checklist)
 
-在编写或重构任何模块时，请严格对照以下 4 条底线：
-1. **模块是否单向依赖？** 底层（如 `core/`）绝不能引用高层（如 `strategy/` 或 `pipeline/`）。
-2. **是否把副作用（Side-Effect）隔离到了最外层？** 只有 `io/` 和 `targets/` 允许发起网络请求或读取磁盘；其余所有模块都必须是纯计算。
-3. **是否引入了 Node 专属巨石依赖？** 准备打包给客户端单文件的核心代码，严禁引入 `fs`、`child_process` 或 C++ 原生扩展。
-4. **测试是否新增且通过？** 每一个抽出的独立模块，在 `test/` 目录下必须拥有专属测试文件，且必须全绿通过。
+1. **模块是否单向依赖？** 底层（如 `core/`、`strategy/`）绝不能引用高层（如 `pipeline/` 或 `targets/`）。
+2. **是否把副作用隔离到了最外层？** 只有 `io/` 和 `targets/` 允许发起网络请求或读取磁盘；其余所有模块都必须是纯计算。
+3. **是否引入了 Node 专属巨石依赖？** 打包给客户端单文件使用的核心代码严禁引入 `fs` 或原生 C++ 扩展。
+4. **测试是否全绿？** 每次改动执行 `npm test`，所有套件必须 100% 通过。
