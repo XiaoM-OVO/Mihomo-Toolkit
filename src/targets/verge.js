@@ -7,10 +7,10 @@
  * 输出：组装好策略组、分流规则、DNS 与内核优化的完整配置
  */
 
-const { runProfilePipeline } = require('../pipeline/profile');
+const { runStrategyPipeline } = require('../pipeline/strategy');
 
 function main(config, extConfig) {
-  return runProfilePipeline(config, extConfig);
+  return runStrategyPipeline(config, extConfig);
 }
 
 module.exports = { main };

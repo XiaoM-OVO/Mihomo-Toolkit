@@ -12,8 +12,9 @@
  */
 
 const yaml = require('yaml');
-const { runCleanerPipeline } = require('./cleaner');
-const { runProfilePipeline } = require('./profile');
+const { runNodesPipeline } = require('./nodes');
+const { runStrategyPipeline } = require('./strategy');
+const { buildAuditReport } = require('./report');
 
 const { parseContent, parseSubscriptionInfo, isExpiredNow } = require('../io/parsers');
 const { generateInfoNodes } = require('../io/sub-info');
@@ -486,14 +487,14 @@ async function buildProfile(userConfig = {}, options = {}) {
   }
 
   // 阶段 1：节点清洗 (nodes / config / report 均执行)
-  if (targetType === 'config' && !isPassthrough) logger.log('🔄 阶段 1/2: cleaner 节点清洗');
-  else logger.log('🔄 阶段: cleaner 节点清洗');
+  if (targetType === 'config' && !isPassthrough) logger.log('🔄 阶段 1/2: nodes 节点清洗');
+  else logger.log('🔄 阶段: nodes 节点清洗');
 
   if (targetType === 'report' || options.report || options.meta || userConfig.outputMode === 'object') {
     cleanerUserConfig.outputMode = 'object';
   }
 
-  result = await runCleanerPipeline(configData.proxies, cleanerUserConfig);
+  result = await runNodesPipeline(configData.proxies, cleanerUserConfig);
   finalProxies = Array.isArray(result) ? result : result.proxies;
 
   let outputData;
@@ -509,8 +510,8 @@ async function buildProfile(userConfig = {}, options = {}) {
     // 完整配置全新构建模式
     configData.proxies = finalProxies;
     outputData = configData;
-    logger.log('🔄 阶段 2/2: profile 策略组构建');
-    outputData = runProfilePipeline(outputData, profileUserConfig);
+    logger.log('🔄 阶段 2/2: strategy 策略组构建');
+    outputData = runStrategyPipeline(outputData, profileUserConfig);
   }
 
   if (canConvert) {
@@ -601,6 +602,8 @@ async function buildProfile(userConfig = {}, options = {}) {
 }
 
 module.exports = {
+  runConfigPipeline: buildProfile,
+  runFullPipeline: buildProfile,
   buildProfile,
   profileCacheMap,
   createLogger

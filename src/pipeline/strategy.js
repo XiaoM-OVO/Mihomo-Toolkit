@@ -18,12 +18,12 @@ const { applyDnsOverlay } = require('../strategy/dns');
 const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../strategy/kernel');
 
 /**
- * 运行策略组完整构建流水线
+ * 运行策略组完整构建流水线 (strategy pipeline)
  * @param {object} config 原始 Mihomo 配置 (包含 proxies 列表)
  * @param {object} [extConfig={}] 用户外部配置参数
  * @returns {object} 构建完毕的 Mihomo 配置
  */
-function runProfilePipeline(config = {}, extConfig = {}) {
+function runStrategyPipeline(config = {}, extConfig = {}) {
   const userConfig = resolveConfig(extConfig);
   if (!userConfig.enableScript) return config;
 
@@ -142,6 +142,6 @@ function runProfilePipeline(config = {}, extConfig = {}) {
 }
 
 module.exports = {
-  runProfilePipeline,
-  runStrategyPipeline: runProfilePipeline
+  runStrategyPipeline,
+  runProfilePipeline: runStrategyPipeline
 };

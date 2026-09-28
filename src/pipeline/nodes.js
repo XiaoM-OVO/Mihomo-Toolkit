@@ -1,5 +1,5 @@
 /**
- * 纯净节点清洗流水线
+ * 节点清洗流水线 (nodes pipeline)
  *
  * 专注节点过滤、去重、属性提取、重命名与垃圾节点拦截，适用于 Sub-Store Operator 及轻量清洗场景。
  */
@@ -13,12 +13,12 @@ const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../core/sha
 const { expandDomainFission } = require('../core/fission');
 
 /**
- * 执行节点清洗与标准化流水线
+ * 执行纯净节点清洗与标准化流水线
  * @param {Array<object>} proxies 原始节点数组
  * @param {object} [userConfig={}] 用户自定义配置
  * @returns {Promise<Array<object>>} 清洗后的纯净节点数组
  */
-async function runCleanerPipeline(proxies = [], userConfig = {}) {
+async function runNodesPipeline(proxies = [], userConfig = {}) {
   const config = resolveConfig(userConfig);
   let currentProxies = Array.isArray(proxies) ? proxies : [];
   const totalCount = currentProxies.length;
@@ -128,6 +128,7 @@ async function runCleanerPipeline(proxies = [], userConfig = {}) {
 }
 
 module.exports = {
-  runCleanerPipeline,
-  runNodePipeline: runCleanerPipeline
+  runNodesPipeline,
+  runNodePipeline: runNodesPipeline,
+  runCleanerPipeline: runNodesPipeline
 };

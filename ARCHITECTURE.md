@@ -120,10 +120,11 @@
 
 ---
 
-### 5. `src/pipeline/` (编排流水线)
-* **`pipeline/cleaner.js`**：节点清洗与标准化流水线 (`runCleanerPipeline` / 别名 `runNodePipeline`)，输出干净节点。
-* **`pipeline/profile.js`**：策略拓扑流水线 (`runProfilePipeline` / 别名 `runStrategyPipeline`)，输出带策略组的完整配置。
-* **`pipeline/full.js`**：端到端全链路构建流水线 (`buildProfile` / `runFullPipeline`)，负责网络拉取、容灾、看板、阶段串联。支持三态输出交付物（`full` 全量配置 / `nodes` 纯节点并支持 `preserveRawConfig` 透传 / `meta` 审计报告）。
+### 5. `src/pipeline/` (编排流水线与交付矩阵)
+* **`pipeline/nodes.js`**：纯节点清洗与打标流水线 (`runNodesPipeline`)，交付标准化节点数组 (`nodes`)。
+* **`pipeline/config.js`**：端到端配置构建流水线 (`runConfigPipeline` / `buildProfile`)，交付完整即用型 Mihomo 配置 (`config`，支持 `passthrough` 透传模式)。
+* **`pipeline/report.js`**：健康与审计报告流水线 (`buildAuditReport`)，交付结构化审计报告 (`report` JSON)。
+* **`pipeline/strategy.js`**：策略组拓扑与分流规则注入流水线 (`runStrategyPipeline`)，供 Clash Verge Rev 等扩展脚本直接调用。
 * **`src/index.js`**：全库顶层统一门面入口 (Facade)。
 
 ---
