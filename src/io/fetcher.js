@@ -15,7 +15,7 @@ const { parseContent } = require('./parsers');
 
 let undici = { ProxyAgent: null };
 try {
-  undici = require('../fetch-proxy');
+  undici = require('./fetch-proxy');
 } catch (e) {}
 const { ProxyAgent } = undici;
 

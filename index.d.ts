@@ -1,6 +1,6 @@
 /**
  * Mihomo-Toolkit TypeScript 类型定义文件
- * 适用于 Node.js、Cloudflare Workers、Sub-Store 以及各类二次开发场景
+ * 适用于 Node.js、Sub-Store 以及各类二次开发场景
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9,6 +9,12 @@
 
 export type OutputMode = 'config' | 'nodes' | 'report' | 'full' | 'cleaner' | 'meta';
 export type TargetType = OutputMode;
+export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug';
+export type RedactLevel = 'off' | 'partial' | 'full';
+export type ProxyStrategy = 'direct' | 'proxy' | 'auto';
+export type FissionStack = 'all' | 'v4' | 'v6';
+export type IpEnrichMode = 'missing' | 'all';
+export type ChineseConvertMode = 's2t' | 't2s';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 订阅配置项
@@ -360,7 +366,40 @@ export function isAllowedUrl(urlString: string): boolean;
  * @param content 原始文本内容
  * @param defaultName 默认节点名称前缀
  */
-export function parseContent(content: string, defaultName?: string): ProxyNode[];
+export function parseContent(content: string, defaultName?: string): { proxies: ProxyNode[]; [key: string]: any };
+
+/**
+ * 完整配置构建流水线 (config pipeline)
+ */
+export function runConfigPipeline(
+  userConfig: UserConfig,
+  options?: BuildOptions
+): Promise<BuildResult>;
+
+/**
+ * 纯节点清洗与打标流水线 (nodes pipeline)
+ */
+export function runNodesPipeline(
+  proxies: ProxyNode[],
+  userConfig?: PureConfig
+): Promise<ProxyNode[] | { proxies: ProxyNode[]; meta: PureMeta }>;
+
+/**
+ * 生成结构化审计与健康报告 (report pipeline)
+ */
+export function buildAuditReport(
+  meta?: any,
+  proxies?: ProxyNode[],
+  options?: Record<string, any>
+): Record<string, any>;
+
+/**
+ * 策略组与分流拓扑流水线 (strategy pipeline)
+ */
+export function runStrategyPipeline(
+  config: Record<string, any>,
+  userConfig?: ToolkitConfig
+): Record<string, any>;
 
 /**
  * 解析 Vless 协议 URI

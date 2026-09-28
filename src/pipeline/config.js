@@ -37,7 +37,7 @@ let chineseConvert = {
   isAvailable: () => false
 };
 try {
-  chineseConvert = require('../chinese-convert');
+  chineseConvert = require('../core/chinese-convert');
 } catch (e) {}
 
 let BUILDER_VERSION = 'v1.7.0';
