@@ -71,7 +71,12 @@ const FEATURE_TEXT_MAP = {
   cellular: "蜂窝",
   ipv6: "IPv6",
   dualstack: "双栈",
-  experimental: "实验"
+  experimental: "实验",
+  nf: "Netflix",
+  yt: "YouTube",
+  "d+": "Disney+",
+  tk: "TikTok",
+  sp: "Spotify"
 };
 
 module.exports = {

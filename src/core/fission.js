@@ -1,13 +1,12 @@
 /**
- * 域名节点多 IP 裂变增殖算法
- *
- * 将域名节点并发解析为多个具体 IP 节点（支持 A/AAAA 记录），实现同一域名的多链路物理测速与负载分流。
+ * -----------------------------------------------------------------------------
+ * Core Layer: 节点裂变纯计算算法 (Pure Fission Algorithm)
+ * -----------------------------------------------------------------------------
+ * 严格遵循洋葱模型 Core 层规范：
+ * 1. 绝对无副作用：严禁包含任何网络 I/O (DNS/DoH/Fetch) 或磁盘读写
+ * 2. 纯函数设计：输入 (proxy, ipList) 或 (proxies, domainIpsMap)，输出裂变后的节点对象数组
+ * 3. 负责节点深拷贝、servername/sni 注入与多协议 Host 防泄漏补全
  */
-
-let dns;
-try { dns = require('dns').promises; } catch { dns = null; }
-
-const { isPrivateIp, isPrivateIPv6 } = require('../io/ssrf');
 
 function looksLikeDomain(server) {
   if (!server || typeof server !== 'string') return false;
@@ -17,155 +16,91 @@ function looksLikeDomain(server) {
   return s.includes('.') && /[a-zA-Z]/.test(s);
 }
 
-async function queryDoh(domain, type) {
-  const urls = [
-    `https://dns.alidns.com/resolve?name=${encodeURIComponent(domain)}&type=${type}`,
-    `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`
-  ];
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
-      const data = await resp.json();
-      const records = (data?.Answer || [])
-        .filter(r => r.type === (type === 'A' ? 1 : 28))
-        .map(r => r.data);
-      if (records.length > 0) return records;
-    } catch {}
+/**
+ * 对单个代理节点根据给定的 IP 列表执行实体裂变
+ * @param {object} proxy 原始节点对象
+ * @param {string[]} ips 该域名对应的可用 IP 列表
+ * @param {object} [options={}] 裂变控制选项
+ * @param {number} [options.fissionMaxNodes=5] 单节点最大裂变数
+ * @param {Array<string>} [options.fissionExcludeKeywords=[]] 排除关键词
+ * @returns {object[]} 裂变后产生的节点数组
+ */
+function fissionNode(proxy, ips = [], options = {}) {
+  if (!proxy || typeof proxy !== 'object') return [];
+  const maxNodes = options.fissionMaxNodes || 5;
+  const excludeKeywords = options.fissionExcludeKeywords || [];
+  const name = proxy.name || '';
+  const server = proxy.server;
+
+  const isExcluded = excludeKeywords.some(kw => kw && name.includes(kw));
+  if (isExcluded || !Array.isArray(ips) || ips.length <= 1) {
+    return [proxy];
   }
-  return [];
+
+  const availableIps = ips.slice(0, maxNodes);
+  const result = [];
+
+  // 第一个 IP 原地修改作为主力节点
+  const firstIp = availableIps[0];
+  const originalProxy = { ...proxy };
+  originalProxy.server = firstIp.includes(':') && !firstIp.startsWith('[') ? `[${firstIp}]` : firstIp;
+  if (proxy.tls || ['ws', 'grpc', 'h2', 'http'].includes(proxy.network)) {
+    if (!originalProxy.sni && !originalProxy.servername) originalProxy.servername = server;
+  }
+  if (originalProxy.network === 'ws' && !originalProxy['ws-opts']?.headers?.Host) {
+    originalProxy['ws-opts'] = {
+      ...(originalProxy['ws-opts'] || {}),
+      headers: { ...(originalProxy['ws-opts']?.headers || {}), Host: server }
+    };
+  }
+  result.push(originalProxy);
+
+  // 其余 IP 裂变为独立分身节点
+  for (let i = 1; i < availableIps.length; i++) {
+    const cloneIp = availableIps[i];
+    const cloned = JSON.parse(JSON.stringify(proxy));
+    cloned.server = cloneIp.includes(':') && !cloneIp.startsWith('[') ? `[${cloneIp}]` : cloneIp;
+    if (proxy.tls || ['ws', 'grpc', 'h2', 'http'].includes(proxy.network)) {
+      if (!cloned.sni && !cloned.servername) cloned.servername = server;
+    }
+    if (cloned.network === 'ws' && !cloned['ws-opts']?.headers?.Host) {
+      cloned['ws-opts'] = {
+        ...(cloned['ws-opts'] || {}),
+        headers: { ...(cloned['ws-opts']?.headers || {}), Host: server }
+      };
+    }
+    cloned._isFission = true;
+    result.push(cloned);
+  }
+
+  return result;
 }
 
 /**
- * 解析域名对应的所有公共 IP
- * @param {string} domain
- * @param {string} [stack="all"] "all" | "v4" | "v6"
- * @returns {Promise<string[]>}
+ * 纯函数：批量执行节点列表的裂变增殖
+ * @param {Array<object>} proxies 原始代理节点列表
+ * @param {Map<string, string[]>|object} domainIpsMap 域名到 IP 列表的映射表 (由 I/O 层解析传入)
+ * @param {object} [options={}]
+ * @returns {Array<object>} 包含裂变节点的完整节点数组
  */
-async function resolveDomainIps(domain, stack = 'all') {
-  if (!looksLikeDomain(domain)) return [];
-  const results = [];
-
-  try {
-    const promises = [];
-    if (dns) {
-      if (stack === 'all' || stack === 'v4') {
-        promises.push(dns.resolve4(domain).catch(() => []));
-      }
-      if (stack === 'all' || stack === 'v6') {
-        promises.push(dns.resolve6(domain).catch(() => []));
-      }
-    }
-    const resolved = await Promise.all(promises);
-    resolved.flat().forEach(ip => {
-      if (ip.includes(':')) {
-        if (!isPrivateIPv6(ip)) results.push(ip);
-      } else {
-        if (!isPrivateIp(ip)) results.push(ip);
-      }
-    });
-
-    // 若系统 DNS 解析无结果，使用 DoH 兜底解析
-    if (results.length === 0) {
-      const dohPromises = [];
-      if (stack === 'all' || stack === 'v4') {
-        dohPromises.push(queryDoh(domain, 'A'));
-      }
-      if (stack === 'all' || stack === 'v6') {
-        dohPromises.push(queryDoh(domain, 'AAAA'));
-      }
-      const dohResolved = await Promise.all(dohPromises);
-      dohResolved.flat().forEach(ip => {
-        if (ip.includes(':')) {
-          if (!isPrivateIPv6(ip)) results.push(ip);
-        } else {
-          if (!isPrivateIp(ip)) results.push(ip);
-        }
-      });
-    }
-  } catch {
+function fissionNodes(proxies = [], domainIpsMap = new Map(), options = {}) {
+  if (!Array.isArray(proxies) || proxies.length === 0) {
     return [];
   }
 
-  return [...new Set(results)];
-}
-
-/**
- * 执行节点裂变处理
- * @param {Array<object>} proxies
- * @param {object} [options={}]
- * @param {boolean} [options.enableFission=false]
- * @param {number} [options.fissionMaxNodes=5]
- * @param {string} [options.fissionStack="all"]
- * @param {Array<string>} [options.fissionExcludeKeywords=[]]
- * @returns {Promise<Array<object>>}
- */
-async function expandDomainFission(proxies = [], options = {}) {
-  if (!Array.isArray(proxies) || !options.enableFission) {
-    return proxies;
-  }
-
-  const maxNodes = options.fissionMaxNodes || 5;
-  const stack = options.fissionStack || 'all';
-  const excludeKeywords = options.fissionExcludeKeywords || [];
-
-  const domainMap = new Map();
-  proxies.forEach(p => {
-    if (looksLikeDomain(p.server)) {
-      domainMap.set(p.server, true);
-    }
-  });
-
-  // 并发解析所有域名
-  const domainIpsMap = new Map();
-  await Promise.all(
-    Array.from(domainMap.keys()).map(async domain => {
-      const ips = await resolveDomainIps(domain, stack);
-      domainIpsMap.set(domain, ips);
-    })
-  );
+  const getIps = (server) => {
+    if (!server) return [];
+    if (domainIpsMap instanceof Map) return domainIpsMap.get(server) || [];
+    if (typeof domainIpsMap === 'object' && domainIpsMap !== null) return domainIpsMap[server] || [];
+    return [];
+  };
 
   const output = [];
-
   for (const proxy of proxies) {
-    const server = proxy.server;
-    const name = proxy.name || '';
-
-    // 黑名单检查
-    const isExcluded = excludeKeywords.some(kw => kw && name.includes(kw));
-    const ips = domainIpsMap.get(server) || [];
-
-    if (isExcluded || ips.length <= 1) {
-      output.push(proxy);
-      continue;
-    }
-
-    const availableIps = ips.slice(0, maxNodes);
-
-    // 第一个 IP 原地修改原节点
-    const firstIp = availableIps[0];
-    const originalProxy = { ...proxy };
-    originalProxy.server = firstIp.includes(':') && !firstIp.startsWith('[') ? `[${firstIp}]` : firstIp;
-    if (proxy.tls || ['ws', 'grpc', 'h2', 'http'].includes(proxy.network)) {
-      if (!originalProxy.sni && !originalProxy.servername) originalProxy.servername = server;
-    }
-    if (originalProxy.network === 'ws' && !originalProxy['ws-opts']?.headers?.Host) {
-      originalProxy['ws-opts'] = { ...(originalProxy['ws-opts'] || {}), headers: { ...(originalProxy['ws-opts']?.headers || {}), Host: server } };
-    }
-    output.push(originalProxy);
-
-    // 其余 IP 裂变为克隆节点
-    for (let i = 1; i < availableIps.length; i++) {
-      const cloneIp = availableIps[i];
-      const cloned = JSON.parse(JSON.stringify(proxy));
-      cloned.server = cloneIp.includes(':') && !cloneIp.startsWith('[') ? `[${cloneIp}]` : cloneIp;
-      if (proxy.tls || ['ws', 'grpc', 'h2', 'http'].includes(proxy.network)) {
-        if (!cloned.sni && !cloned.servername) cloned.servername = server;
-      }
-      if (cloned.network === 'ws' && !cloned['ws-opts']?.headers?.Host) {
-        cloned['ws-opts'] = { ...(cloned['ws-opts'] || {}), headers: { ...(cloned['ws-opts']?.headers || {}), Host: server } };
-      }
-      output.push(cloned);
-    }
+    if (!proxy) continue;
+    const ips = getIps(proxy.server);
+    const expanded = fissionNode(proxy, ips, options);
+    output.push(...expanded);
   }
 
   return output;
@@ -173,6 +108,6 @@ async function expandDomainFission(proxies = [], options = {}) {
 
 module.exports = {
   looksLikeDomain,
-  resolveDomainIps,
-  expandDomainFission
+  fissionNode,
+  fissionNodes
 };
