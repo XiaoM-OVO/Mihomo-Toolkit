@@ -1,16 +1,15 @@
 <div align="center">
 
-# 🛠️ Mihomo-Toolkit
+# 🛠️ Mihomo-Toolkit (MTK)
 
-**一套为 Mihomo 内核生态客户端设计的通用动态网络路由与策略组配置方案**
+**一套为 Mihomo 内核生态设计的高性能自动化节点清洗与动态策略组构建引擎**
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Builder](https://img.shields.io/badge/Builder-v1.7.0-9cf)](CHANGELOG.md)
-[![Toolkit](https://img.shields.io/badge/Toolkit-v3.6.0-blue)](CHANGELOG.md)
-[![Pure\_Script](https://img.shields.io/badge/Pure_Script-v1.3.2-blueviolet)](CHANGELOG.md)
+[![Engine](https://img.shields.io/badge/Engine-v1.7.0-9cf)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/Tests-83%20Passed-brightgreen)](test/)
 
-「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
+「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底 · 零维护** 」
 
 </div>
 
@@ -21,745 +20,253 @@
 - [📂 项目结构](#-项目结构)
 - [✨ 核心特性](#-核心特性)
 - [🚀 快速开始](#-快速开始)
-- [🧩 纯净节点清洗脚本](#-纯净节点清洗脚本)
+- [🎯 三大交付形态](#-三大交付形态)
 - [🖥️ 详细部署指南](#️-详细部署指南)
 - [⚙️ 配置详解](#️-配置详解)
-- [🧹 节点清洗与分组结构](#-节点清洗与分组结构)
+- [🏗️ 系统架构白皮书](ARCHITECTURE.md)
 - [❓ 常见问题](#-常见问题)
 
 ---
 
 ## 📂 项目结构
 
-```
+```text
 mihomo-toolkit/
-├── 🚪 入口
-│   ├── cli.js              # 本地 CLI 工具（单次构建配置）
-│   ├── server.js           # 本地/VPS HTTP 订阅服务（常驻）
-│   └── worker.js           # Cloudflare Worker 部署入口
-├── 🧠 src/                 # 核心代码
-│   ├── builder.js          # 编排层：订阅抓取 + pure 清洗 + toolkit 策略构建流水线 (含 DNS 防 SSRF 与安全重定向)
-│   ├── pure-nodes.js       # 节点清洗：去重 / 打标 / 地区识别 / IP 补全 / 裂变
-│   ├── mihomo-toolkit.js   # 策略层：轻量节点清洗 / 策略组 / 分流规则 / DNS / 内核覆写
-│   ├── chinese-convert.js  # 简繁转换 (支持 RegExp/Date 安全跳过)
-│   ├── fetch-proxy.js      # 订阅抓取本地代理调度封装 (undici ProxyAgent)
-│   └── _shared/
-│       └── region-defs.js  # 地区字典 / 国旗映射（INJECT 同步源）
-├── 🎁 substore/
-│   └── sub-info.js         # Sub-Store 操作脚本：订阅剩余流量 / 到期 / 重置信息节点
-├── 🧪 test/                # 模块级测试（node --test 运行）
-├── 🦾 scripts/
-│   └── inject-shared.cjs   # 将共享字典注入 pure / toolkit 双端
-├── 📋 config.example.yaml  # 配置模板（复制为 config.yaml 即可使用）
-├── 📐 index.d.ts           # 核心配置类型声明（TS / IDE 提示）
-└── 📜 package.json / package-lock.json
+├── 🧠 src/                     # 核心引擎源码
+│   ├── index.js               # 🌟 全库唯一顶层门面 (Facade)，导出完整公共 API
+│   │
+│   ├── pipeline/              # 🚀 交付流水线 (与交付形态 1:1 映射)
+│   │   ├── engine.js          # 全流程总调度引擎 (生命周期早退与 Checkpoint 截断)
+│   │   ├── config.js          # 完整配置装配流水线 (支持 passthrough 透传)
+│   │   ├── nodes.js           # 纯净节点清洗流水线 (去重/打标/重命名)
+│   │   ├── report.js          # 健康审计报告流水线 (生成结构化 JSON)
+│   │   ├── strategy.js        # 策略拓扑与分流规则注入流水线
+│   │   └── index.js           # 流水线统一导出入口
+│   │
+│   ├── targets/               # 🔌 宿主环境终端适配器 (轻量适配层)
+│   │   ├── cli.js             # 命令行工具 (mtk / mihomo-tk / mihomo-toolkit)
+│   │   ├── server.js          # 常驻 HTTP 订阅服务 (/sub, /healthz, 鉴权)
+│   │   ├── operator.js        # Sub-Store 节点操作目标
+│   │   └── verge.js           # Clash Verge Rev 客户端扩展脚本目标
+│   │
+│   ├── core/                  # 🧮 节点清洗核心算法层 (Pure & Deterministic)
+│   │   ├── cleaner.js         # 垃圾拦截、倍率线路提取、属性智能分类打标
+│   │   ├── dedupe.js          # 底层物理网络指纹提取与特征去重
+│   │   ├── geo.js             # 地区智能正则匹配与落地城市精准提取
+│   │   ├── rename.js          # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
+│   │   ├── fission.js         # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
+│   │   ├── chinese-convert.js # 简繁中文递归转换与无依赖回退降级
+│   │   ├── chinese-sync.js    # 节点名/策略组名/成员引用/分流规则四路简繁同步
+│   │   └── shared/            # 地区大区字典表 (regions.js) 与 图标字典 (icons.js)
+│   │
+│   ├── strategy/              # 🌐 策略组拓扑与内核优化层
+│   │   ├── dashboard.js       # 看板合成、多订阅流量与到期聚合中心
+│   │   ├── topology.js        # 六维服务大区折叠与动态测速策略组装配
+│   │   ├── rules.js           # 规则集 (Rule-Providers) 与分流路由组装
+│   │   ├── registries.js      # AI、流媒体、社交、游戏等六维服务注册表
+│   │   ├── prune.js           # DAG 递归空组级联淘汰与殉葬规则清理
+│   │   ├── dns.js             # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
+│   │   └── kernel.js          # TUN 网卡、Sniffer 嗅探器及内核性能调优
+│   │
+│   ├── io/                    # 📡 外部世界通信层 (唯一允许副作用的底层)
+│   │   ├── fetcher.js         # 安全 HTTP 抓取调度与 Stale 容灾兜底缓存
+│   │   ├── sub-processor.js   # 多订阅并发抓取、URI 分流、单订阅说明过滤与树状日志
+│   │   ├── cache.js           # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
+│   │   ├── ssrf.js            # SSRF 深度校验、私网拦截与 Token 脱敏
+│   │   ├── limits.js          # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
+│   │   ├── sub-info.js        # 订阅头 Userinfo 解析与重置周期计算
+│   │   ├── fetch-proxy.js     # 本地代理调度封装 (undici ProxyAgent)
+│   │   └── parsers/           # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
+│   │
+│   └── config/                # ⚙️ 配置中心
+│       ├── defaults.js        # 系统内置全局默认配置字典
+│       └── index.js           # resolveConfig 扁平配置合并器
+│
+├── substore/                  # 🎁 Sub-Store 独立脚本 (sub-info.js 流量看板算子)
+├── test/                      # 🧪 自动化测试套件 (83 个全绿用例)
+├── config.example.yaml        # 极简扁平化配置模板
+├── index.d.ts                 # 完整 TypeScript 类型契约声明
+├── package.json               # 项目依赖与多命令配置
+└── ARCHITECTURE.md            # 系统架构设计白皮书
 ```
-
-> 💡 代码与配置分离：绝大多数场景只需维护 `config.yaml`，无需改动 `src/`；需要**深度定制**（如新增服务、裂变策略、自定义简繁表）时才改 `src/`。
 
 ---
 
 ## ✨ 核心特性
 
-- 🧹 **节点深度清洗**：自动剔除广告引流与高倍率节点，精准识别落地城市与底层协议（🦊/🛸/🐴），支持多机场订阅合并标注来源。
-- 🌍 **动态地区折叠**：热门地区独立建组，小众国家自动归入大洲组，结合 Emoji 国旗直观显示。
-- 🔀 **开箱即用分流**：内置 AI 助手 (ChatGPT/Claude)、流媒体 (Netflix/Disney+)、游戏、社交与学术等 20+ 常用分流，无节点策略组自动隐藏。
-- ⚡ **DNS 防漏与 BT 保护**：深度优化 Mihomo 内核性能，提供智能 Fake-IP 防泄漏防护，BT/PT 下载自动直连防封号。
-- 🖥️ **全场景部署**：支持客户端直接加载脚本、CLI 命令行、自建 VPS 订阅 API 与 Cloudflare Worker 边缘零成本部署。
-- 🔄 **全链路简繁转换**：支持繁体节点名与配置自动转简体识别清洗，最终按需输出简体或繁体。
-
-> 💡 **极客进阶**：支持纯净清洗模式（`pure-nodes.js`）、IP-API 物理定位纠偏、域名 DNS 裂变多 IP、自定义六维服务注册表等深度定制能力。
+- 🧹 **节点深度清洗**：基于底层物理网络特征指纹（Fingerprint）精准去重，自动剔除引流广告，提取倍率、线路与落地城市，多订阅来源智能打标。
+- 🌍 **动态大区折叠**：热门地区自动独立建组测速，小众冷门节点动态折叠归入大洲组，避免数十个单节点策略组刷屏。
+- 🔀 **开箱即用分流**：内置 AI 助手 (ChatGPT/Claude/Gemini)、流媒体 (YouTube/Netflix/Disney+)、游戏平台 (Steam/Epic)、社交与学术等分流体系。
+- 🗡️ **DAG 级联空组剪枝**：基于有向无环图深度遍历，节点为空的策略组自动级联淘汰，关联分流规则自动殉葬注销，彻底杜绝内核崩溃与黑洞路由。
+- 📊 **彩色状态看板**：提取订阅头流量与到期时间，合成双列网格虚拟信息节点，面板内直观展示剩余流量、到期预警与重置倒计时。
+- 🛡️ **生产级安全与容灾**：DNS 动态私网拦截防 SSRF，请求超限防御，自带 Stale 容灾兜底缓存（网络抖动时平滑复用上次成功数据，节点绝不掉线）。
+- 🔤 **简繁中文四路同步**：繁体节点名全链路自动识别，节点名、策略组名、组内引用、路由规则四路简繁严格统一。
 
 ---
 
 ## 🚀 快速开始
 
-选择适合你的使用场景，三种方式各取所需：
+### 方式一：终端命令行（推荐本地与 CI/CD 自动化）
 
-### 方式一：客户端拓展脚本（推荐）
-
-零部署，直接在 Mihomo 客户端中使用。从 [GitHub Releases](https://github.com/XiaoM-OVO/mihomo-toolkit/releases) 获取 `mihomo-toolkit.js`，粘贴到 Clash Verge Rev 等客户端的「扩展脚本」中即可。
-
-### 方式二：本地 CLI 工具
-
-适合本地终端或 CI/CD 自动化：
+无需复杂依赖，直接使用短命令 `mtk`（或 `mihomo-tk`）：
 
 ```bash
 git clone https://github.com/XiaoM-OVO/mihomo-toolkit.git && cd mihomo-toolkit
 npm install
-node cli.js -u "https://example.com/sub.yaml" -o profile.yaml
+
+# 1. 直接拉取订阅，生成完整 Mihomo 配置文件
+npx mtk -u "https://example.com/sub.yaml" -o config.yaml
+
+# 2. 或者使用 config.yaml 统一管理多订阅与高级规则
+npm run build
 ```
 
-### 方式三：自建订阅服务（Server）—— 适合部署在个人VPS或局域网设备
+### 方式二：常驻 HTTP 订阅服务（适合自建 VPS 或局域网）
 
-通过HTTP服务将Mihomo-Toolkit暴露为订阅链接，全平台设备可共用同一份配置：
-
-> 📁 **先决条件**：根目录需存在 `config.yaml`（可参考项目中的 `config.example.yaml` 创建），或通过启动命令中的 `?url=` 参数动态传入订阅（详见下方部署说明）。若当前运行环境直连拉取机场订阅受阻，可配置 `fetchProxyPort` 指向本地前置代理端口（或客户端先手动配置一个可用节点）。如需访问鉴权，可通过系统环境变量 `AUTH_TOKEN=xxx` 或在 `config.yaml` 中设置 `authToken: xxx`。
+将 Mihomo-Toolkit 部署为私有订阅转换 API：
 
 ```bash
-git clone https://github.com/XiaoM-OVO/mihomo-toolkit.git && cd mihomo-toolkit
-npm install
-
-# 使用默认配置启动（自动读取根目录 config.yaml）
+# 启动本地服务（默认端口 3000，自动读取根目录 config.yaml）
 npm start
 
-# 或自定义端口和配置文件路径
-PORT=8080 CONFIG_PATH=/path/to/config.yaml node server.js
+# 或自定义端口与配置文件
+PORT=8080 CONFIG_PATH=/path/to/my-config.yaml npm start
 ```
 
-启动后，将 `http://你的IP:3000/sub` 作为远程订阅链接填入Mihomo客户端即可。
+启动后即可在客户端直接订阅：`http://你的服务器IP:3000/sub`。
 
-### 方式四：边缘部署（Cloudflare Worker）—— 享受全球CDN加速
+### 方式三：Clash Verge Rev 等 GUI 客户端扩展脚本
 
-将脚本部署在Cloudflare边缘节点，随时随地获取配置：
+直接将 `src/targets/verge.js` 作为「扩展脚本」粘贴进 Clash Verge Rev，在配置加载时自动完成策略组注入与内核优化。
 
-```bash
-# 1. 构建Worker单文件
-npm run build:worker
+### 方式四：Sub-Store 节点操作算子
 
-# 2. 部署方式：
-#    将 dist/worker.bundle.js 的全部内容复制到 Cloudflare Worker 仪表板中保存并部署即可。
-#    （如需使用 Wrangler CLI 自动化部署，请参考 Cloudflare 官方文档配置 wrangler.toml）
-```
-
-> 💡 **提示**：Worker模式支持环境变量 `DEFAULT_CONFIG_URL`，可免去每次请求带参数，详见下方 [🖥️ 详细部署指南](#️-详细部署指南)。
+在 Sub-Store「节点操作」中引入 `src/targets/operator.js`，纯粹执行节点清洗、打标与去重。
 
 ---
 
-## 🧩 纯净节点清洗脚本
+## 🎯 三大交付形态 (`-t, --type`)
 
-独立节点清洗脚本 (`src/pure-nodes.js`)，将主脚本的节点处理核心逻辑解耦为 operator 格式。适用于 Sub-Store、Surge、Loon 等多环境，专为**仅需节点过滤/去重/重命名/IP溯源，不需要完整策略组体系**的场景设计。
+系统彻底摆脱了复杂的两阶段胶水，聚焦三种纯粹的最终交付物：
 
-### 功能对比
-
-| 能力                       | 主脚本 (mihomo-toolkit.js) | 清洗脚本 (pure-nodes.js)     |
-| -------------------------- | -------------------------- | ---------------------------- |
-| 节点去重 / 垃圾拦截        | ✅                         | ✅                           |
-| 倍率 / 线路 / 落地城市提取 | ✅                         | ✅                           |
-| 协议图标 / 特征图标        | ✅                         | ✅                           |
-| 节点标签前缀               | ✅                         | ✅                           |
-| IP-API 补充定位检测        | ❌                         | ✅                           |
-| 节点裂变 (域名→多IP)       | ❌                         | ✅                           |
-| 策略组 / 分流规则生成      | ✅                         | ❌                           |
-| DNS / TUN / Sniffer 覆写   | ✅                         | ❌                           |
-| 输出格式                   | Mihomo 配置                | `array` 或 `object`(含 meta) |
-
-### 快速使用
-
-1. 以 Sub-Store 为例，进入「订阅管理」→ 选择目标订阅 →「编辑」→「节点操作」
-2. 将 `src/pure-nodes.js` 内容粘贴到脚本编辑区
-3. 可选：修改脚本顶部 `CONFIG` 对象配置（或通过 Sub-Store 外部传入 `userConfig`）
-4. 保存并刷新订阅
-
-### 配置要点
-
-纯净版脚本的 `CONFIG` 对象位于文件顶部，以下列出最常用的核心参数，其余进阶选项（如重命名模板、IP检测细化开关等）已在脚本中附带详细中文注释。
-
-| 参数               | 默认值    | 说明                                                                                |
-| ------------------ | --------- | ----------------------------------------------------------------------------------- |
-| `outputMode`       | `"array"` | `"array"` 输出纯节点数组，`"object"` 额外返回 `meta` 元数据（含统计信息与分桶结果） |
-| `enableDedupe`     | `false`   | 开启物理去重（基于 Server/Port/UUID 等多维度）                                      |
-| `removeInfoNodes`  | `false`   | 说明节点控制：默认保留原生"到期时间/剩余流量"说明假节点防丢信息（设为 true 可直接剔除） |
-| `blockKeywords`    | `[]`      | 黑名单关键词（命中即拦截），如 `["免费领取", "点击购买"]`                           |
-| `blockServers`     | `[]`      | 黑名单服务器地址（命中即拦截），如 `["123.123.123.123"]`                            |
-| `adTextThreshold`  | `12`      | 纯文本广告判定阈值（无数字/线路特征且长度超过此值视为广告，比主脚本默认 6 更宽松）  |
-| `enableAirportTag` | `false`   | 开启后自动提取节点来源标签（多订阅合并时区分来源）                                  |
-| `renameTemplate`   | 见脚本    | 节点重命名模板，支持 `{icon}`、`{region}`、`{isp}` 等变量自由组合                   |
-| `enableIpEnrich`   | `false`   | 开启 IP-API 补充检测（自动纠正 CDN/虚假定位，需注意免费版有频率限制）               |
-| `enableFission`    | `false`   | 开启域名裂变（将域名节点解析为多个 IP 实体节点，详见下方裂变配置）                  |
-
-> 💡 **快速上手**：大多数情况下只需开启 `enableDedupe`（去重）即可获得整洁的节点列表；如需彻底剔除原生说明假节点，可将 `removeInfoNodes` 设为 `true`。如需精准定位，可开启 `enableIpEnrich`；如需裂变多 IP，请同时配置 `enableFission` 及相关参数。
+| 交付模式 (`-t`) | 输出交付物 | 核心契约与行为 | 典型场景 |
+| :--- | :--- | :--- | :--- |
+| **`config`**<br>*(默认全量交付)* | **完整即用型 Mihomo YAML 配置** | 1. 默认全新组装：洗节点 ➔ 状态看板 ➔ 六维策略组 ➔ 分流规则 ➔ 内核优化一条龙。<br>2. **`--passthrough` 透传模式**：原汁原味保留原订阅顶层 `rules/dns/tun` 等，仅将 `proxies` 替换为洗白后的节点！ | 直接提供给内核、软路由或客户端使用。 |
+| **`nodes`** | **纯净清洗节点数组** | 契约绝对纯粹：**仅交付洗白后的 `{ proxies: [...] }` 列表**，绝不越界输出任何策略组或外围规则。 | 导入 Sub-Store、节点池二次加工。 |
+| **`report`** | **健康审计与统计报告 (JSON)** | 纯粹输出清洗统计（总数、有效保留、去重数、广告拦截数、未知地区数）与健康元数据。 | CI/CD 自动化质检、机场节点质量监控。 |
 
 ---
 
-## 🖥️ 详细部署指南
+## 🖥️ 详细命令行用法
 
-以下为三种运行环境的详细用法，CLI 工具和 HTTP 服务均已包含在项目源码中。
+```text
+Usage: mtk [options]
 
-### 1. 🖥️ 本地 CLI 命令行工具
+Mihomo-Toolkit (MTK) - 自动化节点清洗与策略组构建引擎
 
-适合在本地终端运行，或配合 GitHub Actions 等 CI/CD 工具进行定时自动化构建。`mihomo-toolkit` CLI 工具允许你在本地终端、CI/CD 环境或任何 Node.js 运行时中，一键完成"节点清洗"与"策略构建"的自动化流水线。
-
-**特性：**
-
-- **灵活的运行模式**：支持单跑"纯净节点清洗"、单跑"主脚本策略构建"，或合并执行。
-- **配置分离**：通过 `config.yaml` 或 CLI 参数覆盖，无需硬编码修改脚本。
-- **本地与远程支持**：可拉取远程机场订阅链接，也可读取本地 YAML 文件。
-
-### 基础调用
-
-提供一个订阅链接或本地配置文件，并指定输出路径：
-
-```bash
-node cli.js -u "https://example.com/sub.yaml" -o final_config.yaml
+Options:
+  -V, --version        输出版本号
+  -u, --url <url>      订阅链接或本地配置文件路径 (若 config 中已有 subscriptions 则可省略)
+  -o, --out <path>     输出文件路径 (默认: config.yaml / nodes.yaml / report.json)
+  -t, --type <mode>    交付输出模式: "config" (默认), "nodes" (纯节点), 或 "report" (审计报告)
+  -p, --passthrough    仅在 config 模式生效：保留原订阅顶层 rules/dns 等规则，仅替换 proxies
+  -c, --config <path>  指定自定义 YAML/JSON 配置文件
+  -r, --report <path>  在生成配置的同时，顺手将审计报告另存为指定 JSON 文件
+  --prod               生产环境模式 (开启严格安全锁，强制禁止敏感凭据明文打印)
+  --debug              开启详细调试日志 (展示 fetch 过程及中间状态)
+  -h, --help           显示帮助信息
 ```
 
-> 如果未指定 `-t`（运行模式），默认将执行 `pure` 模式（仅清洗节点）。
-
-### 快捷命令
-
-如果你使用 `config.yaml` 作为配置文件，可以通过以下 npm 快捷命令简化日常操作：
-
-| 命令                    | 等价于                                  | 说明                                        |
-| ----------------------- | --------------------------------------- | ------------------------------------------- |
-| `npm run build`         | `node cli.js -c config.yaml -t full`    | 全流程：深度清洗 + 策略组构建（最常用）     |
-| `npm run build:pure`    | `node cli.js -c config.yaml -t pure`    | 仅深度清洗节点（含IP溯源/裂变）             |
-| `npm run build:toolkit` | `node cli.js -c config.yaml -t toolkit` | 主脚本清洗+策略组构建（跳过 pure 深度清洗） |
-| `npm start`             | `node server.js`                        | 启动本地 HTTP 服务                          |
-| `npm run dev`           | `node --watch server.js`                | 开发模式，文件变动自动重启                  |
-| `npm run build:worker`  | `esbuild worker.js ...`                 | 编译 Cloudflare Worker 产物                 |
-
-> **⚠️ 给项目开发者：** `pure-nodes.js` 和 `mihomo-toolkit.js` 中 `INJECT_BEGIN/END` 标记之间的代码由 `npm run inject` 自动生成，手动修改会在下次构建时被覆盖。如需调整地区字典等共享代码，请编辑 `src/_shared/region-defs.js` 后运行 `npm run inject`。即插即用用户无需关注此机制。
-
-### 命令参数详解
-
-| 参数       | 简写 | 必填 | 默认值       | 说明                                                                                                                                         |
-| ---------- | ---- | ---- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--url`    | `-u` | 否\* | 无           | 原始节点配置的数据源（仅单订阅时使用）。**注意：如果** **`--config`** **文件中配置了** **`subscriptions`，则此参数可省略。**                 |
-| `--output` | `-o` | 否   | `nodes.yaml` | 处理完成后的最终输出文件路径。                                                                                                               |
-| `--type`   | `-t` | 否   | `pure`       | 运行模式选择。可选：`pure`（仅清洗）、`toolkit`（仅构建策略组）、`full`（全流程）。                                                          |
-| `--config` | `-c` | 否   | 无           | 自定义的外部 YAML/JSON 配置文件路径，用于覆盖内置配置及定义多订阅源。                                                                        |
-| `--meta`   | `-m` | 否   | 无           | (进阶) 指定一个 JSON 文件路径。开启后会强制输出模式为 Object，并将清洗过程的统计数据（去重数、无效节点数等）以及地区分组信息保存到该文件中。 |
-
-### 🛠️ 运行模式详解 (`-t`)
-
-本工具提供三种运行模式，满足各种定制化需求：
-
-#### 1. `full` 模式
-
-**行为**：一条龙服务。
-**流程**：`解析原始订阅` -> `调用 pure-nodes 进行节点深度清洗` -> `调用 mihomo-toolkit 构建完整的策略组与分流系统` -> `输出给内核使用的最终配置文件`。
-**使用场景**：日常更新个人专属配置，或自动化构建每日配置。
+### 常用命令范例：
 
 ```bash
-node cli.js -u ./raw-sub.yaml -t full -o final-config.yaml
+# 1. 常用：拉取订阅并生成完整分流配置
+mtk -u "https://airport.com/sub" -o config.yaml
+
+# 2. 透传：保留原订阅自带的规则，仅洗白节点名与去重
+mtk -u "https://airport.com/sub.yaml" -t config --passthrough -o config.yaml
+
+# 3. 提纯：只要干净的节点数组 (Sub-Store 专用)
+mtk -u "https://airport.com/sub" -t nodes -o nodes.yaml
+
+# 4. 质检：导出节点健康度审计报告
+mtk -u "https://airport.com/sub" -t report -o audit.json
+
+# 5. 生成配置的同时，顺便落一份审计报告
+mtk -u "https://airport.com/sub" -r report.json
 ```
 
-#### 2. `pure` 模式 (仅清洗节点)
+---
 
-**行为**：只运行 `pure-nodes.js` 洗白节点，**不生成**任何策略组和路由规则。
-**输出格式**：一个纯净的 YAML，仅包含 `proxies` 节点数组。
-**使用场景**：你已经有了一套完美的主路由配置，只想借助本工具的“节点清洗、倍率过滤、IP 补全、重命名”功能提纯订阅，然后提供给其他工具（如 Sub-Store 或自建面板）使用。
+## ⚙️ 配置详解 (`config.yaml`)
 
-```bash
-node cli.js -u "https://example.com/sub.yaml" -t pure -o pure-proxies.yaml
-```
-
-#### 3. `toolkit` 模式 (主脚本全功能)
-
-**行为**：直接运行 `mihomo-toolkit.js`，包含节点清洗（去重/重命名/地区匹配/倍率识别）和完整策略组构建。
-**前提条件**：输入的订阅可以是原始状态，主脚本自带清洗能力。
-**使用场景**：你不需要 pure-nodes 的 IP 溯源和节点裂变，只需主脚本的清洗+策略组体系（动态测速大区、流媒体分流、防漏 DNS 等）。注意：此模式下主脚本的重命名和清洗**都会执行**，跳过的只是 pure-nodes 的深度清洗。
-
-```bash
-node cli.js -u ./raw-sub.yaml -t toolkit -o final-config.yaml
-```
-
-### 📝 高级玩法：覆写配置
-
-根目录下可以存在一个 `config.yaml` 文件（你也可以通过 `-c` 指定其他路径，或参考 `config.example.yaml`）。如果此文件存在，CLI 会在运行时读取其中的配置项，**合并/覆盖**到脚本内置的 `USER_CONFIG` 中。
-
-这让你能够分离代码与配置。例如在 `config.yaml` 中写入：
+整个系统采用**完全扁平化设计**，没有复杂的嵌套作用域，所有开关直接在根级配置。完整配置模板请参考 [`config.example.yaml`](config.example.yaml)：
 
 ```yaml
-enableIPv6: true
-enableAntiAD: true
-renameTemplate: "[{airport}] {icon} {region} {index} {multi}"
-```
+# 1. 交付形态与输出
+outputMode: "config"            # config (完整配置) | nodes (纯节点) | report (审计报告)
+output: "./dist/config.yaml"    # 输出路径
+passthrough: false              # [config模式] true=透传原配置规则，仅替换节点
 
-CLI 在运行时就会自动使用上述设定，而完全不需要你去修改源码！
+# 2. 抓取与容灾
+fetchProxyPort: 7890            # 抓取代理端口（留空直连）
+fetchProxyStrategy: "auto"      # direct (直连) | proxy (代理) | auto (失败自动走代理重试)
+fetchRetry: 2                   # 失败重试次数 (5xx/超时重试，4xx快速失败)
+fetchStaleTtl: 24               # 网络故障时复用旧缓存兜底时长 (小时)
 
-#### 🔀 脚本独立作用域配置（进阶）
-
-如果你需要为清洗脚本（`pure-nodes.js`）和主脚本（`mihomo-toolkit.js`）分别设定不同的配置，你可以使用 `pureConfig` 和 `toolkitConfig` 两个特殊字段进行隔离：
-
-```yaml
-# 根目录的配置会同时应用于两个脚本（共享配置）
-enableAirportTag: true
-adTextThreshold: 10
-
-# 多订阅合并 + 来源标签注入
+# 3. 订阅清单 (支持多订阅并发聚合)
 subscriptions:
-  - url: "https://example.com/sub1.yaml"
-    tag: "AirportA" # 会自动补全为 [AirportA] 并注入到节点名前
-    # indexPrefix: "A"  # 可选：序号前缀，配置后按地区+前缀独立编号(如 A01)
-  - url: "https://example.com/sub2.yaml"
-    tag: "AirportB"
-    # indexPrefix: "B"
-  - url: "./local-nodes.yaml"
+  - url: "https://example.com/sub1"
+    tag: "机场A"
+    # indexPrefix: "A"          # 编号前缀 (如 A01/B01)
+    # resetDay: 19              # 每月固定重置流量日期
+  - url: "https://example.com/sub2"
+    tag: "机场B"
 
-# 序号规则：有 indexPrefix → 按地区+前缀独立编号(如 A01/B01)，无 indexPrefix → 按地区统一编号(如 01/02)
+# 4. 节点清洗与重命名
+enableDedupe: true               # 开启底层物理指纹去重
+enableNodeRename: true           # 节点重命名开关 (设为 false 原样保留节点名，不影响地区识别)
+showFeatureIcon: true            # 是否追加 🚀/4K 等特征 Emoji
+removeInfoNodes: true            # 自动剔除机场原生流量假节点 (避免与合成看板冲突)
 
-pureConfig:
-  # 这里的配置仅对纯净节点清洗脚本生效
-  enableIpEnrich: true
+# 5. 策略组与分流
+enableAI: true                   # 独立 ChatGPT / Claude / Gemini 策略组
+enableStreaming: true            # 独立 Netflix / YouTube / Disney+ 策略组
+enableSocial: true               # 独立 Telegram / Twitter 策略组
+enableGame: true                 # 独立游戏平台策略组
+isolateHighMulti: true           # 大倍率节点专属隔离组 (防偷跑流量)
 
-toolkitConfig:
-  # 这里的配置仅对主脚本策略构建生效
-  enableNodeRename: false
+# 6. 内核优化
+overwriteDns: true               # 注入 Fake-IP / DoH 防泄漏 DNS
+overwriteTun: true               # 注入 TUN 虚拟网卡配置
+enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优化
 ```
-
-> 💡 **防二次污染机制**：在 `full`（全自动流水线）模式下，由于清洗脚本已经对节点名进行了深度的打标与洗白，为了防止主脚本接手后进行二次重命名导致名字乱码，CLI 会**自动为** **`mihomo-toolkit`** **注入** **`enableNodeRename: false`**。你可以通过在 `toolkitConfig` 里硬性写明 `enableNodeRename: true` 来覆盖这个智能保护机制。
-
-### 2. 🌐 本地/云端 HTTP 服务 (Server)
-
-适合本地长期挂机，或部署在个人的 **VPS 服务器** 上。它能在 `3000` 端口启动一个 HTTP 服务，实时处理外部发来的订阅请求。此模式支持向客户端注入 `Subscription-Userinfo` 流量面板信息（推荐使用 `pm2` 等工具进行守护运行）。
-
-**启动方式：**
-
-```bash
-# 启动本地服务（默认端口 3000）
-npm start
-
-# 或自定义端口
-PORT=8080 npm start
-
-# 指定配置文件路径
-CONFIG_PATH=/path/to/config.yaml npm start
-```
-
-启动后，你的订阅链接将变成：
-`http://127.0.0.1:3000/sub`
-
-**支持的请求方式：**
-
-- 动态传参：`http://127.0.0.1:3000/sub?url=https://a.com/sub&url=https://b.com/sub`
-- 远程配置：`http://127.0.0.1:3000/sub?config=https://gist.github.com/xxx/config.yaml`
-- 默认配置：**前提是根目录已存在** **`config.yaml`**（可参考 `config.example.yaml` 创建）；若文件不存在且未传参，服务会返回 400 错误提示。
-
-> 🔒 **URL 传参开关**：在 `config.yaml` 根级写入 `enableUrlParams: false` 可禁用 `?url=` / `?config=` 动态传参，仅允许使用本地配置（默认为 `true`）。适用于公开暴露端口、避免被当作转发代理的场景。
-
-### 3. ☁️ Cloudflare Worker 云端部署
-
-将清洗引擎部署在 Cloudflare 边缘节点，随时随地在手机或电脑端使用。
-由于采用了纯函数式架构，本项目已通过 `esbuild` 兼容 Cloudflare Worker。
-
-**部署步骤：**
-
-```bash
-# 1. 编译构建 Worker 产物
-npm run build:worker
-
-# 2. 将 `dist/worker.bundle.js` 的内容复制到 Cloudflare Worker 中保存部署即可
-```
-
-**Worker 高级技巧**：
-
-- 动态传参：`https://your-worker.dev/sub?url=xxx&url=yyy`
-- 远程配置：`https://your-worker.dev/sub?config=https://gist.github.com/xxx/config.yaml`
-- 默认配置：在 Cloudflare 控制台添加环境变量 `DEFAULT_CONFIG_URL`，填入你放在 GitHub Gist 或其他图床上的 `config.yaml` 的直链。这样你连请求参数都不用带，直接访问 Worker 域名就能获得洗白后的配置。
-- 禁用传参：在 Cloudflare 控制台添加环境变量 `ENABLE_URL_PARAMS=false` 可禁用 `?url=` / `?config=` 动态传参，仅允许使用 `DEFAULT_CONFIG_URL`，避免 Worker 被当作公开转发代理。
-
-## ⚙️ 配置详解
-
-📝 **完整配置**：请直接在 `src/mihomo-toolkit.js` 和 `src/pure-nodes.js` 顶部的 `USER_CONFIG` / `CONFIG` 对象中查看，所有配置项均有详尽的**中文注释**。
-
-<details>
-<summary><b>🏷️ 节点重命名模板变量 (renameTemplate)</b></summary>
-
-您可以在 `USER_CONFIG.renameTemplate` 中自由组合以下变量，定制专属的节点名称格式：
-
-**基础模板变量：**
-
-| 变量名        | 说明                                        | 示例           |
-| ------------- | ------------------------------------------- | -------------- |
-| `{airport}`   | 机场标签前缀（若开启了 `enableAirportTag`） | `[AirportA]`   |
-| `{icon}`      | 国家/地区对应的国旗 Emoji                   | `🇺🇸`           |
-| `{region}`    | 提取出的国家/地区中文简称                   | `美国`         |
-| `{index}`     | 节点标号（多节点自动编号）                  | ` 01`, ` 02`   |
-| `{features}`  | 提取的修饰词/特性说明                       | `家宽`, `BGP`  |
-| `{protocol}`  | 底层协议特征 Emoji                          | `🦊`           |
-| `{in}`        | 入口地区 / 接入点（专线中转）               | `深`, `沪`     |
-| `{city}`      | 落地城市名                                  | `洛杉矶`       |
-| `{multi}`     | 节点倍率数值（纯数字）                      | `x1.5`, `x2.0` |
-| `{line}`      | 提取的线路特征（如 `BGP`、`CN2`、`家宽`）   | `BGP`          |
-| `{transport}` | 传输层协议                                  | `WS`, `GRPC`   |
-| `{ip_stack}`  | IP 栈类型（IPv6 / 双栈 / 空）               | `双栈`         |
-
-> 💡 **高级玩法（函数定义）**：
-> 如果您懂 JavaScript，您可以直接将 `USER_CONFIG.renameTemplate` 赋值为一个函数 `(vars, proxy) => string`，这样可以完全接管节点重命名的底层逻辑！
-
-### 📝 扩展模板变量（仅限 `pure-nodes.js` 的 IP-API 模式）
-
-纯净版脚本支持 IP-API 检测回填，因此在上述**基础模板变量**之外，额外提供以下变量（需开启 `enableIpEnrich`）：
-
-| 变量名     | 说明         | 示例               |
-| ---------- | ------------ | ------------------ |
-| `{isp}`    | 运营商名称   | `Akamai`           |
-| `{asn}`    | 自治系统编号 | `AS16509`          |
-| `{org}`    | 组织机构     | `Amazon.com, Inc.` |
-| `{asname}` | AS 名称      | `AMAZON-02`        |
-
-> 💡 基础模板变量（如 `{icon}`、`{region}`、`{ip_stack}` 等）在主脚本和纯净版中均受支持，无需额外开启。
-
-</details>
-
-<details>
-<summary><b>⚙️ 常用开关速览（快速上手）</b></summary>
-
-以下为脚本中最常调整的核心开关，其余参数均已在脚本中附带详细中文注释：
-
-| 配置项                            | 默认值  | 作用                                                                                    |
-| --------------------------------- | ------- | --------------------------------------------------------------------------------------- |
-| `proxyFirst`                      | `true`  | 路由策略：`true` 为海外代理优先，`false` 为国内直连优先                                 |
-| `enableDedupe`                    | `false` | 开启后基于底层参数（Server/Port/UUID等）物理去重                                        |
-| `enableDashboard`                 | `true`  | 开启后生成独立「📊 订阅与状态看板」策略组展示流量/到期/重置，不污染主力节点池           |
-| `enableAirportTag`                | `false` | 开启后自动提取节点来源标签（多订阅合并时非常有用）                                      |
-| `minorNodeThreshold`              | `3`     | 小众地区独立建组的最小节点数（低于此值折叠至大洲组）                                    |
-| `lowMultiThreshold`               | `0.99`  | 倍率 ≤ 此值的节点自动标记为 `⏬` 下载节点（设为 `0` 关闭）                              |
-| `isolateHighMulti`                | `false` | 开启后高倍率节点独立建组（聚合为「🚀 高倍率优选」），否则仅排序下沉                    |
-| `isolateExperimental`             | `false` | 开启后含「测试/实验/备用/测速」字样的节点独立建组（聚合为「🧪 实验节点」），否则仅打 🧪 标签 |
-| `testInterval`                    | `300`   | 自动选择组的测速间隔（单位：秒）                                                        |
-| `strictRegionMatch`               | `false` | `true` 时仅匹配内置字典，`false` 时可动态捕获冷门国家                                   |
-| `indexPrefix`（subscriptions 内） | _无_    | 序号前缀，配置后按地区+前缀独立编号（如 A01、B01）；不配置则按地区统一编号（如 01、02） |
-
-</details>
-
-<details>
-<summary><b>🧩 自定义服务注册表</b></summary>
-
-`CUSTOM_SERVICES` 是 v3.0 的核心升级——六维注册表让你无需修改脚本逻辑即可无限扩展新服务。只需两步：**① 在对应分类中填入定义** → **② 将 key 加入对应服务数组**，即可零侵入启用。
-
-```javascript
-const CUSTOM_SERVICES = {
-  ai: {},          // 🤖 AI 助手：填入定义后将 key 加入 AI_SERVICES 数组
-  streaming: {},   // 📺 流媒体：填入定义后将 key 加入 STREAMING_SERVICES 数组
-  social: {},      // 💬 社交平台：填入定义后将 key 加入 SOCIAL_SERVICES 数组
-  game: {},        // 🎮 游戏平台：填入 provider + rules
-  system: {},      // 🪟 系统服务：填入 provider + rules
-  dev: {}          // 🛠️ 开发者/学术：填入 provider
-};
-```
-
-**注册表字段说明**（按分类不同有所差异）：
-
-| 分类        | 必填字段                                                               | 可选字段                                      |
-| ----------- | ---------------------------------------------------------------------- | --------------------------------------------- |
-| `ai`        | `name`, `uiIcon`, `reg`, `provider`, `ruleSet`, `iconUrl`, `cleanName` | —                                             |
-| `streaming` | `name`, `cleanName`, `iconUrl`, `provider`                             | `reg`, `pool`（有则参与节点清洗与策略组构建） |
-| `social`    | `name`, `cleanName`, `iconUrl`, `provider`                             | —                                             |
-| `game`      | `provider`, `rules`                                                    | —                                             |
-| `system`    | `name`, `cleanName`, `iconUrl`, `provider`, `rules`                    | —                                             |
-| `dev`       | `name`, `cleanName`, `iconUrl`, `provider`                             | —                                             |
-
----
-
-### 📺 示例 1：新增流媒体分流（HBO Max）
-
-场景：HBO Max 的规则集在 `geosite/hbomax`，且节点名中经常带 "HBO" 字样，希望自动识别并优先走解锁节点。
-
-```javascript
-CUSTOM_SERVICES.streaming = {
-  hbo: {
-    name: "🎬 HBO Max", // 策略组显示名称
-    cleanName: "HBO", // 清洗后保留的纯净名称
-    iconUrl: "https://.../HBO.png", // 策略组图标 URL
-    provider: "geosite/hbomax", // Mihomo 分流规则集
-    reg: /\b(?:HBO|HBOMax|Max)\b/i, // 节点名正则匹配（命中则打 📺 标签）
-    pool: "hbo", // 节点桶名——命中 reg 的节点自动归入此桶，优先提供给 HBO 策略组
-  },
-};
-// 启用：在 STREAMING_SERVICES 数组中追加 "hbo"
-```
-
-启用后效果：节点名含 "HBO" 的自动打上 📺 标签 → 归入 `hbo` 桶 → HBO Max 策略组优先使用这些节点，不足时回退到通用大区池。
-
----
-
-### 🤖 示例 2：新增 AI 服务（DeepSeek）
-
-场景：DeepSeek 在国内直连更稳定，但有海外节点时希望走代理。规则集在 `geosite/deepseek`，节点名含 "DeepSeek" 或 "DS"。
-
-```javascript
-CUSTOM_SERVICES.ai = {
-  deepseek: {
-    name: "🧠 DeepSeek", // 策略组显示名称
-    uiIcon: "🧠", // 节点名上的特征图标
-    reg: /\b(?:DeepSeek|DS)\b/i, // 节点名正则（命中则展示 🧠 图标）
-    provider: "geosite/deepseek", // 分流规则集
-    ruleSet: "deepseek", // rule-provider key（在 rules 中引用）
-    iconUrl: "https://.../DeepSeek.png", // 策略组图标 URL
-    cleanName: "DeepSeek", // 清洗时保留的纯净名称
-  },
-};
-// 启用：在 AI_SERVICES 数组中追加 "deepseek"
-```
-
-启用后效果：节点名含 "DeepSeek" 的打上 🧠 图标 → 自动生成 🧠 DeepSeek 策略组 → 优先走家宽/美日等 AI 友好地区，最后回退代理/DIRECT。
-
----
-
-### 🎮 示例 3：新增游戏分流（原神 / Genshin）
-
-场景：原神国际服需要走代理，国内服直连。只需提供 rule-provider 和分流规则数组。
-
-```javascript
-CUSTOM_SERVICES.game = {
-  genshin: {
-    provider: "geosite/hoyoverse", // Mihomo 分流规则集
-    rules: [
-      "RULE-SET,genshin,🎮 游戏服务", // 国际服走游戏组
-      "DOMAIN-SUFFIX,hoyoverse.com,🎮 游戏服务",
-      "DOMAIN-SUFFIX,mihoyo.com,DIRECT", // 米哈游国内站直连
-    ],
-  },
-};
-// 启用：game 分类无需加入数组，填入即自动生效（受 enableGame 总开关控制）
-```
-
----
-
-### 💬 示例 4：新增社交平台（Reddit）
-
-场景：Reddit 走代理分流，无需节点清洗参与。
-
-```javascript
-CUSTOM_SERVICES.social = {
-  reddit: {
-    name: "👽 Reddit",
-    cleanName: "Reddit",
-    iconUrl: "https://.../Reddit.png",
-    provider: "geosite/reddit",
-  },
-};
-// 启用：在 SOCIAL_SERVICES 数组中追加 "reddit"
-// 若希望 Reddit 独立建组（而非合并入 💬 社交平台），同时在 INDEPENDENT_SOCIAL 中追加 "reddit"
-```
-
----
-
-> 💡 **字段速查**：`provider` 支持两种格式——**① 路径片段** `geosite/xxx`（自动拼接 CDN 前缀，行为从路径推断）；**② 完整 URL** `https://example.com/rules.yaml`（直接使用，格式从扩展名推断，行为默认 `domain`）。规则集完整列表见 [meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat/tree/meta/geo/geosite)；`iconUrl` 推荐使用 `USER_CONFIG.iconRepoOrz` / `iconRepoKoolson` / `iconRepoLige47` 拼接图标文件名。
-
-</details>
-
-<details>
-<summary><b>📋 自定义规则与规则集</b></summary>
-
-| 变量                       | 默认值                | 说明                                                                                                                             |
-| -------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `CUSTOM_RULES`             | `[]`                  | 原始分流规则数组，支持 `DOMAIN-SUFFIX`/`IP-CIDR`/`RULE-SET`/`PROCESS-NAME` 等任意格式，注入到 MATCH 之前，优先级高于所有内置规则 |
-| `CUSTOM_RULE_PROVIDERS`    | `{}`                  | 远程 rule-provider 注册表，必填 `url`/`behavior`/`format`，可选 `interval`/`path`/`proxy`                                        |
-| `processDirectWin/Mac/Lin` | 内置 BT 软件名单      | 进程强制直连名单（直接覆盖内置列表，不需要 concat 追加）                                                                         |
-| `processProxyWin/Mac/Lin`  | `["IDMan", "fdm"]` 等 | 进程强制走下载策略名单（v3.4.0 新增 Lin 支持）                                                                                   |
-
-> ⚠️ **v3.4.0 破坏性变更**：移除了 `customProcessDirectWin/Mac/Lin` 和 `customProcessProxyWin/Mac` 共 6 个追加变量，统一改为直接覆盖 `processDirect*` / `processProxy*`。
-
-</details>
-
-<details>
-<summary><b>📡 DNS 服务器配置</b></summary>
-
-v3.4.0 将 DNS 系统从「脚本硬编码覆写」重构为三态可选模式，订阅兼容性大幅提升。
-
-**DNS 覆写模式（`dnsMergeMode`）：**
-
-| 模式             | 行为                                                                                                            | 适用场景                        |
-| ---------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `secure`（默认） | 脚本权威写入 DNS 服务器，仅保留订阅的 `listen` 地址；`fake-ip-filter` 合并订阅列表；`use-system-hosts` 强制关闭 | 防泄漏优先，不信任订阅 DNS      |
-| `merge`          | 所有 DNS 字段以订阅优先、脚本兜底补缺                                                                           | 订阅自带定制 DoH/DoT 时友好共存 |
-| `passthrough`    | 跳过脚本一切 DNS 覆写，`config.dns` 原样保留                                                                    | 不希望脚本干预 DNS              |
-
-**DNS 服务器配置项：**
-
-| 变量         | 默认值                                                                                           | 说明                                                                               |
-| ------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `dnsListen`  | `127.0.0.1:1053`                                                                                 | DNS 监听地址，支持 host/port 拆分（只写 IP 沿用订阅端口；软路由可改 `0.0.0.0:53`） |
-| `dnsDefault` | `["223.5.5.5", "119.29.29.29"]`                                                                  | 基础解析 DNS（UDP）                                                                |
-| `dnsDirect`  | `["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query", "223.5.5.5", "119.29.29.29"]` | 直连 DNS（DoH 优先 + UDP 兜底）                                                    |
-| `dnsProxy`   | `["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"]`                                     | 代理 DNS（DoH），海外域名解析                                                      |
-| `dnsServer`  | `["https://223.5.5.5/dns-query", "https://119.29.29.29/dns-query"]`                              | 节点域名解析 DNS（`proxy-server-nameserver`），不受回国模式影响                    |
-
-> ⚠️ **v3.4.0 破坏性变更**：`dnsListen` 默认从 `0.0.0.0:1053` 收紧为 `127.0.0.1:1053`，软路由场景请显式改为 `0.0.0.0:1053`。详见 [CHANGELOG.md](CHANGELOG.md)。
-> 💡 回国模式下直连/代理 DNS 会自动交换，`dnsServer` 始终独立不受影响。
-
-</details>
-
-<details>
-<summary><b>🔄 简繁转换</b></summary>
-
-构建层支持中文简繁转换全链路：入口处将 config 与节点名繁→简（确保清洗识别一致），toolkit 输出后按配置输出简体或繁体（含节点名、策略组名、组内引用、`use` 引用、`rules` 组名引用同步转换）。
-
-| 配置项                 | 默认值  | 说明                              |
-| ---------------------- | ------- | --------------------------------- |
-| `enableChineseConvert` | `false` | 是否启用简繁转换                  |
-| `chineseConvertMode`   | `"t2s"` | 输出模式：`t2s`=简体 / `s2t`=繁体 |
-
-**安装依赖：**
-
-```bash
-npm install opencc-js
-```
-
-> ⚠️ `opencc-js` 为可选依赖（`optionalDependencies`），未安装时简繁转换自动降级为空函数（不转换，不影响运行）。Worker 环境完全禁用此功能（构建时排除 `opencc-js`）。
-
-</details>
-
----
-
-## 🧹 节点清洗与分组结构
-
-### 🏷️ 节点特征图标 (特性标签)
-
-| 图标 | 含义             | 图标 | 含义                |
-| ---- | ---------------- | ---- | ------------------- |
-| 🤖   | OpenAI/ChatGPT   | 🛡️   | AnyTLS / 安全协议   |
-| ♊   | Google Gemini    | 📱   | WAP 移动优化        |
-| 🦀   | Anthropic Claude | ⏬   | 下载 / BT（低倍率） |
-| 📺   | 流媒体解锁       | 🆓   | 免费/公益节点       |
-| 🎮   | 游戏 / FullCone  | 🏠   | 住宅 IP / 家宽      |
-| ⚡   | HY2 / TUIC       | 🧪   | 测试/实验/备用 节点 |
-
-### 🏷️ 底层协议图标 (需开启 `showProtocolIcon`)
-
-| 图标 | 协议     | 图标 | 协议                 |
-| ---- | -------- | ---- | -------------------- |
-| 🛩️   | SS / SSR | ⚡   | Hysteria / Hysteria2 |
-| 🦊   | VMess    | 💨   | TUIC                 |
-| 🛸   | VLESS    | 🕸️   | WireGuard            |
-| 🐎   | Trojan   | 📡   | Snell                |
-
-### 📂 动态生成的策略组
-
-- **核心**：`📍 手动选择`、`🚀 自动选择`、`♻️ 故障转移`
-
-- **地区独立组**：节点数 ≥ 阈值时自动生成（如 `🇭🇰 香港`、`🇯🇵 日本`）
-
-- **大区折叠组**：小众地区收纳至 `🇪🇺 欧洲`、`🏝️ 东南亚`、`🌵 美洲` 或 `🌐 其他节点`
-
-- **应用场景组**：依配置生成 `🤖 ChatGPT`、`🎬 Netflix`、`▶️ YouTube`、`🪄 Disney+`、`🎵 TikTok`、`🎧 Spotify`、`✈️ Telegram` 等
-
-- **高级功能组**：`🏠 家宽优选`、`⏬ 下载策略`、`🇨🇳 中国分流` 等
 
 ---
 
 ## ❓ 常见问题
 
 <details>
-<summary><b>Q: 节点清洗误杀了我的节点，怎么调？</b></summary>
+<summary><b>Q: 我只想保留机场原本给我的节点名字，不想被脚本改名，但又想用策略组分流，怎么配？</b></summary>
 
-无效节点判定的核心条件：节点名中<b>没有数字、技术词汇（IEPL/BGP/CN2等）和营销词汇（专线/高速/VIP等）</b>，且纯文本长度超过 <code>adTextThreshold</code>（默认 6）即拦截。
-
-按推荐度排序三种自救：
-
-1. 简单粗暴——调高 <code>adTextThreshold</code>（如 10\~12），但会整体放宽拦截判定；
-2. 精准放行——在 <code>REGEX\_TECH\_LINE</code> 或 <code>REGEX\_FLUFF\_LINE</code> 中添加节点关键词，让其通过广告判定；放行后若无地区匹配会自动归入「🗑️ 未知识别」；
-3. 上户口——若节点名包含未被内置字典覆盖的地区名，可在 <code>REGION\_DEFS</code> 中新增对应条目，避免放行后掉入垃圾桶。
-
+只需在 `config.yaml` 中配置 `enableNodeRename: false` 即可！
+底层的地区识别、倍率提取、线路特征分析依然会照常运行并精准把节点送入对应的策略组，绝不破坏节点原名。
 </details>
 
 <details>
-<summary><b>Q: 节点去重 (<code>enableDedupe</code>) 会不会误杀正常节点？</b></summary>
+<summary><b>Q: 为什么我拉取订阅时偶尔报错 403 / 502，但节点没有消失？</b></summary>
 
-不会。去重基于 <code>Server + Port + Type + Network + SNI + Host + Path + UUID</code> 组合键，只有底层完全一致的"注水"节点才会被剔除。同 IP 不同端口的节点不受影响。
+这是本系统的 **Stale 容灾兜底机制**在生效。当远程机场网络抖动或超时时，系统会自动重试；若依然失败，会自动激活最近一次成功抓取的本地缓存快照（默认保留 24h），并在控制台打印告警，保障你设备上的节点永远可用。
 </details>
 
 <details>
-<summary><b>Q: 为什么我的节点被标了 ⏬ 下载标签？</b></summary>
+<summary><b>Q: 如何在 Clash Verge Rev 中使用？</b></summary>
 
-由 <code>lowMultiThreshold</code> 控制（默认 0.99）。节点名中的倍率（如 x0.5、x0.8）≤ 此值时自动判定为低倍率下载节点。如果不想自动标记，设为 0 即可关闭；如果想从普通池中移除这些节点，开启 <code>isolateDownload</code>。
-</details>
-
-<details>
-<summary><b>Q: 脚本开启太多开关会不会影响性能？</b></summary>
-
-不会。脚本只运行一次（在订阅刷新时），负责生成静态的 Mihomo 配置。最终影响性能的是生成后的策略组数量和规则条数，而非脚本开关数量。不过建议按需开启，避免生成空策略组和冗余 rule-provider。
-</details>
-
-<details>
-<summary><b>Q: 分流规则不生效 / 一直走到漏网之鱼？</b></summary>
-
-检查三步：① 对应的总开关（如 <code>enableStreaming</code>）是否开启，且目标服务 key 是否在对应的服务数组中（如 <code>STREAMING\_SERVICES</code>）；② 对应 app 的策略组是否为空被 DAG 清理了（空组会被自动裁撤，导致规则回退到漏网之鱼）；③ <code>ruleProviderCDN</code> 是否可正常拉取规则集。
-</details>
-
-<details>
-<summary><b>Q: 为什么策略组里多了/少了某个地区？</b></summary>
-
-由 <code>minorNodeThreshold</code>（默认 3）和节点数量共同决定：够阈值独立建组，不够则折叠到大洲组；大洲组再不够则最终归入「🌐 其他节点」。设成 1 可以让所有地区强制独立建组，但面板会很臃肿。
-</details>
-
-<details>
-<summary><b>Q: <code>osType: "all"</code> 和分别指定有什么区别？</b></summary>
-
-<code>"all"</code> 会同时注入 Windows / macOS / Linux 三套进程规则，虽然省事但规则集会变胖。如果只在单一平台使用，指定具体系统可以精简规则。
-</details>
-
-<details>
-<summary><b>Q: 如何新增一个自定义分流（如 HBO Max）？</b></summary>
-
-v3.0 采用注册表架构，只需两步，无需触碰脚本逻辑：
-① <b>注册服务</b>：在 <code>CUSTOM\_SERVICES.streaming</code> 中填入服务定义（name、provider、iconUrl 等）；
-② <b>启用</b>：将注册的 key 加入 <code>STREAMING\_SERVICES</code> 数组即可。
-例如：<code>CUSTOM\_SERVICES.streaming.hbo = { name: "HBO Max", cleanName: "HBO", iconUrl: "...", provider: {...} }</code>，然后 <code>STREAMING\_SERVICES</code> 数组中加 <code>"hbo"</code>。
-更多字段说明见上方「自定义服务注册表」章节。
-</details>
-
-<details>
-<summary><b>Q: 为什么脚本的 DNS / TUN 覆写没生效？</b></summary>
-
-检查客户端的开关是否覆盖了脚本配置 —— 以 <b>Clash Verge Rev</b> 为例：
-
-- **DNS 覆写**：客户端「设置」→「覆写」→「DNS」中的「启用」开关如果打开，会覆盖脚本的 <code>overwriteDns</code> 配置。→ 请关闭客户端的 DNS 总开关，让脚本的 DNS 配置生效。
-- **TUN 模式**：客户端「设置」→「覆写」→「TUN」开关如果打开，其中「严格路由」(strict-route) 等选项会覆盖脚本的 <code>overwriteTun</code> 配置。→ 如需启用脚本的 TUN 严格路由防漏，请在客户端 TUN 设置中手动调整为与脚本一致或自行配置的参数。
-
-> 💡 核心原则：脚本的覆写功能（<code>overwriteTun</code> / <code>overwriteDns</code>）是为「不使用客户端覆写」的场景设计的。两者同时开启时，以客户端界面设置为准。
-
-</details>
-
-<details>
-<summary><b>Q: 开代理后部分国内网站变慢或打不开？</b></summary>
-
-检查 <code>proxyFirst</code>：国内用户建议设为 <code>false</code>（直连优先），并开启 <code>enableDomesticGroup</code>。如果是因为 DNS 污染，确认 <code>overwriteDns</code> 已开启（默认开启的 Fake-IP 体系能有效防污染）。
-</details>
-
-<details>
-<summary><b>Q: 多个订阅源混在一起，怎么区分节点来源？</b></summary>
-
-开启 `enableAirportTag` 后，脚本支持多维度自动打标：
-
-1. **关键词强制匹配**：在 `airportTag` 中填入机场名关键词（如 `"AirportA, AirportB"`），脚本会扫描节点名，只要命中就直接作为标签！
-2. **正则智能提取**：如果没有命中关键词，脚本会通过 `airportTagReg` 设定的正则表达式进行自动提取（默认提取节点开头的 `[xxx]` 标识）。
-3. **CLI 自动化流水线注入**：使用本项目的 CLI 命令行工具，在 `config.yaml` 的 `subscriptions` 数组中为不同订阅链接指定 `tag`，CLI 会在后台自动为它们批量注入标签前缀。
-
-自动打标后，面板中的节点来源一目了然，再也不怕订阅混淆！如需更精细的归属识别（如运营商、ASN），可配合纯净版脚本的 IP-API 检测使用。
-
-> 💡 **按订阅源独立编号**：默认按地区统一编号（如香港 01、02、03，跨机场连续）。如想让每个订阅源独立计数（如 L01、L02 / I01、I02），只需在 `subscriptions` 数组里为每个源指定 `indexPrefix`，即可在节点名中保留来源辨识度。
-
-> 💡 **动态序号补零**：脚本会全局扫描所有分组的节点数量，按最大值自动决定补零位数——最大 99 个用 2 位（如 `L01`），最大 100\~999 个用 3 位（如 `L001`），以此类推，最低保留 2 位。同一次构建内所有节点序号位数一致，避免出现 `L99 → L100` 的视觉跳变。
-
+直接将 `src/targets/verge.js` 的内容复制到 Clash Verge 的「扩展脚本」中保存即可，完全开箱即用。
 </details>
 
 ---
 
-## 📦 更新日志
+## 📜 开源协议
 
-版本历史与详尽的更新说明请参阅 [CHANGELOG.md](CHANGELOG.md)。
-
-## 🙏 鸣谢
-
-- 灵感来源：[iczrac/Parsers-for-clash](https://github.com/iczrac/Parsers-for-clash)
-- 基础内核：[Mihomo](https://github.com/MetaCubeX/mihomo)
-- 规则集：[meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) & [anti-AD](https://github.com/privacy-protection-tools/anti-AD)
-- 图标库：[Orz-3/mini](https://github.com/Orz-3/mini) & [Koolson/Qure](https://github.com/Koolson/Qure) & [lige47/lige\_icon](https://github.com/lige47/lige_icon)
-- 简繁转换：[opencc-js](https://github.com/nk2028/opencc-js)
-- **AI 协同**：由本人架构，Gemini，DeepSeek参与代码生成与审查，多轮对线压力测试迭代而成。
-
-## 🐛 提交问题
-
-如果在使用过程中遇到 BUG 或有好的建议，欢迎提交 [Issue](https://github.com/XiaoM-OVO/mihomo-toolkit/issues)。提交前请先查阅 [常见问题](#-常见问题)。
-
-## ⚠️ 免责声明
-
-1. 本项目提供的代码、脚本与配置仅供**个人进行计算机网络调试、路由规则学习与研究网络连通性架构**使用。
-2. 请严格遵守您所在国家及地区的法律法规，**严禁将本项目用于任何非法或违反当地法律的用途**。
-3. 因使用本项目所产生的任何直接或间接后果，**均由使用者本人自行承担**。作者及贡献者不承担任何技术或法律连带责任。
-4. 本项目仅为代码工具，**不提供任何形式的代理服务**，也不涉及任何网络节点的售卖、分发与推广。
-
-## 📄 许可
-
-本项目采用 [MIT 许可证](LICENSE)。
-
----
-
-<div align="center">
-  Made with ❤️ by XiaoM-OVO
-</div>
+本项目基于 [MIT License](LICENSE) 许可协议开源。

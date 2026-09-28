@@ -58,13 +58,33 @@
 系统彻底摒弃了“按执行步骤划分阶段”的旧思维，演进为**以目标交付物（Output Delivery）为驱动的三态契约**：
 
 ```text
-               ┌── [mtk -t nodes] ────────▶ 交付纯净节点 (Proxies Array)
-               │
-用户输入 ──────┼── [mtk -t report] ───────▶ 交付健康审计数据 (Audit JSON)
-               │
-               │                            ┌─ passthrough: false (默认全新组装)
-               └── [mtk -t config] ───────▶ ┤
-                                            └─ passthrough: true  (原配置透传节点替换)
+                      外部输入 (CLI mtk / Server / SDK)
+                                     │
+                                     ▼
+                     ┌───────────────────────────────┐
+                     │    src/pipeline/engine.js     │ ➔ 配额校验、LRU 缓存管理
+                     │     (全生命周期工作流总调度)  │
+                     └───────────────┬───────────────┘
+                                     │
+                                     ▼
+                         [Step 1: 订阅抓取与解析]
+                                     │
+                                     ▼
+                        [Step 2: 节点标准化与打标]
+                                     │
+                     ┌───────────────┴───────────────┐
+                     │ 交付模式 Checkpoint 检查点分流│
+                     └───────────────┬───────────────┘
+                                     │
+              ┌──────────────────────┼──────────────────────┐
+              │                      │                      │
+       [mode == 'nodes']      [mode == 'report']     [mode == 'config']
+              ▼                      ▼                      ▼
+      【Checkpoint 1: 刹车】   【Checkpoint 2: 刹车】   【Checkpoint 3: 继续前进】
+              │                      │                      │
+              ▼                      ▼                      ▼
+       直接包装交付纯节点      调用 report.js 生成审计   调用 config.js 组装策略拓扑
+       { proxies: [...] }     输出 report JSON 数据   输出即用型完整 YAML 配置
 ```
 
 | 交付模式 (`outputMode`) | 核心契约 (Contract) | 关键行为与边界 | 典型场景 |
@@ -137,6 +157,7 @@ E:\CODE\mihomo-toolkit-next\
 │   ├── index.js                  # 🌟 全库顶层唯一门面 (Facade)，对外导出完整公共 API
 │   │
 │   ├── pipeline/                 # 🚀 交付流水线 (与交付形态 1:1 映射)
+│   │   ├── engine.js             # runPipelineEngine: 总调度引擎，按 Checkpoint 截断控制交付
 │   │   ├── config.js             # runConfigPipeline: 交付完整 config (支持 passthrough)
 │   │   ├── nodes.js              # runNodesPipeline: 交付纯净节点 proxies 数组
 │   │   ├── report.js             # buildAuditReport: 交付结构化健康审计 JSON
@@ -156,6 +177,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── rename.js             # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
 │   │   ├── fission.js            # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
 │   │   ├── chinese-convert.js    # 简繁中文递归转换与无依赖回退降级
+│   │   ├── chinese-sync.js       # 节点名/策略组名/成员引用/分流规则四路简繁同步
 │   │   └── shared/               # 地区大区字典表 (regions.js) 与 图标字典 (icons.js)
 │   │
 │   ├── strategy/                 # 🌐 策略组拓扑与内核优化层
@@ -169,6 +191,8 @@ E:\CODE\mihomo-toolkit-next\
 │   │
 │   ├── io/                       # 📡 外部世界通信层 (唯一允许副作用的底层)
 │   │   ├── fetcher.js            # 安全 HTTP 抓取调度与 Stale 容灾兜底缓存
+│   │   ├── sub-processor.js      # 多订阅并发抓取、URI 分流、单订阅说明过滤与树状日志
+│   │   ├── cache.js              # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
 │   │   ├── ssrf.js               # SSRF 深度校验、私网拦截与 Token 脱敏
 │   │   ├── limits.js             # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
 │   │   ├── sub-info.js           # 订阅头 Userinfo 解析与重置周期计算
