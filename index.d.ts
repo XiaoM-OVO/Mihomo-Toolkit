@@ -71,6 +71,12 @@ export interface PureConfig {
   enableNodeRename?: boolean;
   /** 节点重命名模板（如 "{flag} {name} {index}"） */
   nodeRenamePattern?: string;
+  /** 节点重命名模板字符串或自定义命名函数 */
+  renameTemplate?: string | ((vars: Record<string, string>, proxy: any) => string);
+  /** 允许作为分隔符被自动清理的悬空符号列表 */
+  renameSeparators?: string[];
+  /** 机场前缀映射表 (如: { "机场A": "A" }) */
+  indexPrefixMap?: Record<string, string>;
 
   // 🧬 节点裂变
   /** 是否开启单域名多 IP 节点裂变增殖（默认为 false） */

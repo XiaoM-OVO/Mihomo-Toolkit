@@ -7,6 +7,7 @@
 const { escapeRegex, matchNodeRegion, extractCity } = require('./geo');
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
+const { looksLikeDomain } = require('./fission');
 
 const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
 const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过期|更新公告|重置|维护|不可用|扣费|节点说明|防失联|官网|地址|Q群|电报|Tg群|距离下次/i;
@@ -168,7 +169,7 @@ function extractNodeAttributes(name, userConfig = {}) {
 /**
  * 拦截与阻断判定
  */
-function checkNodeBlockReason(proxy, rawName, userConfig = {}) {
+function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
   const isFakeServer = /^(?:127\.|0\.|10\.|192\.168\.|(?:1\.1\.1\.1|8\.8\.8\.8)(?:$|:))/.test(proxy.server || '') || proxy.port === 0;
   const isDummyAuth = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i.test(proxy.uuid || proxy.password || '');
   const isAdTypo = /防.{0,3}失|失.{0,3}联|地.{0,3}[址止]|官.{0,3}[网罔]|发.{0,3}[布步]|交.{0,3}流|群.{0,3}组|客.{0,3}服|定.{0,3}制/i.test(rawName)
@@ -183,15 +184,151 @@ function checkNodeBlockReason(proxy, rawName, userConfig = {}) {
     .replace(/[\[\]{}()<>【】]/g, '')
     .trim();
 
-  const isOrphanAd = !(/\d/.test(tempName) || REGEX_TECH_LINE_TEST.test(tempName) || REGEX_FLUFF_LINE_TEST.test(tempName)) &&
-    tempName.replace(/\p{Extended_Pictographic}/gu, '').trim().length > adThreshold;
+  const defs = options.regionDefs || getEnhancedRegionDefs();
+  const hasValidRegion = defs.some(r => r._matchReg && r._matchReg.test(tempName));
+  const featureRules = options.featureRules || getFeatureRules(userConfig);
+  const hasFeature = featureRules.some(r => r.reg && r.reg.test(tempName));
+  const hasDigit = /\d/.test(tempName);
+  const hasTechLine = REGEX_TECH_LINE_TEST.test(tempName);
+  const hasFluff = REGEX_FLUFF_LINE_TEST.test(tempName);
+
+  const cleanText = tempName.replace(/\p{Extended_Pictographic}/gu, '').trim();
+  const cleanLength = cleanText.length;
+  const effectiveThreshold = hasValidRegion ? Math.max(adThreshold, 18) : adThreshold;
 
   if (isFakeServer) return '假IP';
   if (isDummyAuth) return '假密码';
   if (isAdTypo) return '广告词';
-  if (isOrphanAd) return `超长文本(>${adThreshold})`;
+  if (cleanLength > effectiveThreshold && !hasDigit && !hasTechLine && !hasFluff && !hasFeature) {
+    return `超长广告文本(>${effectiveThreshold})`;
+  }
+  if (!hasValidRegion && !hasFluff && cleanLength > 10 && !hasDigit && !hasTechLine && !hasFeature) {
+    return '孤儿广告';
+  }
 
   return '';
+}
+
+/**
+ * 编译全量特征规则列表（包含静态特征、AI 服务注册表、流媒体注册表与自定义服务）
+ * @param {object} userConfig
+ * @returns {Array<{ reg: RegExp, tag: string, pool?: string, groupName?: string }>}
+ */
+function getFeatureRules(userConfig = {}) {
+  const rules = [
+    // 1. 家宽/住宅
+    {
+      reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i,
+      tag: 'residential',
+      pool: 'residential',
+      groupName: '🏠 家宽优选'
+    },
+    // 2. 游戏
+    {
+      reg: /(?:游戏|🎮)|\b(?:Game|FullCone)\b/i,
+      tag: 'game',
+      pool: 'game',
+      groupName: '🎮 游戏服务'
+    },
+    // 3. 免费 / 公益
+    {
+      reg: /(?:免费|白嫖|公益|🆓)/i,
+      tag: 'free'
+    },
+    // 4. WAP / 移动优化
+    {
+      reg: /(?:📱)|\bWAP\b/i,
+      tag: 'wap'
+    },
+    // 5. 蜂窝网络
+    {
+      reg: /(?:蜂窝|Cellular|移动网络)/i,
+      tag: 'cellular'
+    },
+    // 6. CDN 中转
+    {
+      reg: /(?:CDN中转|中转CDN|CDN加速|☁️)/i,
+      tag: 'CDN'
+    },
+    // 7. AWS / 云厂商
+    {
+      reg: /(?:\bAmazon\b|\bAWS\b|🛰️)/i,
+      tag: 'AWS'
+    },
+    // 8. 实验节点
+    {
+      reg: /(?:测试|实验|备用|测速)/i,
+      tag: 'experimental',
+      pool: 'experimental'
+    },
+    // 9. 双栈
+    {
+      reg: /(?:双栈|DualStack)/i,
+      tag: 'dualstack'
+    },
+    // 10. IPv6
+    {
+      reg: /\b(?:IPv6|v6)\b/i,
+      tag: 'ipv6'
+    }
+  ];
+
+  // 11. 动态 AI 注册表注入
+  if (userConfig.enableAI !== false) {
+    const aiServices = userConfig.aiServices || ['chatgpt', 'gemini', 'claude', 'copilot'];
+    const AI_REGISTRY = {
+      chatgpt: { tag: 'chatgpt', reg: /\b(?:GPT|ChatGPT|OpenAI)\b/i, pool: 'chatgpt' },
+      gemini: { tag: 'gemini', reg: /\bGemini\b/i, pool: 'gemini' },
+      claude: { tag: 'claude', reg: /\bClaude\b/i, pool: 'claude' },
+      copilot: { tag: 'copilot', reg: /\b(?:Copilot|Bing)\b/i, pool: 'copilot' }
+    };
+    if (userConfig.customServices?.ai) {
+      Object.entries(userConfig.customServices.ai).forEach(([k, v]) => {
+        if (v && v.reg) {
+          AI_REGISTRY[k] = { tag: v.tag || k, reg: v.reg, pool: v.pool || v.tag || k };
+        }
+      });
+    }
+    aiServices.forEach(key => {
+      const ai = AI_REGISTRY[key];
+      if (ai) {
+        rules.unshift({ reg: ai.reg, tag: ai.tag, pool: ai.pool });
+      }
+    });
+  }
+
+  // 12. 动态流媒体服务注册表注入
+  if (userConfig.enableStreaming !== false) {
+    const streamingServices = userConfig.streamingServices || ['youtube', 'netflix', 'disney', 'bilibili', 'tiktok', 'spotify'];
+    const STREAMING_REGISTRY = {
+      youtube: { reg: /\b(?:YouTube|YT|油管)\b/i, tag: 'yt', pool: 'youtube' },
+      netflix: { reg: /\b(?:Netflix|NF|奈飞|网飞|耐飞)\b/i, tag: 'nf', pool: 'netflix' },
+      disney: { reg: /\b(?:Disney|Disney\+|迪士尼|D\+)\b/i, tag: 'd+', pool: 'disney' },
+      bilibili: { reg: /\b(?:Bilibili|B站|哔哩哔哩)\b/i, tag: 'streaming', pool: 'bilibili' },
+      tiktok: { reg: /\b(?:TikTok|抖音)\b/i, tag: 'tk', pool: 'tiktok' },
+      spotify: { reg: /\b(?:Spotify|声田)\b/i, tag: 'sp', pool: 'spotify' }
+    };
+    if (userConfig.customServices?.streaming) {
+      Object.entries(userConfig.customServices.streaming).forEach(([k, v]) => {
+        if (v && v.reg) {
+          STREAMING_REGISTRY[k] = { tag: v.tag || 'streaming', reg: v.reg, pool: v.pool || k };
+        }
+      });
+    }
+    streamingServices.forEach(key => {
+      const st = STREAMING_REGISTRY[key];
+      if (st) {
+        rules.push({ reg: st.reg, tag: st.tag, pool: st.pool });
+      }
+    });
+    // 通用流媒体兜底规则
+    rules.push({
+      reg: /(?:流媒体|解锁|📺)/i,
+      tag: 'streaming'
+    });
+  }
+
+  return rules;
 }
 
 /**
@@ -257,7 +394,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   }
 
   // 4. 垃圾与广告拦截判定
-  const blockReason = checkNodeBlockReason(proxy, rawName, userConfig);
+  const blockReason = checkNodeBlockReason(proxy, rawName, userConfig, { regionDefs: defs, featureRules: options.featureRules });
   if (blockReason) {
     return { skip: true, rawName, blockReason };
   }
@@ -280,28 +417,28 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   const tags = new Set();
   const featurePools = [];
 
+  // 网络层 IPv6 识别：当 server 字段是物理 IPv6 地址时自动识别
+  if (proxy.server && !looksLikeDomain(proxy.server) && String(proxy.server).includes(':')) {
+    tags.add('ipv6');
+  }
+
   if (regionInfo) {
-    // 住宅/家宽
-    if (/(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home)/i.test(rawName)) {
-      tags.add('residential');
-      featurePools.push('residential');
+    const rules = options.featureRules || getFeatureRules(userConfig);
+    for (const rule of rules) {
+      if (rule.reg.test(rawName)) {
+        tags.add(rule.tag);
+        if (rule.pool && !featurePools.includes(rule.pool)) {
+          featurePools.push(rule.pool);
+        }
+      }
     }
-    // 游戏
-    if (/(?:游戏|🎮)|\b(?:Game|FullCone)\b/i.test(rawName)) {
-      tags.add('game');
-      featurePools.push('game');
-    }
-    // 流媒体
-    if (/(?:流媒体|解锁|📺|Netflix|YouTube|Disney|Spotify|TikTok)/i.test(rawName)) {
-      tags.add('streaming');
-    }
+
     // 低倍率 / 下载
     if (attrs.isLowMulti && !isForbidDownload) {
       tags.add('download');
-    }
-    // 实验节点
-    if (/(?:测试|实验|备用|测速)/i.test(rawName)) {
-      tags.add('experimental');
+      if (!featurePools.includes('download')) {
+        featurePools.push('download');
+      }
     }
   }
 
@@ -331,5 +468,6 @@ module.exports = {
   compressLineArr,
   extractNodeAttributes,
   checkNodeBlockReason,
+  getFeatureRules,
   classifyNode
 };

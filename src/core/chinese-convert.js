@@ -46,7 +46,23 @@ function deepConvertStrings(obj, convertFn) {
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
       // 键和值都转换（customNodeGroups 等配置的 key 是匹配关键词，也必须转）
-      result[convertFn(key)] = deepConvertStrings(value, convertFn);
+      const convertedKey = convertFn(key);
+      const convertedValue = deepConvertStrings(value, convertFn);
+
+      if (Object.prototype.hasOwnProperty.call(result, convertedKey)) {
+        if (Array.isArray(result[convertedKey]) && Array.isArray(convertedValue)) {
+          result[convertedKey] = [...new Set([...result[convertedKey], ...convertedValue])];
+        } else if (
+          typeof result[convertedKey] === 'object' && result[convertedKey] !== null &&
+          typeof convertedValue === 'object' && convertedValue !== null
+        ) {
+          result[convertedKey] = { ...result[convertedKey], ...convertedValue };
+        } else {
+          result[convertedKey] = convertedValue;
+        }
+      } else {
+        result[convertedKey] = convertedValue;
+      }
     }
     return result;
   }

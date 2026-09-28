@@ -35,13 +35,22 @@ function createLogger(prefix, levelName = 'info') {
   };
 }
 
+function normalizeTargetType(rawType) {
+  let targetType = String(rawType || 'config').toLowerCase();
+  if (targetType === 'full') targetType = 'config';
+  if (targetType === 'cleaner' || targetType === 'pure') targetType = 'nodes';
+  if (targetType === 'meta' || targetType === 'audit') targetType = 'report';
+  return targetType;
+}
+
 function getCacheKey(userConfig, options) {
   try {
     const subs = (userConfig.subscriptions || []).filter(isSubEnabled).map(s => ({ url: s.url, uri: s.uri, tag: s.tag, proxy: s.proxy }));
+    const rawType = options.type || userConfig.outputMode || userConfig.type || 'config';
     return JSON.stringify({
       subs,
       url: options.url,
-      type: options.type || userConfig.outputMode || userConfig.type || 'config',
+      type: normalizeTargetType(rawType),
       convert: userConfig.enableChineseConvert,
       convertMode: userConfig.chineseConvertMode,
       redactLevel: userConfig.redactLevel,
@@ -67,10 +76,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   const logger = createLogger('[Builder]', effectiveLogLevel);
 
   // 1. 交付形态解析: config | nodes | report
-  let targetType = (options.type || userConfig.outputMode || userConfig.type || 'config').toLowerCase();
-  if (targetType === 'full') targetType = 'config';
-  if (targetType === 'cleaner' || targetType === 'pure') targetType = 'nodes';
-  if (targetType === 'meta' || targetType === 'audit') targetType = 'report';
+  const targetType = normalizeTargetType(options.type || userConfig.outputMode || userConfig.type || 'config');
 
   // 2. 资源安全配额防御
   const securityLimits = userConfig.security || {};

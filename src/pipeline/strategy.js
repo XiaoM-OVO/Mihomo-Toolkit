@@ -7,7 +7,7 @@
 const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode } = require('../core/cleaner');
-const { renderTemplate, createSeparatorCleaners } = require('../core/rename');
+const { renderTemplate, createSeparatorCleaners, computeNodeIndices } = require('../core/rename');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../core/shared/icons');
 const { createServiceRegistries } = require('../strategy/registries');
@@ -49,29 +49,12 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
     const renameTemplate = userConfig.renameTemplate;
     const isRenameEnabled = !isPreCleaned && userConfig.enableNodeRename !== false;
 
-    const regionCounts = {};
-    classifiedNodes.forEach(item => {
-      if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
-      const rKey = item.regionInfo.id || item.regionInfo.name;
-      regionCounts[rKey] = (regionCounts[rKey] || 0) + 1;
-    });
-    const maxCount = Math.max(...Object.values(regionCounts), 9);
-    const indexPad = Math.max(2, maxCount.toString().length);
-    const regionTracker = {};
+    if (isRenameEnabled && renameTemplate) {
+      const indexMap = computeNodeIndices(classifiedNodes, userConfig);
 
-    classifiedNodes.forEach(item => {
-      if (item.skip || item.isSpecial || item.isInfo) return;
-      if (!item.regionInfo) return;
+      classifiedNodes.forEach(item => {
+        if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
 
-      const rKey = item.regionInfo.id || item.regionInfo.name;
-      const total = regionCounts[rKey] || 1;
-      let numStr = '';
-      if (total > 1) {
-        regionTracker[rKey] = (regionTracker[rKey] || 0) + 1;
-        numStr = String(regionTracker[rKey]).padStart(indexPad, '0');
-      }
-
-      if (isRenameEnabled && renameTemplate) {
         let featureStr = '';
         (item.tags || []).forEach(t => {
           if (t === 'ipv6' || t === 'dualstack') return;
@@ -83,6 +66,7 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
         });
 
         const protocolIcon = PROTOCOL_ICONS[item.pType] || '';
+        const numStr = indexMap.get(item) || '';
         const vars = {
           airport: item.airportTag || '',
           icon: item.regionInfo.icon || '',
@@ -102,8 +86,8 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
         if (newName) {
           item.proxy.name = newName;
         }
-      }
-    });
+      });
+    }
   }
 
   // 4. 组装服务注册表与策略拓扑

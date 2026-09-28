@@ -7,10 +7,11 @@
 const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode } = require('../core/cleaner');
-const { renderTemplate, createSeparatorCleaners } = require('../core/rename');
+const { renderTemplate, createSeparatorCleaners, computeNodeIndices } = require('../core/rename');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../core/shared/icons');
-const { expandDomainFission } = require('../core/fission');
+const { resolveProxiesDomains } = require('../io/dns-resolver');
+const { fissionNodes } = require('../core/fission');
 
 /**
  * 执行纯净节点清洗与标准化流水线
@@ -31,11 +32,12 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     dedupeCount = beforeDedupe - currentProxies.length;
   }
 
-  // 2. 域名多 IP 节点裂变
+  // 2. 域名多 IP 节点裂变 (I/O 解析域名 -> Core 纯函数裂变)
   let fissionCount = 0;
   if (config.enableFission) {
     const beforeFission = currentProxies.length;
-    currentProxies = await expandDomainFission(currentProxies, config);
+    const domainIpsMap = await resolveProxiesDomains(currentProxies, config);
+    currentProxies = fissionNodes(currentProxies, domainIpsMap, config);
     fissionCount = Math.max(0, currentProxies.length - beforeFission);
   }
 
@@ -63,10 +65,12 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     return true;
   });
 
-  // 5. 重命名
+  // 5. 统一计算动态序号与重命名
   const templateCleaners = createSeparatorCleaners(config.renameSeparators);
   const renameTemplate = config.renameTemplate;
-  const isRenameEnabled = config.enableNodeRename !== false;
+  const isRenameEnabled = config.enableNodeRename !== false && config.enableStandardRename !== false;
+
+  const indexMap = computeNodeIndices(validItems, config);
 
   const resultProxies = validItems.map(item => {
     if (item.isSpecial || item.isInfo) return item.proxy;
@@ -84,11 +88,13 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       });
 
       const protocolIcon = PROTOCOL_ICONS[item.pType] || '';
+      const numStr = indexMap.get(item) || '';
+
       const vars = {
         airport: item.airportTag || '',
         icon: item.regionInfo.icon || '',
         region: item.regionInfo.name || '',
-        index: '',
+        index: numStr,
         features: featureStr,
         protocol: protocolIcon,
         multi: item.attrs?.multiStr || '',
