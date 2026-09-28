@@ -20,6 +20,7 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
     const config = {
       enableDashboard: true,
       enableDedupe: true,
+      removeInfoNodes: true,
       strictRegionMatch: false
     };
 
