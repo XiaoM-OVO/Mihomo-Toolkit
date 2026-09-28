@@ -132,9 +132,8 @@
 ### 6. `src/targets/` (多端适配入口)
 * **`targets/operator.js`**：导出 `operator(proxies, targetPlatform, userConfig)`，供 Sub-Store 使用。
 * **`targets/verge.js`**：导出 `main(config, extConfig)`，供 Clash Verge Rev 扩展脚本使用。
-* **`targets/cli.js`**：终端自动化构建命令行。
+* **`targets/cli.js`**：终端自动化构建命令行 (mtk / mihomo-tk / mihomo-toolkit)。
 * **`targets/server.js`**：常驻 HTTP 订阅服务器。
-* **`targets/worker.js`**：Cloudflare Worker 边缘函数。
 
 ---
 

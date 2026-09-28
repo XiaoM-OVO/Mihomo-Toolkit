@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const chineseConvert = require('../src/chinese-convert.js');
+const chineseConvert = require('../src/core/chinese-convert.js');
 
 describe('🔄 简繁中文全链路转换模块', () => {
   test('chineseConvert - 字符串简繁转换逻辑', () => {

@@ -12,7 +12,6 @@
   "scripts": {
     "start": "node src/targets/server.js",
     "test": "node --test --test-reporter=spec test/*.test.js",
-    "build:worker": "esbuild src/targets/worker.js --bundle --outfile=dist/worker.bundle.js --format=esm --target=es2020 --platform=neutral --external:opencc-js --external:./src/chinese-convert.js --external:./src/fetch-proxy.js",
     "build": "node src/targets/cli.js -c config.yaml -t config",
     "build:nodes": "node src/targets/cli.js -c config.yaml -t nodes",
     "build:report": "node src/targets/cli.js -c config.yaml -t report",
@@ -46,8 +45,5 @@
   },
   "optionalDependencies": {
     "opencc-js": "^1.4.2"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.1"
   }
 }
