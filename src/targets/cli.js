@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 const { program } = require('commander');
-const { buildProfile } = require('../pipeline/config');
+const { buildProfile } = require('../pipeline/engine');
 
 function run(argv = process.argv) {
   program
