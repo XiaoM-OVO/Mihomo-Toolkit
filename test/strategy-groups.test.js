@@ -168,4 +168,29 @@ describe('📦 策略组与分流拓扑构建模块 (strategy)', () => {
     const groupsDisabled = resultDisabled['proxy-groups'];
     assert.ok(!groupsDisabled.some(g => g.name.includes('看板')), '关闭看板时不得生成看板策略组');
   });
+
+  test('strategyMain - 策略组图标模式 (groupIconMode: both / icon)', () => {
+    const rawConfig = {
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
+      ]
+    };
+
+    // 1. both 模式：保留 Emoji，且追加在线 icon
+    const resBoth = strategyMain(rawConfig, {
+      groupIconMode: 'both',
+      iconRepoOrz: 'https://test-icon.com/',
+      minorNodeThreshold: 1
+    });
+    const hkBoth = resBoth['proxy-groups'].find(g => g.name.includes('自动选择'));
+    assert.ok(hkBoth && hkBoth.icon && hkBoth.icon.includes('test-icon.com'), 'both 模式应注入在线 icon 链接');
+
+    // 2. icon 模式：剔除 Emoji，重命名为纯文本，并替换 rules 引用
+    const resIcon = strategyMain(rawConfig, {
+      groupIconMode: 'icon',
+      minorNodeThreshold: 1
+    });
+    const autoIcon = resIcon['proxy-groups'].find(g => g.name === '自动选择');
+    assert.ok(autoIcon !== undefined, 'icon 模式应将「🚀 自动选择」重命名为「自动选择」');
+  });
 });
