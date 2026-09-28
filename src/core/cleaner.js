@@ -211,12 +211,15 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     }
     proxy.server = '127.0.0.1';
     proxy.port = 80;
-    return { isInfo: true, proxy, rawName, groupKey: 'info' };
+    return { isInfo: true, isSyntheticInfo: true, proxy, rawName, groupKey: 'info' };
   }
 
   // 2. 原生信息说明节点
   if (REGEX_INFO_NODE.test(rawName)) {
-    return { skip: true, rawName, blockReason: '信息说明' };
+    if (userConfig.removeInfoNodes) {
+      return { skip: true, rawName, blockReason: '信息说明' };
+    }
+    return { isInfo: true, proxy, rawName, groupKey: 'info' };
   }
 
   // 3. 白名单与自定义特殊节点
