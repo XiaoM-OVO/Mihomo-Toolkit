@@ -110,6 +110,39 @@ describe('📦 策略组与分流拓扑构建模块 (strategy)', () => {
     assert.ok(chatGptGroup.proxies.includes('自建专线-Xray'));
   });
 
+  test('strategyMain - 家宽节点注入测试 (residentialNodeGroups)', () => {
+    const rawConfig = {
+      proxies: [
+        { name: '🇭🇰 香港 01 家宽', type: 'ss', server: 'hk-resi.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇺🇸 美国 01 家宽', type: 'ss', server: 'us-resi.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' },
+        { name: '🇯🇵 日本 01 普通', type: 'ss', server: 'jp.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p3' }
+      ]
+    };
+
+    const userConfig = {
+      enableResidential: true,
+      enableAI: true,
+      residentialNodeGroups: {
+        'hk': ['🤖 ChatGPT'],
+        'all': ['🐱 GitHub']
+      },
+      minorNodeThreshold: 1
+    };
+
+    const result = strategyMain(rawConfig, userConfig);
+    const groups = result['proxy-groups'];
+    const chatGpt = groups.find(g => g.name === '🤖 ChatGPT');
+    const github = groups.find(g => g.name === '🐱 GitHub');
+
+    // ChatGPT 组仅注入了香港家宽
+    assert.ok(chatGpt.proxies.some(p => p.includes('香港') && p.includes('🏠')));
+    assert.ok(!chatGpt.proxies.some(p => p.includes('美国')));
+
+    // GitHub 组注入了所有家宽 (hk + us)
+    assert.ok(github.proxies.some(p => p.includes('香港') && p.includes('🏠')));
+    assert.ok(github.proxies.some(p => p.includes('美国') && p.includes('🏠')));
+  });
+
   test('strategyMain - 独立订阅看板策略组与主力组隔离测试 (enableDashboard)', () => {
     const rawConfig = {
       proxies: [

@@ -91,21 +91,23 @@ enableDashboard: true              # 生成高颜值订阅状态虚拟看板节�
 removeInfoNodes: true              # 自动过滤机场原生说明伪节点（避免与合成看板冲突）
 enableAirportTag: true             # 多订阅时自动为节点打上机场来源标签
 # strictRegionMatch: false         # 严格地区匹配模式
-# filterKeywords:                  # 自定义垃圾节点关键字硬拦截
-#   - "官网"
-#   - "群"
-# whitelistKeywords:               # 白名单豁免关键词（命中直接放行）
+# adTextThreshold: 6               # 纯文本广告判定阈值（无数字/线路特征且长度超过此值判定为广告）
+# whitelistKeywords:               # 白名单豁免关键词（包含即放行并保留原名）
+#   - "x-ray"
 #   - "自建"
+# blockKeywords: []                # 节点名黑名单关键词（包含即直接剔除）
+# blockServers: []                 # 节点服务器地址黑名单（包含即直接剔除）
 
 
 # ─────────────────────────────────────────────────────────────────────
 # ⑥ 域名多 IP 节点裂变（fission）
 # ─────────────────────────────────────────────────────────────────────
-# enableFission: false             # 开启单域名并发解析为多个 IP 独立节点
-# fissionMaxNodes: 3               # 单域名最大裂变节点数
-# fissionStack: "all"              # all=双栈 / ipv4=纯 IPv4 / ipv6=纯 IPv6
-# fissionKeywords:                 # 仅允许指定关键词的节点参与裂变（留空默认全量）
-#   - "优化"
+# enableFission: false             # 开启单域名并发解析为多个 IP 独立实体节点
+# fissionMaxNodes: 4               # 单域名最大裂变节点数
+# fissionStack: "all"              # all=双栈 / v4=纯 IPv4 / v6=纯 IPv6
+# fissionExcludeKeywords:          # 包含这些关键词的节点跳过裂变
+#   - "负载均衡"
+#   - "故障转移"
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -113,37 +115,217 @@ enableAirportTag: true             # 多订阅时自动为节点打上机场来�
 # ─────────────────────────────────────────────────────────────────────
 enableNodeRename: true             # 是否启用节点重命名（设为 false 可原样保留节点名称，且不影响地区识别）
 showFeatureIcon: true              # 是否在节点名后追加特征 Emoji 图标 (如 🚀 4K 等)
-# renameTemplate: "{icon} {region} {index} {features} {in}{city}{line}{ip_stack}{transport} {multi}"
+# renameTemplate: "{icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
+# 命名模板可用变量:
+#   {airport}   机场标签前缀 (如 [AirportA])
+#   {icon}      国家/地区国旗 Emoji (如 🇭🇰, 🇯🇵)
+#   {region}    国家/地区中文名称 (如 香港, 日本)
+#   {index}     按大区与订阅前缀自动补零序号 (如 01, L01)
+#   {features}  特征图标/说明 (如 🤖, 🏠, 📺)
+#   {protocol}  协议 Emoji (如 🛸, 🦊, 🐴)
+#   {in}        入口城市 (如 深, 沪, 京)
+#   {city}      落地城市 (如 洛杉矶, 东京)
+#   {line}      线路特征 (如 BGP, IPLC, CN2)
+#   {multi}     节点倍率数值 (如 x0.5, x2.0)
+#   {ip_stack}  IP栈标识 (如 IPv6, 双栈)
+#   {transport} 传输协议 (如 WS, GRPC)
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑧ 策略组与拓扑控制（profile）
+# ⑧ 策略组总控与拓扑模式（profile）
 # ─────────────────────────────────────────────────────────────────────
+# 核心策略总控
+proxyFirst: true                   # true=海外代理优先 / false=国内直连优先
+defaultProxyMode: "manual"         # auto (自动测速) | manual (手动选择) | fallback (故障转移) | direct | reject
+regionGroupType: "url-test"        # 地区策略组类型: url-test (测速优选) | select (手动选择) | fallback (故障转移)
+# minorNodeThreshold: 3            # 小众地区独立建组最小节点数（低于此值自动折叠至大洲组）
+# hideGarbageGroup: false          # 是否在面板中隐藏「🗑️ 未知识别」组
+
+# 基础应用策略组开关
 enableAI: true                     # 启用独立 AI 策略组 (ChatGPT, Claude, Gemini, Copilot 等)
 enableStreaming: true              # 启用独立流媒体策略组 (YouTube, Netflix, Disney+, Spotify 等)
 enableSocial: true                 # 启用社交应用策略组 (Telegram, Twitter 等)
 enableGame: true                   # 启用游戏平台策略组 (Steam, Epic, PlayStation 等)
 enableGitHub: true                 # 启用 GitHub 极速策略组
-enableScholar: false               # 启用学术资源策略组
-enableDomesticGroup: false         # 启用中国大陆分流策略组
-enableAdBlock: true                # 启用内置轻量广告拦截策略组
-# isolateHighMulti: true           # 隔离大倍率节点（>2.0x 自动移入高倍率专属组，防止偷跑流量）
-# isolateExperimental: true       # 隔离实验/不稳定协议节点
+enableScholar: false               # 启用学术资源策略组 (Google Scholar, Sci-Hub 等)
+enableDomesticGroup: false         # 启用中国大陆分流策略组 (🇨🇳 中国分流)
+enableAdBlock: true                # 启用内置轻量广告拦截策略组 (🚫 广告拦截)
+enableAntiAD: false                # 启用激进广告拦截规则集 (anti-ad)
+enableTelegram: true               # Telegram 独立分流策略组
+# enableCrypto: false              # 启用加密货币交易所分流策略组
+# enablePayPal: false              # 启用 PayPal 独立分流策略组
+# enableWebRTC: false              # 启用 WebRTC 专项分流策略组
+
+# 高级节点隔离
+# lowMultiThreshold: 0.99          # 倍率 <= 此值的节点自动标记为下载节点 (0 关闭)
+# isolateDownload: false           # true=将下载节点从普通大区池中剔除，聚合入「⏬ 下载策略」组
+# isolateHighMulti: false          # true=将高倍率节点从普通大区池中剔除，聚合入「🚀 高倍率优选」组
+# highMultiThreshold: 2.5          # 高倍率判定阈值
+# isolateExperimental: false       # true=将含测试/实验/备用字样的节点剔除聚合入「🧪 实验节点」组
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑨ 测速与分流规则
+# ⑨ 动态服务注册表（增删 key 即开关对应策略组）
 # ─────────────────────────────────────────────────────────────────────
-testTolerance: 50                  # 节点切换延迟容忍度 (ms)
+# 🤖 AI 助手服务列表 (需开启 enableAI: true)
+aiServices:
+  - chatgpt
+  - gemini
+  - claude
+  - copilot
+aiPreferredRegions:                # AI 策略组地区保底优先列表 (默认无专属节点时兜底)
+  - us
+  - jp
+  - tw
+  - sg
+  - kr
+  - eu
+
+# 📺 流媒体服务列表 (需开启 enableStreaming: true)
+streamingServices:
+  - youtube
+  - netflix
+  - disney
+  - bilibili
+  - tiktok
+  - spotify
+  - bahamut
+  - pixiv
+  - twitch
+# biliPreferredRegions:            # Bili 港澳台专属优选用组 (默认: 台湾、澳门、香港)
+#   - "🇹🇼 台湾节点"
+#   - "🇲🇴 澳门节点"
+#   - "🇭🇰 香港节点"
+
+# 💬 海外社交平台服务列表 (需开启 enableSocial: true)
+socialServices:
+  - twitter
+  - facebook
+  - instagram
+  - discord
+independentSocial:                 # 独立成组的社交应用 (其余自动合并到「💬 社交平台」)
+  - twitter
+
+# 🎮 游戏平台服务列表 (需开启 enableGame: true)
+gameServices:
+  - steam
+  - epic
+  - riot
+  - blizzard
+  - nintendo
+  - playstation
+  - xbox
+  - ubisoft
+  - origin
+  - ea
+
+# 🪟 操作系统基础云服务列表
+enableSystemServices: true
+systemServices:
+  - microsoft
+  - apple
+  - google
+
+# 🧩 用户自定义服务注册表（无限自由扩展）
+# customServices:
+#   ai:
+#     deepseek:
+#       name: "🧠 DeepSeek"
+#       uiIcon: "🧠"
+#       reg: "/\\b(?:DeepSeek|DS)\\b/i"
+#       provider: "geosite/deepseek"
+#       ruleSet: "deepseek"
+#       cleanName: "DeepSeek"
+#   streaming:
+#     hbo:
+#       name: "🎬 HBO Max"
+#       cleanName: "HBO"
+#       provider: "geosite/hbomax"
+#       reg: "/\\b(?:HBO|HBOMax)\\b/i"
+#       pool: "hbo"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ⑩ 节点自定义分组与家宽注入
+# ─────────────────────────────────────────────────────────────────────
+# 🎯 自定义节点分组：将包含特定关键词的节点追加到指定策略组
+#    键 = 关键词 (不区分大小写匹配节点名)，值 = 目标策略组数组
+# customNodeGroups:
+#   "xray": ["🤖 ChatGPT", "♊ Gemini", "🔍 Google"]
+#   "自建": ["📍 手动选择", "🐱 GitHub"]
+
+# 🏠 家宽节点注入 (需开启 enableResidential: true)
+# enableResidential: false         # 家宽节点独立成组「🏠 家宽优选」，不混入普通池
+# residentialNodeGroups:           # 将家宽节点注入到应用策略组：键=地区("all"或"hk"/"us")，值=策略组列表
+#   "all": ["🤖 ChatGPT", "♊ Gemini"]
+#   "hk": ["🤖 ChatGPT"]
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ⑪ 进程级分流名单与自定义分流规则
+# ─────────────────────────────────────────────────────────────────────
+# 🛑 BT / P2P 下载软件直连防封号
+enableProcessDirect: true          # P2P/BT 强制直连
+# processDirectWin:                # Windows 强制直连进程名单 (覆写默认)
+#   - qBittorrent
+#   - Thunder
+#   - BitComet
+#   - uTorrent
+#   - aria2c
+# processProxyWin:                 # Windows 强制走下载策略的工具
+#   - IDMan
+#   - fdm
+
+# 🎯 自定义路由规则与 Rule-Providers (注入到 MATCH 之前，优先级最高)
+# customRules:
+#   - "DOMAIN-SUFFIX,company.internal,DIRECT"
+#   - "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve"
+#   - "RULE-SET,my-custom-rules,📍 手动选择"
+# customRuleProviders:
+#   my-custom-rules:
+#     type: http
+#     behavior: domain
+#     url: "https://example.com/my-rules.yaml"
+#     path: ./ruleset/my-rules.yaml
+#     interval: 86400
+#     format: yaml
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ⑫ 测速与规则集
+# ─────────────────────────────────────────────────────────────────────
+testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，防止频繁颠簸)
 # testInterval: 300                # 自动健康检查测速间隔 (秒)
 # testURL: "https://cp.cloudflare.com/generate_204"
-# useMRS: true                     # 启用 Mihomo Rule-Set 极速二进制规则集
+# useMRS: true                     # 启用 Mihomo Rule-Set 极速二进制规则集格式 (节省内存)
+# ruleProviderCDN: "https://fastly.jsdelivr.net/gh" # 规则集加速 CDN 前缀
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑩ DNS 与内核性能覆写
+# ⑬ DNS 高级覆写与防泄漏模式
 # ─────────────────────────────────────────────────────────────────────
-# overwriteDns: true               # 注入防泄漏 Fake-IP / DoH DNS 方案
-# overwriteTun: true               # 注入 TUN 虚拟网卡配置
-# overwriteSniffer: true           # 注入域名嗅探器配置
-# enableCoreOptimize: true         # 开启客户端指纹伪装与内核性能调优
+# overwriteDns: true               # 注入权威防泄漏 DNS
+# dnsMergeMode: "secure"           # secure=权威覆写(脚本配置绝对优先) / merge=订阅优先(保留原订阅配置并补缺) / passthrough=完全透传跳过覆写
+# dnsListen: "127.0.0.1:1053"      # 本地 DNS 监听端口 (软路由可改为 "0.0.0.0:53")
+# dnsDefault:                      # 基础解析 DNS
+#   - "223.5.5.5"
+#   - "119.29.29.29"
+# dnsDirect:                       # 直连域名 DoH
+#   - "https://223.5.5.5/dns-query"
+#   - "https://120.53.53.53/dns-query"
+# dnsProxy:                        # 海外代理域名 DoH
+#   - "https://8.8.8.8/dns-query"
+#   - "https://1.1.1.1/dns-query"
+# dnsServer:                       # 节点域名专用解析 DNS (不受分流影响)
+#   - "https://223.5.5.5/dns-query"
+#   - "https://119.29.29.29/dns-query"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# ⑭ 内核优化与网络安全
+# ─────────────────────────────────────────────────────────────────────
+# enableTrafficAudit: true         # 审计非标端口流量，非 53/80/443 强制直连
+enableQUICReject: true             # 屏蔽海外 UDP 443 (QUIC)，强制降级 TCP 保证画质与速度
+# overwriteTun: true               # 注入高性能 TUN 虚拟网卡配置
+# overwriteSniffer: true           # 注入域名嗅探器配置 (强制精确嗅探 TLS/HTTP)
+# enableCoreOptimize: true         # 启用内核层全面性能调优与指纹伪装

@@ -356,6 +356,30 @@ function buildProxyTopology({
     }
   }
 
+  // 🏠 家宽节点注入：将指定地区的家宽节点追加到目标应用组
+  if (userConfig.enableResidential && userConfig.residentialNodeGroups && buckets.residential.length > 0) {
+    const resiGroups = userConfig.residentialNodeGroups;
+    const existingGroupNames = new Set(finalGroups.map(g => g.name));
+    const allResiNodes = buckets.residential;
+    const resiRegionMap = buckets.resiRegionMap || {};
+    for (const [regionKey, targetGroups] of Object.entries(resiGroups)) {
+      if (!regionKey || !Array.isArray(targetGroups)) continue;
+      let nodesToInject = allResiNodes;
+      if (regionKey !== 'all') {
+        nodesToInject = resiRegionMap[regionKey] || [];
+      }
+      if (nodesToInject.length === 0) continue;
+      for (const targetName of targetGroups) {
+        if (!existingGroupNames.has(targetName)) continue;
+        const group = finalGroups.find(g => g.name === targetName);
+        if (group && group.proxies) {
+          const existing = new Set(group.proxies);
+          nodesToInject.forEach(n => { if (!existing.has(n)) group.proxies.push(n); });
+        }
+      }
+    }
+  }
+
   return {
     proxyGroups: finalGroups,
     buckets
