@@ -1,0 +1,332 @@
+/**
+ * 节点深度清洗、安全拦截与属性提取器
+ *
+ * 负责广告与引流节点拦截、虚假IP与假密码过滤、倍率/线路/入口识别打标。
+ */
+
+const { escapeRegex, matchNodeRegion, extractCity } = require('./geo');
+const { getEnhancedRegionDefs } = require('./shared/regions');
+const { FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
+
+const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
+const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过期|更新公告|重置|维护|不可用|扣费|节点说明|防失联|官网|地址|Q群|电报|Tg群|距离下次/i;
+const REGEX_FORBID_DL_STR = '(?:禁止|禁|严禁|请勿|勿|不要|不能|拒绝|屏蔽|防)(?:BT|PT|P2P|下载|测速|迅雷)|(?:仅限|仅供)(?:网页|日常|聊天)|\\b(?:No|Block|Ban)[\\s\\-_]*(?:BT|PT|Torrent|Download)\\b';
+const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)`, 'ig');
+const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, 'i');
+
+// 入口城市关键词
+const ENTRY_CITIES = ['深','深圳','广','广州','上海','沪','京','北京','杭','杭州','四川','川','渝','重庆','辽','莞','东莞','苏','江苏','无锡','鲁','徐','湘','宁','南京','汉','武汉','穗','港','香港','台','台湾','日本','日','新加坡','英国','英','韩国','韩','美国','美','Ingress'];
+const EXIT_REGIONS = ['港','台','美','日','韩','新','英','德','法','俄','印','澳','狮城','多伦多','芝加哥','中','台湾','日本','新加坡','上海','沪','广','深','Exit','Destination'];
+
+const entryPattern = ENTRY_CITIES.map(escapeRegex).join('|');
+const exitPattern = EXIT_REGIONS.map(escapeRegex).join('|');
+const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:-|->|—|=|>)\\s*(?=${exitPattern})|(?=${exitPattern}))`, 'i');
+
+// 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
+const REGEX_MULTI = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率)(?!\s*\d))/i;
+
+// 识别线路类型与营销标识
+const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMI|CMIN2|CUG|PCCW|9929|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|专线)/gi;
+const REGEX_TECH_LINE_TEST = new RegExp(REGEX_TECH_LINE.source, 'i');
+const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
+const REGEX_FLUFF_LINE_TEST = new RegExp(REGEX_FLUFF_LINE.source, 'i');
+
+const LINE_MAP = { CTCUCM: '三网', CTCUM: '三网', CTCU: '电联', CUCT: '电联', CMCU: '移联', CUCM: '移联', CTCM: '电移', CMCT: '电移' };
+const CN_MAP = { 移动: '移', 联通: '联', 电信: '电' };
+
+const TAG_MAP = {
+  深: '深', 深圳: '深', SZX: '深', 广: '广', 广州: '广', CAN: '广',
+  上海: '沪', 沪: '沪', PVG: '沪', SHA: '沪', 京: '京', 北京: '京',
+  PEK: '京', PKX: '京', 杭: '杭', 杭州: '杭', HGH: '杭',
+  四川: '川', 川: '川', 渝: '渝', 重庆: '渝', 东莞: '莞', 莞: '莞',
+  南京: '宁', 宁: '宁', 成都: '蓉', 武汉: '汉', 汉: '汉', 鲁: '鲁', 苏: '苏', 江苏: '苏',
+  港: '港', 香港: '港', 台: '台', 台湾: '台', 日: '日', 日本: '日', 新加坡: '新',
+  韩: '韩', 韩国: '韩', 英: '英', 英国: '英', 美: '美', 美国: '美'
+};
+
+function dedupe(arr) {
+  return [...new Set(arr)];
+}
+
+/**
+ * 基础节点名称清洗（去除零宽字符、非国旗 Emoji、空白折叠）
+ * @param {string} rawName
+ * @returns {string}
+ */
+function sanitizeNodeName(rawName) {
+  if (!rawName || typeof rawName !== 'string') return '';
+  let name = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, '');
+  name = name.replace(/\p{Extended_Pictographic}/gu, m => {
+    const cp = m.codePointAt(0);
+    if (cp >= 0x1F1E6 && cp <= 0x1F1FF) return m; // 国旗
+    if (cp === 0x1F3E0) return m; // 🏠 家宽
+    return '';
+  });
+  name = name.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, '');
+  name = name.replace(/[\u2190-\u21FF\u2460-\u24FF\u2500-\u27BF\u2B00-\u2BFF]/g, ' ');
+  return name.replace(REGEX_CLEANUP, '').trim();
+}
+
+/**
+ * 三网/两网运营商压缩
+ */
+function compressLineArr(arr) {
+  const FULL_SET = new Set(['电信', '移动', '联通']);
+  const SHORT_MAP = { 电信: '电', 移动: '移', 联通: '联' };
+  const atomSet = new Set(Object.values(SHORT_MAP));
+  const comboMap = {
+    电联: new Set(['电', '联']),
+    移联: new Set(['移', '联']),
+    电移: new Set(['电', '移']),
+    三网: new Set(['移', '联', '电'])
+  };
+
+  const deduped = dedupe(arr);
+  const carrierItems = [];
+  const nonCarrierItems = [];
+
+  for (const item of deduped) {
+    if (FULL_SET.has(item) || atomSet.has(item)) {
+      carrierItems.push(SHORT_MAP[item] || item);
+    } else {
+      nonCarrierItems.push(item);
+    }
+  }
+
+  if (carrierItems.length === 0) return nonCarrierItems;
+
+  const currentAtoms = new Set(carrierItems);
+  for (const [comboName, atomGroup] of Object.entries(comboMap)) {
+    if (Array.from(atomGroup).every(atom => currentAtoms.has(atom))) {
+      return [comboName, ...nonCarrierItems];
+    }
+  }
+  return [...carrierItems, ...nonCarrierItems];
+}
+
+/**
+ * 提取节点属性 (倍率、入口城市、线路特征)
+ * @param {string} name
+ * @param {object} [userConfig={}]
+ */
+function extractNodeAttributes(name, userConfig = {}) {
+  const attrs = { multiNum: 1.0, multiStr: '', entryStr: '', lineArr: [], isLowMulti: false };
+
+  // 1. 提取入口城市
+  let cleanName = name.replace(REGEX_ENTRY_CITY, (match, p1) => {
+    const m = p1.replace(/[-|>至=\s]/g, '');
+    attrs.entryStr = TAG_MAP[m.toUpperCase()] || TAG_MAP[m] || m;
+    return '';
+  });
+
+  // 2. 提取倍率
+  cleanName = cleanName.replace(REGEX_MULTI, (m, m1, m2, m3) => {
+    const num = parseFloat(m1 || m2 || m3);
+    if (!isNaN(num)) {
+      attrs.multiNum = num;
+      if (num !== 1) attrs.multiStr = `x${num}`;
+      if (userConfig.lowMultiThreshold > 0 && num <= userConfig.lowMultiThreshold) {
+        attrs.isLowMulti = true;
+      }
+    }
+    return '';
+  });
+
+  // 3. 提取线路类型
+  cleanName = cleanName.replace(REGEX_TECH_LINE, match => {
+    const key = match.toUpperCase();
+    let short = LINE_MAP[key];
+    if (!short) {
+      const cnKey = Object.keys(CN_MAP).find(k => match.includes(k));
+      if (cnKey) short = cnKey;
+    }
+    if (short) attrs.lineArr.push(short);
+    else if (match.length >= 2) attrs.lineArr.push(key);
+    return '';
+  });
+
+  attrs.lineArr = compressLineArr(attrs.lineArr);
+
+  // 4. 提取营销标识
+  let fluffStr = '';
+  cleanName = cleanName.replace(REGEX_FLUFF_LINE, match => {
+    fluffStr += match.toUpperCase();
+    return '';
+  });
+
+  attrs.cleanLines = dedupe(attrs.lineArr).join('/');
+  const fullLineStr = attrs.cleanLines + fluffStr;
+  attrs.bestLineWeight = /(IEPL|IPLC)/.test(fullLineStr) ? 1 :
+                        /(GIA|CN2|9929|CMIN2)/.test(fullLineStr) ? 2 :
+                        /(专线|VIP|PRO|高速|极速|优化|PREMIUM)/.test(fullLineStr) ? 3 :
+                        /(BGP|CMI)/.test(fullLineStr) ? 4 :
+                        /(中转|隧道)/.test(fullLineStr) ? 5 : 6;
+
+  return { attrs, cleanName };
+}
+
+/**
+ * 拦截与阻断判定
+ */
+function checkNodeBlockReason(proxy, rawName, userConfig = {}) {
+  const isFakeServer = /^(?:127\.|0\.|10\.|192\.168\.|(?:1\.1\.1\.1|8\.8\.8\.8)(?:$|:))/.test(proxy.server || '') || proxy.port === 0;
+  const isDummyAuth = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i.test(proxy.uuid || proxy.password || '');
+  const isAdTypo = /防.{0,3}失|失.{0,3}联|地.{0,3}[址止]|官.{0,3}[网罔]|发.{0,3}[布步]|交.{0,3}流|群.{0,3}组|客.{0,3}服|定.{0,3}制/i.test(rawName)
+    || (
+      /(?:特惠|促销|优惠|不限速|大促|套餐)/.test(rawName) &&
+      /(?:元|块|折|¥|售\s*\d+(?:\.\d+)?|价\s*\d+(?:\.\d+)?|\d+G)/i.test(rawName)
+    );
+
+  const adThreshold = userConfig.adTextThreshold ?? 6;
+  const tempName = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, '')
+    .replace(REGEX_ALL_FLAGS, '')
+    .replace(/[\[\]{}()<>【】]/g, '')
+    .trim();
+
+  const isOrphanAd = !(/\d/.test(tempName) || REGEX_TECH_LINE_TEST.test(tempName) || REGEX_FLUFF_LINE_TEST.test(tempName)) &&
+    tempName.replace(/\p{Extended_Pictographic}/gu, '').trim().length > adThreshold;
+
+  if (isFakeServer) return '假IP';
+  if (isDummyAuth) return '假密码';
+  if (isAdTypo) return '广告词';
+  if (isOrphanAd) return `超长文本(>${adThreshold})`;
+
+  return '';
+}
+
+/**
+ * 核心节点分类打标函数
+ * @param {object} proxy
+ * @param {object} userConfig
+ * @param {object} [options={}]
+ */
+function classifyNode(proxy, userConfig = {}, options = {}) {
+  const rawName = proxy._rawName || proxy.name || '';
+  const defs = options.regionDefs || getEnhancedRegionDefs();
+
+  // 1. 虚拟信息节点优先处理
+  if (proxy.isSyntheticInfo) {
+    if (userConfig.enableDashboard === false) {
+      return { skip: true, rawName, blockReason: '看板关闭' };
+    }
+    proxy.server = '127.0.0.1';
+    proxy.port = 80;
+    return { isInfo: true, proxy, rawName, groupKey: 'info' };
+  }
+
+  // 2. 原生信息说明节点
+  if (REGEX_INFO_NODE.test(rawName)) {
+    return { skip: true, rawName, blockReason: '信息说明' };
+  }
+
+  // 3. 白名单与自定义特殊节点
+  const tempNameLower = rawName.toLowerCase();
+  const subTagLower = (proxy._subTag || '').toLowerCase();
+  const whitelist = (userConfig.whitelistKeywords || []).map(k => k.toLowerCase());
+
+  let isSpecial = false;
+  let specialTargetName = '';
+
+  if (whitelist.some(k => tempNameLower.includes(k) || (subTagLower && subTagLower === k))) {
+    isSpecial = true;
+    specialTargetName = proxy.name;
+  }
+
+  if (!isSpecial && Array.isArray(userConfig.specialNodeRules) && userConfig.specialNodeRules.length > 0) {
+    const match = userConfig.specialNodeRules.find(r => r.reg && r.reg.test(rawName));
+    if (match) {
+      isSpecial = true;
+      specialTargetName = match.targetName || proxy.name;
+    }
+  }
+
+  if (isSpecial) {
+    proxy.name = specialTargetName || proxy.name;
+    return {
+      proxy,
+      rawName,
+      isSpecial: true,
+      groupKey: 'special',
+      tags: [],
+      featurePools: [],
+      attrs: { multiNum: 1.0, multiStr: '', entryStr: '', lineArr: [], cleanLines: '' }
+    };
+  }
+
+  // 4. 垃圾与广告拦截判定
+  const blockReason = checkNodeBlockReason(proxy, rawName, userConfig);
+  if (blockReason) {
+    return { skip: true, rawName, blockReason };
+  }
+
+  // 5. 字符清洗与属性提取
+  const sanitized = sanitizeNodeName(rawName);
+  const isForbidDownload = REGEX_FORBID_DL.test(rawName);
+  const { attrs, cleanName } = extractNodeAttributes(sanitized, userConfig);
+
+  // 6. 地区与城市匹配
+  let regionInfo = matchNodeRegion(sanitizeNodeName(proxy.name), defs, userConfig);
+  if (!regionInfo) regionInfo = matchNodeRegion(cleanName, defs, userConfig);
+
+  let destCity = '';
+  if (regionInfo && regionInfo.city) {
+    destCity = extractCity(rawName, regionInfo);
+  }
+
+  // 7. 特征提取与打标
+  const tags = new Set();
+  const featurePools = [];
+
+  if (regionInfo) {
+    // 住宅/家宽
+    if (/(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home)/i.test(rawName)) {
+      tags.add('residential');
+      featurePools.push('residential');
+    }
+    // 游戏
+    if (/(?:游戏|🎮)|\b(?:Game|FullCone)\b/i.test(rawName)) {
+      tags.add('game');
+      featurePools.push('game');
+    }
+    // 流媒体
+    if (/(?:流媒体|解锁|📺|Netflix|YouTube|Disney|Spotify|TikTok)/i.test(rawName)) {
+      tags.add('streaming');
+    }
+    // 低倍率 / 下载
+    if (attrs.isLowMulti && !isForbidDownload) {
+      tags.add('download');
+    }
+    // 实验节点
+    if (/(?:测试|实验|备用|测速)/i.test(rawName)) {
+      tags.add('experimental');
+    }
+  }
+
+  const pType = String(proxy.type || '').toLowerCase();
+  const network = String(proxy.network || '').toLowerCase();
+  const transportTag = (network && network !== 'tcp') ? network.toUpperCase() : '';
+
+  const groupKey = regionInfo ? (regionInfo.id || regionInfo.name) : 'garbage';
+
+  return {
+    proxy,
+    rawName,
+    regionInfo,
+    destCity,
+    tags: Array.from(tags),
+    featurePools,
+    pType,
+    transportTag,
+    attrs,
+    groupKey,
+    isGarbage: !regionInfo
+  };
+}
+
+module.exports = {
+  sanitizeNodeName,
+  compressLineArr,
+  extractNodeAttributes,
+  checkNodeBlockReason,
+  classifyNode
+};
