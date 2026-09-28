@@ -10,14 +10,15 @@ const { classifyNode } = require('../core/cleaner');
 const { renderTemplate, createSeparatorCleaners } = require('../core/rename');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../core/shared/icons');
+const { expandDomainFission } = require('../core/fission');
 
 /**
  * 执行纯净节点清洗流水线
  * @param {Array<object>} proxies 原始节点数组
  * @param {object} [userConfig={}] 用户自定义配置
- * @returns {Array<object>} 清洗后的纯净节点数组
+ * @returns {Promise<Array<object>>} 清洗后的纯净节点数组
  */
-function runPurePipeline(proxies = [], userConfig = {}) {
+async function runPurePipeline(proxies = [], userConfig = {}) {
   const config = resolveConfig(userConfig);
   let currentProxies = Array.isArray(proxies) ? proxies : [];
 
@@ -26,18 +27,24 @@ function runPurePipeline(proxies = [], userConfig = {}) {
     currentProxies = dedupeNodes(currentProxies);
   }
 
-  // 2. 深度清洗打标
+  // 2. 域名多 IP 节点裂变
+  if (config.enableFission) {
+    currentProxies = await expandDomainFission(currentProxies, config);
+  }
+
+  // 3. 深度清洗打标
   const regionDefs = getEnhancedRegionDefs();
   const classified = currentProxies.map(p => classifyNode(p, config, { regionDefs }));
 
-  // 3. 过滤被阻断或垃圾节点
+  // 4. 过滤被阻断或垃圾节点
   const validItems = classified.filter(item => {
     if (item.skip) return false;
-    if (config.removeInfoNodes && item.isInfo) return false;
+    // 只有原生说明节点受 removeInfoNodes 控制，合成信息节点 (isSyntheticInfo) 永远放行
+    if (config.removeInfoNodes && item.isInfo && !item.isSyntheticInfo) return false;
     return true;
   });
 
-  // 4. 重命名
+  // 5. 重命名
   const templateCleaners = createSeparatorCleaners(config.renameSeparators);
   const renameTemplate = config.renameTemplate;
   const isRenameEnabled = config.enableNodeRename !== false;

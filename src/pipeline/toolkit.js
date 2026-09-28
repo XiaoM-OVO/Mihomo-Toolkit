@@ -43,9 +43,27 @@ function runToolkitPipeline(config = {}, extConfig = {}) {
   const renameTemplate = userConfig.renameTemplate;
   const isRenameEnabled = userConfig.enableNodeRename !== false;
 
+  const regionCounts = {};
+  classifiedNodes.forEach(item => {
+    if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
+    const rKey = item.regionInfo.id || item.regionInfo.name;
+    regionCounts[rKey] = (regionCounts[rKey] || 0) + 1;
+  });
+  const maxCount = Math.max(...Object.values(regionCounts), 9);
+  const indexPad = Math.max(2, maxCount.toString().length);
+  const regionTracker = {};
+
   classifiedNodes.forEach(item => {
     if (item.skip || item.isSpecial || item.isInfo) return;
     if (!item.regionInfo) return;
+
+    const rKey = item.regionInfo.id || item.regionInfo.name;
+    const total = regionCounts[rKey] || 1;
+    let numStr = '';
+    if (total > 1) {
+      regionTracker[rKey] = (regionTracker[rKey] || 0) + 1;
+      numStr = String(regionTracker[rKey]).padStart(indexPad, '0');
+    }
 
     if (isRenameEnabled && renameTemplate) {
       let featureStr = '';
@@ -63,7 +81,7 @@ function runToolkitPipeline(config = {}, extConfig = {}) {
         airport: item.airportTag || '',
         icon: item.regionInfo.icon || '',
         region: item.regionInfo.name || '',
-        index: '',
+        index: numStr,
         features: featureStr,
         protocol: protocolIcon,
         multi: item.attrs?.multiStr || '',

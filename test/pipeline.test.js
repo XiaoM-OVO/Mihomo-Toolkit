@@ -3,14 +3,14 @@ const assert = require('node:assert/strict');
 
 const { runPurePipeline, runToolkitPipeline } = require('../src/pipeline');
 
-test('🚀 流水线单元测试 - runPurePipeline 节点清洗', () => {
+test('🚀 流水线单元测试 - runPurePipeline 节点清洗', async () => {
   const proxies = [
     { name: '🇭🇰 香港 01 BGP', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u1' },
     { name: '防失联官网：http://test.com', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u2' }, // 广告 -> 被剔除
     { name: '🇭🇰 香港 01 BGP', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u1' } // 重复 -> 去重
   ];
 
-  const cleaned = runPurePipeline(proxies, { enableDedupe: true });
+  const cleaned = await runPurePipeline(proxies, { enableDedupe: true, removeInfoNodes: true });
   assert.equal(cleaned.length, 1);
   assert.ok(cleaned[0].name.includes('香港'));
 });
