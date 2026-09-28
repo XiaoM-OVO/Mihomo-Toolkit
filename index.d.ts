@@ -7,14 +7,8 @@
 // 基础枚举与联合类型
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type TargetType = 'full' | 'pure' | 'toolkit';
-export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug';
-export type RedactLevel = 'off' | 'partial' | 'full';
-export type ProxyStrategy = 'direct' | 'proxy' | 'auto';
-export type FissionStack = 'all' | 'v4' | 'v6';
-export type IpEnrichMode = 'missing' | 'all';
-export type ChineseConvertMode = 's2t' | 't2s';
-export type OutputMode = 'clash' | 'surge' | 'loon' | 'singbox' | 'object';
+export type OutputMode = 'config' | 'nodes' | 'report' | 'full' | 'cleaner' | 'meta';
+export type TargetType = OutputMode;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 订阅配置项
@@ -218,11 +212,17 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   enableChineseConvert?: boolean;
   /** 简繁转换输出模式：s2t (输出繁体) | t2s (输出简体) */
   chineseConvertMode?: ChineseConvertMode;
+  /** 交付输出形态：'config' (默认完整配置) | 'nodes' (纯节点) | 'report' (审计报告) */
+  outputMode?: OutputMode;
+  /** 仅在 config 模式下生效：true=透传保留原订阅的 rules/dns/tun 等，仅替换 proxies 为洗白节点 */
+  passthrough?: boolean;
+  preserveRawConfig?: boolean;
 
-  // 模块专属独立子配置（可选，合并覆盖根级同名字段）
+  // 模块专属独立子配置（可选，推荐直接扁平写在根级）
+  cleanerConfig?: PureConfig;
+  profileConfig?: ToolkitConfig;
   pureConfig?: PureConfig;
   toolkitConfig?: ToolkitConfig;
-  outputMode?: OutputMode;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

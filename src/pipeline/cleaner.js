@@ -13,23 +13,30 @@ const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../core/sha
 const { expandDomainFission } = require('../core/fission');
 
 /**
- * 执行纯净节点清洗流水线
+ * 执行节点清洗与标准化流水线
  * @param {Array<object>} proxies 原始节点数组
  * @param {object} [userConfig={}] 用户自定义配置
  * @returns {Promise<Array<object>>} 清洗后的纯净节点数组
  */
-async function runPurePipeline(proxies = [], userConfig = {}) {
+async function runCleanerPipeline(proxies = [], userConfig = {}) {
   const config = resolveConfig(userConfig);
   let currentProxies = Array.isArray(proxies) ? proxies : [];
+  const totalCount = currentProxies.length;
 
   // 1. 物理特征去重
+  let dedupeCount = 0;
   if (config.enableDedupe) {
+    const beforeDedupe = currentProxies.length;
     currentProxies = dedupeNodes(currentProxies);
+    dedupeCount = beforeDedupe - currentProxies.length;
   }
 
   // 2. 域名多 IP 节点裂变
+  let fissionCount = 0;
   if (config.enableFission) {
+    const beforeFission = currentProxies.length;
     currentProxies = await expandDomainFission(currentProxies, config);
+    fissionCount = Math.max(0, currentProxies.length - beforeFission);
   }
 
   // 3. 深度清洗打标
@@ -37,10 +44,22 @@ async function runPurePipeline(proxies = [], userConfig = {}) {
   const classified = currentProxies.map(p => classifyNode(p, config, { regionDefs }));
 
   // 4. 过滤被阻断或垃圾节点
+  let discardedCount = 0;
+  let infoCount = 0;
+  let unknownCount = 0;
+
   const validItems = classified.filter(item => {
-    if (item.skip) return false;
-    // 只有原生说明节点受 removeInfoNodes 控制，合成信息节点 (isSyntheticInfo) 永远放行
-    if (config.removeInfoNodes && item.isInfo && !item.isSyntheticInfo) return false;
+    if (item.skip) {
+      discardedCount++;
+      return false;
+    }
+    if (item.isInfo) {
+      infoCount++;
+      if (config.removeInfoNodes && !item.isSyntheticInfo) return false;
+    }
+    if (!item.regionInfo || item.regionInfo.isUnknown) {
+      unknownCount++;
+    }
     return true;
   });
 
@@ -89,9 +108,26 @@ async function runPurePipeline(proxies = [], userConfig = {}) {
     return item.proxy;
   });
 
+  if (config.outputMode === 'object') {
+    const stats = {
+      total: totalCount,
+      outputCount: resultProxies.length,
+      dedupeCount,
+      discardedCount,
+      infoCount,
+      unknownCount,
+      fissionCount
+    };
+    return {
+      proxies: resultProxies,
+      meta: { stats }
+    };
+  }
+
   return resultProxies;
 }
 
 module.exports = {
-  runPurePipeline
+  runCleanerPipeline,
+  runNodePipeline: runCleanerPipeline
 };

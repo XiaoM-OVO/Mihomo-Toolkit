@@ -1,10 +1,10 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const yaml = require('yaml');
-const { buildProfile } = require('../src/builder.js');
+const { buildProfile } = require('../src/index.js');
 
 describe('🔨 端到端构建流程集成测试模块', () => {
-  test('buildProfile - 端到端 full 全流程构建测试', async () => {
+  test('buildProfile - 端到端 config 全流程构建测试', async () => {
     const userConfig = {
       subscriptions: [
         {
@@ -22,7 +22,7 @@ describe('🔨 端到端构建流程集成测试模块', () => {
       dnsMergeMode: 'secure'
     };
 
-    const { yamlStr } = await buildProfile(userConfig, { type: 'full', production: true });
+    const { yamlStr } = await buildProfile(userConfig, { type: 'config', production: true });
 
     // 1. 验证 YAML 可被解析
     const outputData = yaml.parse(yamlStr);
@@ -43,21 +43,105 @@ describe('🔨 端到端构建流程集成测试模块', () => {
     assert.ok(groupNames.length > 5);
   });
 
-  test('buildProfile - pure 模式测试（仅清洗节点，不建策略组）', async () => {
+  test('buildProfile - nodes 纯节点清洗模式（契约：严格只输出 proxies 数组）', async () => {
+    const rawYamlContent = `
+port: 7890
+rules:
+  - MATCH,DIRECT
+proxies:
+  - name: "🇺🇸 美国 01"
+    type: ss
+    server: 1.2.3.4
+    port: 443
+    cipher: aes-128-gcm
+    password: pass
+`.trim();
+
     const userConfig = {
       subscriptions: [
         {
-          uri: 'trojan://password@us.domain.com:443#🇺🇸 美国 01',
-          tag: 'PureSub'
+          uri: rawYamlContent,
+          tag: 'NodeSub'
         }
       ]
     };
 
-    const { yamlStr } = await buildProfile(userConfig, { type: 'pure' });
+    const { yamlStr } = await buildProfile(userConfig, { type: 'nodes' });
     const outputData = yaml.parse(yamlStr);
 
+    // 验证契约：只输出干净的 proxies，不越界输出原配置中的 rules / port
     assert.ok(Array.isArray(outputData.proxies));
+    assert.equal(outputData.rules, undefined);
+    assert.equal(outputData.port, undefined);
     assert.equal(outputData['proxy-groups'], undefined);
+  });
+
+  test('buildProfile - config 模式 + passthrough 透传原订阅外围配置', async () => {
+    // 模拟输入带有原生 rules 和 dns 的完整 YAML
+    const rawYamlContent = `
+port: 7890
+socks-port: 7891
+rules:
+  - DOMAIN-SUFFIX,google.com,PROXY
+  - MATCH,DIRECT
+proxies:
+  - name: "📢 官网网址：https://ad.com"
+    type: ss
+    server: 1.2.3.4
+    port: 443
+    cipher: aes-128-gcm
+    password: pass
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: 1.2.3.4
+    port: 443
+    cipher: aes-128-gcm
+    password: pass
+`.trim();
+
+    const userConfig = {
+      subscriptions: [
+        {
+          uri: rawYamlContent,
+          tag: 'SubWithRules'
+        }
+      ],
+      passthrough: true // 开启透传
+    };
+
+    const { yamlStr } = await buildProfile(userConfig, { type: 'config' });
+    const outputData = yaml.parse(yamlStr);
+
+    // 验证契约：原订阅的 port, socks-port, rules 完好无损透传
+    assert.equal(outputData.port, 7890);
+    assert.equal(outputData['socks-port'], 7891);
+    assert.ok(Array.isArray(outputData.rules));
+    assert.equal(outputData.rules.length, 2);
+
+    // 验证：proxies 中的脏广告节点已被清洗剔除，只保留干净节点
+    assert.ok(Array.isArray(outputData.proxies));
+    assert.equal(outputData.proxies.length, 1);
+    assert.ok(outputData.proxies[0].name.includes('香港'));
+  });
+
+  test('buildProfile - report 审计模式测试（输出结构化审计统计）', async () => {
+    const userConfig = {
+      subscriptions: [
+        {
+          uri: `
+vless://11111111-2222-3333-4444-555555555555@hk.domain.com:443?security=tls#🇭🇰 香港 01
+ss://YWVzLTEyOC1nY206cGFzc0AxLjIuMy40OjQ0Mw==#🇯🇵 日本 01
+          `.trim(),
+          tag: 'AuditSub'
+        }
+      ]
+    };
+
+    const result = await buildProfile(userConfig, { type: 'report' });
+    assert.ok(result.meta);
+    assert.ok(result.meta.stats);
+    assert.equal(result.meta.stats.total, 2);
+    assert.equal(result.meta.stats.outputCount, 2);
   });
 
   test('buildProfile - 订阅配置 resetDay 生成重置节点，未配置时自动捕捉', async () => {

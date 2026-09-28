@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildProfile } = require('../src/builder.js');
+const { buildProfile } = require('../src/index.js');
 
 // 合法订阅内容（Base64 编码，含 2 个节点；使用域名服务器避免触发假IP清洗规则）
 const SUB_CONTENT = Buffer.from(`

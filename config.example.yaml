@@ -1,322 +1,149 @@
 # =====================================================================
-# 📦 Mihomo-Toolkit 配置模板
+# 📦 Mihomo-Toolkit (MTK) 统一配置文件模板
 # =====================================================================
-# 📖 三分钟概念速览（首次使用必读）
+# 📖 三分钟概念速览
 # ─────────────────────────────────────────────────────────────────────
-# 本工具由两层脚本组成，builder 负责编排：
-#   • pure（清洗层）   ：去重、重命名、地区识别、广告过滤、IP 补全、裂变
-#   • toolkit（策略层）：策略组生成、分流规则、DNS、测速、内核覆写
+# 统一流水线支持三种输出形态（outputMode 字段或 CLI -t 参数）：
+#   config  【默认/推荐】完整配置文件：订阅拉取 ➔ 节点清洗 ➔ 状态看板 ➔ 策略组与分流 ➔ 内核覆写
+#           • passthrough: false（默认）：脚本全新编排策略组与分流规则
+#           • passthrough: true ：保留并透传原订阅中的 rules/dns/tun 等，仅将 proxies 替换为洗白节点
+#   nodes   【纯净节点】仅执行节点清洗、去重与打标，输出干净的 proxies 节点数组
+#   report  【审计报告】输出结构化节点清洗统计与健康审计报告 (JSON)
 #
-# 三种运行模式（type 字段）：
-#   pure     仅清洗，不生成策略组（只要干净节点列表）
-#   toolkit  仅策略组（输入必须是已清洗的节点）
-#   full     先 pure 后 toolkit（推荐：订阅 → 清洗 → 策略组一条龙）
+# 💡 不修改节点名称：只需将 enableNodeRename 设为 false 即可，
+#    底层的地区识别、倍率抽取与特征分析仍会照常进行，确保策略组依然精准归类。
 #
-# full 模式下的自动协调（无需手动配置）：
-#   • toolkit 的 enableNodeRename 自动置 false（防二次重命名覆盖 pure 结果）
-#   • pure 的 showFeatureIcon 自动置 false（输出文字特征供 toolkit 识别分桶）
-#   • 根级 whitelistKeywords / specialNodeRules 自动同步到双端
-#
-# 🧩 配置继承（浅合并，嵌套对象整体替换非字段级合并）
-#   根级配置       → 同时传给 pure 和 toolkit（绝大多数配置写这里就够了）
-#   pureConfig     → 仅覆盖 pure 侧（高级，见文末 ⑯ 区）
-#   toolkitConfig  → 仅覆盖 toolkit 侧（高级，见文末 ⑯ 区）
-#
-# 🏷️ 作用域标签（每行配置前的方括号）
-#   [共享]  pure 和 toolkit 都读
-#   [pure]  仅 pure 读（写在根级会透传给 toolkit 但被忽略，无副作用）
-#   [toolkit] 仅 toolkit 读（写在根级会透传给 pure 但被忽略，无副作用）
-#
-# 📌 被注释的行 = 脚本内置默认值，取消注释即可覆盖
+# 📌 被注释的配置项均带内置默认值，按需取消注释覆盖即可。
 # =====================================================================
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ① 订阅源与节点注入
+# ① 订阅源与拉取设置
 # ─────────────────────────────────────────────────────────────────────
-# 抓取设置（代理 + 容灾）
-fetchProxyPort: 7890          # 抓取代理端口，留空=全部直连；每订阅可写 proxy 单独覆盖
-fetchProxyStrategy: "auto"    # direct=全直连 / proxy=全走代理 / auto=先直连，失败自动用代理重试一次
-# fetchRetry: 2               # 拉取失败重试次数（超时/网络/5xx 重试，4xx 不重试）
+# 抓取设置（本地代理 + 容灾兜底）
+fetchProxyPort: 7890          # 抓取代理端口，留空=直连；每项订阅可用 proxy 单独覆盖
+fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失败自动走代理
+# fetchRetry: 2               # 拉取失败重试次数（超时/网络错误/5xx 重试，4xx 快速失败）
 # fetchTimeout: 15            # 单次拉取超时秒数
-# fetchStaleTtl: 24           # 失败时复用上次成功内容的小时数（0=关闭兜底）
-# expireAggregation: "min"    # [共享] 多订阅到期聚合策略：min=临近到期优先(预警防断供，推荐) / max=最晚到期 / first=首个订阅优先
+# fetchStaleTtl: 24           # 网络中断时复用上次成功缓存的小时数（0=关闭容灾）
+# expireAggregation: "min"    # 多订阅到期聚合策略：min=最早到期预警(推荐) / max=最晚 / first=首项
 
-# 订阅清单（每项一条 - 即一个订阅/文件；url 为远程订阅或本地文件）
+# 订阅清单（支持多订阅并行抓取；url 为远程链接或本地 YAML 路径）
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "机场A"
-    # enabled: true             # 是否启用该订阅（设为 false 可临时停用，免去整段注释）
-    # indexPrefix: "A"          # 序号前缀（A01/B01），不写则按地区统一编号
-    # proxy: false              # 强走代理/直连，覆盖全局
-    # retry: 3                  # 单独重试次数，覆盖 fetchRetry
-    # resetDay: 19              # 每月该日重置流量（自动显示"重置剩余 X 天"，仅长命订阅需要）
+    # enabled: true             # 是否启用该订阅（设为 false 可临时停用）
+    # indexPrefix: "A"          # 节点序号前缀（如 A01/B01），不填按地区统一编号
+    # proxy: false              # 单独指定是否走本地代理
+    # retry: 3                  # 单独指定重试次数
+    # resetDay: 19              # 每月固定重置日（自动计算"距离重置剩余 X 天"）
   - url: "https://example.com/api/v1/sub2"
     tag: "机场B"
 
-  # 本地文件（无需代理）
+  # 本地文件示例
   # - url: "./my-local-nodes.yaml"
 
-  # 直接注入单节点 URI（支持 vless:// vmess:// trojan:// ss://，用 uri 字段）
-  # ⚠️ 指定 tag 会跳过 pure 清洗（保留原名）；不想跳过就别写 tag，用 name 手动命名
+  # 直接注入单节点 URI (支持 vless:// vmess:// trojan:// ss://)
   # - uri: "vless://uuid@1.2.3.4:443?security=tls&type=ws&path=/ws#x-ray-HK"
   #   tag: "自建"
-  #   name: "我的自建节点"       # 可选，覆盖 URI 中的节点名
+  #   name: "我的自建节点"
 
 
 # ─────────────────────────────────────────────────────────────────────
 # ② 运行模式与输出
 # ─────────────────────────────────────────────────────────────────────
-type: "full"                    # [共享] pure / toolkit / full
-output: "./dist/output.yaml"    # [共享] 输出路径
-# meta: "./stats.json"          # [共享] 清洗统计报告导出路径（可选）
-# logLevel: "debug"             # [共享] silent | error | warn | info | debug
-# redactLevel: "partial"        # [共享] 日志脱敏：三档由弱到强（各级只增不减，凭据/Token 始终隐藏）
-#   off     本地裸奔调试档：订阅 URL 完整展示，不屏蔽任何 IP/域名 | ⚠️ 生产（server/worker）拒绝 off，必须 partial/full
-#   partial 生产首选：订阅 URL 只留协议+域名（路径/参数全隐藏），IP/域名原样
-#   full    分享日志档：在 partial 之上，屏蔽所有 IP/域名（pure 与 toolkit 阶段均生效）
+outputMode: "config"            # config (完整配置) | nodes (纯节点) | report (审计报告)
+output: "./dist/config.yaml"    # 默认输出路径
+passthrough: false              # [仅 config 模式生效] true=保留并透传原订阅中的 rules/dns/tun 等顶层配置，仅替换 proxies 为洗白节点
+# logLevel: "info"              # silent | error | warn | info | debug
+# redactLevel: "partial"        # 日志脱敏档位：
+#   off     本地调试：完整展示 URL
+#   partial 推荐日常：仅保留协议与域名，屏蔽参数与凭据
+#   full    分享脱敏：隐藏全部 IP 与域名
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ③ 部署与安全（仅 server/worker 生效，CLI 本地不受限）
+# ③ 部署与安全（常驻 server / worker 生效，CLI 本地运行不受限）
 # ─────────────────────────────────────────────────────────────────────
-# ⚠️ server.js 读 config.yaml 的这些字段；worker.js 读环境变量
-#    （AUTH_TOKEN / SECURITY_LIMITS / ENABLE_URL_PARAMS）
-# enableCache: true                # 是否启用本地内存缓存（默认 true；CLI 单次运行无效，仅常驻 server/worker 生效）
-# cacheTtl: 300                    # 本地缓存过期秒数（默认 300，即 5 分钟；5 分钟内同一请求直接返回缓存，不重新拉取）
-# authToken: "your-secret-token"   # 公网部署鉴权 Token，支持 ?token=xxx 或 Header Authorization: Bearer xxx。未配置则不启用鉴权
-# enableUrlParams: true            # 是否允许 ?url= / ?config= 传参（false 则只读本地配置/环境变量）
+# enableCache: true                # 是否启用本地内存缓存
+# cacheTtl: 300                    # 缓存有效时间（秒）
+# authToken: "your-secret-token"   # 服务端访问鉴权 Token (?token=xxx 或 Authorization 头)
+# enableUrlParams: true            # 是否允许前端通过 ?url= / ?config= 动态传参
 # security:
-#   maxSubscriptionUrls: 20        # ?url= 最多接受 20 个订阅
-#   maxRemoteConfigBytes: 1048576  # ?config= 远程配置最大 1MB
-#   maxTotalNodes: 5000            # 单次构建节点总数上限
-#   perSubscriptionMaxNodes: 3000  # 单个订阅最大节点数
+#   maxSubscriptionUrls: 20        # 单次允许的最大订阅 URL 数
+#   maxRemoteConfigBytes: 1048576  # 远程配置最大字节数 (1MB)
+#   maxTotalNodes: 5000            # 单次允许最大处理节点总数
+#   perSubscriptionMaxNodes: 3000  # 单个订阅最大允许节点数
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ④ 简繁转换（可选，需 npm install opencc-js）
+# ④ 简繁中文转换（可选，需 npm install opencc-js）
 # ─────────────────────────────────────────────────────────────────────
-# builder 在 pure 处理前将节点名转简体（提高识别率），
-# 在 toolkit 处理后按 chineseConvertMode 输出最终节点名和策略组名。
-# ⚠️ Worker 环境完全禁用此功能（构建时排除 opencc-js）
-# enableChineseConvert: false      # 是否启用
-# chineseConvertMode: "t2s"        # t2s=简体 / s2t=繁体
+# enableChineseConvert: false      # 开启简繁智能转换
+# chineseConvertMode: "s2t"        # s2t=转为繁体中文 / t2s=转为简体中文
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑤ 节点清洗（去重 / 过滤 / 黑白名单）
+# ⑤ 节点清洗与去重（cleaner）
 # ─────────────────────────────────────────────────────────────────────
-enableDedupe: true              # [pure] 跨机场物理去重
-enableDashboard: true           # [共享] 启用「📊 订阅与状态看板」独立展示策略组（展示流量/到期/重置，不污染主力节点池）
-strictRegionMatch: false        # [pure] true=仅匹配预设字典 / false=宽松模式自动捕获冷门国家
-# highMultiThreshold: 2.5       # [pure] 高倍率软隔离阈值，超过则同地区内排序下沉
-
-# 广告阈值（full 模式下 pure 先行长阈值、toolkit 后行短阈值，双层过滤）
-# adTextThreshold: 12           # [共享] pure 默认 12 / toolkit 默认 6。根级写会同时覆盖两者，
-#                               #         需差异化请用 pureConfig / toolkitConfig
-
-# 白名单：命中即放行并保留原名，跳过清洗/地区匹配/IP反查
-# whitelistKeywords:            # [共享]
-#   - "x-ray"
-#   - "测速"
-# 黑名单：命中即拦截（黑名单优先级高于白名单）
-# blockKeywords: []             # [pure]
-# blockServers: []              # [pure] 服务器字段包含即拦截
+enableDedupe: true                 # 开启底层物理特征指纹去重
+enableDashboard: true              # 生成高颜值订阅状态虚拟看板节点（流量剩余、套餐到期等）
+removeInfoNodes: true              # 自动过滤机场原生说明伪节点（避免与合成看板冲突）
+enableAirportTag: true             # 多订阅时自动为节点打上机场来源标签
+# strictRegionMatch: false         # 严格地区匹配模式
+# filterKeywords:                  # 自定义垃圾节点关键字硬拦截
+#   - "官网"
+#   - "群"
+# whitelistKeywords:               # 白名单豁免关键词（命中直接放行）
+#   - "自建"
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑥ 节点重命名
+# ⑥ 域名多 IP 节点裂变（fission）
 # ─────────────────────────────────────────────────────────────────────
-# ℹ️ full 模式下 toolkit 不重命名（enableNodeRename 自动置 false），重命名只在 pure 侧生效
-# ⚠️ full 模式下若在此处显式写 enableNodeRename: true，会破坏自动协调导致 toolkit 二次重命名
-# enableNodeRename: true          # [toolkit] toolkit 是否二次重命名（pure 用 enableStandardRename，见 ⑯）
-# enableStandardRename: true      # [pure] pure 标准化重命名（关闭则保留原名防吞词）
-renameTemplate: "[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
-# renameSeparators: ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"]
-# customPrefix: ""                # [pure] 批量自定义前缀
-# 序号规则：有 indexPrefix → 按地区+前缀独立编号(如 L01/I01)，无 → 按地区统一编号(如 01/02)
-# indexPrefixMap:                 # [共享] 序号前缀映射（推荐直接写在 subscriptions[].indexPrefix）
-#   "机场A": "A"
-#   "机场B": "B"
-# 命名模板变量:
-#   {prefix} 自定义前缀   {airport} 机场标签   {icon} 国旗 emoji   {region} 地区名
-#   {city} 城市名         {index} 排序编号     {features} 解锁特征 {protocol} 协议图标
-#   {transport} 传输层标签 {in} 入口地区       {line} 线路特征      {multi} 倍率
-#   {ip_stack} IPv6/双栈  {isp} 运营商         {asn} ASN 编号       {org} 组织/数据中心
+# enableFission: false             # 开启单域名并发解析为多个 IP 独立节点
+# fissionMaxNodes: 3               # 单域名最大裂变节点数
+# fissionStack: "all"              # all=双栈 / ipv4=纯 IPv4 / ipv6=纯 IPv6
+# fissionKeywords:                 # 仅允许指定关键词的节点参与裂变（留空默认全量）
+#   - "优化"
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑦ IP 补全检测（ip-api.com）
+# ⑦ 节点重命名与模板
 # ─────────────────────────────────────────────────────────────────────
-enableIpEnrich: true             # [pure]
-ipEnrichMode: "missing"          # [pure] missing=仅检测未知 / all=强制全部
-# ipEnrichTimeout: 15000         # [pure] 全局超时熔断（毫秒）
-# ipApiKey: ""                   # [pure] IP-API Pro 密钥
-# ipEnrichThreshold: 200         # [pure] 超过此节点数自动关闭
-# enableIpv6Tag: false           # [pure] IPv6/双栈识别
-# enableCellularTag: false       # [pure] 蜂窝网络识别
-# enableResidentialTag: false    # [pure] 家宽识别
-# ipApiEndpoint: "http://ip-api.com/batch"
-# ipApiBatchSize: 100            # [pure] 免费版限制 100
-# ipApiBatchDelay: 4000          # [pure] 批次间隔（毫秒），免费版 15次/分钟
-# ipApiDnsConcurrency: 15        # [pure] DNS 并发数
-# ipApiDnsEndpoint: ""           # [pure] DoH 端点，留空自动选择
+enableNodeRename: true             # 是否启用节点重命名（设为 false 可原样保留节点名称，且不影响地区识别）
+showFeatureIcon: true              # 是否在节点名后追加特征 Emoji 图标 (如 🚀 4K 等)
+# renameTemplate: "{icon} {region} {index} {features} {in}{city}{line}{ip_stack}{transport} {multi}"
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑧ 节点裂变（高级：将域名节点裂变为多个 IP 节点）
+# ⑧ 策略组与拓扑控制（profile）
 # ─────────────────────────────────────────────────────────────────────
-# enableFission: true            # [pure]
-# fissionStack: "all"            # [pure] all / v4 / v6
-# fissionMaxNodes: 4             # [pure] 单节点最大裂变数
-# fissionExcludeKeywords: ["负载均衡", "故障转移", "自动选择", "自动匹配", "最优选择"]
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑨ 注入节点分组（URI 自建节点专用，配合 ① 的 uri 字段）
-# ─────────────────────────────────────────────────────────────────────
-# specialNodeRules: []           # [共享] 注入节点强行重命名（防止URI节点被当垃圾扔掉）
-# customNodeGroups:              # [toolkit] 注入节点追加到指定应用组，键=关键词(子串匹配)，值=目标组名数组
-#   "x-ray": ["🤖 ChatGPT", "♊ Gemini", "🐱 GitHub"]
+enableAI: true                     # 启用独立 AI 策略组 (ChatGPT, Claude, Gemini, Copilot 等)
+enableStreaming: true              # 启用独立流媒体策略组 (YouTube, Netflix, Disney+, Spotify 等)
+enableSocial: true                 # 启用社交应用策略组 (Telegram, Twitter 等)
+enableGame: true                   # 启用游戏平台策略组 (Steam, Epic, PlayStation 等)
+enableGitHub: true                 # 启用 GitHub 极速策略组
+enableScholar: false               # 启用学术资源策略组
+enableDomesticGroup: false         # 启用中国大陆分流策略组
+enableAdBlock: true                # 启用内置轻量广告拦截策略组
+# isolateHighMulti: true           # 隔离大倍率节点（>2.0x 自动移入高倍率专属组，防止偷跑流量）
+# isolateExperimental: true       # 隔离实验/不稳定协议节点
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑩ 策略组与地区分组
+# ⑨ 测速与分流规则
 # ─────────────────────────────────────────────────────────────────────
-regionGroupType: "url-test"      # [toolkit] url-test / select / fallback
-# minorNodeThreshold: 3          # [toolkit] 小众地区建组阈值
-# enableRegionHashLB: false      # [toolkit] 达到阈值的地区组增加哈希负载均衡
-# hideGarbageGroup: false        # [toolkit] 强制不显示垃圾桶组
-# groupIconMode: "emoji"         # [toolkit] emoji / icon / both
-# iconRepoOrz: "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/"
-# iconRepoKoolson: "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/"
-# iconRepoLige47: "https://fastly.jsdelivr.net/gh/lige47/lige_icon@main/icon/"   # lige_icon 仓库 icon 根目录（子目录：04ProxySoft=应用图标，05icon=其他）
-
-# 节点展示与下载隔离
-showFeatureIcon: true            # [toolkit] 模板 {features}: true=Emoji(📺) / false=文字(流媒体)。full 模式下 pure 自动置 false
-# enableIPv6: false              # [toolkit] 本地无物理 IPv6 务必设为 false（会剔除纯 IPv6 节点）
-# lowMultiThreshold: 0.99        # [toolkit] 倍率 <= 此值归入下载策略，0 关闭
-isolateDownload: true            # [toolkit] true=从普通大区剔除下载节点 / false=允许进入
-# isolateHighMulti: false        # [toolkit] true=将超过 highMultiThreshold 的高倍率节点从普通池剔除，聚合「🚀 高倍率优选」（组引用进手动选择与各应用组可点名）/ false=仅排序下沉留在普通池
-# highMultiThreshold: 2.5        # [toolkit] 高倍率沉底/隔离共用阈值，超过则排序下沉（配合 isolateHighMulti 时剔除独立成组）
-
-# 家宽分流（需配合 ⑦ enableResidentialTag: true）
-# enableResidential: false       # [toolkit] 家宽节点独立成组「🏠 家宽优选」，不混入地区桶，不参与自动选择
-# residentialNodeGroups:         # [toolkit] 家宽节点注入：键=地区(hk/us/...或"all")，值=目标应用组数组
-#   "all": ["🤖 ChatGPT", "♊ Gemini", "🐱 GitHub"]
-#   "hk": ["🤖 ChatGPT"]
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑪ 核心分流开关
-# ─────────────────────────────────────────────────────────────────────
-osType: "windows"                # [toolkit] windows / mac / linux / all
-proxyFirst: true                 # [toolkit] true=海外优先 / false=国内优先
-defaultProxyMode: "auto"         # [toolkit] auto / manual / fallback / direct / reject
-
-# 主分流
-# enableAdBlock: true            # [toolkit] 广告拦截
-# enableAI: true                 # [toolkit] OpenAI, Gemini, Claude, Copilot
-# enableTelegram: true           # [toolkit] Telegram 独立分流
-# enableStreaming: true          # [toolkit] YouTube, Netflix, Disney 等
-# enableGame: true               # [toolkit] Steam, Epic 等
-# enableSystemServices: true     # [toolkit] Microsoft, Apple, Google 框架
-# enableDomesticGroup: false     # [toolkit] 增加"中国"策略组
-
-# 扩展分流
-# enableAntiAD: false            # [toolkit] 激进广告拦截（容易误杀）
-# enableGitHub: true             # [toolkit] GitHub, GitLab 等
-# enableScholar: false           # [toolkit] Google Scholar
-# enableSocial: false            # [toolkit] 海外社交：twitter, facebook, instagram, discord（twitter 独立成组，其余合并到"💬 社交平台"）
-# enableWebRTC: false            # [toolkit] WebRTC 专项分流：会议/浏览器/STUN-TURN（默认目标随路由：回国→直连，正常→代理）
-# enableCrypto: false            # [toolkit] Binance 等交易平台
-# enablePayPal: false            # [toolkit] PayPal 独立分流
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑫ 服务注册表（增删 key 即开关）
-# ─────────────────────────────────────────────────────────────────────
-# aiServices:                    # [toolkit] AI: chatgpt, gemini, claude, copilot
-#   - chatgpt
-#   - gemini
-# aiPreferredRegions:            # [toolkit] AI 优选地区（默认: us, jp, tw, sg, kr, eu；地区无节点时自动下沉到该地区组）
-# streamingServices:             # [toolkit] 流媒体: youtube, netflix, bilibili, disney, twitch, spotify, tiktok, bahamut, pixiv
-#   - youtube
-#   - bilibili
-# biliPreferredRegions:          # [toolkit] Bili 港澳台分部优选用组（默认: 🇹🇼 台湾节点, 🇲🇴 澳门节点, 🇭🇰 香港节点）
-# socialServices:                # [toolkit] 社交: twitter, facebook, instagram, discord（暂不支持 telegram/line/signal 等）
-#   - twitter
-#   - discord
-# independentSocial:             # [toolkit] 独立成组的社交应用（默认 twitter），其余自动合并到"💬 社交平台"
-#   - twitter
-# systemServices:                # [toolkit] 系统: microsoft, apple, google
-#   - microsoft
-#   - google
-# customServices: {}             # [toolkit] 自定义服务注册表（高级，结构同内置服务定义）
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑬ 进程级分流名单
-#    删除注释就整体覆盖内置默认值（含内置项都要自己重新写一遍）
-# ─────────────────────────────────────────────────────────────────────
-# processDirectWin:              # [toolkit] Windows 强制直连（默认: qBittorrent, Thunder, BitComet, uTorrent, aria2c）
-# processDirectMac:              # [toolkit] macOS 强制直连（默认: Thunder, BitComet, uTorrent, qbittorrent, aria2c, transmission-daemon）
-# processDirectLin:              # [toolkit] Linux 强制直连（默认: qbittorrent, aria2c, transmission-daemon）
-# processProxyWin:               # [toolkit] Windows 强制走下载策略（默认: IDMan, fdm）
-# processProxyMac:               # [toolkit] macOS 强制走下载策略（默认: fdm）
-# processProxyLin:               # [toolkit] Linux 强制走下载策略（默认空，按需填写，例: [motrix]）
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑭ 测速与规则集
-# ─────────────────────────────────────────────────────────────────────
-testTolerance: 50                # [共享] 延迟容忍度，防止频繁切换
-# testInterval: 300              # [toolkit] 测速间隔（秒）
+testTolerance: 50                  # 节点切换延迟容忍度 (ms)
+# testInterval: 300                # 自动健康检查测速间隔 (秒)
 # testURL: "https://cp.cloudflare.com/generate_204"
-# useMRS: true                   # [toolkit] 极速规则模式: true=MRS / false=YAML
-# ruleProviderCDN: "https://fastly.jsdelivr.net/gh"
+# useMRS: true                     # 启用 Mihomo Rule-Set 极速二进制规则集
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑮ DNS
+# ⑩ DNS 与内核性能覆写
 # ─────────────────────────────────────────────────────────────────────
-# dnsListen: "127.0.0.1"           # 监听 IP / 地址（可带端口）
-#                                  # 只写 host（如 0.0.0.0）→ IP 用你的，端口从订阅取（缺省 1053）
-#                                  # 写 host:port（如 0.0.0.0:53）→ 整条覆盖，软路由/旁路由推荐
-# dnsDefault: ["223.5.5.5", "119.29.29.29"]
-# dnsDirect: ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query", "223.5.5.5", "119.29.29.29"]  # DoH 加密优先 + UDP 兜底
-# dnsProxy: ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"]
-# dnsServer:  ["https://223.5.5.5/dns-query", "https://119.29.29.29/dns-query"]
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑯ 安全防漏与内核覆写
-# ─────────────────────────────────────────────────────────────────────
-# enableProcessDirect: true      # [toolkit] P2P/BT 强制直连
-# enableTrafficAudit: true       # [toolkit] 非标流量强制直连
-# enableQUICReject: false        # [toolkit] QUIC 智能分流
-# overwriteTun: true             # [toolkit] 覆写 TUN 配置
-# overwriteDns: true             # [toolkit] 覆写 DNS 总开关（拉闸即完全不干预，开启后由下方 dnsMergeMode 分级控制）
-# dnsMergeMode: secure           # [toolkit] DNS 覆写模式：secure=安全模式；merge=兼容模式；passthrough=完全不干预 DNS
-# overwriteSniffer: true         # [toolkit] 覆写 Sniffer 配置
-# enableCoreOptimize: true       # [toolkit] 核心优化：性能提升、统一延迟、指纹伪装
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑰ 高级：pure / toolkit 差异化覆盖（绝大多数用户无需修改）
-# ─────────────────────────────────────────────────────────────────────
-# 仅当需要 pure 和 toolkit 两侧读不同值时才用。嵌套对象整体替换非字段级合并。
-# 例：根级 logLevel: "debug" + pureConfig.logLevel: "silent"
-#     → pure 静默，toolkit 显示 debug（子级优先级更高）
-#
-# pureConfig:
-#   # outputMode: "array"        # array / object（pure 专属）
-#   # outputGarbage: false       # 输出拦截的广告/假节点（pure 专属）
-#   # outputUnknown: true        # 输出未识别节点（pure 专属）
-#   # airportTag: ""             # 机场标签关键词(逗号分隔)，命中节点名即作为该节点标签（裸跑时才有意义，高级慎用）
-#   # airportTagReg: '/^\[([^\]]{1,8})\]/i'
-#
-# toolkitConfig:
-#   # enableScript: true         # 脚本总控，false 则原样输出（toolkit 专属）
-#   # airportTag: ""             # 强制指定标签（逗号分隔）（高级，慎用）
-#   # airportTagReg: '/^\[([^\]]{1,8})\]/i'
+# overwriteDns: true               # 注入防泄漏 Fake-IP / DoH DNS 方案
+# overwriteTun: true               # 注入 TUN 虚拟网卡配置
+# overwriteSniffer: true           # 注入域名嗅探器配置
+# enableCoreOptimize: true         # 开启客户端指纹伪装与内核性能调优

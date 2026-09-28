@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { operator } = require('../src/pure-nodes.js');
+const { operator } = require('../src/targets/operator.js');
 
 describe('🧬 节点裂变算法模块 (enableFission)', () => {
   test('pure-nodes - 单域名多 IP 节点裂变增殖测试', async () => {

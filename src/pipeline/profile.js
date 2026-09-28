@@ -23,7 +23,7 @@ const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../
  * @param {object} [extConfig={}] 用户外部配置参数
  * @returns {object} 构建完毕的 Mihomo 配置
  */
-function runToolkitPipeline(config = {}, extConfig = {}) {
+function runProfilePipeline(config = {}, extConfig = {}) {
   const userConfig = resolveConfig(extConfig);
   if (!userConfig.enableScript) return config;
 
@@ -142,5 +142,6 @@ function runToolkitPipeline(config = {}, extConfig = {}) {
 }
 
 module.exports = {
-  runToolkitPipeline
+  runProfilePipeline,
+  runStrategyPipeline: runProfilePipeline
 };

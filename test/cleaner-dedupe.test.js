@@ -1,9 +1,9 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { operator } = require('../src/pure-nodes.js');
+const { operator } = require('../src/targets/operator.js');
 
 describe('🧹 脏乱节点清洗与物理去重算法', () => {
-  test('pure-nodes - 极度脏乱文本与广告节点过滤', async () => {
+  test('cleaner - 极度脏乱文本与广告节点过滤', async () => {
     const dirtyProxies = [
       // 纯文本引流/广告节点 (应被剔除)
       { name: '📢 官方网址：https://example.com 优惠码9折 点击加入Q群', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p' },
@@ -36,7 +36,7 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
     assert.ok(cleanProxies.length >= 4);
   });
 
-  test('pure-nodes - 物理去重逻辑 (enableDedupe)', async () => {
+  test('cleaner - 物理去重逻辑 (enableDedupe)', async () => {
     const duplicateProxies = [
       { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.domain.com', port: 8388, cipher: 'aes-256-gcm', password: 'samepassword' },
       { name: '🇭🇰 香港 01 克隆版', type: 'ss', server: 'hk.domain.com', port: 8388, cipher: 'aes-256-gcm', password: 'samepassword' }, // 物理参数完全相同
@@ -51,7 +51,7 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
     assert.equal(hkNodes.length, 1);
   });
 
-  test('pure-nodes - removeInfoNodes: false 显式保留原生说明节点', async () => {
+  test('cleaner - removeInfoNodes: false 显式保留原生说明节点', async () => {
     const rawProxies = [
       { name: '剩余流量：500 GB', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p' },
       { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-256-gcm', password: 'p' }
