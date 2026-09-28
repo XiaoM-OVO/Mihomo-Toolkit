@@ -105,21 +105,24 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       }
     }
 
+    item.proxy._cleaned = true;
     return item.proxy;
   });
 
-  if (config.outputMode === 'object') {
-    const stats = {
-      total: totalCount,
-      outputCount: resultProxies.length,
-      dedupeCount,
-      discardedCount,
-      infoCount,
-      unknownCount,
-      fissionCount
-    };
+  const stats = {
+    total: totalCount,
+    outputCount: resultProxies.length,
+    dedupeCount,
+    discardedCount,
+    infoCount,
+    unknownCount,
+    fissionCount
+  };
+
+  if (config.outputMode === 'object' || userConfig.withClassified) {
     return {
       proxies: resultProxies,
+      classifiedNodes: validItems,
       meta: { stats }
     };
   }

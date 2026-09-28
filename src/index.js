@@ -6,7 +6,8 @@
  * 保持对各类调用方式（CLI / Server / Worker / SDK / Tests）的完全向下兼容。
  */
 
-const { buildProfile, runConfigPipeline } = require('./pipeline/config');
+const { buildProfile, runPipelineEngine } = require('./pipeline/engine');
+const { runConfigPipeline } = require('./pipeline/config');
 const { safeFetchText } = require('./io/fetcher');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('./io/limits');
 const { redactUrl, isAllowedUrl, validateUrlSsrf } = require('./io/ssrf');
@@ -25,6 +26,8 @@ const { buildAuditReport } = require('./pipeline/report');
 
 module.exports = {
   buildProfile,
+  runPipelineEngine,
+  build: buildProfile,
   runConfigPipeline,
   runNodesPipeline,
   buildAuditReport,

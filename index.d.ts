@@ -223,12 +223,6 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   /** 仅在 config 模式下生效：true=透传保留原订阅的 rules/dns/tun 等，仅替换 proxies 为洗白节点 */
   passthrough?: boolean;
   preserveRawConfig?: boolean;
-
-  // 模块专属独立子配置（可选，推荐直接扁平写在根级）
-  cleanerConfig?: PureConfig;
-  profileConfig?: ToolkitConfig;
-  pureConfig?: PureConfig;
-  toolkitConfig?: ToolkitConfig;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
