@@ -8,7 +8,7 @@
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
 [![Builder](https://img.shields.io/badge/Builder-v1.7.0-9cf)](CHANGELOG.md)
 [![Toolkit](https://img.shields.io/badge/Toolkit-v3.6.0-blue)](CHANGELOG.md)
-[![Pure\_Script](https://img.shields.io/badge/Pure_Script-v1.3.1-blueviolet)](CHANGELOG.md)
+[![Pure\_Script](https://img.shields.io/badge/Pure_Script-v1.3.2-blueviolet)](CHANGELOG.md)
 
 「 **自动清洗 · 动态分组 · 智能分流 · 零维护** 」
 
@@ -168,7 +168,7 @@ npm run build:worker
 | `enableIpEnrich`   | `false`   | 开启 IP-API 补充检测（自动纠正 CDN/虚假定位，需注意免费版有频率限制）               |
 | `enableFission`    | `false`   | 开启域名裂变（将域名节点解析为多个 IP 实体节点，详见下方裂变配置）                  |
 
-> 💡 **快速上手**：大多数情况下只需调整 `enableDedupe`（去重）和 `removeInfoNodes`（说明节点剔除）即可获得整洁的节点列表。如需精准定位，可开启 `enableIpEnrich`；如需裂变多 IP，请同时配置 `enableFission` 及相关参数。
+> 💡 **快速上手**：大多数情况下只需开启 `enableDedupe`（去重）即可获得整洁的节点列表；如需彻底剔除原生说明假节点，可将 `removeInfoNodes` 设为 `true`。如需精准定位，可开启 `enableIpEnrich`；如需裂变多 IP，请同时配置 `enableFission` 及相关参数。
 
 ---
 

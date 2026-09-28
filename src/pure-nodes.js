@@ -96,7 +96,10 @@ const DEFAULT_CONFIG = {
 // 🪛 核心常量与正则字典 (Global)
 // =========================================================================
 const REGEX_ZERO_WIDTH = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g;
-const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|已过期|即将过期|更新公告|流量重置|重置时间|维护公告|不可用|扣费|节点说明|防失联|官网|官网地址|网址地址|Q群|电报|Tg群|距离下次|关注频道|官方群组|签到获取/i;
+// 纯套餐/流量/到期说明节点（受 removeInfoNodes 控制）
+const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|已过期|即将过期|流量重置|重置时间|(?:距离)?重置剩余/i;
+// 广告/引流/公告虚假节点（受 outputGarbage 控制，归入垃圾节点）
+const REGEX_AD_NODE = /官网|官网地址|网址地址|Q群|电报|Tg群|距离下次|关注频道|官方群组|签到获取|防失联|更新公告|维护公告|不可用|扣费|节点说明|优惠码|加入群/i;
 const REGEX_FORBID_DL_STR = "(?:禁止|禁|严禁|请勿|勿|不要|不能|拒绝|屏蔽|防)(?:BT|PT|P2P|下载|测速|迅雷)|(?:仅限|仅供)(?:网页|日常|聊天)|\\b(?:No|Block|Ban)[\\s\\-_]*(?:BT|PT|Torrent|Download)\\b";
 const REGEX_CLEANUP = new RegExp(`\\b(?:https?:\\/\\/|www\\.)[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)\\b`, "ig");
 const REGEX_ENTRY_CITY = /(深圳|广州|上海|北京|杭州|四川|江苏|宁波|东莞|深|广|沪|京|杭|川|苏|甬|莞|SZX|CAN|PVG|SHA|PEK|PKX|HGH|入口|Ingress)(?:-|->|至|=>|\s)*(?=港|台|日|韩|新|美|英|德|法|澳|落地|出口|Exit)/i;
@@ -1240,6 +1243,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             infoCount++;
             return;
         }
+        // 2. 原生套餐流量/到期等信息节点：受 removeInfoNodes 控制
         if (REGEX_INFO_NODE.test(tempName)) {
             if (CONFIG.removeInfoNodes === false) {
                 processedData.push({ proxy, isInfo: true, rawName });
@@ -1247,6 +1251,13 @@ function operator(proxies, targetPlatform, userConfig = {}) {
             } else {
                 discardedCount++;
             }
+            return;
+        }
+
+        // 3. 广告/引流/公告节点：归入垃圾桶，受 outputGarbage 控制
+        if (REGEX_AD_NODE.test(tempName)) {
+            discardedCount++;
+            processedData.push({ proxy, isGarbage: true, rawName, blockReason: "广告/引流公告" });
             return;
         }
 
