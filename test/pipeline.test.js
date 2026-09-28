@@ -2,30 +2,34 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  runNodesPipeline,
+  runConfigPipeline,
+  runStrategyPipeline,
+  buildAuditReport,
   runCleanerPipeline,
-  runProfilePipeline,
-  runFullPipeline,
   runNodePipeline,
-  runStrategyPipeline
+  runProfilePipeline
 } = require('../src/pipeline');
 
-test('🚀 流水线单元测试 - runCleanerPipeline 节点清洗', async () => {
+test('🚀 流水线单元测试 - runNodesPipeline 纯节点清洗与去重', async () => {
   const proxies = [
     { name: '🇭🇰 香港 01 BGP', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u1' },
     { name: '防失联官网：http://test.com', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u2' }, // 广告 -> 被剔除
     { name: '🇭🇰 香港 01 BGP', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u1' } // 重复 -> 去重
   ];
 
-  const cleaned = await runCleanerPipeline(proxies, { enableDedupe: true, removeInfoNodes: true });
+  const cleaned = await runNodesPipeline(proxies, { enableDedupe: true, removeInfoNodes: true });
   assert.equal(cleaned.length, 1);
   assert.ok(cleaned[0].name.includes('香港'));
 
   // 验证别名一致性
   const aliasCleaned = await runNodePipeline(proxies, { enableDedupe: true, removeInfoNodes: true });
   assert.equal(aliasCleaned.length, 1);
+  const aliasCleaner = await runCleanerPipeline(proxies, { enableDedupe: true, removeInfoNodes: true });
+  assert.equal(aliasCleaner.length, 1);
 });
 
-test('🚀 流水线单元测试 - runProfilePipeline 全流程配置构建', () => {
+test('🚀 流水线单元测试 - runStrategyPipeline 策略组拓扑与分流规则', () => {
   const config = {
     proxies: [
       { name: '🇭🇰 香港 01 BGP', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u1' },
@@ -33,7 +37,7 @@ test('🚀 流水线单元测试 - runProfilePipeline 全流程配置构建', ()
     ]
   };
 
-  const finalConfig = runProfilePipeline(config);
+  const finalConfig = runStrategyPipeline(config);
   assert.ok(finalConfig['proxy-groups']);
   assert.ok(finalConfig['rules']);
   assert.ok(finalConfig['rule-providers']);
@@ -48,6 +52,26 @@ test('🚀 流水线单元测试 - runProfilePipeline 全流程配置构建', ()
   assert.ok(groupNames.includes('🇯🇵 日本节点'));
 
   // 验证别名一致性
-  const aliasConfig = runStrategyPipeline(config);
+  const aliasConfig = runProfilePipeline(config);
   assert.equal(aliasConfig['proxy-groups'].length, finalConfig['proxy-groups'].length);
+});
+
+test('🚀 流水线单元测试 - buildAuditReport 结构化审计生成', () => {
+  const meta = {
+    stats: {
+      total: 10,
+      outputCount: 8,
+      dedupeCount: 1,
+      discardedCount: 1,
+      infoCount: 0,
+      unknownCount: 0,
+      fissionCount: 2
+    }
+  };
+
+  const report = buildAuditReport(meta, []);
+  assert.equal(report.service, 'mihomo-toolkit');
+  assert.equal(report.summary.totalInput, 10);
+  assert.equal(report.summary.cleanOutput, 8);
+  assert.equal(report.summary.fissionCreated, 2);
 });

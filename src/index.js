@@ -6,7 +6,7 @@
  * 保持对各类调用方式（CLI / Server / Worker / SDK / Tests）的完全向下兼容。
  */
 
-const { buildProfile } = require('./pipeline/full');
+const { buildProfile, runConfigPipeline } = require('./pipeline/config');
 const { safeFetchText } = require('./io/fetcher');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('./io/limits');
 const { redactUrl, isAllowedUrl, validateUrlSsrf } = require('./io/ssrf');
@@ -20,8 +20,14 @@ const {
 const { operator } = require('./targets/operator');
 const { main } = require('./targets/verge');
 
+const { runNodesPipeline } = require('./pipeline/nodes');
+const { buildAuditReport } = require('./pipeline/report');
+
 module.exports = {
   buildProfile,
+  runConfigPipeline,
+  runNodesPipeline,
+  buildAuditReport,
   operator,
   main,
   redactUrl,

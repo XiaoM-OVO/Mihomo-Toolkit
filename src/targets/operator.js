@@ -7,10 +7,10 @@
  * 输出：清洗、去重、打标、重命名后的纯净节点数组
  */
 
-const { runCleanerPipeline } = require('../pipeline/cleaner');
+const { runNodesPipeline } = require('../pipeline/nodes');
 
 async function operator(proxies, targetPlatform, userConfig) {
-  return await runCleanerPipeline(proxies, userConfig);
+  return await runNodesPipeline(proxies, userConfig);
 }
 
 module.exports = { operator };

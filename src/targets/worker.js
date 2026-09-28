@@ -4,7 +4,7 @@
  * -----------------------------------------------------------------------------
  */
 
-import { buildProfile } from '../pipeline/full';
+import { buildProfile } from '../pipeline/config';
 import { safeFetchText } from '../io/fetcher';
 import { isAllowedUrl } from '../io/ssrf';
 import { validateRequestLimits } from '../io/limits';

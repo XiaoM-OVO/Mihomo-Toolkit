@@ -1,9 +1,9 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { main: profileMain } = require('../src/targets/verge.js');
+const { main: strategyMain } = require('../src/targets/verge.js');
 
-describe('📦 策略组与配置构建模块 (profile)', () => {
-  test('profileMain - AI / 流媒体 / 社交策略组生成与节点注入测试', () => {
+describe('📦 策略组与分流拓扑构建模块 (strategy)', () => {
+  test('strategyMain - AI / 流媒体 / 社交策略组生成与节点注入测试', () => {
     const rawConfig = {
       proxies: [
         { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword1' },
@@ -20,7 +20,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
       minorNodeThreshold: 1
     };
 
-    const result = profileMain(rawConfig, userConfig);
+    const result = strategyMain(rawConfig, userConfig);
     const groups = result['proxy-groups'];
     const groupNames = groups.map(g => g.name);
 
@@ -38,7 +38,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
     assert.ok(groupNames.includes('🇸🇬 新加坡节点'));
   });
 
-  test('profileMain - 高倍率隔离分组逻辑 (isolateHighMulti)', () => {
+  test('strategyMain - 高倍率隔离分组逻辑 (isolateHighMulti)', () => {
     const rawConfig = {
       proxies: [
         { name: '🇯🇵 日本 01 🚀 x3.0', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword1' },
@@ -52,7 +52,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
       minorNodeThreshold: 1
     };
 
-    const result = profileMain(rawConfig, userConfig);
+    const result = strategyMain(rawConfig, userConfig);
     const groups = result['proxy-groups'];
     const highMultiGroup = groups.find(g => g.name.includes('高倍'));
 
@@ -61,7 +61,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
     assert.ok(highMultiGroup.proxies.length > 0, '高倍率组应包含节点');
   });
 
-  test('profileMain - 实验节点隔离分组逻辑 (isolateExperimental)', () => {
+  test('strategyMain - 实验节点隔离分组逻辑 (isolateExperimental)', () => {
     const rawConfig = {
       proxies: [
         { name: '🇭🇰 香港 01 测试节点', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword1' },
@@ -72,7 +72,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
 
     const userConfig = { isolateExperimental: true, minorNodeThreshold: 1 };
 
-    const result = profileMain(rawConfig, userConfig);
+    const result = strategyMain(rawConfig, userConfig);
     const groups = result['proxy-groups'];
     const expGroup = groups.find(g => g.name.includes('实验'));
 
@@ -84,7 +84,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
     assert.ok(!hkGroup.proxies.some(p => p.includes('🧪')), '普通香港组不应包含实验节点');
   });
 
-  test('profileMain - 自定义分组 (customNodeGroups) 注入测试', () => {
+  test('strategyMain - 自定义分组 (customNodeGroups) 注入测试', () => {
     const rawConfig = {
       proxies: [
         { name: '自建专线-Xray', type: 'ss', server: 'xray.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword1' },
@@ -101,7 +101,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
       minorNodeThreshold: 1
     };
 
-    const result = profileMain(rawConfig, userConfig);
+    const result = strategyMain(rawConfig, userConfig);
     const groups = result['proxy-groups'];
     const chatGptGroup = groups.find(g => g.name === '🤖 ChatGPT');
 
@@ -110,7 +110,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
     assert.ok(chatGptGroup.proxies.includes('自建专线-Xray'));
   });
 
-  test('profileMain - 独立订阅看板策略组与主力组隔离测试 (enableDashboard)', () => {
+  test('strategyMain - 独立订阅看板策略组与主力组隔离测试 (enableDashboard)', () => {
     const rawConfig = {
       proxies: [
         { name: '🏷️ [机场A] 剩余流量：100 GB / 500 GB (20.0%)', type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
@@ -120,7 +120,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
     };
 
     // 1. 默认 enableDashboard: true ➔ 独立看板策略组存在，手动选择组无假节点
-    const resultEnabled = profileMain(rawConfig, { minorNodeThreshold: 1 });
+    const resultEnabled = strategyMain(rawConfig, { minorNodeThreshold: 1 });
     const groupsEnabled = resultEnabled['proxy-groups'];
     const dashboardGroup = groupsEnabled.find(g => g.name === '📊 订阅与状态看板');
     const manualGroup = groupsEnabled.find(g => g.name === '📍 手动选择');
@@ -131,7 +131,7 @@ describe('📦 策略组与配置构建模块 (profile)', () => {
     assert.ok(!manualGroup.proxies.some(p => p.includes('套餐到期')), '手动选择组不应包含到期假节点');
 
     // 2. enableDashboard: false ➔ 不生成看板策略组，且假节点被丢弃
-    const resultDisabled = profileMain(rawConfig, { enableDashboard: false, minorNodeThreshold: 1 });
+    const resultDisabled = strategyMain(rawConfig, { enableDashboard: false, minorNodeThreshold: 1 });
     const groupsDisabled = resultDisabled['proxy-groups'];
     assert.ok(!groupsDisabled.some(g => g.name.includes('看板')), '关闭看板时不得生成看板策略组');
   });
