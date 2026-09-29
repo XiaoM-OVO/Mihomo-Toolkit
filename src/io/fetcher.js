@@ -142,6 +142,12 @@ function resolveProxyUrl(userConfig = {}) {
   return userConfig.fetchProxyPort ? `http://127.0.0.1:${userConfig.fetchProxyPort}` : '';
 }
 
+function formatBytes(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 /**
  * 节点抓取主调度（带重试与自动降级）
  */
@@ -149,15 +155,15 @@ async function fetchNodes(url, options = {}) {
   const { showFullUrl = false, debug = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, retry = 2, timeoutMs = 15000 } = options;
   const { mode } = resolveFetchPlan({ strategy, perSubProxy });
   const useProxy = mode === 'proxy';
-  if (logger) {
-    logger.debug(`Fetching${useProxy && proxyUrl ? `(via proxy)` : ''}: ${redactUrl(url, showFullUrl)}`);
-  }
+
   const doFetch = async (p) => {
     const { text: content, response: res } = await safeFetchText(url, { showFullUrl, proxyUrl: p ? proxyUrl : '', timeoutMs });
     const subInfo = res.headers.get('subscription-userinfo');
-    if (debug && logger) {
-      logger.debug(`Debug response: status=${res.status}, content-length=${content.length}, content-type=${res.headers.get('content-type') || 'unknown'}, subInfo=${subInfo ? 'present' : 'missing'}`);
-      logger.debug(`Debug content preview: ${content.substring(0, 200).replace(/\n/g, '\\n')}`);
+    if (logger) {
+      const sizeStr = formatBytes(Buffer.byteLength(content, 'utf-8'));
+      const infoTag = subInfo ? ' · 含流量信息' : '';
+      const proxyTag = p && proxyUrl ? '(代理)' : '';
+      logger.debug(`🌐 拉取成功${proxyTag}: ${redactUrl(url, showFullUrl)} [${res.status} OK · ${sizeStr}${infoTag}]`);
     }
     return { content, subInfo };
   };
