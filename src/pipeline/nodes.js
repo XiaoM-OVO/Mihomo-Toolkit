@@ -101,35 +101,39 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     if (!item.regionInfo) return item.proxy;
 
     const buildDestinationLine = () => {
-      const icon = item.regionInfo?.icon ? `${item.regionInfo.icon} ` : '';
-      const regionName = item.regionInfo ? `${item.regionInfo.name}节点` : '🌐 其他节点';
-      const parts = [`[归组]: ${icon}${regionName}`];
+      const tags = item.tags || [];
+      const multi = item.attrs?.multiNum ?? 1;
+      const highMultiThreshold = config.highMultiThreshold ?? 2.5;
 
-      if (item.destCity) {
-        parts.push(`城市: ${item.destCity}`);
+      let groupName = '';
+      let isolateReason = '';
+
+      if (config.enableResidential && tags.includes('residential')) {
+        groupName = '🏠 家宽优选';
+        isolateReason = '家宽隔离';
+      } else if (config.isolateHighMulti && multi > highMultiThreshold) {
+        groupName = '🛑 高倍率节点';
+        isolateReason = '高倍率隔离';
+      } else if (config.isolateDownload && (tags.includes('download') || item.attrs?.isLowMulti)) {
+        groupName = '⏬ 下载策略';
+        isolateReason = '低倍率隔离';
+      } else if (config.isolateExperimental && tags.includes('experimental')) {
+        groupName = '🧪 实验节点';
+        isolateReason = '实验节点隔离';
+      } else if (item.regionInfo) {
+        const icon = item.regionInfo.icon ? `${item.regionInfo.icon} ` : '';
+        groupName = `${icon}${item.regionInfo.name}节点`;
+      } else {
+        groupName = '🌐 其他节点';
       }
 
-      const featureTokens = [];
-      if (item.tags?.includes('download') || item.attrs?.isLowMulti) {
-        featureTokens.push('低倍率');
-      }
-      (item.tags || []).forEach(t => {
-        if (t === 'download' || t === 'garbage') return;
-        const text = effectiveFeatureTexts[t] || t;
-        if (!featureTokens.includes(text)) featureTokens.push(text);
-      });
-      if (item.transportTag && !featureTokens.includes(item.transportTag)) {
-        featureTokens.push(item.transportTag);
-      }
-      if (item.attrs?.cleanLines && !featureTokens.includes(item.attrs.cleanLines)) {
-        featureTokens.push(item.attrs.cleanLines);
-      }
-      if (featureTokens.length > 0) {
-        parts.push(`特征: ${featureTokens.join(' · ')}`);
-      }
+      const parts = [`[归组]: ${groupName}${isolateReason ? ` (${isolateReason})` : ''}`];
 
-      if (item.attrs?.multiStr) {
-        parts.push(`倍率: ${item.attrs.multiStr}`);
+      // 仅展示命中并影响策略分流的业务池 (如 AI, 流媒体, 游戏, 家宽)，绝不重复已在节点名中呈现的协议与线路
+      const activePools = (item.featurePools || []).filter(p => p !== 'garbage');
+      const poolLabels = activePools.map(p => effectiveFeatureTexts[p] || p);
+      if (poolLabels.length > 0) {
+        parts.push(`业务: ${poolLabels.join(' · ')}`);
       }
 
       return `└─ ${parts.join(' | ')}`;
