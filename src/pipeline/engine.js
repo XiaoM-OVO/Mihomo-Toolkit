@@ -16,6 +16,7 @@ const { validateRequestLimits } = require('../io/limits');
 const { profileCache } = require('../io/cache');
 const { processSubscriptionSources, isSubEnabled } = require('../io/sub-processor');
 const { chineseConvert } = require('../core/chinese-sync');
+const dashboard = require('../strategy/dashboard');
 
 let BUILDER_VERSION = 'v1.7.0';
 try {
@@ -127,7 +128,8 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     url: options.url,
     userConfig,
     options,
-    logger
+    logger,
+    dashboard
   });
 
   // 6. Step 2: 节点标准化清洗与打标 (Core 纯算法阶段)
@@ -141,7 +143,8 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     meta
   } = await runNodesPipeline(configData.proxies, {
     ...nodeConfig,
-    withClassified: true
+    withClassified: true,
+    logger
   });
 
   // ─── 🛑 Checkpoint 1: 交付纯净节点 (nodes 模式早退截断) ───

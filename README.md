@@ -138,11 +138,11 @@ PORT=8080 CONFIG_PATH=/path/to/my-config.yaml npm start
 
 ### 方式三：Clash Verge Rev 等 GUI 客户端扩展脚本
 
-直接将 `src/targets/verge.js` 作为「扩展脚本」粘贴进 Clash Verge Rev，在配置加载时自动完成策略组注入与内核优化。
+执行 `npm run build:bundle` 生成打包脚本，将 `dist/verge.js` 作为「扩展脚本」粘贴进 Clash Verge Rev，在配置加载时自动完成策略组注入与内核优化。
 
 ### 方式四：Sub-Store 节点操作算子
 
-在 Sub-Store「节点操作」中引入 `src/targets/operator.js`，纯粹执行节点清洗、打标与去重。
+执行 `npm run build:bundle` 生成打包脚本，在 Sub-Store「节点操作」中直接引入 `dist/operator.js`，纯粹执行节点清洗、打标与去重。
 
 ---
 
@@ -263,7 +263,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 <details>
 <summary><b>Q: 如何在 Clash Verge Rev 中使用？</b></summary>
 
-直接将 `src/targets/verge.js` 的内容复制到 Clash Verge 的「扩展脚本」中保存即可，完全开箱即用。
+执行 `npm run build:bundle` 生成产物后，直接将 `dist/verge.js` 的内容复制到 Clash Verge 的「扩展脚本」中保存即可，完全开箱即用。
 </details>
 
 ---

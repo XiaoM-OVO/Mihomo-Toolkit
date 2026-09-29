@@ -21,6 +21,7 @@ const { fissionNodes } = require('../core/fission');
  */
 async function runNodesPipeline(proxies = [], userConfig = {}) {
   const config = resolveConfig(userConfig);
+  const logger = userConfig.logger;
   let currentProxies = Array.isArray(proxies) ? proxies : [];
   const totalCount = currentProxies.length;
 
@@ -28,7 +29,11 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   let dedupeCount = 0;
   if (config.enableDedupe) {
     const beforeDedupe = currentProxies.length;
-    currentProxies = dedupeNodes(currentProxies);
+    currentProxies = dedupeNodes(currentProxies, {
+      onDuplicate: (dup, exist) => {
+        if (logger) logger.debug(`🧽 [去重] 「${dup.name}」与「${exist.name}」重复，已移除`);
+      }
+    });
     dedupeCount = beforeDedupe - currentProxies.length;
   }
 
@@ -53,14 +58,21 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   const validItems = classified.filter(item => {
     if (item.skip) {
       discardedCount++;
+      if (logger) logger.debug(`🗑️ [阻断/垃圾] 「${item.rawName}」 原因: ${item.blockReason}`);
       return false;
     }
     if (item.isInfo) {
       infoCount++;
-      if (config.removeInfoNodes && !item.isSyntheticInfo) return false;
+      if (config.removeInfoNodes && !item.isSyntheticInfo) {
+        if (logger) logger.debug(`🗑️ [信息说明] 「${item.rawName}」`);
+        return false;
+      }
     }
     if (!item.regionInfo || item.regionInfo.isUnknown) {
       unknownCount++;
+      if (logger && !item.isInfo && !item.isSpecial) {
+        logger.debug(`❓ [未识别地区] 「${item.rawName}」`);
+      }
     }
     return true;
   });
@@ -119,6 +131,9 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
 
       const newName = renderTemplate(renameTemplate, vars, item.proxy, templateCleaners);
       if (newName) {
+        if (logger && newName !== item.rawName) {
+          logger.debug(`✅ [清洗] 「${item.rawName}」 -> 「${newName}」`);
+        }
         item.proxy.name = newName;
       }
     }

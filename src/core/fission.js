@@ -43,6 +43,7 @@ function fissionNode(proxy, ips = [], options = {}) {
   // 第一个 IP 原地修改作为主力节点
   const firstIp = availableIps[0];
   const originalProxy = { ...proxy };
+  originalProxy._rawName = proxy._rawName || proxy.name || '';
   originalProxy.server = firstIp.includes(':') && !firstIp.startsWith('[') ? `[${firstIp}]` : firstIp;
   if (proxy.tls || ['ws', 'grpc', 'h2', 'http'].includes(proxy.network)) {
     if (!originalProxy.sni && !originalProxy.servername) originalProxy.servername = server;
@@ -59,6 +60,8 @@ function fissionNode(proxy, ips = [], options = {}) {
   for (let i = 1; i < availableIps.length; i++) {
     const cloneIp = availableIps[i];
     const cloned = JSON.parse(JSON.stringify(proxy));
+    cloned._rawName = proxy._rawName || proxy.name || '';
+    cloned.name = `${proxy.name || ''} #${i + 1}`;
     cloned.server = cloneIp.includes(':') && !cloneIp.startsWith('[') ? `[${cloneIp}]` : cloneIp;
     if (proxy.tls || ['ws', 'grpc', 'h2', 'http'].includes(proxy.network)) {
       if (!cloned.sni && !cloned.servername) cloned.servername = server;

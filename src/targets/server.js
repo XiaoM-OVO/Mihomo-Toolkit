@@ -82,34 +82,57 @@ function startServer(options = {}) {
         }
 
         if (configUrl) {
-          if (!enableUrlParams) throw new Error('URL params are disabled by enableUrlParams=false');
-          if (!isAllowedUrl(configUrl)) throw new Error('Invalid or disallowed config URL');
+          if (!enableUrlParams) {
+            res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('Forbidden: URL params are disabled by enableUrlParams=false');
+            return;
+          }
+          if (!isAllowedUrl(configUrl)) {
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('Bad Request: Invalid or disallowed config URL');
+            return;
+          }
           const { text: content } = await safeFetchText(configUrl);
           const sizeLimitErr = validateRequestLimits({ remoteConfigSize: Buffer.byteLength(content, 'utf-8'), limits: securityLimits });
           if (sizeLimitErr) {
-            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end(`Bad Request: ${sizeLimitErr.message}`);
             return;
           }
           userConfig = yaml.parse(content) || {};
         } else if (subUrls.length > 0) {
-          if (!enableUrlParams) throw new Error('URL params are disabled by enableUrlParams=false');
+          if (!enableUrlParams) {
+            res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('Forbidden: URL params are disabled by enableUrlParams=false');
+            return;
+          }
           const blocked = subUrls.filter(u => !isAllowedUrl(u));
-          if (blocked.length > 0) throw new Error(`Invalid or disallowed subscription URL(s): ${blocked.map(redactUrl).join(', ')}`);
+          if (blocked.length > 0) {
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end(`Bad Request: Invalid or disallowed subscription URL(s): ${blocked.map(redactUrl).join(', ')}`);
+            return;
+          }
           userConfig = { ...localConfig, subscriptions: subUrls.map(u => ({ url: u })) };
         } else if (Object.keys(localConfig).length > 0) {
           userConfig = localConfig;
         } else {
-          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end('Bad Request: Please provide ?url=... or ?config=... or place a config.yaml in the working directory.');
           return;
         }
 
         const debugMode = reqUrl.searchParams.get('debug') === '1';
-        const { yamlStr, userInfo } = await buildProfile(userConfig, { production: true, debug: debugMode });
+        const targetType = reqUrl.searchParams.get('type') || reqUrl.searchParams.get('mode') || userConfig.outputMode;
+        const result = await buildProfile(userConfig, {
+          production: true,
+          debug: debugMode,
+          type: targetType
+        });
+        const { yamlStr, userInfo } = result;
 
+        const isReport = targetType === 'report' || targetType === 'audit' || targetType === 'meta';
         const headers = {
-          'Content-Type': 'text/yaml; charset=utf-8',
+          'Content-Type': isReport ? 'application/json; charset=utf-8' : 'text/yaml; charset=utf-8',
           'Profile-Update-Interval': '24'
         };
 
@@ -118,7 +141,7 @@ function startServer(options = {}) {
         }
 
         res.writeHead(200, headers);
-        res.end(yamlStr);
+        res.end(isReport && result.report ? JSON.stringify(result.report, null, 2) : yamlStr);
       } catch (err) {
         console.error('[Server] Build Error:', err.message);
         res.writeHead(500, { 'Content-Type': 'text/plain' });

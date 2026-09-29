@@ -44,19 +44,7 @@ function runConfigPipeline({
     outputData = { ...configData, proxies: cleanProxies };
     if (logger) logger.log(`✅ 透传完成: 继承原配置并替换为 ${cleanProxies.length} 个干净节点`);
   } else {
-    // 2. 全量组装模式：合成双列看板，注入策略组拓扑与分流规则
-    const activeSubsWithTraffic = collectedSubInfos.filter(s => !s.expired && s.total > 0);
-    if (userConfig.enableDashboard !== false && activeSubsWithTraffic.length > 1 && agg.globalTotal > 0) {
-      const topNodes = buildGlobalDashboardNodes({
-        globalUpload: agg.globalUpload,
-        globalDownload: agg.globalDownload,
-        globalTotal: agg.globalTotal,
-        globalExpire: agg.globalExpire,
-        expireAggregation
-      });
-      cleanProxies.unshift(...topNodes);
-    }
-
+    // 2. 全量组装模式：注入策略组拓扑与分流规则
     configData.proxies = cleanProxies;
     outputData = configData;
 

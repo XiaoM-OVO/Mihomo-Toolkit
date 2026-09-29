@@ -9,15 +9,24 @@
  * 4. 树状输出解析统计日志
  */
 
+const fs = require('fs');
+const path = require('path');
 const { parseContent, parseSubscriptionInfo, isExpiredNow } = require('./parsers');
-const { generateInfoNodes } = require('./sub-info');
 const { redactUrl } = require('./ssrf');
 const { fetchNodes, resolveProxyUrl, subStaleCache, pruneSubStaleCache } = require('./fetcher');
-const {
-  filterRawInfoNodes,
-  extractResetText,
-  createFetchErrorNode
-} = require('../strategy/dashboard');
+
+// 统一解耦 Strategy 层看板逻辑：优先使用 Pipeline 注入的实现，保持单向无环依赖
+let _dashboard = null;
+function getDashboard(injected) {
+  if (injected) return injected;
+  if (_dashboard) return _dashboard;
+  try {
+    _dashboard = require('../strategy/dashboard');
+    return _dashboard;
+  } catch (e) {
+    return {};
+  }
+}
 
 function isSubEnabled(s) {
   if (!s || typeof s !== 'object') return false;
@@ -27,9 +36,14 @@ function isSubEnabled(s) {
 /**
  * 处理所有订阅源或单 URL，并完成前置解析与看板合成
  */
-async function processSubscriptionSources({ subscriptions, url, userConfig, options, logger }) {
+async function processSubscriptionSources({ subscriptions, url, userConfig = {}, options = {}, logger, dashboard }) {
+  const dsh = getDashboard(dashboard);
+  const extractResetText = dsh.extractResetText || (() => '');
+  const filterRawInfoNodes = dsh.filterRawInfoNodes || ((p) => p);
+  const generateInfoNodes = dsh.generateInfoNodes || (() => ({ nodes: [], expireDays: -1 }));
+  const createFetchErrorNode = dsh.createFetchErrorNode || ((tag, msg) => ({ name: `❌ [${tag}] 拉取失败：${msg}`, type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }));
   const showFullUrl = userConfig.redactLevel === 'off';
-  const debug = !!options.debug;
+  const debug = !!options.debug || userConfig.logLevel === 'debug';
   const enableDashboard = userConfig.enableDashboard !== false;
   const fetchRetry = typeof userConfig.fetchRetry === 'number' ? userConfig.fetchRetry : 2;
   const fetchTimeoutSec = typeof userConfig.fetchTimeout === 'number' ? userConfig.fetchTimeout : 15;
@@ -68,15 +82,20 @@ async function processSubscriptionSources({ subscriptions, url, userConfig, opti
           rawResult = { content: sub.uri, subInfo: null };
         } else {
           const subKey = sub.url;
-          try {
-            rawResult = await fetchNodes(sub.url, {
-              showFullUrl, debug,
-              proxyUrl: resolveProxyUrl(userConfig),
-              strategy: userConfig.fetchProxyStrategy,
-              perSubProxy: sub.proxy,
-              retry: typeof sub.retry === 'number' ? sub.retry : fetchRetry,
-              timeoutMs: fetchTimeoutSec * 1000
-            });
+          const localSubPath = path.resolve(process.cwd(), sub.url);
+          if (!/^https?:\/\//i.test(sub.url) && fs.existsSync(localSubPath) && fs.statSync(localSubPath).isFile()) {
+            logger.debug(`读取本地订阅文件: ${sub.url}`);
+            rawResult = { content: fs.readFileSync(localSubPath, 'utf-8'), subInfo: null };
+          } else {
+            try {
+              rawResult = await fetchNodes(sub.url, {
+                showFullUrl, debug, logger,
+                proxyUrl: resolveProxyUrl(userConfig),
+                strategy: userConfig.fetchProxyStrategy,
+                perSubProxy: sub.proxy,
+                retry: typeof sub.retry === 'number' ? sub.retry : fetchRetry,
+                timeoutMs: fetchTimeoutSec * 1000
+              });
             if (!rawResult.content || (parseContent(rawResult.content).proxies || []).length === 0) {
               throw new Error('Subscription returned no nodes');
             }
@@ -89,9 +108,10 @@ async function processSubscriptionSources({ subscriptions, url, userConfig, opti
               throw e;
             }
           }
-          if (rawResult && !rawResult.stale) {
-            subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
-            pruneSubStaleCache(staleMaxAgeMs);
+            if (rawResult && !rawResult.stale) {
+              subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
+              pruneSubStaleCache(staleMaxAgeMs);
+            }
           }
         }
         return { sub, rawResult, error: null };
@@ -154,7 +174,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig, opti
 
         const resetText = extractResetText(sub, subProxies);
         const rawCount = subProxies.length;
-        subProxies = filterRawInfoNodes(subProxies, logger);
+        if (userConfig.removeInfoNodes !== false) {
+          subProxies = filterRawInfoNodes(subProxies, logger);
+        }
         const filteredCount = rawCount - subProxies.length;
 
         if (sub.tag) {
@@ -270,10 +292,39 @@ async function processSubscriptionSources({ subscriptions, url, userConfig, opti
         }
       });
     }
+
+    // 仅在多订阅 (>=2 个有流量的有效源) 且启用看板时，在最顶部注入一组「全局总额」配对节点（流量 + 到期）
+    const activeSubsWithTraffic = collectedSubInfos.filter(s => !s.expired && s.total > 0);
+    if (enableDashboard && activeSubsWithTraffic.length > 1) {
+      const agg = typeof dsh.aggregateSubscriptions === 'function'
+        ? dsh.aggregateSubscriptions(collectedSubInfos, { expireAggregation: userConfig.expireAggregation, logger })
+        : null;
+      if (agg && agg.globalTotal > 0 && typeof dsh.buildGlobalDashboardNodes === 'function') {
+        const topNodes = dsh.buildGlobalDashboardNodes({
+          globalUpload: agg.globalUpload,
+          globalDownload: agg.globalDownload,
+          globalTotal: agg.globalTotal,
+          globalExpire: agg.globalExpire,
+          expireAggregation: userConfig.expireAggregation
+        });
+        if (topNodes && topNodes.length > 0) {
+          topNodes.forEach(n => logger.debug(`ℹ️ [全局看板] 「${n.name}」`));
+          configData.proxies.unshift(...topNodes);
+        }
+      }
+    }
   } else if (url) {
-    // 2. 单 URL / URI 分支
+    // 2. 单 URL / URI / 本地文件路径 分支
     let rawResult;
-    if (/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
+    const localFilePath = path.resolve(process.cwd(), url);
+    if (!/^https?:\/\//i.test(url) && !/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
+      if (fs.existsSync(localFilePath) && fs.statSync(localFilePath).isFile()) {
+        logger.log(`📄 读取本地配置/节点文件: ${url}`);
+        rawResult = { content: fs.readFileSync(localFilePath, 'utf-8'), subInfo: null };
+      } else {
+        throw new Error(`Subscription file not found or invalid URL: ${url}`);
+      }
+    } else if (/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
       logger.debug(`URI 节点: ${url.split('#').pop() || '未知'}`);
       rawResult = { content: url, subInfo: null };
     } else {
@@ -287,6 +338,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig, opti
     }
     recordSubInfo(rawResult.subInfo, '');
     configData = parseContent(rawResult.content);
+    if (userConfig.removeInfoNodes !== false && configData.proxies) {
+      configData.proxies = filterRawInfoNodes(configData.proxies, logger);
+    }
     const nodeCount = configData.proxies ? configData.proxies.length : 0;
     logger.log(`📡 节点解析完成: ${nodeCount} 个节点`);
     if (enableDashboard) {
