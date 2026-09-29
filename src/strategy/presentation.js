@@ -11,6 +11,44 @@
 
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
 
+const REGION_ICON_FILES = {
+  cn: 'CN.png',
+  hk: 'HK.png',
+  mo: 'MO.png',
+  tw: 'TW.png',
+  jp: 'JP.png',
+  kr: 'KR.png',
+  sg: 'SG.png',
+  us: 'US.png',
+  '中国': 'CN.png',
+  '大陆': 'CN.png',
+  '香港': 'HK.png',
+  '澳门': 'MO.png',
+  '台湾': 'TW.png',
+  '日本': 'JP.png',
+  '韩国': 'KR.png',
+  '新加坡': 'SG.png',
+  '美国': 'US.png',
+  '英国': 'UK.png',
+  '德国': 'DE.png',
+  '法国': 'FR.png',
+  '俄罗斯': 'RU.png',
+  '乌克兰': 'UA.png',
+  '芬兰': 'FI.png',
+  '印度': 'IN.png',
+  '马来西亚': 'MY.png',
+  '泰国': 'TH.png',
+  '菲律宾': 'PH.png',
+  '加拿大': 'CA.png',
+  '阿根廷': 'AR.png',
+  '巴西': 'BR.png',
+  '土耳其': 'TR.png',
+  '埃及': 'EG.png',
+  '澳大利亚': 'AU.png',
+  eu: 'EU.png',
+  '欧洲': 'EU.png'
+};
+
 const SKELETON_GROUPS = {
   '手动选择':       { emoji: '📍', icon: 'Static.png', repo: 'orz' },
   '自动选择':       { emoji: '🚀', icon: 'Urltest.png', repo: 'orz' },
@@ -69,14 +107,34 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
       const cleanName = `${r.name}节点`;
       const fullName = `${r.icon} ${cleanName}`;
       emojiMap[cleanName] = fullName;
+
+      const iconFile = REGION_ICON_FILES[r.id] || REGION_ICON_FILES[r.name] || 'Global.png';
+      const url = resolveIconUrl(iconFile, 'koolson', userConfig);
+      iconMap[cleanName] = url;
+      iconMap[fullName] = url;
     }
   });
+
+  // 兜底补齐：中国节点与大陆节点双向等价
+  const cnEmoji = '🇨🇳';
+  const cnIconUrl = resolveIconUrl('CN.png', 'koolson', userConfig);
+  emojiMap['大陆节点'] = `${cnEmoji} 大陆节点`;
+  emojiMap['中国节点'] = `${cnEmoji} 中国节点`;
+  iconMap['大陆节点'] = cnIconUrl;
+  iconMap['中国节点'] = cnIconUrl;
+  iconMap[`${cnEmoji} 大陆节点`] = cnIconUrl;
+  iconMap[`${cnEmoji} 中国节点`] = cnIconUrl;
 
   CONTINENT_DEFS.forEach(c => {
     if (c.name && c.icon) {
       const cleanName = `${c.name}节点`;
       const fullName = `${c.icon} ${cleanName}`;
       emojiMap[cleanName] = fullName;
+
+      const iconFile = (c.id === 'eu' || c.name === '欧洲') ? 'EU.png' : 'Global.png';
+      const url = resolveIconUrl(iconFile, 'koolson', userConfig);
+      iconMap[cleanName] = url;
+      iconMap[fullName] = url;
     }
   });
 

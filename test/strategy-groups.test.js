@@ -172,25 +172,69 @@ describe('📦 策略组与分流拓扑构建模块 (strategy)', () => {
   test('strategyMain - 策略组图标模式 (groupIconMode: both / icon)', () => {
     const rawConfig = {
       proxies: [
-        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇹🇼 台湾 01', type: 'ss', server: 'tw.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' },
+        { name: '🇯🇵 日本 01', type: 'ss', server: 'jp.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p3' },
+        { name: '🇨🇳 中国 01', type: 'ss', server: 'cn.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p4' }
       ]
     };
 
-    // 1. both 模式：保留 Emoji，且追加在线 icon
+    // 1. both 模式：保留 Emoji，且追加在线 icon（包含地区组与大陆节点国旗）
     const resBoth = strategyMain(rawConfig, {
       groupIconMode: 'both',
       iconRepoOrz: 'https://test-icon.com/',
-      minorNodeThreshold: 1
+      minorNodeThreshold: 1,
+      enableDomesticGroup: true
     });
-    const hkBoth = resBoth['proxy-groups'].find(g => g.name.includes('自动选择'));
-    assert.ok(hkBoth && hkBoth.icon && hkBoth.icon.includes('test-icon.com'), 'both 模式应注入在线 icon 链接');
+    const autoBoth = resBoth['proxy-groups'].find(g => g.name.includes('自动选择'));
+    assert.ok(autoBoth && autoBoth.icon && autoBoth.icon.includes('test-icon.com'), 'both 模式应注入在线 icon 链接');
+    const hkBoth = resBoth['proxy-groups'].find(g => g.name === '🇭🇰 香港节点');
+    assert.ok(hkBoth && hkBoth.icon && hkBoth.icon.includes('HK.png'), 'both 模式地区组应正确挂载国旗在线图标');
+    const cnBoth = resBoth['proxy-groups'].find(g => g.name === '🇨🇳 大陆节点');
+    assert.ok(cnBoth && cnBoth.icon && cnBoth.icon.includes('CN.png'), 'both 模式大陆节点应正确挂载国旗与在线图标');
 
-    // 2. icon 模式：剔除 Emoji，重命名为纯文本，并替换 rules 引用
+    // 2. icon 模式：剔除 Emoji，重命名为纯文本，并确保全量 rules 目标 100% 存在
     const resIcon = strategyMain(rawConfig, {
       groupIconMode: 'icon',
-      minorNodeThreshold: 1
+      minorNodeThreshold: 1,
+      enableAI: true,
+      enableStreaming: true,
+      enableSocial: true,
+      enableGame: true,
+      enableTelegram: true,
+      enableGitHub: true,
+      enableScholar: true,
+      enableCrypto: true,
+      enablePayPal: true,
+      enableWebRTC: true,
+      streamingServices: ['bahamut', 'bilibili', 'tiktok']
     });
+
     const autoIcon = resIcon['proxy-groups'].find(g => g.name === '自动选择');
     assert.ok(autoIcon !== undefined, 'icon 模式应将「🚀 自动选择」重命名为「自动选择」');
+    const hkIcon = resIcon['proxy-groups'].find(g => g.name === '香港节点');
+    assert.ok(hkIcon && hkIcon.icon && hkIcon.icon.includes('HK.png'), 'icon 模式下地区组应挂载在线图标');
+
+    // 断言规则引用完整性：杜绝任何规则指向带残留 Emoji 的不存在策略组
+    const groupNameSet = new Set(resIcon['proxy-groups'].map(g => g.name));
+    const brokenRules = resIcon.rules.filter(r => {
+      const parts = r.split(',');
+      const target = parts[parts.length - 1] === 'no-resolve' ? parts[parts.length - 2] : parts[parts.length - 1];
+      return target && !['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS'].includes(target) && !groupNameSet.has(target);
+    });
+    assert.equal(brokenRules.length, 0, `icon 模式下不得存在断裂规则，发现: ${JSON.stringify(brokenRules)}`);
+
+    // 断言流媒体拓扑与 DAG 剪枝后候选组保留完整性
+    const bahamut = resIcon['proxy-groups'].find(g => g.name === 'Bahamut');
+    assert.ok(bahamut, '应存在 Bahamut 策略组');
+    assert.ok(bahamut.proxies.includes('台湾节点') && bahamut.proxies.includes('香港节点'), 'Bahamut 应保留台湾和香港地区组引用');
+
+    const bilibili = resIcon['proxy-groups'].find(g => g.name === 'BiliBili');
+    assert.ok(bilibili, '应存在 BiliBili 策略组');
+    assert.ok(bilibili.proxies.includes('台湾节点') && bilibili.proxies.includes('香港节点'), 'Bilibili 应保留台湾和香港地区组引用');
+
+    const tiktok = resIcon['proxy-groups'].find(g => g.name === 'TikTok');
+    assert.ok(tiktok, '应存在 TikTok 策略组');
+    assert.ok(!tiktok.proxies.includes('香港节点') && !tiktok.proxies.includes('大陆节点'), 'TikTok 应准确排除香港与大陆节点');
   });
 });

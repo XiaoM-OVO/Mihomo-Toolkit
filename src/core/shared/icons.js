@@ -47,7 +47,8 @@ const FEATURE_ICONS = {
   copilot: "🐙",
   ai: "✨",
   nf: "🎬",
-  "d+": "🐭",
+  "d+": "🪄",
+  disney: "🪄",
   yt: "▶️",
   tk: "🎵",
   sp: "🎧"
@@ -75,6 +76,7 @@ const FEATURE_TEXT_MAP = {
   nf: "Netflix",
   yt: "YouTube",
   "d+": "Disney+",
+  disney: "Disney+",
   tk: "TikTok",
   sp: "Spotify"
 };
