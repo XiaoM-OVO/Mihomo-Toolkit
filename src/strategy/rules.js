@@ -73,7 +73,7 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     routingRules.push('RULE-SET,ads,广告拦截');
   }
   if (userConfig.enableAntiAD) {
-    routingRules.push('RULE-SET,anti-ad,🚫 广告拦截');
+    routingRules.push('RULE-SET,anti-ad,广告拦截');
   }
 
   // AI 助手服务
@@ -110,7 +110,7 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     socialServices.forEach(key => {
       const app = effectiveRegistries.social[key];
       if (!app) return;
-      const targetGroup = independentSocial.includes(key) ? app.name : (useCombinedGroup ? '💬 社交平台' : app.name);
+      const targetGroup = independentSocial.includes(key) ? app.name : (useCombinedGroup ? '社交平台' : app.name);
       providerBase[key] = app.provider;
       routingRules.push(`RULE-SET,${key},${targetGroup}`);
     });
@@ -133,37 +133,37 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   // 专项服务 (GitHub, 学术, 虚拟币, PayPal, WebRTC)
   if (userConfig.enableScholar) {
     providerBase['scholar'] = 'geosite/category-scholar-!cn';
-    routingRules.push('DOMAIN-KEYWORD,sci-hub,🎓 学术网站', 'RULE-SET,scholar,🎓 学术网站');
+    routingRules.push('DOMAIN-KEYWORD,sci-hub,学术网站', 'RULE-SET,scholar,学术网站');
   }
   if (userConfig.enableGitHub) {
     providerBase['github'] = 'geosite/github';
-    routingRules.push('RULE-SET,github,🐱 GitHub');
+    routingRules.push('RULE-SET,github,GitHub');
   }
   if (userConfig.enableCrypto) {
     providerBase['crypto'] = 'geosite/category-cryptocurrency';
-    routingRules.push('RULE-SET,crypto,🪙 加密货币');
+    routingRules.push('RULE-SET,crypto,加密货币');
   }
   if (userConfig.enablePayPal) {
     providerBase['paypal'] = 'geosite/paypal';
-    routingRules.push('RULE-SET,paypal,💳 PayPal');
+    routingRules.push('RULE-SET,paypal,PayPal');
   }
   if (userConfig.enableWebRTC) {
     routingRules.push(
-      'DOMAIN-KEYWORD,webrtc,🗣 WebRTC',
-      'DOMAIN-KEYWORD,stun,🗣 WebRTC',
-      'DOMAIN-KEYWORD,turn,🗣 WebRTC',
-      'DST-PORT,3478,🗣 WebRTC',
-      'DST-PORT,5349,🗣 WebRTC',
-      'DST-PORT,5350,🗣 WebRTC',
-      'DST-PORT,19302,🗣 WebRTC'
+      'DOMAIN-KEYWORD,webrtc,WebRTC',
+      'DOMAIN-KEYWORD,stun,WebRTC',
+      'DOMAIN-KEYWORD,turn,WebRTC',
+      'DST-PORT,3478,WebRTC',
+      'DST-PORT,5349,WebRTC',
+      'DST-PORT,5350,WebRTC',
+      'DST-PORT,19302,WebRTC'
     );
   }
 
   // Telegram
   if (userConfig.enableTelegram) {
-    if (isWin) routingRules.push('PROCESS-NAME,Telegram.exe,✈️ Telegram');
-    if (isMac || isLin) routingRules.push('PROCESS-NAME,Telegram,✈️ Telegram');
-    routingRules.push('RULE-SET,telegram,✈️ Telegram', 'RULE-SET,telegram-ip,✈️ Telegram,no-resolve');
+    if (isWin) routingRules.push('PROCESS-NAME,Telegram.exe,Telegram');
+    if (isMac || isLin) routingRules.push('PROCESS-NAME,Telegram,Telegram');
+    routingRules.push('RULE-SET,telegram,Telegram', 'RULE-SET,telegram-ip,Telegram,no-resolve');
     Object.assign(providerBase, { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' });
   }
 

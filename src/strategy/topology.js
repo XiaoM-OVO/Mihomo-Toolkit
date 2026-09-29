@@ -220,13 +220,13 @@ function buildProxyTopology({
       let proxies = [];
       switch (key) {
         case 'tiktok':
-          proxies = [...(buckets.tiktok || buckets.tk || []), ...activeRegionGroups.filter(g => !['🇭🇰 香港节点', '🇨🇳 大陆节点', '🗑️ 未知识别'].includes(g)), proxyTarget, 'DIRECT'];
+          proxies = [...(buckets.tiktok || buckets.tk || []), ...activeRegionGroups.filter(g => !['香港节点', '大陆节点', '中国节点', '未知识别'].includes(g)), proxyTarget, 'DIRECT'];
           break;
         case 'bahamut':
-          proxies = ['🇹🇼 台湾节点', '🇭🇰 香港节点', proxyTarget, 'DIRECT'];
+          proxies = ['台湾节点', '香港节点', proxyTarget, 'DIRECT'];
           break;
         case 'bilibili':
-          proxies = userConfig.enableDomesticGroup ? ['🇨🇳 中国分流', '🇹🇼 台湾节点', '🇲🇴 澳门节点', '🇭🇰 香港节点', 'DIRECT'] : ['DIRECT', '🇹🇼 台湾节点', '🇲🇴 澳门节点', '🇭🇰 香港节点'];
+          proxies = userConfig.enableDomesticGroup ? ['中国分流', '台湾节点', '澳门节点', '香港节点', 'DIRECT'] : ['DIRECT', '台湾节点', '澳门节点', '香港节点'];
           break;
         default:
           proxies = [...(buckets[st.pool] || buckets[st.tag] || []), ...standardOptions, 'DIRECT'];

@@ -221,15 +221,13 @@ function getFeatureRules(userConfig = {}) {
     {
       reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i,
       tag: 'residential',
-      pool: 'residential',
-      groupName: '🏠 家宽优选'
+      pool: 'residential'
     },
     // 2. 游戏
     {
       reg: /(?:游戏|🎮)|\b(?:Game|FullCone)\b/i,
       tag: 'game',
-      pool: 'game',
-      groupName: '🎮 游戏服务'
+      pool: 'game'
     },
     // 3. 免费 / 公益
     {
