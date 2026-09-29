@@ -14,7 +14,7 @@ const { createServiceRegistries } = require('../strategy/registries');
 const { buildProxyTopology } = require('../strategy/topology');
 const { buildRoutingRules } = require('../strategy/rules');
 const { pruneEmptyGroups } = require('../strategy/prune');
-const { applyGroupIcons } = require('../strategy/icons');
+const { applyPresentation } = require('../strategy/presentation');
 const { applyDnsOverlay } = require('../strategy/dns');
 const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../strategy/kernel');
 
@@ -122,14 +122,15 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
     proxyGroups: config['proxy-groups'],
     proxies: config.proxies,
     rules: config.rules,
-    ruleProviders: config['rule-providers']
+    ruleProviders: config['rule-providers'],
+    userConfig
   });
   config['proxy-groups'] = pruned.proxyGroups;
   config['rules'] = pruned.rules;
   config['rule-providers'] = pruned.ruleProviders;
 
-  // 6.5 策略组在线图标与改名装配 (groupIconMode: both | icon)
-  applyGroupIcons(config, userConfig, registries);
+  // 6.5 终末装配：根据 groupIconMode (emoji | both | icon) 统一赋予徽标或装配在线图标
+  applyPresentation(config, userConfig, registries);
 
   // 7. 内核层高级配置覆写
   if (userConfig.overwriteDns) {

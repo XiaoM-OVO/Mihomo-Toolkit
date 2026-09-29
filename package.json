@@ -15,7 +15,6 @@
     "build": "node src/targets/cli.js -c config.yaml -t config",
     "build:nodes": "node src/targets/cli.js -c config.yaml -t nodes",
     "build:report": "node src/targets/cli.js -c config.yaml -t report",
-    "build:bundle": "node scripts/bundle.js",
     "dev": "node --watch src/targets/server.js"
   },
   "repository": {
@@ -46,8 +45,5 @@
   },
   "optionalDependencies": {
     "opencc-js": "^1.4.2"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.1"
   }
 }

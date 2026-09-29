@@ -565,8 +565,8 @@ class ServiceCatalog {
     for (const [cat, catServices] of Object.entries(this.services)) {
       legacy[cat] = {};
       for (const [key, s] of Object.entries(catServices)) {
-        const fullName = s.emoji ? `${s.emoji} ${s.name}` : s.name;
         const cleanName = s.cleanName || s.name;
+        const fullName = s.emoji ? `${s.emoji} ${cleanName}` : cleanName;
         const iconUrl = resolveIconUrl(s.icon || s.iconUrl, this.repos.icons);
         const compiledReg = compileRegex(s.reg);
 
@@ -577,23 +577,25 @@ class ServiceCatalog {
         if (typeof s.rules === 'string') {
           providerPath = `geosite/${s.rules}`;
           ruleSetName = s.rules;
-          rulesArr = [`RULE-SET,${s.rules},${fullName}`];
+          rulesArr = [`RULE-SET,${s.rules},${cleanName}`];
         } else if (Array.isArray(s.rules)) {
           rulesArr = s.rules.map(r => {
             if (typeof r === 'string') return r;
-            const target = r.target === '@self' ? fullName : (r.target === 'GAME_DOWNLOAD' ? '🎮 游戏下载' : (r.target === 'GAME_SERVICE' ? '🎮 游戏服务' : (r.target || fullName)));
+            const target = r.target === '@self' ? cleanName : (r.target === 'GAME_DOWNLOAD' ? '游戏下载' : (r.target === 'GAME_SERVICE' ? '游戏服务' : (r.target || cleanName)));
             return `${r.type},${r.value},${target}`;
           });
         } else if (s.rules && typeof s.rules === 'object') {
           ruleSetName = s.rules.name || key;
           providerPath = s.rules.path ? `geosite/${s.rules.path}` : `geosite/${ruleSetName}`;
-          rulesArr = [`RULE-SET,${ruleSetName},${fullName}`];
+          rulesArr = [`RULE-SET,${ruleSetName},${cleanName}`];
         }
 
         legacy[cat][key] = {
           tag: s.tag || key,
-          name: fullName,
+          name: cleanName,
           cleanName,
+          fullName,
+          iconUrl,
           uiIcon: s.emoji || s.uiIcon || '',
           reg: compiledReg,
           provider: s.provider || providerPath,

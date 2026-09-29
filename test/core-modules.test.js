@@ -8,7 +8,7 @@ const { getEnhancedRegionDefs, validateMapping } = require('../src/core/shared/r
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../src/core/shared/icons');
 const { isPrivateIp, isAllowedUrl } = require('../src/io/ssrf');
 const { parseContent, parseVlessUri } = require('../src/io/parsers');
-const { formatBytes, calcResetDays } = require('../src/io/sub-info');
+const { formatBytes, calcResetDays } = require('../src/strategy/dashboard');
 
 test('🧩 核心模块单元测试 - 共享字典与常量', () => {
   assert.equal(validateMapping(), true);

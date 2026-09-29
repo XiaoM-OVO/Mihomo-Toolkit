@@ -28,6 +28,3 @@ jobs:
 
       - name: Run unit & integration test suite
         run: npm test
-
-      - name: Verify Target bundle build
-        run: npm run build:bundle

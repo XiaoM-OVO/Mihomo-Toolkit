@@ -31,11 +31,11 @@ test('🧩 拓扑模块单元测试 - 基础策略组装配与地区归纳', () 
   });
 
   const names = proxyGroups.map(g => g.name);
-  assert.ok(names.includes('🚀 自动选择'));
-  assert.ok(names.includes('📍 手动选择'));
-  assert.ok(names.includes('🐟 漏网之鱼'));
-  assert.ok(names.includes('🇭🇰 香港节点'));
-  assert.ok(names.includes('🇺🇸 美国节点'));
+  assert.ok(names.includes('自动选择'));
+  assert.ok(names.includes('手动选择'));
+  assert.ok(names.includes('漏网之鱼'));
+  assert.ok(names.includes('香港节点'));
+  assert.ok(names.includes('美国节点'));
 
   assert.equal(buckets.hk.length, 1);
   assert.equal(buckets.us.length, 1);
@@ -59,8 +59,8 @@ test('🧩 拓扑模块单元测试 - 独立看板策略组 (enableDashboard)', 
   });
 
   const names = proxyGroups.map(g => g.name);
-  assert.ok(names.includes('📊 订阅与状态看板'));
-  const dashboard = proxyGroups.find(g => g.name === '📊 订阅与状态看板');
+  assert.ok(names.includes('订阅与状态看板'));
+  const dashboard = proxyGroups.find(g => g.name === '订阅与状态看板');
   assert.ok(dashboard.proxies.includes('剩余流量：100G'));
 });
 
@@ -123,7 +123,7 @@ test('🧩 拓扑模块单元测试 - 自定义节点分组注入 (customNodeGro
     registries
   });
 
-  const gptGroup = proxyGroups.find(g => g.name === '🤖 ChatGPT');
+  const gptGroup = proxyGroups.find(g => g.name === 'ChatGPT');
   assert.ok(gptGroup);
   assert.ok(gptGroup.proxies.includes('我的自建香港专线'));
 });

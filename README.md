@@ -65,6 +65,7 @@ mihomo-toolkit/
 │   │   ├── rules.js           # 规则集 (Rule-Providers) 与分流路由组装
 │   │   ├── registries.js      # 六维服务注册表向前兼容委托适配器 (委托至 config/catalog)
 │   │   ├── prune.js           # DAG 递归空组级联淘汰与殉葬规则清理
+│   │   ├── presentation.js    # 展示层终末装配器 (按 groupIconMode 统一挂载在线图标与赋予徽标)
 │   │   ├── dns.js             # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
 │   │   └── kernel.js          # TUN 网卡、Sniffer 嗅探器及内核性能调优
 │   │
@@ -74,7 +75,6 @@ mihomo-toolkit/
 │   │   ├── cache.js           # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
 │   │   ├── ssrf.js            # SSRF 深度校验、私网拦截与 Token 脱敏
 │   │   ├── limits.js          # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
-│   │   ├── sub-info.js        # 订阅头 Userinfo 解析与重置周期计算
 │   │   ├── fetch-proxy.js     # 本地代理调度封装 (undici ProxyAgent)
 │   │   └── parsers/           # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
 │   │
@@ -83,8 +83,7 @@ mihomo-toolkit/
 │       ├── catalog.js         # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js           # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── substore/                  # 🎁 Sub-Store 独立脚本 (sub-info.js 流量看板算子)
-├── test/                      # 🧪 自动化测试套件 (96 个全绿用例)
+├── test/                      # 🧪 自动化测试套件 (99 个全绿用例)
 ├── config.example.yaml        # 极简扁平化配置模板
 ├── index.d.ts                 # 完整 TypeScript 类型契约声明
 ├── package.json               # 项目依赖与多命令配置
@@ -136,13 +135,11 @@ PORT=8080 CONFIG_PATH=/path/to/my-config.yaml npm start
 
 启动后即可在客户端直接订阅：`http://你的服务器IP:3000/sub`。
 
-### 方式三：Clash Verge Rev 等 GUI 客户端扩展脚本
+### 方式三：与 Clash Verge Rev 搭配使用
 
-执行 `npm run build:bundle` 生成打包脚本，将 `dist/verge.js` 作为「扩展脚本」粘贴进 Clash Verge Rev，在配置加载时自动完成策略组注入与内核优化。
-
-### 方式四：Sub-Store 节点操作算子
-
-执行 `npm run build:bundle` 生成打包脚本，在 Sub-Store「节点操作」中直接引入 `dist/operator.js`，纯粹执行节点清洗、打标与去重。
+建议采用以下两种稳定方式之一，避免客户端沙箱编译超大单体脚本：
+1. **本地订阅方式（推荐）**：启动 `npm start` 常驻服务，在 Clash Verge Rev 中添加新订阅为 `http://127.0.0.1:3000/sub`，完全当做普通远程订阅使用。
+2. **计划任务直写配置**：在 `config.yaml` 中配置 `output` 路径指向 Verge 的 profiles 目录，通过系统计划任务（Windows Task Scheduler / Cron）定时执行 `mtk -c config.yaml` 自动写入。
 
 ---
 
@@ -263,7 +260,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 <details>
 <summary><b>Q: 如何在 Clash Verge Rev 中使用？</b></summary>
 
-执行 `npm run build:bundle` 生成产物后，直接将 `dist/verge.js` 的内容复制到 Clash Verge 的「扩展脚本」中保存即可，完全开箱即用。
+推荐直接在后台常驻服务中运行 `npm start`，然后在 Clash Verge Rev 中将订阅链接设置为 `http://127.0.0.1:3000/sub`；或者通过计划任务定时执行 `mtk -c config.yaml` 直接生成写入 Verge 的配置 profile 路径，客户端零计算负担。
 </details>
 
 ---
