@@ -100,15 +100,39 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     if (item.isSpecial || item.isInfo) return item.proxy;
     if (!item.regionInfo) return item.proxy;
 
-    const buildDestinationMeta = () => {
-      const regionName = item.regionInfo ? `${item.regionInfo.name}节点` : '其他节点';
-      const metaParts = [`去向: ${regionName}`];
-      if (item.regionInfo?.id) metaParts.push(`地区: ${item.regionInfo.id.toUpperCase()}`);
-      const tagList = (item.tags || []).filter(t => t !== 'garbage' && t !== 'experimental');
-      if (item.tags?.includes('experimental')) metaParts.push('实验');
-      if (tagList.length > 0) metaParts.push(`标签: ${tagList.join(', ')}`);
-      if (item.attrs?.multiStr) metaParts.push(`倍率: ${item.attrs.multiStr}`);
-      return `[${metaParts.join(' | ')}]`;
+    const buildDestinationLine = () => {
+      const icon = item.regionInfo?.icon ? `${item.regionInfo.icon} ` : '';
+      const regionName = item.regionInfo ? `${item.regionInfo.name}节点` : '🌐 其他节点';
+      const parts = [`[归组]: ${icon}${regionName}`];
+
+      if (item.destCity) {
+        parts.push(`城市: ${item.destCity}`);
+      }
+
+      const featureTokens = [];
+      if (item.tags?.includes('download') || item.attrs?.isLowMulti) {
+        featureTokens.push('低倍率');
+      }
+      (item.tags || []).forEach(t => {
+        if (t === 'download' || t === 'garbage') return;
+        const text = effectiveFeatureTexts[t] || t;
+        if (!featureTokens.includes(text)) featureTokens.push(text);
+      });
+      if (item.transportTag && !featureTokens.includes(item.transportTag)) {
+        featureTokens.push(item.transportTag);
+      }
+      if (item.attrs?.cleanLines && !featureTokens.includes(item.attrs.cleanLines)) {
+        featureTokens.push(item.attrs.cleanLines);
+      }
+      if (featureTokens.length > 0) {
+        parts.push(`特征: ${featureTokens.join(' · ')}`);
+      }
+
+      if (item.attrs?.multiStr) {
+        parts.push(`倍率: ${item.attrs.multiStr}`);
+      }
+
+      return `└─ ${parts.join(' | ')}`;
     };
 
     if (isRenameEnabled && renameTemplate) {
@@ -143,19 +167,19 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       const newName = renderTemplate(renameTemplate, vars, item.proxy, templateCleaners);
       if (newName) {
         if (logger) {
-          const metaSuffix = buildDestinationMeta();
+          const detailLine = buildDestinationLine();
           if (newName !== item.rawName) {
-            logger.debug(`✅ [清洗]\n├── 原名: 「${item.rawName}」\n└── 洗后: 「${newName}」 ${metaSuffix}`);
+            logger.debug(`✅ [清洗] 「${item.rawName}」 → 「${newName}」\n${detailLine}`);
           } else {
-            logger.debug(`📌 [识别] 「${item.rawName}」 ${metaSuffix}`);
+            logger.debug(`📌 [识别] 「${item.rawName}」\n${detailLine}`);
           }
         }
         item.proxy.name = newName;
       }
     } else {
       if (logger) {
-        const metaSuffix = buildDestinationMeta();
-        logger.debug(`📌 [识别] 「${item.proxy.name || item.rawName}」 ${metaSuffix}`);
+        const detailLine = buildDestinationLine();
+        logger.debug(`📌 [识别] 「${item.proxy.name || item.rawName}」\n${detailLine}`);
       }
     }
 
