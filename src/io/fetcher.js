@@ -10,6 +10,7 @@
  */
 
 const net = require('net');
+const os = require('os');
 const { safeDecodeURIComponent } = require('./parsers/base64');
 const { validateUrlSsrf, redactUrl } = require('./ssrf');
 const { parseContent } = require('./parsers');
@@ -181,6 +182,25 @@ function checkPortReachable(port, host = '127.0.0.1', timeoutMs = 300) {
   });
 }
 
+function detectTunInterface() {
+  try {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      const lower = name.toLowerCase();
+      if (
+        /^(utun|tun\d*|wintun)/i.test(lower) ||
+        lower.includes('mihomo') ||
+        lower.includes('meta-tun') ||
+        lower.includes('clash') ||
+        lower.includes('sing-box')
+      ) {
+        return name;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
 /**
  * 代理端点强制本地回环：只暴露端口配置
  */
@@ -249,6 +269,7 @@ module.exports = {
   safeFetchText,
   fetchNodes,
   checkPortReachable,
+  detectTunInterface,
   resolveFetchPlan,
   resolveProxyUrl,
   subStaleCache,
