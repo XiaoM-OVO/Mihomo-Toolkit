@@ -239,6 +239,7 @@ const BUILTIN_SERVICES = {
     epic: {
       name: 'Epic',
       emoji: '🎮',
+      providerPath: 'epicgames',
       rules: [
         { type: 'DOMAIN-SUFFIX', value: 'download.epicgames.com', target: 'GAME_DOWNLOAD' },
         { type: 'RULE-SET', value: 'epic', path: 'epicgames', target: 'GAME_SERVICE' },
@@ -574,11 +575,25 @@ class ServiceCatalog {
         let ruleSetName = key;
         let rulesArr = [];
 
+        if (s.provider) {
+          providerPath = s.provider;
+        } else if (s.providerPath) {
+          providerPath = s.providerPath.startsWith('geosite/') || s.providerPath.startsWith('geoip/')
+            ? s.providerPath
+            : `geosite/${s.providerPath}`;
+        }
+
         if (typeof s.rules === 'string') {
-          providerPath = `geosite/${s.rules}`;
+          if (!s.provider && !s.providerPath) providerPath = `geosite/${s.rules}`;
           ruleSetName = s.rules;
           rulesArr = [`RULE-SET,${s.rules},${cleanName}`];
         } else if (Array.isArray(s.rules)) {
+          if (!s.provider && !s.providerPath) {
+            const ruleSetItem = s.rules.find(r => r && r.type === 'RULE-SET' && r.path);
+            if (ruleSetItem) {
+              providerPath = `geosite/${ruleSetItem.path}`;
+            }
+          }
           rulesArr = s.rules.map(r => {
             if (typeof r === 'string') return r;
             const target = r.target === '@self' ? cleanName : (r.target === 'GAME_DOWNLOAD' ? '游戏下载' : (r.target === 'GAME_SERVICE' ? '游戏服务' : (r.target || cleanName)));
@@ -586,7 +601,9 @@ class ServiceCatalog {
           });
         } else if (s.rules && typeof s.rules === 'object') {
           ruleSetName = s.rules.name || key;
-          providerPath = s.rules.path ? `geosite/${s.rules.path}` : `geosite/${ruleSetName}`;
+          if (!s.provider && !s.providerPath) {
+            providerPath = s.rules.path ? `geosite/${s.rules.path}` : `geosite/${ruleSetName}`;
+          }
           rulesArr = [`RULE-SET,${ruleSetName},${cleanName}`];
         }
 
