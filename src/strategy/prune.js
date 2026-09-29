@@ -5,7 +5,7 @@
  * 避免 Mihomo 内核因引用不存在的策略组而启动崩溃。
  */
 
-const DEFAULT_EXEMPT_GROUPS = ['📍 手动选择', '🐟 漏网之鱼'];
+const DEFAULT_EXEMPT_GROUPS = ['手动选择', '漏网之鱼', '📍 手动选择', '🐟 漏网之鱼'];
 const VALID_BUILTIN_TARGETS = ['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS'];
 
 /**

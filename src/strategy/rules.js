@@ -13,11 +13,18 @@ function dedupe(arr) {
  * @param {object} userConfig
  * @param {object} registries
  * @param {object} [options={}]
- * @param {string} [options.proxyTarget="🚀 节点选择"]
+ * @param {string} [options.proxyTarget]
  * @returns {object} { rules, providers }
  */
 function buildRoutingRules(userConfig, registries, options = {}) {
-  const { proxyTarget = '🚀 节点选择' } = options;
+  const modeMap = {
+    auto: '自动选择',
+    manual: '手动选择',
+    fallback: '故障转移',
+    direct: 'DIRECT',
+    reject: 'REJECT'
+  };
+  const effectiveProxyTarget = options.proxyTarget || modeMap[userConfig.defaultProxyMode] || '自动选择';
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
     ? registries
     : (userConfig.catalog ? userConfig.catalog.toLegacyRegistries() : {});
@@ -63,7 +70,7 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   // 广告拦截
   if (userConfig.enableAdBlock) {
     providerBase['ads'] = 'geosite/category-ads-all';
-    routingRules.push('RULE-SET,ads,🚫 广告拦截');
+    routingRules.push('RULE-SET,ads,广告拦截');
   }
   if (userConfig.enableAntiAD) {
     routingRules.push('RULE-SET,anti-ad,🚫 广告拦截');
@@ -183,21 +190,21 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     if (isLin) routingRules.push(...procDirectLin.map(p => `PROCESS-NAME,${p},DIRECT`));
     routingRules.push('RULE-SET,bt-trackers-pt,DIRECT', 'RULE-SET,bt-trackers-public,DIRECT', 'DOMAIN-KEYWORD,tracker,DIRECT', 'DOMAIN-KEYWORD,announce,DIRECT');
   } else {
-    routingRules.push('RULE-SET,bt-trackers-pt,⏬ 下载策略', 'RULE-SET,bt-trackers-public,⏬ 下载策略');
+    routingRules.push('RULE-SET,bt-trackers-pt,下载策略', 'RULE-SET,bt-trackers-public,下载策略');
   }
 
   const procProxyWin = userConfig.processProxyWin || ['IDMan', 'fdm'];
   const procProxyMac = userConfig.processProxyMac || ['fdm'];
   const procProxyLin = userConfig.processProxyLin || [];
-  if (isWin) routingRules.push(...procProxyWin.map(p => `PROCESS-NAME,${p}.exe,⏬ 下载策略`));
-  if (isMac) routingRules.push(...procProxyMac.map(p => `PROCESS-NAME,${p},⏬ 下载策略`));
-  if (isLin) routingRules.push(...procProxyLin.map(p => `PROCESS-NAME,${p},⏬ 下载策略`));
-  routingRules.push('RULE-SET,download-games-cn,DIRECT', 'RULE-SET,download-games,⏬ 下载策略', 'RULE-SET,download-android,⏬ 下载策略');
+  if (isWin) routingRules.push(...procProxyWin.map(p => `PROCESS-NAME,${p}.exe,下载策略`));
+  if (isMac) routingRules.push(...procProxyMac.map(p => `PROCESS-NAME,${p},下载策略`));
+  if (isLin) routingRules.push(...procProxyLin.map(p => `PROCESS-NAME,${p},下载策略`));
+  routingRules.push('RULE-SET,download-games-cn,DIRECT', 'RULE-SET,download-games,下载策略', 'RULE-SET,download-android,下载策略');
 
   // 国内 / 海外路由方向判定
   const isReturn = userConfig.enableDomesticGroup && !userConfig.proxyFirst;
-  const cnTarget = userConfig.enableDomesticGroup ? '🇨🇳 中国分流' : 'DIRECT';
-  const nonCnTarget = isReturn ? 'DIRECT' : proxyTarget;
+  const cnTarget = userConfig.enableDomesticGroup ? '中国分流' : 'DIRECT';
+  const nonCnTarget = isReturn ? 'DIRECT' : effectiveProxyTarget;
 
   if (userConfig.proxyFirst) {
     routingRules.push(`RULE-SET,non-cn,${nonCnTarget}`, `RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`);
@@ -205,14 +212,14 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     routingRules.push(`RULE-SET,cn-domain,${cnTarget}`, `RULE-SET,cn-ip,${cnTarget},no-resolve`, `RULE-SET,non-cn,${nonCnTarget}`);
   }
 
-  if (userConfig.enableIPv6) routingRules.push('IP-CIDR6,::/0,🌐 IPv6控制台,no-resolve');
+  if (userConfig.enableIPv6) routingRules.push('IP-CIDR6,::/0,IPv6控制台,no-resolve');
   if (userConfig.enableTrafficAudit) {
-    routingRules.push('DST-PORT,53/80/443,🐟 漏网之鱼', 'DST-PORT,1-65535,DIRECT');
+    routingRules.push('DST-PORT,53/80/443,漏网之鱼', 'DST-PORT,1-65535,DIRECT');
   }
   if (Array.isArray(userConfig.customRules) && userConfig.customRules.length) {
     routingRules.push(...userConfig.customRules);
   }
-  routingRules.push('MATCH,🐟 漏网之鱼');
+  routingRules.push('MATCH,漏网之鱼');
 
   const rules = dedupe(routingRules);
 

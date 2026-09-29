@@ -21,7 +21,8 @@ test('🧩 策略模块单元测试 - 六维服务注册表 (registries)', () =>
   assert.ok(registries.streaming.netflix);
   assert.ok(registries.game.steam);
   assert.ok(registries.system.google);
-  assert.equal(registries.ai.chatgpt.name, '🤖 ChatGPT');
+  assert.equal(registries.ai.chatgpt.name, 'ChatGPT');
+  assert.equal(registries.ai.chatgpt.fullName, '🤖 ChatGPT');
 });
 
 test('🧩 策略模块单元测试 - DNS 覆写注入 (dns)', () => {
@@ -59,8 +60,8 @@ test('🧩 策略模块单元测试 - 路由分流与规则集组装 (rules)', (
   const registries = createServiceRegistries(DEFAULT_CONFIG);
   const { rules, providers } = buildRoutingRules(DEFAULT_CONFIG, registries);
   assert.ok(rules.length > 10);
-  assert.ok(rules.includes('RULE-SET,ads,🚫 广告拦截'));
-  assert.ok(rules.includes('MATCH,🐟 漏网之鱼'));
+  assert.ok(rules.includes('RULE-SET,ads,广告拦截'));
+  assert.ok(rules.includes('MATCH,漏网之鱼'));
   assert.ok(providers['ads']);
   assert.equal(providers['ads'].behavior, 'domain');
 });

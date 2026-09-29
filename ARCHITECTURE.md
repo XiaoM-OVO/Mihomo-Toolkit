@@ -186,6 +186,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── rules.js              # 规则集 (Rule-Providers) 与分流路由组装
 │   │   ├── registries.js         # 六维服务注册表向前兼容委托适配器 (委托至 config/catalog)
 │   │   ├── prune.js              # DAG 递归空组级联淘汰与殉葬规则清理
+│   │   ├── presentation.js       # 展示层终末装配器 (按 groupIconMode 统一挂载在线图标与赋予徽标)
 │   │   ├── dns.js                # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
 │   │   └── kernel.js             # TUN 网卡、Sniffer 嗅探器及内核性能调优
 │   │
@@ -195,7 +196,6 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── cache.js              # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
 │   │   ├── ssrf.js               # SSRF 深度校验、私网拦截与 Token 脱敏
 │   │   ├── limits.js             # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
-│   │   ├── sub-info.js           # 订阅头 Userinfo 解析与重置周期计算
 │   │   ├── fetch-proxy.js        # 本地代理调度封装 (undici ProxyAgent)
 │   │   └── parsers/              # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
 │   │
@@ -204,8 +204,7 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── substore/                     # 🎁 Sub-Store 独立脚本 (sub-info.js 流量看板算子)
-├── test/                         # 🧪 自动化测试套件 (96 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (99 个全绿用例)
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
