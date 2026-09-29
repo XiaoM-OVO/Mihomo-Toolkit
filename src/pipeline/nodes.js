@@ -72,6 +72,18 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
 
   const indexMap = computeNodeIndices(validItems, config);
 
+  // 动态合并来自 catalog 的特征图标与文本
+  const catalogIcons = {};
+  const catalogTexts = {};
+  if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
+    config.catalog.getCoreMatchers().forEach(m => {
+      if (m.uiIcon) catalogIcons[m.tag] = m.uiIcon;
+      if (m.uiText) catalogTexts[m.tag] = m.uiText;
+    });
+  }
+  const effectiveFeatureIcons = { ...FEATURE_ICONS, ...catalogIcons };
+  const effectiveFeatureTexts = { ...FEATURE_TEXT_MAP, ...catalogTexts };
+
   const resultProxies = validItems.map(item => {
     if (item.isSpecial || item.isInfo) return item.proxy;
     if (!item.regionInfo) return item.proxy;
@@ -81,9 +93,9 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       (item.tags || []).forEach(t => {
         if (t === 'ipv6' || t === 'dualstack') return;
         if (config.showFeatureIcon !== false) {
-          if (FEATURE_ICONS[t]) featureStr += FEATURE_ICONS[t];
+          if (effectiveFeatureIcons[t]) featureStr += effectiveFeatureIcons[t];
         } else {
-          if (FEATURE_TEXT_MAP[t]) featureStr += (featureStr ? '/' : '') + FEATURE_TEXT_MAP[t];
+          if (effectiveFeatureTexts[t]) featureStr += (featureStr ? '/' : '') + effectiveFeatureTexts[t];
         }
       });
 

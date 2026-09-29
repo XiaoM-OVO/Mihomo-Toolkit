@@ -184,7 +184,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── dashboard.js          # 看板合成、多订阅流量与到期聚合中心
 │   │   ├── topology.js           # 六维服务大区折叠与动态测速策略组装配
 │   │   ├── rules.js              # 规则集 (Rule-Providers) 与分流路由组装
-│   │   ├── registries.js         # AI、流媒体、社交、游戏等六维服务注册表
+│   │   ├── registries.js         # 六维服务注册表向前兼容委托适配器 (委托至 config/catalog)
 │   │   ├── prune.js              # DAG 递归空组级联淘汰与殉葬规则清理
 │   │   ├── dns.js                # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
 │   │   └── kernel.js             # TUN 网卡、Sniffer 嗅探器及内核性能调优
@@ -199,12 +199,13 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── fetch-proxy.js        # 本地代理调度封装 (undici ProxyAgent)
 │   │   └── parsers/              # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
 │   │
-│   └── config/                   # ⚙️ 配置中心
+│   └── config/                   # ⚙️ 配置中心 (单一事实来源 Source of Truth)
 │       ├── defaults.js           # 系统内置全局默认配置字典
-│       └── index.js              # resolveConfig 扁平配置合并器
+│       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
+│       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
 ├── substore/                     # 🎁 Sub-Store 独立脚本 (sub-info.js 流量看板算子)
-├── test/                         # 🧪 自动化测试套件 (83 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (96 个全绿用例)
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
@@ -229,20 +230,29 @@ E:\CODE\mihomo-toolkit-next\
     ```
   * `geo.js` 会在运行时自动完成最长前缀匹配与正则预编译，并在拓扑阶段自动为其建立专属大区与测速组。
 
-### 2. 新增一个专用分流服务（如：Netflix 独立策略组）
-* 打开 [`src/strategy/registries.js`](src/strategy/registries.js)：
-  * 在 `STREAMING_SERVICES` 中注册服务定义：
-    ```javascript
-    netflix: {
-      name: '🎥 Netflix',
-      type: 'select',
-      rulesetName: 'netflix',
-      behavior: 'classical',
-      ruleUrl: 'https://raw.githubusercontent.com/.../Netflix.yaml',
-      icon: 'https://...'
-    }
-    ```
-  * `topology.js` 与 `rules.js` 将自动联动生成该服务的独立策略组与 Rule-Provider 资源。
+### 2. 新增或自定义服务（如：自建 DeepSeek 或私有流媒体）
+系统采用统一的 **Service Catalog** 事实来源体系，支持两种扩展方式：
+
+* **方式 A：通过用户配置无侵入扩展 (推荐)**
+  在 `config.yaml` 中配置 `customServices` 或外挂 `servicesConfigFile: "./services.config.js"`：
+  ```yaml
+  enableAI: true
+  aiServices:
+    - chatgpt
+    - deepseek
+  customServices:
+    ai:
+      deepseek:
+        name: "DeepSeek"
+        emoji: "🧠"
+        reg: "/\\b(?:DeepSeek|DS|深度求索)\\b/i" # 支持正则字符串或纯文本
+        rules: "deepseek"                      # 自动映射 geosite/deepseek
+        icon: { repo: "koolson", file: "AI.png" }
+  ```
+  引擎会自动完成**增量继承（Delta Merge）**、正则安全编译、节点特征清洗打标、Emoji 重命名渲染、策略组装配与规则集生成。
+
+* **方式 B：在源码层扩充官方内置基线**
+  打开 [`src/config/catalog.js`](src/config/catalog.js)，在 `BUILTIN_SERVICES` 对应分类下声明标准契约，全局自动生效。
 
 ### 3. 新增一种协议的 URI 解析器
 * 在 [`src/io/parsers/`](src/io/parsers/) 下新建解析模块：

@@ -226,23 +226,28 @@ systemServices:
   - apple
   - google
 
-# 🧩 用户自定义服务注册表（无限自由扩展）
+# 🧩 动态服务编目扩展（支持行内定义或外部挂载配置文件）
+# servicesConfigFile: "./services.config.js" # 外部服务定义配置文件路径 (支持 .js / .yaml / .json)
 # customServices:
 #   ai:
+#     # 场景 A: 仅覆盖官方内置服务的某些字段（未写的字段如正则、图标、规则集全量继承）
+#     chatgpt:
+#       name: "专属ChatGPT"
+#       emoji: "🧠"
+#     # 场景 B: 纯新增全新第三方服务
 #     deepseek:
-#       name: "🧠 DeepSeek"
-#       uiIcon: "🧠"
-#       reg: "/\\b(?:DeepSeek|DS)\\b/i"
-#       provider: "geosite/deepseek"
-#       ruleSet: "deepseek"
-#       cleanName: "DeepSeek"
+#       name: "DeepSeek"
+#       emoji: "🧠"
+#       reg: "/\\b(?:DeepSeek|DS|深度求索)\\b/i" # 支持标准正则字符串或简单关键词
+#       rules: "deepseek"                      # 自动映射 geosite/deepseek
+#       icon: { repo: "koolson", file: "AI.png" }
 #   streaming:
 #     hbo:
-#       name: "🎬 HBO Max"
-#       cleanName: "HBO"
-#       provider: "geosite/hbomax"
-#       reg: "/\\b(?:HBO|HBOMax)\\b/i"
-#       pool: "hbo"
+#       name: "HBO Max"
+#       emoji: "🎬"
+#       reg: "HBO|HBOMax"
+#       rules: "hbomax"
+#       icon: "https://example.com/hbo.png"     # 也支持直接填完整 URL 图标
 
 
 # ─────────────────────────────────────────────────────────────────────

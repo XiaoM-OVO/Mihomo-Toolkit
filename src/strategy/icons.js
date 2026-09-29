@@ -8,6 +8,10 @@ function applyGroupIcons(config, userConfig = {}, registries = {}) {
   const mode = userConfig.groupIconMode;
   if (!mode || mode === 'emoji') return;
 
+  const effectiveRegistries = (registries && Object.keys(registries).length > 0)
+    ? registries
+    : (userConfig.catalog ? userConfig.catalog.toLegacyRegistries() : {});
+
   const iconOrz = userConfig.iconRepoOrz || 'https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/';
   const iconKoolson = userConfig.iconRepoKoolson || 'https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/';
   const iconLige47 = userConfig.iconRepoLige47 || 'https://fastly.jsdelivr.net/gh/lige47/lige_icon@main/icon/';
@@ -35,49 +39,15 @@ function applyGroupIcons(config, userConfig = {}, registries = {}) {
     '🗑️ 未知识别': { icon: `${iconKoolson}Cydia.png`, newName: '未知识别' }
   };
 
-  // 动态合并 AI 策略组图标
-  if (registries.ai) {
-    Object.values(registries.ai).forEach(item => {
-      if (item && item.name && item.iconUrl) {
-        iconMapping[item.name] = { icon: item.iconUrl, newName: item.cleanName || item.name };
-      }
-    });
-  }
-
-  // 动态合并流媒体策略组图标
-  if (registries.streaming) {
-    Object.values(registries.streaming).forEach(item => {
-      if (item && item.name && item.iconUrl) {
-        iconMapping[item.name] = { icon: item.iconUrl, newName: item.cleanName || item.name };
-      }
-    });
-  }
-
-  // 动态合并社交策略组图标
-  if (registries.social) {
-    Object.values(registries.social).forEach(item => {
-      if (item && item.name && item.iconUrl) {
-        iconMapping[item.name] = { icon: item.iconUrl, newName: item.cleanName || item.name };
-      }
-    });
-  }
-
-  // 动态合并系统服务策略组图标
-  if (registries.system) {
-    Object.values(registries.system).forEach(item => {
-      if (item && item.name && item.iconUrl) {
-        iconMapping[item.name] = { icon: item.iconUrl, newName: item.cleanName || item.name };
-      }
-    });
-  }
-
-  // 动态合并开发者服务图标
-  if (registries.dev) {
-    Object.values(registries.dev).forEach(item => {
-      if (item && item.name && item.iconUrl) {
-        iconMapping[item.name] = { icon: item.iconUrl, newName: item.cleanName || item.name };
-      }
-    });
+  // 动态合并 catalog/registries 策略组图标
+  for (const catServices of Object.values(effectiveRegistries)) {
+    if (catServices && typeof catServices === 'object') {
+      Object.values(catServices).forEach(item => {
+        if (item && item.name && item.iconUrl) {
+          iconMapping[item.name] = { icon: item.iconUrl, newName: item.cleanName || item.name };
+        }
+      });
+    }
   }
 
   const useIconOnly = mode === 'icon';

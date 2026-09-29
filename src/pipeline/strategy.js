@@ -53,6 +53,18 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
     if (isRenameEnabled && renameTemplate) {
       const indexMap = computeNodeIndices(classifiedNodes, userConfig);
 
+      // 动态合并来自 catalog 的特征图标与文本
+      const catalogIcons = {};
+      const catalogTexts = {};
+      if (userConfig.catalog && typeof userConfig.catalog.getCoreMatchers === 'function') {
+        userConfig.catalog.getCoreMatchers().forEach(m => {
+          if (m.uiIcon) catalogIcons[m.tag] = m.uiIcon;
+          if (m.uiText) catalogTexts[m.tag] = m.uiText;
+        });
+      }
+      const effectiveFeatureIcons = { ...FEATURE_ICONS, ...catalogIcons };
+      const effectiveFeatureTexts = { ...FEATURE_TEXT_MAP, ...catalogTexts };
+
       classifiedNodes.forEach(item => {
         if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
 
@@ -60,9 +72,9 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
         (item.tags || []).forEach(t => {
           if (t === 'ipv6' || t === 'dualstack') return;
           if (userConfig.showFeatureIcon !== false) {
-            if (FEATURE_ICONS[t]) featureStr += FEATURE_ICONS[t];
+            if (effectiveFeatureIcons[t]) featureStr += effectiveFeatureIcons[t];
           } else {
-            if (FEATURE_TEXT_MAP[t]) featureStr += (featureStr ? '/' : '') + FEATURE_TEXT_MAP[t];
+            if (effectiveFeatureTexts[t]) featureStr += (featureStr ? '/' : '') + effectiveFeatureTexts[t];
           }
         });
 
