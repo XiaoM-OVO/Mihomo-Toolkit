@@ -22,6 +22,7 @@ const { operator } = require('./targets/operator');
 const { main } = require('./targets/verge');
 
 const { runNodesPipeline } = require('./pipeline/nodes');
+const { runStrategyPipeline } = require('./pipeline/strategy');
 const { buildAuditReport } = require('./pipeline/report');
 
 module.exports = {
@@ -30,6 +31,7 @@ module.exports = {
   build: buildProfile,
   runConfigPipeline,
   runNodesPipeline,
+  runStrategyPipeline,
   buildAuditReport,
   operator,
   main,

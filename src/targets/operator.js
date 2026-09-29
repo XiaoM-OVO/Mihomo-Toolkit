@@ -9,8 +9,12 @@
 
 const { runNodesPipeline } = require('../pipeline/nodes');
 
-async function operator(proxies, targetPlatform, userConfig) {
-  return await runNodesPipeline(proxies, userConfig);
+async function operator(proxies = [], targetPlatform, userConfig) {
+  let config = userConfig;
+  if (!config && typeof $arguments !== 'undefined') {
+    config = typeof $arguments === 'object' ? $arguments : {};
+  }
+  return await runNodesPipeline(proxies, config || {});
 }
 
 module.exports = { operator };

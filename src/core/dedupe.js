@@ -66,6 +66,20 @@ function dedupeNodes(proxies, options = {}) {
       continue;
     }
 
+    // 虚拟看板/信息节点不参与底层 IP:Port 物理去重（防止同为 127.0.0.1:80 被互相剔除），仅按名称防重
+    if (proxy.isSyntheticInfo) {
+      const infoKey = `synth:${proxy.name}`;
+      if (seenMap.has(infoKey)) {
+        if (typeof onDuplicate === 'function') {
+          onDuplicate(proxy, seenMap.get(infoKey));
+        }
+      } else {
+        seenMap.set(infoKey, proxy);
+        result.push(proxy);
+      }
+      continue;
+    }
+
     const key = getNodeFingerprint(proxy);
     if (seenMap.has(key)) {
       if (typeof onDuplicate === 'function') {

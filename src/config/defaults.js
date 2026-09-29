@@ -20,6 +20,7 @@ const DEFAULT_CONFIG = {
   // 【2. 节点清洗与处理】
   enableDedupe: false,         // 🧽 节点去重：开启后自动剔除底层完全重复的“注水”节点
   enableDashboard: true,       // 📊 订阅看板: 开启后为流量/到期等信息建立独立的「📊 订阅与状态看板」策略组
+  removeInfoNodes: true,       // 🗑️ 过滤原生说明节点: 开启后剔除机场自带的原生说明/流量提示伪节点
   renameTemplate: "[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}", // 🔤 节点重命名模板
   renameSeparators: ["|", "-", "·", "/", "~", ":", ",", ";", "_", "=", "+", "*", ">", "<", "➩", "=>", "->"], // 🧹 允许自动清理的悬空符号
   whitelistKeywords: [],       // ⚪ 白名单关键词: 包含即放行并保留原名，不参与清洗

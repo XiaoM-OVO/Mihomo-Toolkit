@@ -145,6 +145,22 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
     applyCoreOptimize(config, userConfig);
   }
 
+  // 8. 独立运行收尾：若非上游总调度驱动（如由 Clash Verge 独立调用），执行简繁同步与私有字段清理
+  if (!pipelineContext.classifiedNodes) {
+    const { syncChineseConvert } = require('../core/chinese-sync');
+    syncChineseConvert(config, userConfig);
+
+    if (Array.isArray(config.proxies)) {
+      for (const p of config.proxies) {
+        if (p && typeof p === 'object') {
+          for (const key of Object.keys(p)) {
+            if (key.startsWith('_')) delete p[key];
+          }
+        }
+      }
+    }
+  }
+
   return config;
 }
 

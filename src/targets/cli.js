@@ -78,7 +78,8 @@ function run(argv = process.argv) {
       if (mode === 'report') {
         const targetOut = options.out || userConfig.output || 'report.json';
         const outPath = path.resolve(process.cwd(), targetOut);
-        fs.writeFileSync(outPath, JSON.stringify(meta || result, null, 2), 'utf-8');
+        const reportData = result.report || (typeof result.yamlStr === 'string' && result.yamlStr.startsWith('{') ? JSON.parse(result.yamlStr) : (meta || result));
+        fs.writeFileSync(outPath, JSON.stringify(reportData, null, 2), 'utf-8');
         console.log(`[CLI]     💾 审计报告已输出至: ${outPath}`);
 
         if (meta?.stats) {
@@ -94,9 +95,10 @@ function run(argv = process.argv) {
 
       // 2. 附加 -r / -m 选项导出审计 JSON
       const reportTarget = options.report || options.meta;
-      if (reportTarget && meta) {
+      if (reportTarget && (result.report || meta)) {
         const reportPath = path.resolve(process.cwd(), reportTarget);
-        fs.writeFileSync(reportPath, JSON.stringify(meta, null, 2), 'utf-8');
+        const extraReport = result.report || meta;
+        fs.writeFileSync(reportPath, JSON.stringify(extraReport, null, 2), 'utf-8');
         console.log(`[CLI]     💾 审计报告已另存至: ${reportPath}`);
 
         if (meta.stats) {

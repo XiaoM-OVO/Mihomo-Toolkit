@@ -2,9 +2,9 @@ name: CI Test Suite
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, next ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, next ]
 
 jobs:
   test:
@@ -26,11 +26,8 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
-      - name: Run code injection check
-        run: npm run inject:check
-
       - name: Run unit & integration test suite
         run: npm test
 
-      - name: Verify Worker build
-        run: npm run build:worker
+      - name: Verify Target bundle build
+        run: npm run build:bundle

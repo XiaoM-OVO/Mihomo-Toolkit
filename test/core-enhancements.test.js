@@ -151,3 +151,66 @@ test('🔄 简繁转换 - deepConvertStrings 键名碰撞安全合并', () => {
   // 两个键名转换为同一个 '繁体' 后，数组内容应安全合并去重，而不是静默丢弃
   assert.deepEqual(converted['繁体'], ['Node A', 'Node B']);
 });
+
+test('🧬 裂变防重 - 在禁用重命名时为裂变节点赋予独立后缀，防止同名冲突', () => {
+  const proxy = {
+    name: '🇭🇰 香港 01',
+    type: 'trojan',
+    server: 'hk.example.com',
+    port: 443,
+    password: 'pass',
+    tls: true
+  };
+  const ips = ['1.1.1.1', '1.1.1.2', '1.1.1.3'];
+  const expanded = fissionNode(proxy, ips, { fissionMaxNodes: 3 });
+
+  assert.equal(expanded.length, 3);
+  const names = expanded.map(p => p.name);
+  const uniqueNames = new Set(names);
+  assert.equal(uniqueNames.size, 3, '裂变出的所有节点名称必须唯一，防止内核同名冲突');
+  assert.equal(names[0], '🇭🇰 香港 01');
+  assert.equal(names[1], '🇭🇰 香港 01 #2');
+  assert.equal(names[2], '🇭🇰 香港 01 #3');
+});
+
+test('🔄 简繁同步 - 规则组名精准按逗号分词替换，不误伤规则类型与域名', () => {
+  const { syncChineseConvert } = require('../src/core/chinese-sync');
+  const mockConfig = {
+    'proxy-groups': [
+      { name: '🍎 苹果服务', proxies: ['DIRECT'] }
+    ],
+    rules: [
+      'RULE-SET,apple,🍎 苹果服务',
+      'DOMAIN-SUFFIX,apple.com,🍎 苹果服务',
+      'MATCH,DIRECT'
+    ]
+  };
+
+  const synced = syncChineseConvert(mockConfig, {
+    enableChineseConvert: true,
+    chineseConvertMode: 's2t'
+  });
+
+  const rules = synced.rules;
+  // 规则前缀 DOMAIN-SUFFIX,apple.com 中的 apple 不会被误伤替换为其他内容，目标组名被替换为繁体
+  assert.ok(rules[0].startsWith('RULE-SET,apple,'));
+  assert.ok(rules[1].startsWith('DOMAIN-SUFFIX,apple.com,'));
+  assert.ok(rules[0].includes('🍎 蘋果服務'));
+  assert.ok(rules[1].includes('🍎 蘋果服務'));
+});
+
+test('🔌 Verge 适配 - main(config, profileName) 安全接收字符串参数', () => {
+  const { main: vergeMain } = require('../src/targets/verge');
+  const config = {
+    proxies: [
+      { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
+    ]
+  };
+  // 模拟 Clash Verge 传入的字符串配置名
+  const result = vergeMain(config, 'MyDefaultProfile');
+  assert.ok(result['proxy-groups']);
+  assert.ok(result['proxy-groups'].length > 0);
+  // 确保没有展开为数字键
+  assert.equal(result[0], undefined);
+  assert.equal(result[1], undefined);
+});

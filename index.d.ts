@@ -344,6 +344,14 @@ export function buildProfile(
 ): Promise<BuildResult>;
 
 /**
+ * 全流程流水线总调度引擎 (Pipeline Engine)
+ */
+export function runPipelineEngine(
+  userConfig?: UserConfig,
+  options?: BuildOptions
+): Promise<BuildResult>;
+
+/**
  * 节点清洗核心算子 (pure-nodes)
  * @param proxies 原始代理节点数组
  * @param targetPlatform 目标平台（默认 'clash'）
@@ -358,11 +366,11 @@ export function operator(
 /**
  * 策略组与分流规则构建主函数 (mihomo-toolkit)
  * @param config 包含 proxies 的基础配置对象
- * @param userConfig 策略组构建配置
+ * @param userConfig 策略组构建配置或 profileName
  */
 export function main(
   config: Record<string, any>,
-  userConfig?: ToolkitConfig
+  userConfig?: ToolkitConfig | string
 ): Record<string, any>;
 
 /**
@@ -385,12 +393,25 @@ export function isAllowedUrl(urlString: string): boolean;
 export function parseContent(content: string, defaultName?: string): { proxies: ProxyNode[]; [key: string]: any };
 
 /**
- * 完整配置构建流水线 (config pipeline)
+ * 完整配置装配流水线 (config pipeline)
  */
-export function runConfigPipeline(
-  userConfig: UserConfig,
-  options?: BuildOptions
-): Promise<BuildResult>;
+export function runConfigPipeline(params: {
+  configData?: Record<string, any>;
+  cleanProxies?: ProxyNode[];
+  classifiedNodes?: any[];
+  collectedSubInfos?: any[];
+  userConfig?: UserConfig;
+  logger?: any;
+}): {
+  yamlStr: string;
+  outputData: Record<string, any>;
+  userInfo: {
+    upload: number;
+    download: number;
+    total: number;
+    expire: number;
+  };
+};
 
 /**
  * 纯节点清洗与打标流水线 (nodes pipeline)
