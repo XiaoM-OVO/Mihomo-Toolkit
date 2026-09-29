@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseContent, parseSubscriptionInfo, isExpiredNow } = require('./parsers');
 const { redactUrl } = require('./ssrf');
-const { fetchNodes, resolveProxyUrl, subStaleCache, pruneSubStaleCache } = require('./fetcher');
+const { fetchNodes, resolveProxyUrl, checkPortReachable, subStaleCache, pruneSubStaleCache } = require('./fetcher');
 
 // 统一解耦 Strategy 层看板逻辑：优先使用 Pipeline 注入的实现，保持单向无环依赖
 let _dashboard = null;
@@ -70,6 +70,19 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   // 1. 多订阅并发抓取分支
   if (subscriptions && Array.isArray(subscriptions) && subscriptions.length > 0) {
     const urlSubs = subscriptions.filter(isSubEnabled).filter(s => s.url).length;
+
+    // 前置自检本地代理端口连通性
+    const proxyPort = userConfig.fetchProxyPort;
+    const proxyStrategy = userConfig.fetchProxyStrategy || 'direct';
+    const hasProxyTask = proxyPort && (proxyStrategy !== 'direct' || subscriptions.some(s => isSubEnabled(s) && s.proxy === true));
+    if (hasProxyTask) {
+      const isReachable = await checkPortReachable(proxyPort);
+      if (isReachable) {
+        if (logger) logger.debug(`🔌 抓取代理: 127.0.0.1:${proxyPort} (已就绪 · 策略: ${proxyStrategy})`);
+      } else {
+        if (logger) logger.warn(`⚠️ 本地抓取代理 127.0.0.1:${proxyPort} 连通失败 (服务未启动或端口填写有误)，将尝试直连拉取`);
+      }
+    }
 
     const fetchTasks = subscriptions.map(async (sub) => {
       if (!isSubEnabled(sub)) {

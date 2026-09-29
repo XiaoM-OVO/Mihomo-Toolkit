@@ -9,6 +9,7 @@
  * 4. Stale 兜底容灾缓存：网络故障时复用上次有效内容，保障下游节点不掉线
  */
 
+const net = require('net');
 const { safeDecodeURIComponent } = require('./parsers/base64');
 const { validateUrlSsrf, redactUrl } = require('./ssrf');
 const { parseContent } = require('./parsers');
@@ -135,6 +136,51 @@ function resolveFetchPlan({ strategy, perSubProxy }) {
   return { mode: 'direct' };
 }
 
+function checkPortReachable(port, host = '127.0.0.1', timeoutMs = 300) {
+  return new Promise((resolve) => {
+    if (!port || port <= 0 || port > 65535) return resolve(false);
+    const socket = new net.Socket();
+    let settled = false;
+
+    const cleanup = () => {
+      socket.removeAllListeners();
+      socket.destroy();
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        resolve(true);
+      }
+    });
+
+    socket.once('timeout', () => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        resolve(false);
+      }
+    });
+
+    socket.once('error', () => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        resolve(false);
+      }
+    });
+
+    try {
+      socket.connect(port, host);
+    } catch {
+      cleanup();
+      resolve(false);
+    }
+  });
+}
+
 /**
  * 代理端点强制本地回环：只暴露端口配置
  */
@@ -178,7 +224,8 @@ async function fetchNodes(url, options = {}) {
         lastErr = err;
         if (err && err.retryable === false) throw err;
         if (i < attempts - 1) {
-          if (logger) logger.warn(`订阅抓取失败，第 ${i + 1}/${attempts - 1} 次重试: ${err.message}`);
+          const via = (p && proxyUrl) ? ` (经代理 ${proxyUrl.replace('http://', '')})` : '';
+          if (logger) logger.warn(`订阅抓取失败，第 ${i + 1}/${attempts - 1} 次重试${via}: ${err.message}`);
           await new Promise(r => setTimeout(r, 500 * (i + 1)));
         }
       }
@@ -201,6 +248,7 @@ async function fetchNodes(url, options = {}) {
 module.exports = {
   safeFetchText,
   fetchNodes,
+  checkPortReachable,
   resolveFetchPlan,
   resolveProxyUrl,
   subStaleCache,
