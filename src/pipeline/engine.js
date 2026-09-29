@@ -18,23 +18,13 @@ const { processSubscriptionSources, isSubEnabled } = require('../io/sub-processo
 const { chineseConvert } = require('../core/chinese-sync');
 const dashboard = require('../strategy/dashboard');
 
+const { createLogger } = require('../core/logger');
+
 let BUILDER_VERSION = 'v1.7.0';
 try {
   const pkg = require('../../package.json');
   if (pkg && pkg.version) BUILDER_VERSION = `v${pkg.version}`;
 } catch (e) {}
-
-function createLogger(prefix, levelName = 'info') {
-  const LOG_LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4 };
-  const currentLevel = LOG_LEVELS[levelName] ?? 3;
-  return {
-    debug: (...args) => { if (currentLevel >= 4) console.log(`${prefix} DBG  ${args.join(' ')}`); },
-    info:  (...args) => { if (currentLevel >= 3) console.log(`${prefix} INFO ${args.join(' ')}`); },
-    log:   (...args) => { if (currentLevel >= 3) console.log(`${prefix} ${args.join(' ')}`); },
-    warn:  (...args) => { if (currentLevel >= 2) console.warn(`${prefix} WARN ${args.join(' ')}`); },
-    error: (...args) => { if (currentLevel >= 1) console.error(`${prefix} ERR  ${args.join(' ')}`); }
-  };
-}
 
 function normalizeTargetType(rawType) {
   let targetType = String(rawType || 'config').toLowerCase();
@@ -74,7 +64,18 @@ function getCacheKey(userConfig, options) {
  */
 async function runPipelineEngine(userConfig = {}, options = {}) {
   const effectiveLogLevel = options.debug ? 'debug' : (userConfig.logLevel || 'info');
-  const logger = createLogger('[Builder]', effectiveLogLevel);
+  const logger = (options.logger && typeof options.logger.child === 'function')
+    ? options.logger
+    : createLogger({
+        tag: 'CLI',
+        level: effectiveLogLevel,
+        colors: options.colors,
+        timestamps: options.timestamps !== false
+      });
+
+  const ioLogger = typeof logger.child === 'function' ? logger.child('IO') : logger;
+  const cleanLogger = typeof logger.child === 'function' ? logger.child('Cleaner') : logger;
+  const stratLogger = typeof logger.child === 'function' ? logger.child('Strategy') : logger;
 
   // 1. 交付形态解析: config | nodes | report
   const targetType = normalizeTargetType(options.type || userConfig.outputMode || userConfig.type || 'config');
@@ -95,7 +96,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   if (enableCache && cacheKey) {
     const cached = profileCache.get(cacheKey, cacheTtlMs);
     if (cached) {
-      logger.log(`⚡ 命中本地内存缓存 (${cached.remainingSec}s 后过期)，直接响应缓存数据`);
+      logger.info(`⚡ 命中本地内存缓存 (${cached.remainingSec}s 后过期)，直接响应缓存数据`);
       return cached.result;
     }
   }
@@ -115,8 +116,6 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     throw new Error('[Security] redactLevel=off 不允许在生产环境使用！');
   }
 
-  logger.log(`🔨 mihomo-toolkit-builder ${BUILDER_VERSION}`);
-
   // 5. Step 1: 订阅抓取与预处理网关 (IO 阶段)
   const {
     configData,
@@ -128,12 +127,11 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     url: options.url,
     userConfig,
     options,
-    logger,
+    logger: ioLogger,
     dashboard
   });
 
   // 6. Step 2: 节点标准化清洗与打标 (Core 纯算法阶段)
-  logger.log('🔄 阶段: nodes 节点清洗');
   const nodeConfig = { ...userConfig };
   if (hasInjectedTag) nodeConfig.enableAirportTag = true;
 
@@ -144,12 +142,21 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   } = await runNodesPipeline(configData.proxies, {
     ...nodeConfig,
     withClassified: true,
-    logger
+    logger: cleanLogger
   });
+
+  const stats = meta?.stats;
+  if (stats) {
+    const details = [];
+    if (stats.dedupeCount > 0) details.push(`去重: ${stats.dedupeCount}`);
+    if (stats.discardedCount > 0) details.push(`丢弃: ${stats.discardedCount}`);
+    if (stats.fissionCount > 0) details.push(`裂变: ${stats.fissionCount}`);
+    const detailStr = details.length > 0 ? ` (${details.join(' | ')})` : '';
+    cleanLogger.info(`🧹 节点清洗完成: ${stats.total} 输入 ➔ ${cleanProxies.length} 有效${detailStr}`);
+  }
 
   // ─── 🛑 Checkpoint 1: 交付纯净节点 (nodes 模式早退截断) ───
   if (targetType === 'nodes') {
-    logger.log(`✅ 清洗完成: ${cleanProxies.length} 个节点`);
     const nodesResult = {
       yamlStr: yaml.stringify({ proxies: cleanProxies }),
       proxies: cleanProxies,
@@ -184,7 +191,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     classifiedNodes,
     collectedSubInfos,
     userConfig,
-    logger
+    logger: stratLogger
   });
 
   const configResult = {

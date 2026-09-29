@@ -272,25 +272,26 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       }
     }
 
-    if (subSummaries.length > 0) {
-      logger.log(`📡 订阅解析完成 (${subSummaries.length} 个源):`);
+    if (subSummaries.length > 0 && logger) {
+      const lines = [`📡 订阅源抓取与解析完成 (${subSummaries.length} 个源):`];
       subSummaries.forEach((s, idx) => {
         const isLast = idx === subSummaries.length - 1;
         const branch = isLast ? '└──' : '├──';
         if (s.disabled) {
-          logger.log(`    ${branch} ⏸️ [${s.tag}]: 已停用 (跳过)`);
+          lines.push(`${branch} ⏸️ [${s.tag}]: 已停用 (跳过)`);
         } else if (s.failed) {
-          logger.log(`    ${branch} ❌ [${s.tag}]: 拉取失败 (${s.failReason})`);
+          lines.push(`${branch} ❌ [${s.tag}]: 拉取失败 (${s.failReason})`);
         } else {
           const icon = s.type === 'uri' ? '📌' : '🌐';
           const details = [];
-          if (s.filtered > 0) details.push(`过滤 ${s.filtered}`);
-          if (s.synth > 0) details.push(`合成 ${s.synth}`);
+          if (s.filtered > 0) details.push(`过滤 ${s.filtered} 垃圾说明`);
+          if (s.synth > 0) details.push(`合成 ${s.synth} 看板`);
           const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
           const namePart = s.type === 'uri' ? `${s.nameHint}${s.tag ? ` [${s.tag}]` : ''}` : `[${s.tag}]`;
-          logger.log(`    ${branch} ${icon} ${namePart}: ${s.total} 个节点${detailStr}`);
+          lines.push(`${branch} ${icon} ${namePart}: ${s.total} 个节点${detailStr}`);
         }
       });
+      logger.info(lines.join('\n'));
     }
 
     // 仅在多订阅 (>=2 个有流量的有效源) 且启用看板时，在最顶部注入一组「全局总额」配对节点（流量 + 到期）
