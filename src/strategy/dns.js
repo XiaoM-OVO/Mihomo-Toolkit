@@ -47,8 +47,8 @@ function applyDnsOverlay(config, userConfig) {
 
   const scriptFilter = [
     '*.lan', '*.local', '*.arpa', 'time.*.com', 'ntp.*.com',
-    'localhost.ptlogin2.qq.com', '*.msftncsi.com', 'www.msftconnecttest.com',
-    'ipv6.msftncsi.com', '*.ipv6-literal.net', 'google.cn',
+    'localhost.ptlogin2.qq.com', '*.msftncsi.com', '*.msftconnecttest.com', 'www.msftconnecttest.com',
+    'ipv6.msftncsi.com', 'ipv6.msftconnecttest.com', '*.ipv6-literal.net', 'google.cn',
     '*.music.163.com', '*.music.126.net', '+.stun.*.*',
     '+.nintendo.net', '+.playstation.net', '+.xboxlive.com'
   ];
