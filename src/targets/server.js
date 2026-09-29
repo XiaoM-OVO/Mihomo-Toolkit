@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 const { buildProfile } = require('../pipeline/engine');
+const { createLogger } = require('../core/logger');
 const { safeFetchText } = require('../io/fetcher');
 const { isAllowedUrl, redactUrl } = require('../io/ssrf');
 const { validateRequestLimits } = require('../io/limits');
@@ -17,6 +18,25 @@ const pkg = require('../../package.json');
 function startServer(options = {}) {
   const PORT = options.port || process.env.PORT || 3000;
   const CONFIG_PATH = options.configPath || process.env.CONFIG_PATH || path.resolve(process.cwd(), 'config.yaml');
+
+  let localConfig = {};
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
+      if (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml')) {
+        localConfig = yaml.parse(content) || {};
+      } else {
+        localConfig = JSON.parse(content);
+      }
+    } catch (e) {}
+  }
+
+  const serverLogger = (options.logger && typeof options.logger.child === 'function')
+    ? options.logger
+    : createLogger({
+        tag: 'Server',
+        level: options.debug ? 'debug' : (localConfig.logLevel || 'info')
+      });
 
   const server = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
@@ -34,7 +54,7 @@ function startServer(options = {}) {
 
     if (reqUrl.pathname === '/sub') {
       try {
-        let localConfig = {};
+        // 允许实时读取配置文件热重载
         if (fs.existsSync(CONFIG_PATH)) {
           const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
           if (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml')) {
@@ -65,7 +85,7 @@ function startServer(options = {}) {
         if (reqUrl.searchParams.has('token')) safeParams.push('token=***');
         if (reqUrl.searchParams.has('debug')) safeParams.push(`debug=${reqUrl.searchParams.get('debug')}`);
         if (safeParams.length > 0) safeUrl += `?${safeParams.join('&')}`;
-        console.log(`[Server] Received request for ${safeUrl}`);
+        serverLogger.info(`Received request for ${safeUrl}`);
 
         let userConfig = { subscriptions: [] };
         const configUrl = reqUrl.searchParams.get('config');
@@ -123,10 +143,12 @@ function startServer(options = {}) {
 
         const debugMode = reqUrl.searchParams.get('debug') === '1';
         const targetType = reqUrl.searchParams.get('type') || reqUrl.searchParams.get('mode') || userConfig.outputMode;
+        const buildLogger = serverLogger.child('CLI');
         const result = await buildProfile(userConfig, {
           production: true,
           debug: debugMode,
-          type: targetType
+          type: targetType,
+          logger: buildLogger
         });
         const { yamlStr, userInfo } = result;
 
@@ -143,7 +165,7 @@ function startServer(options = {}) {
         res.writeHead(200, headers);
         res.end(isReport && result.report ? JSON.stringify(result.report, null, 2) : yamlStr);
       } catch (err) {
-        console.error('[Server] Build Error:', err.message);
+        serverLogger.error('Build Error:', err.message);
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end(`Server Internal Error: ${err.message}`);
       }
@@ -155,7 +177,7 @@ function startServer(options = {}) {
   });
 
   server.listen(PORT, () => {
-    console.log(`[Server] Mihomo-Toolkit Server listening on port ${PORT}`);
+    serverLogger.info(`Mihomo-Toolkit Server listening on port ${PORT}`);
   });
 
   return server;

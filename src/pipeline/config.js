@@ -48,21 +48,22 @@ function runConfigPipeline({
     configData.proxies = cleanProxies;
     outputData = configData;
 
-    if (logger) logger.log('🔄 阶段: strategy 策略组构建');
     outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes });
 
     const groups = outputData['proxy-groups'] || [];
     const proxies = outputData.proxies || [];
-    const featureSwitches = [
-      userConfig.enableAI && 'AI', userConfig.enableStreaming && '流媒体',
-      userConfig.enableGame && '游戏', userConfig.enableTelegram && 'TG',
-      userConfig.enableGitHub && 'GitHub', userConfig.enableScholar && 'Scholar',
-      userConfig.enableSystemServices && '系统', userConfig.enableDomesticGroup && '中国分流',
-      userConfig.enableAdBlock && '广告拦截'
-    ].filter(Boolean);
+    const rules = outputData.rules || [];
     if (logger) {
-      logger.log(`✅ 构建完成: ${proxies.length} 个节点, ${groups.length} 个策略组` +
-        (featureSwitches.length > 0 ? ` | ${featureSwitches.join(' ')}` : ''));
+      const synthCount = proxies.filter(p => p.isSyntheticInfo).length;
+      const regionalGroups = groups.filter(g => g.name && /节点/.test(g.name));
+      const serviceGroups = groups.filter(g => g.name && !/节点/.test(g.name));
+      const lines = [`📐 拓扑策略装配完成:`];
+      if (synthCount > 0) {
+        lines.push(`├── 📊 状态看板: ${synthCount} 条目 (已合成全局总额与独立看板)`);
+      }
+      lines.push(`├── 🌏 地区拓扑: ${regionalGroups.length} 个区域组`);
+      lines.push(`└── 🎯 分流服务: ${serviceGroups.length} 个规则组 (${rules.length} 条分流规则)`);
+      logger.info(lines.join('\n'));
     }
   }
 

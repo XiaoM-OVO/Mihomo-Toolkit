@@ -10,6 +10,7 @@ const path = require('path');
 const yaml = require('yaml');
 const { program } = require('commander');
 const { buildProfile } = require('../pipeline/engine');
+const { createLogger } = require('../core/logger');
 
 function run(argv = process.argv) {
   program
@@ -35,9 +36,14 @@ function run(argv = process.argv) {
   if (mode === 'cleaner' || mode === 'pure') mode = 'nodes';
   if (mode === 'meta' || mode === 'audit') mode = 'report';
 
+  const logger = createLogger({
+    tag: 'CLI',
+    level: options.debug ? 'debug' : 'info'
+  });
+
   const VALID_MODES = ['config', 'nodes', 'report'];
   if (!VALID_MODES.includes(mode)) {
-    console.error(`[CLI] Error: Invalid mode "${options.type}". Must be one of: ${VALID_MODES.join(', ')}`);
+    logger.error(`Invalid mode "${options.type}". Must be one of: ${VALID_MODES.join(', ')}`);
     process.exit(1);
   }
 
@@ -56,7 +62,10 @@ function run(argv = process.argv) {
         } else {
           userConfig = JSON.parse(content);
         }
-        console.log(`[CLI]     📄 已加载配置文件: ${options.config}`);
+        logger.info(`📄 已加载配置文件: ${options.config}`);
+        if (!options.debug && userConfig.logLevel) {
+          logger.setLevel(userConfig.logLevel);
+        }
       }
 
       // 透传开关
@@ -64,11 +73,12 @@ function run(argv = process.argv) {
         userConfig.passthrough = true;
       }
 
-      console.log(`[CLI]     🚀 开始构建流程 (交付模式: ${mode}${userConfig.passthrough ? ' + passthrough' : ''})...`);
+      logger.info(`🚀 开始执行配置流水线 (交付模式: ${mode}${userConfig.passthrough ? ' + passthrough' : ''})`);
       const buildOptions = {
         ...options,
         type: mode,
-        production: !!options.prod
+        production: !!options.prod,
+        logger
       };
 
       const result = await buildProfile(userConfig, buildOptions);
@@ -80,7 +90,7 @@ function run(argv = process.argv) {
         const outPath = path.resolve(process.cwd(), targetOut);
         const reportData = result.report || (typeof result.yamlStr === 'string' && result.yamlStr.startsWith('{') ? JSON.parse(result.yamlStr) : (meta || result));
         fs.writeFileSync(outPath, JSON.stringify(reportData, null, 2), 'utf-8');
-        console.log(`[CLI]     💾 审计报告已输出至: ${outPath}`);
+        logger.success(`🎉 审计报告已输出至: ${outPath}`);
 
         if (meta?.stats) {
           console.log(`\n=== 📊 节点清洗与健康审计 ===`);
@@ -99,7 +109,7 @@ function run(argv = process.argv) {
         const reportPath = path.resolve(process.cwd(), reportTarget);
         const extraReport = result.report || meta;
         fs.writeFileSync(reportPath, JSON.stringify(extraReport, null, 2), 'utf-8');
-        console.log(`[CLI]     💾 审计报告已另存至: ${reportPath}`);
+        logger.info(`💾 审计报告已另存至: ${reportPath}`);
 
         if (meta.stats) {
           console.log(`\n=== 📊 数据清洗统计 ===`);
@@ -116,9 +126,9 @@ function run(argv = process.argv) {
       const targetOut = options.out || userConfig.output || defaultOut;
       const outPath = path.resolve(process.cwd(), targetOut);
       fs.writeFileSync(outPath, yamlStr, 'utf-8');
-      console.log(`[CLI]     ✅ 构建产物已输出至: ${outPath}`);
+      logger.success(`🎉 配置文件构建成功 ➔ ${outPath}`);
     } catch (err) {
-      console.error(`[CLI]     ❌ Error:`, err.message);
+      logger.error(`构建异常:`, err.message);
       process.exit(1);
     }
   })();

@@ -24,8 +24,11 @@ const { main } = require('./targets/verge');
 const { runNodesPipeline } = require('./pipeline/nodes');
 const { runStrategyPipeline } = require('./pipeline/strategy');
 const { buildAuditReport } = require('./pipeline/report');
+const { createLogger, Logger } = require('./core/logger');
 
 module.exports = {
+  createLogger,
+  Logger,
   buildProfile,
   runPipelineEngine,
   build: buildProfile,
