@@ -48,7 +48,7 @@ function runConfigPipeline({
     configData.proxies = cleanProxies;
     outputData = configData;
 
-    outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes });
+    outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes, logger });
 
     const groups = outputData['proxy-groups'] || [];
     const proxies = outputData.proxies || [];
