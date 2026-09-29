@@ -54,6 +54,39 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   let hasFailedSub = false;
   const collectedSubInfos = [];
 
+  // 前置自检本地代理端口与 TUN 虚拟网卡状态
+  const proxyPort = userConfig.fetchProxyPort;
+  const proxyStrategy = userConfig.fetchProxyStrategy || 'direct';
+  const tunInterface = detectTunInterface();
+
+  if (tunInterface && logger && (options.debug || userConfig.logLevel === 'debug')) {
+    logger.debug(`🛡️ 系统网络: 检测到活跃的 TUN 虚拟网卡 (${tunInterface})，流量将自动由内核接管`);
+  }
+
+  let isProxyAvailable = true;
+  const hasProxyTask = proxyPort && (
+    proxyStrategy !== 'direct' ||
+    (subscriptions && subscriptions.some(s => isSubEnabled(s) && s.proxy === true))
+  );
+
+  if (hasProxyTask) {
+    const isReachable = await checkPortReachable(proxyPort);
+    if (isReachable) {
+      isProxyAvailable = true;
+      if (logger) logger.debug(`🔌 抓取代理: 127.0.0.1:${proxyPort} (已就绪 · 策略: ${proxyStrategy})`);
+    } else {
+      isProxyAvailable = false;
+      if (tunInterface) {
+        if (logger) logger.warn(`💡 本地代理端口 127.0.0.1:${proxyPort} 未监听，已切换为系统 TUN 虚拟网卡 (${tunInterface}) 接管`);
+      } else {
+        if (logger) logger.warn(`⚠️ 本地抓取代理 127.0.0.1:${proxyPort} 连通失败 (服务未启动或端口填写有误)，已降级为直连拉取`);
+      }
+    }
+  }
+
+  const effectiveProxyUrl = isProxyAvailable ? resolveProxyUrl(userConfig) : '';
+  const effectiveStrategy = isProxyAvailable ? userConfig.fetchProxyStrategy : 'direct';
+
   function recordSubInfo(subInfo, subTag) {
     if (!subInfo) return;
     const { upload, download, total, expire } = parseSubscriptionInfo(subInfo);
@@ -70,29 +103,6 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   // 1. 多订阅并发抓取分支
   if (subscriptions && Array.isArray(subscriptions) && subscriptions.length > 0) {
     const urlSubs = subscriptions.filter(isSubEnabled).filter(s => s.url).length;
-
-    // 前置自检本地代理端口与 TUN 虚拟网卡状态
-    const proxyPort = userConfig.fetchProxyPort;
-    const proxyStrategy = userConfig.fetchProxyStrategy || 'direct';
-    const tunInterface = detectTunInterface();
-
-    if (tunInterface && logger && (options.debug || userConfig.logLevel === 'debug')) {
-      logger.debug(`🛡️ 系统网络: 检测到活跃的 TUN 虚拟网卡 (${tunInterface})，流量将自动由内核接管`);
-    }
-
-    const hasProxyTask = proxyPort && (proxyStrategy !== 'direct' || subscriptions.some(s => isSubEnabled(s) && s.proxy === true));
-    if (hasProxyTask) {
-      const isReachable = await checkPortReachable(proxyPort);
-      if (isReachable) {
-        if (logger) logger.debug(`🔌 抓取代理: 127.0.0.1:${proxyPort} (已就绪 · 策略: ${proxyStrategy})`);
-      } else {
-        if (tunInterface) {
-          if (logger) logger.warn(`💡 本地代理端口 127.0.0.1:${proxyPort} 未监听，将自动由系统 TUN 虚拟网卡 (${tunInterface}) 接管`);
-        } else {
-          if (logger) logger.warn(`⚠️ 本地抓取代理 127.0.0.1:${proxyPort} 连通失败 (服务未启动或端口填写有误)，将尝试直连拉取`);
-        }
-      }
-    }
 
     const fetchTasks = subscriptions.map(async (sub) => {
       if (!isSubEnabled(sub)) {
@@ -113,9 +123,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
             try {
               rawResult = await fetchNodes(sub.url, {
                 showFullUrl, debug, logger,
-                proxyUrl: resolveProxyUrl(userConfig),
-                strategy: userConfig.fetchProxyStrategy,
-                perSubProxy: sub.proxy,
+                proxyUrl: effectiveProxyUrl,
+                strategy: effectiveStrategy,
+                perSubProxy: isProxyAvailable ? sub.proxy : false,
                 retry: typeof sub.retry === 'number' ? sub.retry : fetchRetry,
                 timeoutMs: fetchTimeoutSec * 1000
               });
@@ -354,8 +364,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     } else {
       rawResult = await fetchNodes(url, {
         showFullUrl, debug, logger,
-        proxyUrl: resolveProxyUrl(userConfig),
-        strategy: userConfig.fetchProxyStrategy,
+        proxyUrl: effectiveProxyUrl,
+        strategy: effectiveStrategy,
         retry: fetchRetry,
         timeoutMs: fetchTimeoutSec * 1000
       });
