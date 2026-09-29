@@ -103,11 +103,18 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
 
   // 4. 简繁转换预处理
   const isOpenccReady = !!(chineseConvert.isAvailable && chineseConvert.isAvailable());
-  if (userConfig.enableChineseConvert && !isOpenccReady) {
-    logger.warn('已配置 enableChineseConvert=true 但 opencc-js 依赖未就绪，已跳过简繁转换。执行: npm install opencc-js');
-  }
-  if (userConfig.enableChineseConvert && isOpenccReady) {
-    userConfig = chineseConvert.deepConvertStrings(userConfig, chineseConvert.toSimplified);
+  if (userConfig.enableChineseConvert) {
+    if (!isOpenccReady) {
+      logger.warn('⚠️ 已启用简繁转换 (enableChineseConvert=true)，但可选依赖 opencc-js 未就绪，已跳过。执行: npm install opencc-js');
+    } else {
+      const modeText = userConfig.chineseConvertMode === 's2t' ? '简体 ➔ 繁体' : '繁体 ➔ 简体';
+      if (logger.isLevelEnabled('debug')) {
+        logger.debug(`🔤 简繁转换就绪: opencc-js (${modeText})`);
+      }
+      userConfig = chineseConvert.deepConvertStrings(userConfig, chineseConvert.toSimplified);
+    }
+  } else if (logger.isLevelEnabled('debug')) {
+    logger.debug(`🔤 简繁转换插件: opencc-js ${isOpenccReady ? '已安装' : '未安装(可选)'}`);
   }
 
   const redactLevel = userConfig.redactLevel || 'partial';
