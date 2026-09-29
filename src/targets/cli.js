@@ -126,7 +126,9 @@ function run(argv = process.argv) {
       const targetOut = options.out || userConfig.output || defaultOut;
       const outPath = path.resolve(process.cwd(), targetOut);
       fs.writeFileSync(outPath, yamlStr, 'utf-8');
-      logger.success(`🎉 配置文件构建成功 ➔ ${outPath}`);
+      const isZeroNode = mode === 'config' && (!result.proxies || result.proxies.filter(p => !p.isSyntheticInfo).length === 0);
+      const modeSuffix = isZeroNode ? ' (纯分流拦截模式)' : '';
+      logger.success(`🎉 配置文件构建成功${modeSuffix} ➔ ${outPath}`);
     } catch (err) {
       logger.error(`构建异常:`, err.message);
       process.exit(1);

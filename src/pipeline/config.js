@@ -54,14 +54,21 @@ function runConfigPipeline({
     const proxies = outputData.proxies || [];
     const rules = outputData.rules || [];
     if (logger) {
+      const realProxies = proxies.filter(p => !p.isSyntheticInfo);
+      const isZeroNode = realProxies.length === 0;
       const synthCount = proxies.filter(p => p.isSyntheticInfo).length;
       const regionalGroups = groups.filter(g => g.name && /节点/.test(g.name));
       const serviceGroups = groups.filter(g => g.name && !/节点/.test(g.name));
       const lines = [`📐 拓扑策略装配完成:`];
-      if (synthCount > 0) {
-        lines.push(`├── 📊 状态看板: ${synthCount} 条目 (已合成全局总额与独立看板)`);
+
+      if (isZeroNode) {
+        lines.push(`├── 🛡️ 纯分流拦截模式: 无代理节点，已清空区域组并保留拦截/直连规则`);
+      } else {
+        if (synthCount > 0) {
+          lines.push(`├── 📊 状态看板: ${synthCount} 条目 (已合成全局总额与独立看板)`);
+        }
+        lines.push(`├── 🌏 地区拓扑: ${regionalGroups.length} 个区域组`);
       }
-      lines.push(`├── 🌏 地区拓扑: ${regionalGroups.length} 个区域组`);
       lines.push(`└── 🎯 分流服务: ${serviceGroups.length} 个规则组 (${rules.length} 条分流规则)`);
       logger.info(lines.join('\n'));
     }
