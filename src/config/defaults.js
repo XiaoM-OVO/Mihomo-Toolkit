@@ -55,6 +55,15 @@ const DEFAULT_CONFIG = {
   enableDomesticGroup: false,  // 🇨🇳 中国分流：开启后增加专门的"中国"策略组
 
   // 【5. 扩展分流开关】
+  servicesConfigFile: "",      // 🧩 外部服务定义配置文件路径 (.js / .yaml / .json)
+  customServices: {},          // 🧩 行内自定义服务字典
+  aiServices: ["chatgpt", "gemini", "claude", "copilot"],
+  streamingServices: ["youtube", "netflix", "bilibili", "disney", "spotify", "tiktok", "bahamut", "pixiv", "twitch"],
+  socialServices: ["twitter", "facebook", "instagram", "discord"],
+  independentSocial: ["twitter"],
+  gameServices: ["steam", "epic", "riot", "blizzard", "nintendo", "playstation", "xbox", "ubisoft", "origin", "ea"],
+  systemServices: ["microsoft", "apple", "google"],
+  aiPreferredRegions: ["us", "jp", "tw", "sg", "kr", "eu"],
   enableAntiAD: false,         // ☢️ 激进广告拦截：启用 anti-AD 规则集
   enableGitHub: true,          // 🐱 开发者选项：GitHub, GitLab 等
   enableScholar: true,         // 🎓 学术研究：Google Scholar 等

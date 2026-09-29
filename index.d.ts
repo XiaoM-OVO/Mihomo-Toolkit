@@ -163,6 +163,22 @@ export interface ToolkitConfig {
   customNodeGroups?: Record<string, string[]>;
   /** 注入节点重命名规则列表 */
   specialNodeRules?: SpecialNodeRule[];
+  /** 外部服务配置文件路径 (.js / .yaml / .json) */
+  servicesConfigFile?: string;
+  /** 动态自定义服务字典 */
+  customServices?: Record<string, any>;
+  /** 激活的 AI 服务列表 */
+  aiServices?: string[];
+  /** 激活的流媒体服务列表 */
+  streamingServices?: string[];
+  /** 激活的社交平台服务列表 */
+  socialServices?: string[];
+  /** 激活的游戏平台服务列表 */
+  gameServices?: string[];
+  /** 激活的系统服务列表 */
+  systemServices?: string[];
+  /** AI 兜底优选地区列表 */
+  aiPreferredRegions?: string[];
 
   // 🚀 高级分组特性
   /** 是否开启高倍率节点隔离独立分组 */

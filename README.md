@@ -63,7 +63,7 @@ mihomo-toolkit/
 │   │   ├── dashboard.js       # 看板合成、多订阅流量与到期聚合中心
 │   │   ├── topology.js        # 六维服务大区折叠与动态测速策略组装配
 │   │   ├── rules.js           # 规则集 (Rule-Providers) 与分流路由组装
-│   │   ├── registries.js      # AI、流媒体、社交、游戏等六维服务注册表
+│   │   ├── registries.js      # 六维服务注册表向前兼容委托适配器 (委托至 config/catalog)
 │   │   ├── prune.js           # DAG 递归空组级联淘汰与殉葬规则清理
 │   │   ├── dns.js             # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
 │   │   └── kernel.js          # TUN 网卡、Sniffer 嗅探器及内核性能调优
@@ -78,12 +78,13 @@ mihomo-toolkit/
 │   │   ├── fetch-proxy.js     # 本地代理调度封装 (undici ProxyAgent)
 │   │   └── parsers/           # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
 │   │
-│   └── config/                # ⚙️ 配置中心
+│   └── config/                # ⚙️ 配置中心 (单一事实来源 Source of Truth)
 │       ├── defaults.js        # 系统内置全局默认配置字典
-│       └── index.js           # resolveConfig 扁平配置合并器
+│       ├── catalog.js         # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
+│       └── index.js           # resolveConfig 配置合并器与外部服务配置文件挂载
 │
 ├── substore/                  # 🎁 Sub-Store 独立脚本 (sub-info.js 流量看板算子)
-├── test/                      # 🧪 自动化测试套件 (83 个全绿用例)
+├── test/                      # 🧪 自动化测试套件 (96 个全绿用例)
 ├── config.example.yaml        # 极简扁平化配置模板
 ├── index.d.ts                 # 完整 TypeScript 类型契约声明
 ├── package.json               # 项目依赖与多命令配置

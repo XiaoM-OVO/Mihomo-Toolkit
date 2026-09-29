@@ -8,6 +8,7 @@ const { escapeRegex, matchNodeRegion, extractCity } = require('./geo');
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
 const { looksLikeDomain } = require('./fission');
+const { buildServiceCatalog } = require('../config/catalog');
 
 const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
 const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过期|更新公告|重置|维护|不可用|扣费|节点说明|防失联|官网|地址|Q群|电报|Tg群|距离下次/i;
@@ -273,52 +274,35 @@ function getFeatureRules(userConfig = {}) {
     }
   ];
 
-  // 11. 动态 AI 注册表注入
+  // 11. 动态服务编目特征规则注入 (统一由 catalog 单一事实来源驱动)
+  const catalog = userConfig.catalog || buildServiceCatalog(userConfig);
+
+  // AI 助手特征规则（逆序 unshift，确保高优先级）
   if (userConfig.enableAI !== false) {
-    const aiServices = userConfig.aiServices || ['chatgpt', 'gemini', 'claude', 'copilot'];
-    const AI_REGISTRY = {
-      chatgpt: { tag: 'chatgpt', reg: /\b(?:GPT|ChatGPT|OpenAI)\b/i, pool: 'chatgpt' },
-      gemini: { tag: 'gemini', reg: /\bGemini\b/i, pool: 'gemini' },
-      claude: { tag: 'claude', reg: /\bClaude\b/i, pool: 'claude' },
-      copilot: { tag: 'copilot', reg: /\b(?:Copilot|Bing)\b/i, pool: 'copilot' }
-    };
-    if (userConfig.customServices?.ai) {
-      Object.entries(userConfig.customServices.ai).forEach(([k, v]) => {
-        if (v && v.reg) {
-          AI_REGISTRY[k] = { tag: v.tag || k, reg: v.reg, pool: v.pool || v.tag || k };
-        }
-      });
-    }
-    aiServices.forEach(key => {
-      const ai = AI_REGISTRY[key];
-      if (ai) {
-        rules.unshift({ reg: ai.reg, tag: ai.tag, pool: ai.pool });
+    const aiActive = catalog.getActiveServices('ai', userConfig);
+    aiActive.slice().reverse().forEach(({ key, service }) => {
+      if (service.reg) {
+        rules.unshift({
+          reg: service.reg,
+          tag: service.tag || key,
+          pool: service.pool || service.tag || key,
+          groupName: catalog.getGroupName(service)
+        });
       }
     });
   }
 
-  // 12. 动态流媒体服务注册表注入
+  // 流媒体服务特征规则
   if (userConfig.enableStreaming !== false) {
-    const streamingServices = userConfig.streamingServices || ['youtube', 'netflix', 'disney', 'bilibili', 'tiktok', 'spotify'];
-    const STREAMING_REGISTRY = {
-      youtube: { reg: /\b(?:YouTube|YT|油管)\b/i, tag: 'yt', pool: 'youtube' },
-      netflix: { reg: /\b(?:Netflix|NF|奈飞|网飞|耐飞)\b/i, tag: 'nf', pool: 'netflix' },
-      disney: { reg: /\b(?:Disney|Disney\+|迪士尼|D\+)\b/i, tag: 'd+', pool: 'disney' },
-      bilibili: { reg: /\b(?:Bilibili|B站|哔哩哔哩)\b/i, tag: 'streaming', pool: 'bilibili' },
-      tiktok: { reg: /\b(?:TikTok|抖音)\b/i, tag: 'tk', pool: 'tiktok' },
-      spotify: { reg: /\b(?:Spotify|声田)\b/i, tag: 'sp', pool: 'spotify' }
-    };
-    if (userConfig.customServices?.streaming) {
-      Object.entries(userConfig.customServices.streaming).forEach(([k, v]) => {
-        if (v && v.reg) {
-          STREAMING_REGISTRY[k] = { tag: v.tag || 'streaming', reg: v.reg, pool: v.pool || k };
-        }
-      });
-    }
-    streamingServices.forEach(key => {
-      const st = STREAMING_REGISTRY[key];
-      if (st) {
-        rules.push({ reg: st.reg, tag: st.tag, pool: st.pool });
+    const streamActive = catalog.getActiveServices('streaming', userConfig);
+    streamActive.forEach(({ key, service }) => {
+      if (service.reg) {
+        rules.push({
+          reg: service.reg,
+          tag: service.tag || key,
+          pool: service.pool || key,
+          groupName: catalog.getGroupName(service)
+        });
       }
     });
     // 通用流媒体兜底规则

@@ -34,6 +34,11 @@ function buildProxyTopology({
   userConfig = {},
   registries = {}
 }) {
+  // 确保 registries 优先从 catalog 获取单一事实来源
+  const effectiveRegistries = (registries && Object.keys(registries).length > 0)
+    ? registries
+    : (userConfig.catalog ? userConfig.catalog.toLegacyRegistries() : {});
+
   const regionDefs = getEnhancedRegionDefs();
   const mixedRegionIds = [...new Set(regionDefs.map(r => r.group).filter(Boolean)), 'other'];
 
@@ -116,6 +121,14 @@ function buildProxyTopology({
     if (rKey !== 'cn') {
       buckets.allStandard.push(finalName);
     }
+
+    // 🌟 将节点加入其命中的所有业务特征池 (AI, 流媒体, 游戏等)
+    (item.featurePools || []).forEach(p => {
+      if (!buckets[p]) buckets[p] = [];
+      if (!buckets[p].includes(finalName)) {
+        buckets[p].push(finalName);
+      }
+    });
   });
 
   // 3. 处理小众地区与大洲折叠
@@ -186,27 +199,28 @@ function buildProxyTopology({
   const appGroups = [];
 
   // AI 分组
-  if (userConfig.enableAI && registries.ai) {
+  if (userConfig.enableAI && effectiveRegistries.ai) {
     const aiServices = userConfig.aiServices || ['chatgpt', 'gemini', 'claude', 'copilot'];
     const aiPreferred = (userConfig.aiPreferredRegions || ['us', 'jp', 'tw', 'sg', 'kr', 'eu']).map(id => regionNames[id]).filter(Boolean);
 
     aiServices.forEach(key => {
-      const ai = registries.ai[key];
+      const ai = effectiveRegistries.ai[key];
       if (!ai) return;
-      appGroups.push(buildSelect(ai.name, [...resiPrefix, ...aiPreferred, ...(buckets[ai.tag] || []), proxyTarget, 'DIRECT']));
+      const matchedNodes = buckets[ai.tag] || buckets[ai.pool] || [];
+      appGroups.push(buildSelect(ai.name, [...resiPrefix, ...aiPreferred, ...matchedNodes, proxyTarget, 'DIRECT']));
     });
   }
 
   // 流媒体分组
-  if (userConfig.enableStreaming && registries.streaming) {
+  if (userConfig.enableStreaming && effectiveRegistries.streaming) {
     const streamingServices = userConfig.streamingServices || ['youtube', 'netflix', 'bilibili', 'disney', 'spotify', 'tiktok', 'bahamut', 'pixiv', 'twitch'];
     streamingServices.forEach(key => {
-      const st = registries.streaming[key];
+      const st = effectiveRegistries.streaming[key];
       if (!st) return;
       let proxies = [];
       switch (key) {
         case 'tiktok':
-          proxies = [...(buckets.tiktok || []), ...activeRegionGroups.filter(g => !['🇭🇰 香港节点', '🇨🇳 大陆节点', '🗑️ 未知识别'].includes(g)), proxyTarget, 'DIRECT'];
+          proxies = [...(buckets.tiktok || buckets.tk || []), ...activeRegionGroups.filter(g => !['🇭🇰 香港节点', '🇨🇳 大陆节点', '🗑️ 未知识别'].includes(g)), proxyTarget, 'DIRECT'];
           break;
         case 'bahamut':
           proxies = ['🇹🇼 台湾节点', '🇭🇰 香港节点', proxyTarget, 'DIRECT'];
@@ -215,20 +229,20 @@ function buildProxyTopology({
           proxies = userConfig.enableDomesticGroup ? ['🇨🇳 中国分流', '🇹🇼 台湾节点', '🇲🇴 澳门节点', '🇭🇰 香港节点', 'DIRECT'] : ['DIRECT', '🇹🇼 台湾节点', '🇲🇴 澳门节点', '🇭🇰 香港节点'];
           break;
         default:
-          proxies = [...(buckets[st.pool] || []), ...standardOptions, 'DIRECT'];
+          proxies = [...(buckets[st.pool] || buckets[st.tag] || []), ...standardOptions, 'DIRECT'];
       }
       appGroups.push(buildSelect(st.name, proxies));
     });
   }
 
   // 社交分组
-  if (userConfig.enableSocial && registries.social) {
+  if (userConfig.enableSocial && effectiveRegistries.social) {
     const socialServices = userConfig.socialServices || ['twitter', 'facebook', 'instagram', 'discord'];
     const independentSocial = userConfig.independentSocial || ['twitter'];
-    const nonIndependent = socialServices.filter(k => !independentSocial.includes(k) && registries.social[k]);
+    const nonIndependent = socialServices.filter(k => !independentSocial.includes(k) && effectiveRegistries.social[k]);
 
     socialServices.forEach(key => {
-      const app = registries.social[key];
+      const app = effectiveRegistries.social[key];
       if (!app) return;
       if (independentSocial.includes(key)) {
         appGroups.push(buildSelect(app.name, [...standardOptions, 'DIRECT']));
@@ -236,7 +250,7 @@ function buildProxyTopology({
     });
 
     if (nonIndependent.length === 1) {
-      appGroups.push(buildSelect(registries.social[nonIndependent[0]].name, [...standardOptions, 'DIRECT']));
+      appGroups.push(buildSelect(effectiveRegistries.social[nonIndependent[0]].name, [...standardOptions, 'DIRECT']));
     } else if (nonIndependent.length > 1) {
       appGroups.push(buildSelect('💬 社交平台', [...standardOptions, 'DIRECT']));
     }
@@ -264,10 +278,10 @@ function buildProxyTopology({
   }
 
   // 系统服务
-  if (userConfig.enableSystemServices && registries.system) {
+  if (userConfig.enableSystemServices && effectiveRegistries.system) {
     const systemServices = userConfig.systemServices || ['microsoft', 'apple', 'google'];
     systemServices.forEach(key => {
-      const sys = registries.system[key];
+      const sys = effectiveRegistries.system[key];
       if (sys) {
         const pList = key === 'google' ? [...standardOptions, 'DIRECT'] : ['DIRECT', ...standardOptions];
         appGroups.push(buildSelect(sys.name, pList));

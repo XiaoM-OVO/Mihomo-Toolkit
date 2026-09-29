@@ -18,6 +18,10 @@ function dedupe(arr) {
  */
 function buildRoutingRules(userConfig, registries, options = {}) {
   const { proxyTarget = '🚀 节点选择' } = options;
+  const effectiveRegistries = (registries && Object.keys(registries).length > 0)
+    ? registries
+    : (userConfig.catalog ? userConfig.catalog.toLegacyRegistries() : {});
+
   const repo = `${userConfig.ruleProviderCDN || 'https://fastly.jsdelivr.net/gh'}/MetaCubeX/meta-rules-dat@meta`;
   const ruleFormat = userConfig.useMRS ? 'mrs' : 'yaml';
 
@@ -67,9 +71,9 @@ function buildRoutingRules(userConfig, registries, options = {}) {
 
   // AI 助手服务
   const aiServices = userConfig.aiServices || ['chatgpt', 'gemini', 'claude', 'copilot'];
-  if (userConfig.enableAI && aiServices.length) {
+  if (userConfig.enableAI && aiServices.length && effectiveRegistries.ai) {
     aiServices.forEach(key => {
-      const item = registries.ai[key];
+      const item = effectiveRegistries.ai[key];
       if (item) {
         providerBase[item.ruleSet] = item.provider;
         routingRules.push(`RULE-SET,${item.ruleSet},${item.name}`);
@@ -79,9 +83,9 @@ function buildRoutingRules(userConfig, registries, options = {}) {
 
   // 流媒体服务
   const streamingServices = userConfig.streamingServices || ['youtube', 'netflix', 'bilibili', 'disney', 'spotify', 'tiktok', 'bahamut', 'pixiv', 'twitch'];
-  if (userConfig.enableStreaming && streamingServices.length) {
+  if (userConfig.enableStreaming && streamingServices.length && effectiveRegistries.streaming) {
     streamingServices.forEach(key => {
-      const item = registries.streaming[key];
+      const item = effectiveRegistries.streaming[key];
       if (item) {
         providerBase[key] = item.provider;
         routingRules.push(`RULE-SET,${key},${item.name}`);
@@ -92,12 +96,12 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   // 社交平台
   const socialServices = userConfig.socialServices || ['twitter', 'facebook', 'instagram', 'discord'];
   const independentSocial = userConfig.independentSocial || ['twitter'];
-  if (userConfig.enableSocial && socialServices.length) {
-    const nonIndependentKeys = socialServices.filter(k => !independentSocial.includes(k) && registries.social[k]);
+  if (userConfig.enableSocial && socialServices.length && effectiveRegistries.social) {
+    const nonIndependentKeys = socialServices.filter(k => !independentSocial.includes(k) && effectiveRegistries.social[k]);
     const useCombinedGroup = nonIndependentKeys.length > 1;
 
     socialServices.forEach(key => {
-      const app = registries.social[key];
+      const app = effectiveRegistries.social[key];
       if (!app) return;
       const targetGroup = independentSocial.includes(key) ? app.name : (useCombinedGroup ? '💬 社交平台' : app.name);
       providerBase[key] = app.provider;
@@ -107,13 +111,13 @@ function buildRoutingRules(userConfig, registries, options = {}) {
 
   // 游戏平台
   const gameServices = userConfig.gameServices || ['steam', 'epic', 'riot', 'blizzard', 'nintendo', 'playstation', 'xbox', 'ubisoft', 'origin', 'ea'];
-  if (userConfig.enableGame && gameServices.length) {
+  if (userConfig.enableGame && gameServices.length && effectiveRegistries.game) {
     gameServices.forEach(key => {
-      const conf = registries.game[key];
+      const conf = effectiveRegistries.game[key];
       if (!conf) return;
       providerBase[key] = conf.provider;
-      if (key === 'steam' && registries.game['steam-cn']) {
-        providerBase['steam-cn'] = registries.game['steam-cn'].provider;
+      if (key === 'steam' && effectiveRegistries.game['steam-cn']) {
+        providerBase['steam-cn'] = effectiveRegistries.game['steam-cn'].provider;
       }
       if (conf.rules) routingRules.push(...conf.rules);
     });
@@ -158,9 +162,9 @@ function buildRoutingRules(userConfig, registries, options = {}) {
 
   // 系统服务
   const systemServices = userConfig.systemServices || ['microsoft', 'apple', 'google'];
-  if (userConfig.enableSystemServices && systemServices.length) {
+  if (userConfig.enableSystemServices && systemServices.length && effectiveRegistries.system) {
     systemServices.forEach(key => {
-      const conf = registries.system[key];
+      const conf = effectiveRegistries.system[key];
       if (conf) {
         providerBase[key] = conf.provider;
         if (conf.rules) routingRules.push(...conf.rules);
