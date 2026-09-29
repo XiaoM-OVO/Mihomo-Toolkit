@@ -104,11 +104,13 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
   }
 
   // 4. 组装服务注册表与策略拓扑
+  const logger = pipelineContext.logger || userConfig.logger;
   const registries = createServiceRegistries(userConfig);
   const { proxyGroups } = buildProxyTopology({
     classifiedNodes,
     userConfig,
-    registries
+    registries,
+    logger
   });
   config['proxy-groups'] = proxyGroups;
 

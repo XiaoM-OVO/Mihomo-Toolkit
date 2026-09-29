@@ -32,7 +32,8 @@ const buildSelect = (name, proxies, hidden = false) => ({
 function buildProxyTopology({
   classifiedNodes = [],
   userConfig = {},
-  registries = {}
+  registries = {},
+  logger = null
 }) {
   // 确保 registries 优先从 catalog 获取单一事实来源
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
@@ -170,6 +171,38 @@ function buildProxyTopology({
     .filter(k => buckets[k]?.length > 0)
     .map(k => regionNames[k]);
   if (buckets.other?.length > 0) activeRegionGroups.push('其他节点');
+
+  if (logger && typeof logger.debug === 'function') {
+    Object.keys(regionNames).forEach(k => {
+      const gName = regionNames[k];
+      const list = buckets[k] || [];
+      if (list.length > 0) {
+        const rDef = regionDefs.find(r => (r.id || r.name) === k);
+        const iconPrefix = rDef?.icon ? `${rDef.icon} ` : '';
+        const lowMultiCount = list.filter(name => {
+          const item = classifiedNodes.find(n => (n.proxy?.name || n.rawName) === name);
+          return item?.tags?.includes('download') || item?.attrs?.isLowMulti;
+        }).length;
+        const mainCount = list.length - lowMultiCount;
+        const detailParts = [`主力: ${mainCount}`];
+        if (lowMultiCount > 0) detailParts.push(`低倍率: ${lowMultiCount}`);
+        logger.debug(`📦 [${iconPrefix}${gName}] 汇入 ${list.length} 个节点 (${detailParts.join(' | ')})`);
+      }
+    });
+
+    if (buckets.other?.length > 0) {
+      logger.debug(`📦 [🌐 其他节点] 汇入 ${buckets.other.length} 个节点`);
+    }
+    if (buckets.special?.length > 0) {
+      logger.debug(`📦 [📌 特殊节点] 汇入 ${buckets.special.length} 个节点`);
+    }
+    if (userConfig.enableResidential && buckets.residential?.length > 0) {
+      logger.debug(`📦 [🏠 家宽优选] 汇入 ${buckets.residential.length} 个节点`);
+    }
+    if (userConfig.isolateHighMulti && buckets.highMulti?.length > 0) {
+      logger.debug(`📦 [🛑 高倍率节点] 汇入 ${buckets.highMulti.length} 个节点`);
+    }
+  }
 
   const resiPrefix = (userConfig.enableResidential && buckets.residential.length) ? ['家宽优选'] : [];
   const modeMap = { auto: '自动选择', manual: '手动选择', fallback: '故障转移', direct: 'DIRECT', reject: 'REJECT' };
