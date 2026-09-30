@@ -138,9 +138,12 @@ proxies:
     assert.equal(outputData.dns['nameserver-policy']['+.airport.com'], 'https://doh.airport.com/dns-query');
     assert.equal(outputData.dns['nameserver-policy']['baidu.com'], undefined);
 
-    // 4. 验证防环路：节点域名自动进入 fake-ip-filter
+    // 4. 验证防环路：节点域名自动聚合进入 fake-ip-filter
     assert.ok(Array.isArray(outputData.dns['fake-ip-filter']));
-    assert.ok(outputData.dns['fake-ip-filter'].includes('node.airport.com'));
+    assert.ok(
+      outputData.dns['fake-ip-filter'].includes('+.airport.com') ||
+      outputData.dns['fake-ip-filter'].includes('node.airport.com')
+    );
 
     // 5. 验证节点清洗：脏广告被剔除，保留干净节点
     assert.ok(Array.isArray(outputData.proxies));

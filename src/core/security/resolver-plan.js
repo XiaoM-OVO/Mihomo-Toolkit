@@ -341,7 +341,8 @@ function planResolverChain(input = {}) {
 
   // 节点域名自动注入 fake-ip-filter（INV-7 闭环保障）
   const proxyList = Array.isArray(input.proxies) ? input.proxies : (input.inputs && Array.isArray(input.inputs.proxies) ? input.inputs.proxies : []);
-  const derivedFilters = deriveFakeIpFilterAdditions(proxyList);
+  const fakeIpFilterMode = opts.fakeIpFilterNodes !== undefined ? opts.fakeIpFilterNodes : (opts.fakeIpFilterMode || 'smart');
+  const derivedFilters = deriveFakeIpFilterAdditions(proxyList, { mode: fakeIpFilterMode });
   const extras = Array.isArray(opts.fakeIpFilterExtras) ? opts.fakeIpFilterExtras : [];
   const finalFakeIpFilters = [...new Set([...extras, ...derivedFilters])];
 
@@ -370,7 +371,7 @@ function planResolverChain(input = {}) {
   };
 
   // ── 3.9 不变式自检 ──────────────────────────────────────────────────────
-  const violations = checkInvariants(dns, { proxies: proxyList });
+  const violations = checkInvariants(dns, { proxies: proxyList, fakeIpFilterNodes: fakeIpFilterMode });
 
   const capabilities = {
     family,
@@ -433,8 +434,10 @@ function checkInvariants(dns = {}, options = {}) {
   }
 
   // INV-7 enhanced-mode = fake-ip 时节点域名必须进入 fake-ip-filter（防虚拟自环）
-  if (dns['enhanced-mode'] === 'fake-ip' && options.proxies && Array.isArray(options.proxies)) {
-    const requiredDomains = deriveFakeIpFilterAdditions(options.proxies);
+  const fakeIpFilterMode = options.fakeIpFilterNodes !== undefined ? options.fakeIpFilterNodes : (options.fakeIpFilterMode || 'smart');
+  if (fakeIpFilterMode !== 'off' && fakeIpFilterMode !== false &&
+      dns['enhanced-mode'] === 'fake-ip' && options.proxies && Array.isArray(options.proxies)) {
+    const requiredDomains = deriveFakeIpFilterAdditions(options.proxies, { mode: 'exact' });
     const filterList = Array.isArray(dns['fake-ip-filter']) ? dns['fake-ip-filter'] : [];
     for (const req of requiredDomains) {
       const covered = filterList.some(f => {
@@ -464,6 +467,54 @@ function checkInvariants(dns = {}, options = {}) {
 }
 
 /**
+ * 常见多租户公共托管与动态 DNS 服务商域名
+ * 此类域名若粗暴折叠到根域（如 +.workers.dev），会导致平台其他公用资产一并丧失 Fake-IP。
+ * 对此类域名，保留其注册子域。
+ */
+const MULTI_TENANT_SUFFIXES = new Set([
+  'workers.dev', 'pages.dev', 'github.io', 'gitlab.io',
+  'vercel.app', 'netlify.app', 'herokuapp.com',
+  'duckdns.org', 'ddns.net', 'no-ip.com', 'no-ip.org',
+  'zapto.org', 'bounceme.net'
+]);
+
+const COMPOUND_TLD_REGEX = /(?:com|net|org|gov|edu|co|ne|or|ac|idv)\.[a-z]{2,3}$/i;
+
+/**
+ * 提取合法域名的主域名（注册域），用于安全泛化聚合。
+ * @param {string} domain
+ * @returns {string|null}
+ */
+function getRootDomain(domain) {
+  if (!domain || typeof domain !== 'string') return null;
+  const clean = domain.toLowerCase().trim().replace(/^\[|\]$/g, '').replace(/^\+?\./, '').replace(/^\*\./, '');
+  const parts = clean.split('.');
+  if (parts.length <= 1) return clean;
+  if (parts.length === 2) return clean;
+
+  // 1. 检查是否属于多租户平台域 (如 foo.workers.dev)
+  for (const tenant of MULTI_TENANT_SUFFIXES) {
+    if (clean === tenant || clean.endsWith('.' + tenant)) {
+      const tenantParts = tenant.split('.');
+      const keepPartsCount = tenantParts.length + 1;
+      if (parts.length >= keepPartsCount) {
+        return parts.slice(-keepPartsCount).join('.');
+      }
+      return clean;
+    }
+  }
+
+  // 2. 检查复合二段 TLD (如 .com.cn, .co.jp)
+  const lastTwo = parts.slice(-2).join('.');
+  if (COMPOUND_TLD_REGEX.test(lastTwo) && parts.length >= 3) {
+    return parts.slice(-3).join('.');
+  }
+
+  // 3. 普通 TLD (如 .com, .xyz, .net, .art) -> 返回最后两级 (如 lxyun.xyz, 7770006.xyz)
+  return parts.slice(-2).join('.');
+}
+
+/**
  * 严格校验字符串是否为合法域名（排除 IPv4/IPv6，支持数字开头的合法域名如 123.com）
  */
 function isValidDomain(str) {
@@ -478,22 +529,59 @@ function isValidDomain(str) {
 
 /**
  * 从节点列表推导必须进入 fake-ip-filter 的域名（INV-7）。
- * 节点域名若被分配 fake-ip，内核在建立出站连接时会拿到虚拟地址，形成环路。
+ * 
+ * 关键安全防线：
+ * 1. 绝不收集 SNI/Servername（伪装域名）：许多节点使用 Apple、Google、米哈游、B站 CDN 伪装 SNI，
+ *    若注入 fake-ip-filter 会破坏对应正常应用的 Fake-IP 解析并引发 DNS 泄漏。
+ * 2. 智能聚合（mode: 'smart'）：将同一主域下的海量节点子域（如几十个 aws-link*.lxyun.xyz）
+ *    自动折叠聚合为 '+.lxyun.xyz'，使配置大幅瘦身 80% 以上且天然覆盖所有子节点。
+ * 3. 严格精准模式（mode: 'exact'）：逐项导出完整原始服务器域名。
+ * 4. 关闭模式（mode: 'off' / false）：不推导任何节点域名。
+ *
+ * @param {Array} proxies 节点数组
+ * @param {object|string} [options] 选项对象或 mode 字符串
+ * @returns {string[]} 需要加入 fake-ip-filter 的规则列表
  */
-function deriveFakeIpFilterAdditions(proxies = []) {
-  const out = new Set();
+function deriveFakeIpFilterAdditions(proxies = [], options = {}) {
+  const opts = typeof options === 'string' ? { mode: options } : (options || {});
+  const mode = opts.mode !== undefined ? opts.mode : 'smart';
+  const includeSni = !!opts.includeSni; // 默认严格关闭，避免伪装域名污染
+
+  if (mode === 'off' || mode === false) {
+    return [];
+  }
+
+  const rawDomains = new Set();
   for (const p of proxies) {
     if (!p || typeof p !== 'object') continue;
     if (isValidDomain(p.server)) {
-      out.add(p.server.trim().replace(/^\[|\]$/g, ''));
+      rawDomains.add(p.server.trim().replace(/^\[|\]$/g, '').toLowerCase());
     }
-    for (const key of ['sni', 'servername']) {
-      if (isValidDomain(p[key])) {
-        out.add(p[key].trim().replace(/^\[|\]$/g, ''));
+    if (includeSni) {
+      for (const key of ['sni', 'servername']) {
+        if (isValidDomain(p[key])) {
+          rawDomains.add(p[key].trim().replace(/^\[|\]$/g, '').toLowerCase());
+        }
       }
     }
   }
-  return [...out];
+
+  if (mode === 'exact') {
+    return [...rawDomains];
+  }
+
+  // smart (默认/fold): 智能泛化折叠
+  const folded = new Set();
+  for (const domain of rawDomains) {
+    const root = getRootDomain(domain);
+    if (root) {
+      folded.add(`+.${root}`);
+    } else {
+      folded.add(domain);
+    }
+  }
+
+  return [...folded];
 }
 
 module.exports = {
@@ -502,5 +590,6 @@ module.exports = {
   matchCidr,
   planResolverChain,
   checkInvariants,
+  getRootDomain,
   deriveFakeIpFilterAdditions
 };

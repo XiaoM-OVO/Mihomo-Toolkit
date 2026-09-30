@@ -154,9 +154,9 @@
   1. **控制面与数据面物理隔离 (`control-plane.js`)**：
      白名单限制 `DATA_PLANE_KEYS`（仅 `proxies` / `proxy-providers` 可跨源聚合）。所有控制面键与攻击特征签名（`HOSTILE_SIGNATURES`）在接入点即刻完成审计与剥离。
   2. **节点专属资产域推导 (Dependency Tracing)**：
-     系统自动从节点属性（`server`, `sni`, `servername`）及订阅源提取资产域名集合；对订阅携带的 `hosts` 与 `nameserver-policy` 进行**作用域匹配**：仅放行指向自身节点资产域名的优选 IP 与私有 DoH，严禁越权劫持公共高危域名（`github.com`, `apple.com`, `google.com`, `alipay.com` 等）。
-  3. **Bootstrap 破死锁与 Fake-IP 避环 (`dns-sanitizer.js` & `resolver-plan.js`)**：
-     强制规范 `default-nameserver` 与 `proxy-server-nameserver` 100% 纯 IP 引导；从节点池动态提取节点域名注入 `fake-ip-filter`，彻底杜绝 Fake-IP 虚拟自环与解析连环死锁。
+     系统自动从节点属性（`server`）及订阅源提取真实资产域名集合（严格排除 `sni`/`servername` 等伪装域名）；对订阅携带的 `hosts` 与 `nameserver-policy` 进行**作用域匹配**：仅放行指向自身节点资产域名的优选 IP 与私有 DoH，严禁越权劫持公共高危域名（`github.com`, `apple.com`, `google.com`, `alipay.com` 等）。
+  3. **Bootstrap 破死锁与 Fake-IP 避环智能聚合 (`dns-sanitizer.js` & `resolver-plan.js`)**：
+     强制规范 `default-nameserver` 与 `proxy-server-nameserver` 100% 纯 IP 引导；从节点池动态推导节点服务器域名并进行**智能主域泛化聚合（如折叠为 `+.lxyun.xyz`）**注入 `fake-ip-filter`，彻底杜绝 Fake-IP 虚拟自环，同时规避海量子域名膨胀与伪装 SNI 污染。
 
 ---
 

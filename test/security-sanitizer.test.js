@@ -303,16 +303,26 @@ test('checkInvariants - 能检出各类危险配置', () => {
   }
 });
 
-test('deriveFakeIpFilterAdditions - 节点域名进入 fake-ip-filter', () => {
-  const extras = deriveFakeIpFilterAdditions([
+test('deriveFakeIpFilterAdditions - 节点域名进入 fake-ip-filter (smart 聚合与 exact 模式)', () => {
+  const proxies = [
     { server: 'node1.airport.example', sni: 'cdn.example' },
     { server: '1.2.3.4' },
     { server: 'node2.airport.example' }
-  ]);
-  assert.ok(extras.includes('node1.airport.example'));
-  assert.ok(extras.includes('node2.airport.example'));
-  assert.ok(extras.includes('cdn.example'));
-  assert.ok(!extras.includes('1.2.3.4'));
+  ];
+  // 默认 smart 聚合：剔除 SNI 并折叠为主域
+  const smartFilters = deriveFakeIpFilterAdditions(proxies);
+  assert.ok(smartFilters.includes('+.airport.example'));
+  assert.ok(!smartFilters.includes('cdn.example'), '默认不应将 SNI 伪装域名注入 fake-ip-filter');
+  assert.ok(!smartFilters.includes('1.2.3.4'));
+
+  // exact 模式：精确提取 server 域名
+  const exactFilters = deriveFakeIpFilterAdditions(proxies, { mode: 'exact' });
+  assert.ok(exactFilters.includes('node1.airport.example'));
+  assert.ok(exactFilters.includes('node2.airport.example'));
+  assert.ok(!exactFilters.includes('cdn.example'));
+
+  // off 模式：返回空
+  assert.deepStrictEqual(deriveFakeIpFilterAdditions(proxies, { mode: 'off' }), []);
 });
 
 // ── 深度评审缺陷修复专项回归测试 ──────────────────────────────────────────
@@ -403,16 +413,17 @@ test('planResolverChain - 自动为节点域名生成 fake-ip-filter 并通过 I
     inputs: {
       proxies: [
         { name: 'Node1', server: 'hk.node.airport.com' },
-        { name: 'Node2', server: 'us.node.airport.com', sni: 'cdn.fast.net' }
+        { name: 'Node2', server: 'us.node.airport.com' },
+        { name: 'Node3', server: 'cdn.fast.net' }
       ]
     }
   });
 
-  assert.ok(plan.dns['fake-ip-filter'].includes('hk.node.airport.com'));
-  assert.ok(plan.dns['fake-ip-filter'].includes('us.node.airport.com'));
-  assert.ok(plan.dns['fake-ip-filter'].includes('cdn.fast.net'));
+  // smart 模式下折叠聚合为主域通配
+  assert.ok(plan.dns['fake-ip-filter'].includes('+.airport.com'));
+  assert.ok(plan.dns['fake-ip-filter'].includes('+.fast.net'));
 
-  // 验证 checkInvariants INV-7 自检无违规
+  // 验证 checkInvariants INV-7 自检无违规（+.airport.com 覆盖 hk.node.airport.com）
   const violations = checkInvariants(plan.dns, {
     proxies: [{ server: 'hk.node.airport.com' }]
   });
@@ -519,16 +530,43 @@ test('P1 - external-controller-pipe 与 cors 纳入 critical 级夺权拦截', (
 
 test('P2 - deriveFakeIpFilterAdditions 兼容数字开头合法域名并排除 IP 字面量', () => {
   const filters = deriveFakeIpFilterAdditions([
-    { server: '123.example.com', sni: '1password.com' },
-    { server: '1.2.3.4', sni: '8.8.8.8' },
+    { server: '123.example.com' },
+    { server: '1password.com' },
+    { server: '1.2.3.4' },
+    { server: '8.8.8.8' },
     { server: '2400:3200::1' }
-  ]);
+  ], { mode: 'exact' });
 
   assert.ok(filters.includes('123.example.com'), '应支持以数字开头的合法域名');
   assert.ok(filters.includes('1password.com'), '应支持以数字开头的合法域名');
   assert.ok(!filters.includes('1.2.3.4'), '应排除 IPv4 字面量');
   assert.ok(!filters.includes('8.8.8.8'), '应排除 IPv4 字面量');
   assert.ok(!filters.includes('2400:3200::1'), '应排除 IPv6 字面量');
+});
+
+test('P3 - fake-ip-filter 智能聚合与防伪装 SNI 污染专项测试', () => {
+  const { getRootDomain } = require('../src/core/security/resolver-plan');
+  assert.strictEqual(getRootDomain('aws-link1.lxyun.xyz'), 'lxyun.xyz');
+  assert.strictEqual(getRootDomain('w1hwbf8-g04.jp01-nn-vm0.entry.fr0528.art'), 'fr0528.art');
+  assert.strictEqual(getRootDomain('node1.airport.com.cn'), 'airport.com.cn');
+  assert.strictEqual(getRootDomain('my-sub.workers.dev'), 'my-sub.workers.dev');
+
+  const proxies = [
+    { name: '1', server: 'aws-link1.lxyun.xyz', sni: 'fastcdn.hoyoverse.com' },
+    { name: '2', server: 'aws-link2.lxyun.xyz', sni: 'www.apple.com' },
+    { name: '3', server: 'jp1.7770006.xyz', sni: 'bilibili-jp.biliimg.com' },
+    { name: '4', server: 'jp2.7770006.xyz', sni: 'dl.google.com' },
+    { name: '5', server: 'node.airport.com.cn' }
+  ];
+
+  const smart = deriveFakeIpFilterAdditions(proxies);
+  // 应聚合为 3 条主域泛化规则
+  assert.deepStrictEqual(smart.slice().sort(), ['+.7770006.xyz', '+.airport.com.cn', '+.lxyun.xyz'].sort());
+  // 伪装 SNI 绝不能进入
+  assert.ok(!smart.includes('fastcdn.hoyoverse.com'));
+  assert.ok(!smart.includes('www.apple.com'));
+  assert.ok(!smart.includes('bilibili-jp.biliimg.com'));
+  assert.ok(!smart.includes('dl.google.com'));
 });
 
 test('P2 - canonicalJson 安全处理 undefined', () => {

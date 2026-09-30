@@ -310,6 +310,12 @@ testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，
 # ─────────────────────────────────────────────────────────────────────
 # overwriteDns: true               # 注入权威防泄漏 DNS
 # dnsMergeMode: "secure"           # secure=权威覆写(脚本配置绝对优先) / merge=补缺合并(保留并安全挂载节点专属解析)
+# fakeIpFilterNodes: "smart"       # 节点防环注入模式:
+                                   #   smart  【推荐】智能主域聚合泛化（折叠为 +.<主域>），排除 SNI 伪装干扰，配置清爽紧凑
+                                   #   exact  逐项保留节点完整服务器域名（旧版兼容行为，仍剔除 SNI 伪装）
+                                   #   off    完全不向 fake-ip-filter 注入任何节点域名（由内核原生出站机制直连）
+# fakeIpFilter:                    # 自定义 fake-ip-filter 规则名单追加
+#   - "+.my-internal.company"
 # dnsListen: "127.0.0.1:1053"      # 本地 DNS 监听端口 (建议绑定回环，防止成为公网开放解析器)
 # dnsDefault:                      # 基础引导 DNS (必须为纯 IP，破除解析死锁)
 #   - "223.5.5.5"
