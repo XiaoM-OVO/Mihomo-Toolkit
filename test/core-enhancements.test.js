@@ -199,15 +199,15 @@ test('🔄 简繁同步 - 规则组名精准按逗号分词替换，不误伤规
   assert.ok(rules[1].includes('🍎 蘋果服務'));
 });
 
-test('🔌 Verge 适配 - main(config, profileName) 安全接收字符串参数', () => {
-  const { main: vergeMain } = require('../src/targets/verge');
+test('🔌 Strategy 流水线 - runStrategyPipeline(config, profileName) 安全接收非对象参数', () => {
+  const { runStrategyPipeline } = require('../src/pipeline/strategy');
   const config = {
     proxies: [
       { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
     ]
   };
-  // 模拟 Clash Verge 传入的字符串配置名
-  const result = vergeMain(config, 'MyDefaultProfile');
+  // 模拟客户端传入的字符串配置名
+  const result = runStrategyPipeline(config, 'MyDefaultProfile');
   assert.ok(result['proxy-groups']);
   assert.ok(result['proxy-groups'].length > 0);
   // 确保没有展开为数字键

@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { operator } = require('../src/targets/operator.js');
+const { runNodesPipeline } = require('../src/pipeline/nodes');
 
 describe('🧬 节点裂变算法模块 (enableFission)', () => {
   test('pure-nodes - 单域名多 IP 节点裂变增殖测试', async () => {
@@ -16,8 +16,7 @@ describe('🧬 节点裂变算法模块 (enableFission)', () => {
       logLevel: 'silent'
     };
 
-    const result = await operator(domainProxies, 'clash', config);
-    const cleanProxies = Array.isArray(result) ? result : result.proxies;
+    const cleanProxies = await runNodesPipeline(domainProxies, config);
 
     // 验证域名节点被成功裂变为多个 IP 节点（dns.google 至少有 8.8.8.8 和 8.8.4.4）
     assert.ok(cleanProxies.length > 1, `期望裂变产生 >1 个节点，实际产生 ${cleanProxies.length} 个`);
@@ -39,8 +38,7 @@ describe('🧬 节点裂变算法模块 (enableFission)', () => {
       logLevel: 'silent'
     };
 
-    const result = await operator(domainProxies, 'clash', config);
-    const cleanProxies = Array.isArray(result) ? result : result.proxies;
+    const cleanProxies = await runNodesPipeline(domainProxies, config);
 
     // 命中黑名单关键字时跳过裂变，节点数应仍为 1
     assert.equal(cleanProxies.length, 1);

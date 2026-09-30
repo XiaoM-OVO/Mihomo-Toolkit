@@ -45,13 +45,12 @@ mihomo-toolkit/
 │   │
 │   ├── targets/               # 🔌 宿主环境终端适配器 (轻量适配层)
 │   │   ├── cli.js             # 命令行工具 (mtk / mihomo-tk / mihomo-toolkit)
-│   │   ├── server.js          # 常驻 HTTP 订阅服务 (/sub, /healthz, 鉴权)
-│   │   ├── operator.js        # Sub-Store 节点操作目标
-│   │   └── verge.js           # Clash Verge Rev 客户端扩展脚本目标
+│   │   └── server.js          # 常驻 HTTP 订阅服务 (/sub, /healthz, 鉴权)
 │   │
 │   ├── core/                  # 🧮 节点清洗核心算法层 (Pure & Deterministic)
 │   │   ├── cleaner.js         # 垃圾拦截、倍率线路提取、属性智能分类打标
 │   │   ├── dedupe.js          # 底层物理网络指纹提取与特征去重
+│   │   ├── transport.js       # 统一传输层门面 (Host/SNI/Path提取、Host注入与协议识别)
 │   │   ├── geo.js             # 地区智能正则匹配与落地城市精准提取
 │   │   ├── rename.js          # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
 │   │   ├── fission.js         # 域名并发 DNS 解析与多 IP 独立节点裂变增殖

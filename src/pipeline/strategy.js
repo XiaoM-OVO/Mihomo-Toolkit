@@ -25,7 +25,8 @@ const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../
  * @returns {object} 构建完毕的 Mihomo 配置
  */
 function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) {
-  const userConfig = resolveConfig(extConfig);
+  const safeExtConfig = (typeof extConfig === 'object' && extConfig !== null) ? extConfig : {};
+  const userConfig = resolveConfig(safeExtConfig);
   if (!userConfig.enableScript) return config;
 
   let classifiedNodes = pipelineContext.classifiedNodes;
