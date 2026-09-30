@@ -31,7 +31,7 @@ const DEFAULT_FAKEIP_V6 = 'fdfe:dcba:9876::1/64';
  */
 const DEFAULT_FAKEIP_GUARD_RANGES = ['198.18.0.0/15'];
 
-/** 默认受保护域名：证书体系/开发/身份/支付/即时通讯等被投毒后果最严重的域 */
+/** 默认受保护域名：证书体系/开发/身份/支付/即时通讯/游戏/浏览器等被投毒后果最严重的域 */
 const DEFAULT_PROTECTED_DOMAINS = new Set([
   'github.com', 'githubusercontent.com', 'gitlab.com', 'npmjs.com', 'npmjs.org',
   'pypi.org', 'python.org', 'nodejs.org', 'rust-lang.org', 'golang.org',
@@ -43,6 +43,7 @@ const DEFAULT_PROTECTED_DOMAINS = new Set([
   'paypal.com', 'stripe.com', 'alipay.com', 'alibaba.com', 'alicdn.com',
   'taobao.com', 'tmall.com', 'jd.com', 'qq.com', 'weixin.qq.com', 'tencent.com',
   'baidu.com', 'bilibili.com', 'zhihu.com', 'weibo.com',
+  'steampowered.com', 'steamcommunity.com', 'epicgames.com', 'mozilla.org',
   'letsencrypt.org', 'digicert.com', 'verisign.com',
   'dns.alidns.com', 'doh.pub', 'dns.google', 'one.one.one.one',
   'adguard-dns.io', 'nextdns.io', 'quad9.net', 'mozilla.cloudflare-dns.com'
@@ -80,10 +81,67 @@ function ipv4InCidrs(ip, cidrs = []) {
   });
 }
 
+function ipv6ToBigInt(ip) {
+  if (!ip || typeof ip !== 'string') return null;
+  const clean = ip.trim().replace(/^\[|\]$/g, '').toLowerCase();
+  let full = clean;
+  if (full.includes('.')) {
+    const lastColon = full.lastIndexOf(':');
+    const v4Part = full.slice(lastColon + 1);
+    const octets = v4Part.split('.').map(Number);
+    if (octets.length !== 4 || octets.some(o => o < 0 || o > 255)) return null;
+    const hex1 = ((octets[0] << 8) | octets[1]).toString(16);
+    const hex2 = ((octets[2] << 8) | octets[3]).toString(16);
+    full = full.slice(0, lastColon + 1) + hex1 + ':' + hex2;
+  }
+  const parts = full.split('::');
+  if (parts.length > 2) return null;
+  let left = parts[0] ? parts[0].split(':') : [];
+  let right = parts[1] ? parts[1].split(':') : [];
+  if (parts.length === 2) {
+    const missing = 8 - (left.length + right.length);
+    if (missing < 0) return null;
+    const zeros = new Array(missing).fill('0');
+    left = [...left, ...zeros, ...right];
+  }
+  if (left.length !== 8) return null;
+  let result = 0n;
+  for (const part of left) {
+    if (!/^[0-9a-f]{1,4}$/i.test(part)) return null;
+    result = (result << 16n) + BigInt(parseInt(part, 16));
+  }
+  return result;
+}
+
+function parseV6Cidr(cidr) {
+  const m = String(cidr || '').trim().match(/^([0-9a-fA-F:]+)\/(\d{1,3})$/);
+  if (!m) return null;
+  const prefix = Number(m[2]);
+  if (prefix < 0 || prefix > 128) return null;
+  const base = ipv6ToBigInt(m[1]);
+  if (base === null) return null;
+  const mask = prefix === 0 ? 0n : (((1n << 128n) - 1n) << BigInt(128 - prefix)) & ((1n << 128n) - 1n);
+  const start = base & mask;
+  const end = start | (~mask & ((1n << 128n) - 1n));
+  return { start, end };
+}
+
+function ipv6InCidrs(ip, cidrs = []) {
+  const value = ipv6ToBigInt(ip);
+  if (value === null) return false;
+  return cidrs.some(cidr => {
+    const range = parseV6Cidr(cidr);
+    return range !== null && value >= range.start && value <= range.end;
+  });
+}
+
 /** 是否为「被保留/不可路由」的 IPv4（含私网、回环、CGNAT、基准测试、组播） */
 function isReservedV4(ip) {
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(String(ip).trim())) return false;
-  return isPrivateIp(ip) || ipv4InCidrs(ip, ['192.0.0.0/24', '192.88.99.0/24', '198.18.0.0/15', '240.0.0.0/4']);
+  return isPrivateIp(ip) || ipv4InCidrs(ip, [
+    '192.0.0.0/24', '192.0.2.0/24', '192.88.99.0/24',
+    '198.18.0.0/15', '198.51.100.0/24', '203.0.113.0/24', '240.0.0.0/4'
+  ]);
 }
 
 /**
@@ -132,11 +190,14 @@ function parseDnsServer(entry) {
 
   const v4Port = raw.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?$/);
   if (v4Port) {
-    result.kind = 'ip';
-    result.host = v4Port[1];
-    result.port = v4Port[2] || null;
-    result.isIpLiteral = true;
-    return result;
+    const octets = v4Port[1].split('.').map(Number);
+    if (octets.every(o => o >= 0 && o <= 255)) {
+      result.kind = 'ip';
+      result.host = v4Port[1];
+      result.port = v4Port[2] || null;
+      result.isIpLiteral = true;
+      return result;
+    }
   }
 
   // URL 形式（含修饰符）
@@ -160,11 +221,15 @@ function parseDnsServer(entry) {
     return result;
   }
 
-  // 裸域名（对 default-nameserver 非法）
-  result.kind = 'url';
-  result.scheme = 'plain';
-  result.host = raw;
-  return result;
+  // 裸域名（带或不带端口，例如 dns.example.com 或 dns.example.com:53）
+  const bareMatch = raw.match(/^([a-zA-Z0-9.-]+)(?::(\d+))?$/);
+  if (bareMatch) {
+    result.kind = 'url';
+    result.scheme = 'plain';
+    result.host = bareMatch[1];
+    result.port = bareMatch[2] || null;
+    return result;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -260,9 +325,15 @@ function sanitizeDnsServer(entry, options = {}) {
 
     if (isPrivate && allowPrivateLiteral) {
       const trusted = trustedPrivateCidrs.some(cidr => {
-        const range = parseV4CidrToRange(cidr);
-        const value = v4 ? ipv4ToInt(parsed.host) : null;
-        return range && value !== null && value >= range.start && value <= range.end;
+        if (v4) {
+          const range = parseV4CidrToRange(cidr);
+          const value = ipv4ToInt(parsed.host);
+          return range && value !== null && value >= range.start && value <= range.end;
+        } else {
+          const range = parseV6Cidr(cidr);
+          const value = ipv6ToBigInt(parsed.host);
+          return range && value !== null && value >= range.start && value <= range.end;
+        }
       });
       if (!trusted) {
         findings.push({
@@ -277,7 +348,10 @@ function sanitizeDnsServer(entry, options = {}) {
     const scheme = parsed.scheme && parsed.scheme !== 'plain' ? `${parsed.scheme}://` : '';
     const host = parsed.isIpv6 ? `[${parsed.host}]` : parsed.host;
     const port = parsed.port ? `:${parsed.port}` : '';
-    const path = parsed.kind === 'url' && parsed.path && parsed.path !== '/' ? parsed.path : (parsed.kind === 'url' ? '/dns-query' : '');
+    const isHttpDns = /^(https?|h3)$/i.test(parsed.scheme || '');
+    const path = isHttpDns
+      ? (parsed.path && parsed.path !== '/' ? parsed.path : '/dns-query')
+      : '';
     const safeModifiers = parsed.modifiers.filter(m => !DANGEROUS_DNS_MODIFIERS.some(d => d.re.test(m)));
     const suffix = safeModifiers.length ? `#${safeModifiers.join('&')}` : '';
     return { ok: true, value: `${scheme}${host}${port}${path}${suffix}`, entry: parsed, findings };
@@ -302,7 +376,10 @@ function sanitizeDnsServer(entry, options = {}) {
 
   const scheme = parsed.scheme && parsed.scheme !== 'plain' ? `${parsed.scheme}://` : '';
   const port = parsed.port ? `:${parsed.port}` : '';
-  const path = parsed.kind === 'url' && parsed.path && parsed.path !== '/' ? parsed.path : (parsed.kind === 'url' ? '/dns-query' : '');
+  const isHttpDnsDomain = /^(https?|h3)$/i.test(parsed.scheme || '');
+  const path = isHttpDnsDomain
+    ? (parsed.path && parsed.path !== '/' ? parsed.path : '/dns-query')
+    : '';
   const safeModifiers = parsed.modifiers.filter(m => !DANGEROUS_DNS_MODIFIERS.some(d => d.re.test(m)));
   const suffix = safeModifiers.length ? `#${safeModifiers.join('&')}` : '';
   return { ok: true, value: `${scheme}${parsed.host}${port}${path}${suffix}`, entry: parsed, findings };
@@ -351,7 +428,8 @@ function sanitizeHosts(hostsMap, options = {}) {
     protectedDomains = DEFAULT_PROTECTED_DOMAINS,
     internalCidrs = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '169.254.0.0/16', '100.64.0.0/10'],
     allowInternal = false,
-    allowNonRoutable = false
+    allowNonRoutable = false,
+    userTrustedDomains = []
   } = options;
 
   const hosts = {};
@@ -359,6 +437,7 @@ function sanitizeHosts(hostsMap, options = {}) {
   const dropped = [];
 
   if (!hostsMap || typeof hostsMap !== 'object') return { hosts, findings, dropped };
+  const trustedSet = new Set((Array.isArray(userTrustedDomains) ? userTrustedDomains : []).map(d => String(d).toLowerCase().trim()));
 
   for (const [rawKey, rawValue] of Object.entries(hostsMap)) {
     const key = String(rawKey).trim().toLowerCase();
@@ -367,7 +446,9 @@ function sanitizeHosts(hostsMap, options = {}) {
 
     if (values.length === 0) continue;
 
-    const suffixHit = [...protectedDomains].find(p => bare === p || bare.endsWith(`.${p}`));
+    // 受保护域名检测（支持用户显式白名单 userTrustedDomains 豁免）
+    const isExempt = trustedSet.has(bare) || [...trustedSet].some(t => bare.endsWith('.' + t));
+    const suffixHit = !isExempt && [...protectedDomains].find(p => bare === p || bare.endsWith(`.${p}`));
     if (suffixHit) {
       findings.push({
         id: 'HOSTS-PROTECTED-DOMAIN', severity: 'critical',

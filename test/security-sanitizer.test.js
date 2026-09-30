@@ -314,3 +314,139 @@ test('deriveFakeIpFilterAdditions - 节点域名进入 fake-ip-filter', () => {
   assert.ok(extras.includes('cdn.example'));
   assert.ok(!extras.includes('1.2.3.4'));
 });
+
+// ── 深度评审缺陷修复专项回归测试 ──────────────────────────────────────────
+
+test('mergeSubscriptionConfigs - 未登记未知字段严格 fail-closed，杜绝穿透漏洞 (Blocker 1)', () => {
+  const sources = [
+    {
+      tag: 'master-sub',
+      isMaster: true,
+      config: {
+        proxies: [{ name: 'm-node' }],
+        'unknown-future-kernel-key': 'attacker-payload',
+        'another-unrecognized-control': { evil: true }
+      }
+    }
+  ];
+  // 即使是 master，未登记字段也坚决不能合并进最终配置
+  const { merged, audits } = mergeSubscriptionConfigs(sources, {});
+  assert.strictEqual(merged['unknown-future-kernel-key'], undefined);
+  assert.strictEqual(merged['another-unrecognized-control'], undefined);
+  assert.strictEqual(merged.proxies.length, 1);
+  assert.ok(audits[0].hostile.some(h => h.id === 'CP-UNKNOWN'));
+});
+
+test('mergeSubscriptionConfigs - proxy-providers 深度合并与冲突上报', () => {
+  const sources = [
+    { tag: 'A', isMaster: false, config: { proxies: [], 'proxy-providers': { p1: { url: 'http://a.com' } } } },
+    { tag: 'B', isMaster: false, config: { proxies: [], 'proxy-providers': { p2: { url: 'http://b.com' } } } },
+    { tag: 'C', isMaster: false, config: { proxies: [], 'proxy-providers': { p1: { url: 'http://conflict.com' } } } }
+  ];
+  const { merged, conflicts } = mergeSubscriptionConfigs(sources, {});
+  assert.ok(merged['proxy-providers'].p1);
+  assert.ok(merged['proxy-providers'].p2);
+  assert.strictEqual(merged['proxy-providers'].p1.url, 'http://a.com');
+  assert.ok(conflicts.some(c => c.key === 'proxy-providers.p1'));
+});
+
+test('sanitizeDnsServer - DoT 协议严禁错误拼接 /dns-query 路径 (Blocker 2)', () => {
+  const dotV4 = sanitizeDnsServer('tls://223.5.5.5', { role: ROLES.PROXY_SERVER });
+  assert.strictEqual(dotV4.ok, true);
+  assert.strictEqual(dotV4.value, 'tls://223.5.5.5');
+  assert.ok(!dotV4.value.includes('/dns-query'), 'DoT 绝不能包含 /dns-query');
+
+  const dotV6 = sanitizeDnsServer('tls://[2400:3200::1]', { role: ROLES.PROXY_SERVER });
+  assert.strictEqual(dotV6.ok, true);
+  assert.strictEqual(dotV6.value, 'tls://[2400:3200::1]');
+  assert.ok(!dotV6.value.includes('/dns-query'));
+
+  const doh = sanitizeDnsServer('https://223.5.5.5', { role: ROLES.PROXY_SERVER });
+  assert.strictEqual(doh.ok, true);
+  assert.strictEqual(doh.value, 'https://223.5.5.5/dns-query', 'DoH 缺少 path 时应补齐 /dns-query');
+});
+
+test('sanitizeDnsServer - IPv6 私网 DNS 支持 trustedPrivateCidrs 校验 (Blocker 4)', () => {
+  // fd00::/8 内网 DNS
+  const untrusted = sanitizeDnsServer('[fd00::1]', {
+    role: ROLES.PROXY_SERVER,
+    allowPrivateLiteral: true,
+    trustedPrivateCidrs: ['10.0.0.0/8'] // 只有 v4 白名单
+  });
+  assert.strictEqual(untrusted.ok, false);
+  assert.strictEqual(untrusted.reason, 'private-not-trusted');
+
+  const trusted = sanitizeDnsServer('[fd00::1]', {
+    role: ROLES.PROXY_SERVER,
+    allowPrivateLiteral: true,
+    trustedPrivateCidrs: ['fd00::/8'] // 包含 v6 白名单
+  });
+  assert.strictEqual(trusted.ok, true);
+  assert.strictEqual(trusted.value, '[fd00::1]');
+});
+
+test('parseDnsServer - 非法 IPv4 数值不被识别为合法 IP', () => {
+  const r = parseDnsServer('256.256.256.256');
+  assert.strictEqual(r.isIpLiteral, false);
+  assert.strictEqual(r.kind, 'url'); // 按裸域名回退处理，而不会作为合法 IP 放行
+});
+
+test('parseDnsServer - 裸域名带端口干净拆分 host 与 port', () => {
+  const r = parseDnsServer('dns.example.com:53');
+  assert.strictEqual(r.host, 'dns.example.com');
+  assert.strictEqual(r.port, '53');
+});
+
+test('planResolverChain - 自动为节点域名生成 fake-ip-filter 并通过 INV-7 检查 (Blocker 3 & INV-7)', () => {
+  const plan = planResolverChain({
+    env: { kind: 'home' },
+    inputs: {
+      proxies: [
+        { name: 'Node1', server: 'hk.node.airport.com' },
+        { name: 'Node2', server: 'us.node.airport.com', sni: 'cdn.fast.net' }
+      ]
+    }
+  });
+
+  assert.ok(plan.dns['fake-ip-filter'].includes('hk.node.airport.com'));
+  assert.ok(plan.dns['fake-ip-filter'].includes('us.node.airport.com'));
+  assert.ok(plan.dns['fake-ip-filter'].includes('cdn.fast.net'));
+
+  // 验证 checkInvariants INV-7 自检无违规
+  const violations = checkInvariants(plan.dns, {
+    proxies: [{ server: 'hk.node.airport.com' }]
+  });
+  assert.ok(!violations.some(v => v.id === 'INV-7'));
+
+  // 验证人为缺失节点域名时，INV-7 能够准确告警
+  const badDns = { ...plan.dns, 'fake-ip-filter': ['baidu.com'] };
+  const badViolations = checkInvariants(badDns, {
+    proxies: [{ server: 'unfiltered.node.com' }]
+  });
+  assert.ok(badViolations.some(v => v.id === 'INV-7'));
+});
+
+test('planResolverChain - IPv6 回环地址 listenHost 正确规范化为 [::1]', () => {
+  const plan = planResolverChain({
+    env: { kind: 'home' },
+    options: { listenHost: '::1', listenPort: 5353 }
+  });
+  assert.strictEqual(plan.dns.listen, '[::1]:5353');
+});
+
+test('sanitizeHosts - userTrustedDomains 允许用户显式豁免受保护域名', () => {
+  const raw = {
+    'alibaba.com': '1.2.3.4',
+    'github.com': '5.6.7.8'
+  };
+
+  // 默认两项均被拦截
+  const r1 = sanitizeHosts(raw);
+  assert.strictEqual(r1.hosts['alibaba.com'], undefined);
+  assert.strictEqual(r1.hosts['github.com'], undefined);
+
+  // 用户白名单显式放行 alibaba.com
+  const r2 = sanitizeHosts(raw, { userTrustedDomains: ['alibaba.com'] });
+  assert.strictEqual(r2.hosts['alibaba.com'], '1.2.3.4');
+  assert.strictEqual(r2.hosts['github.com'], undefined);
+});
