@@ -435,3 +435,57 @@ export function parseTrojanUri(uri: string): ProxyNode | null;
  * 解析 Shadowsocks 协议 URI (SIP002 / SIP001)
  */
 export function parseSsUri(uri: string): ProxyNode | null;
+
+/**
+ * 解析 Hysteria2 / Hy2 协议 URI
+ */
+export function parseHysteria2Uri(uri: string): ProxyNode | null;
+
+/**
+ * 解析 TUIC 协议 URI
+ */
+export function parseTuicUri(uri: string): ProxyNode | null;
+
+/**
+ * 解析 SOCKS5 / SOCKS 协议 URI
+ */
+export function parseSocksUri(uri: string): ProxyNode | null;
+
+/**
+ * 解析 HTTP / HTTPS 代理协议 URI
+ */
+export function parseHttpUri(uri: string): ProxyNode | null;
+
+/**
+ * 根据协议前缀分发解析单条 URI 节点链接
+ */
+export function parseUri(uri: string): ProxyNode | null;
+
+/**
+ * 解析多行 URI 链接列表
+ */
+export function parseUriList(content: string): { proxies: ProxyNode[] } | null;
+
+/**
+ * 注册自定义协议解析器
+ */
+export function registerParser(
+  schemes: string | string[],
+  parserFn: (uri: string) => ProxyNode | null
+): void;
+
+/**
+ * 获取指定协议解析器
+ */
+export function getParser(scheme: string): ((uri: string) => ProxyNode | null) | undefined;
+
+/**
+ * 检查协议是否已注册
+ */
+export function hasParser(scheme: string): boolean;
+
+/**
+ * 获取所有已注册的协议 Schemes 列表
+ */
+export function getRegisteredSchemes(): string[];
+

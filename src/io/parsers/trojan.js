@@ -4,13 +4,13 @@
  * 解析标准 trojan:// 链接并转换为 Mihomo 节点对象。
  */
 
-const { safeDecodeURIComponent } = require('./base64');
+const { safeDecodeURIComponent, cleanHostname } = require('./base64');
 
 function parseTrojanUri(uri) {
   try {
     const url = new URL(uri);
     const password = url.username;
-    const server = url.hostname;
+    const server = cleanHostname(url.hostname);
     const port = parseInt(url.port) || 443;
     const name = safeDecodeURIComponent(url.hash.slice(1)) || `${server}:${port}`;
     const params = url.searchParams;
