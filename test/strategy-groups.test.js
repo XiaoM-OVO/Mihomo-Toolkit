@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { main: strategyMain } = require('../src/targets/verge.js');
+const { runStrategyPipeline: strategyMain } = require('../src/pipeline/strategy.js');
 
 describe('📦 策略组与分流拓扑构建模块 (strategy)', () => {
   test('strategyMain - AI / 流媒体 / 社交策略组生成与节点注入测试', () => {

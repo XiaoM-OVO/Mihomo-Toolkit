@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { operator } = require('../src/targets/operator.js');
+const { runNodesPipeline } = require('../src/pipeline/nodes.js');
 
 describe('🧹 脏乱节点清洗与物理去重算法', () => {
   test('nodes - 极度脏乱文本与广告节点过滤', async () => {
@@ -24,8 +24,7 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
       strictRegionMatch: false
     };
 
-    const result = await operator(dirtyProxies, 'clash', config);
-    const cleanProxies = Array.isArray(result) ? result : result.proxies;
+    const cleanProxies = await runNodesPipeline(dirtyProxies, config);
 
     // 1. 验证广告与说明节点已被剔除
     assert.ok(!cleanProxies.some(p => p.name.includes('官方网址')));
@@ -43,8 +42,7 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
       { name: '🇯🇵 日本 01', type: 'ss', server: 'jp.domain.com', port: 8388, cipher: 'aes-256-gcm', password: 'samepassword' }
     ];
 
-    const result = await operator(duplicateProxies, 'clash', { enableDedupe: true });
-    const cleanProxies = Array.isArray(result) ? result : result.proxies;
+    const cleanProxies = await runNodesPipeline(duplicateProxies, { enableDedupe: true });
 
     // 重复节点应只保留 1 个
     const hkNodes = cleanProxies.filter(p => p.server === 'hk.domain.com');
@@ -57,8 +55,7 @@ describe('🧹 脏乱节点清洗与物理去重算法', () => {
       { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-256-gcm', password: 'p' }
     ];
 
-    const result = await operator(rawProxies, 'clash', { removeInfoNodes: false });
-    const proxies = Array.isArray(result) ? result : result.proxies;
+    const proxies = await runNodesPipeline(rawProxies, { removeInfoNodes: false });
     assert.equal(proxies.length, 2);
     assert.ok(proxies.some(p => p.name.includes('剩余流量')));
   });

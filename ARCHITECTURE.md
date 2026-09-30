@@ -11,7 +11,7 @@
 ```text
 ┌────────────────────────────────────────────────────────────────┐
 │ 1. Targets (多端宿主适配层)                                    │
-│    CLI (mtk) │ Server (HTTP) │ Operator (Sub-Store) │ Verge    │
+│    CLI (mtk) │ Server (HTTP 订阅中继服务)                       │
 └──────────────────────────────┬─────────────────────────────────┘
                                │ 驱动调用 (无业务逻辑，仅做参数映射)
 ┌──────────────────────────────▼─────────────────────────────────┐
@@ -166,9 +166,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │
 │   ├── targets/                  # 🔌 宿主环境终端适配器 (仅做参数与调用封装)
 │   │   ├── cli.js                # CLI 入口 (支持 mtk / mihomo-tk / mihomo-toolkit)
-│   │   ├── server.js             # 常驻 HTTP 订阅服务 (/sub, /healthz, Token 鉴权)
-│   │   ├── operator.js           # Sub-Store 节点操作适配入口 (operator 契约)
-│   │   └── verge.js              # Clash Verge Rev 扩展脚本适配入口 (main 契约)
+│   │   └── server.js             # 常驻 HTTP 订阅服务 (/sub, /healthz, Token 鉴权)
 │   │
 │   ├── core/                     # 🧮 节点清洗核心算法层 (Pure & Deterministic)
 │   │   ├── cleaner.js            # 垃圾拦截、倍率线路提取、属性智能分类打标
@@ -205,7 +203,7 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── test/                         # 🧪 自动化测试套件 (114 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (92 个全绿用例)
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置

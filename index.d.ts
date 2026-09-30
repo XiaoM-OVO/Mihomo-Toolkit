@@ -352,28 +352,6 @@ export function runPipelineEngine(
 ): Promise<BuildResult>;
 
 /**
- * 节点清洗核心算子 (pure-nodes)
- * @param proxies 原始代理节点数组
- * @param targetPlatform 目标平台（默认 'clash'）
- * @param userConfig 清洗模块配置
- */
-export function operator(
-  proxies: ProxyNode[],
-  targetPlatform?: string,
-  userConfig?: PureConfig
-): Promise<ProxyNode[] | { proxies: ProxyNode[]; meta: PureMeta }>;
-
-/**
- * 策略组与分流规则构建主函数 (mihomo-toolkit)
- * @param config 包含 proxies 的基础配置对象
- * @param userConfig 策略组构建配置或 profileName
- */
-export function main(
-  config: Record<string, any>,
-  userConfig?: ToolkitConfig | string
-): Record<string, any>;
-
-/**
  * URL 脱敏辅助函数（去除查询参数与路径凭证）
  * @param url 待脱敏的原始 URL
  */
