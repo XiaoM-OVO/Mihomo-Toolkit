@@ -14,6 +14,8 @@ const path = require('path');
 const { parseContent, parseSubscriptionInfo, isExpiredNow } = require('./parsers');
 const { redactUrl } = require('./ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache } = require('./fetcher');
+const { partitionControlPlane } = require('../core/security/control-plane');
+const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
 
 // 统一解耦 Strategy 层看板逻辑：优先使用 Pipeline 注入的实现，保持单向无环依赖
 let _dashboard = null;
@@ -31,6 +33,41 @@ function getDashboard(injected) {
 function isSubEnabled(s) {
   if (!s || typeof s !== 'object') return false;
   return s.enable !== false && s.enabled !== false && s.disabled !== true;
+}
+
+/** 提取节点资产域名（用于专属依赖闭包识别） */
+function extractAssetDomains(proxies = [], subUrl = '') {
+  const domains = new Set();
+  if (subUrl && typeof subUrl === 'string' && subUrl.startsWith('http')) {
+    try {
+      const u = new URL(subUrl);
+      if (u.hostname) domains.add(u.hostname.toLowerCase());
+    } catch (e) {}
+  }
+  for (const p of proxies) {
+    if (!p || typeof p !== 'object') continue;
+    if (p.server && typeof p.server === 'string') {
+      const s = p.server.replace(/^\[|\]$/g, '').trim().toLowerCase();
+      if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(s) && !s.includes(':')) {
+        domains.add(s);
+      }
+    }
+    if (p.sni && typeof p.sni === 'string') domains.add(p.sni.trim().toLowerCase());
+    if (p.servername && typeof p.servername === 'string') domains.add(p.servername.trim().toLowerCase());
+  }
+  return domains;
+}
+
+/** 判定是否属于该订阅资产域名的子域或所属域 */
+function matchesAssetDomain(domainOrPattern, assetDomains) {
+  if (!domainOrPattern || typeof domainOrPattern !== 'string') return false;
+  const clean = domainOrPattern.toLowerCase().replace(/^\+?\./, '').replace(/^\*\./, '');
+  for (const asset of assetDomains) {
+    if (asset === clean || asset.endsWith('.' + clean) || clean.endsWith('.' + asset)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -254,10 +291,54 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           hasInjectedTag = true;
         }
 
-        if ((userConfig.passthrough || userConfig.preserveRawConfig) && subConfig && typeof subConfig === 'object') {
-          for (const [k, v] of Object.entries(subConfig)) {
-            if (k !== 'proxies' && configData[k] === undefined) {
-              configData[k] = v;
+        if (subConfig && typeof subConfig === 'object') {
+          // 1. 控制面净化审计：物理剥离并记录越权篡改（夺权、开放代理、注入隧道等）
+          const { report } = partitionControlPlane(subConfig, { isMaster: !!sub.master, tag: sub.tag || effectiveTag });
+          if (report.hostile.length > 0 && logger) {
+            const hostileDesc = report.hostile.map(h => `${h.key} [${h.id}]`).join(', ');
+            logger.warn(`🛡️ 控制面沙箱: 订阅 [${report.tag}] 包含越权控制字段并已安全剥离: ${hostileDesc}`);
+          }
+
+          // 2. 节点专属资产域推导（Dependency Tracing）
+          const assetDomains = extractAssetDomains(subProxies, sub.url);
+
+          // 3. 专属 Hosts 提取（优选 IP 闭包保留，排除公共资产劫持与私网重定向）
+          if (subConfig.hosts && typeof subConfig.hosts === 'object') {
+            const scopedHosts = {};
+            for (const [hostKey, hostVal] of Object.entries(subConfig.hosts)) {
+              if (matchesAssetDomain(hostKey, assetDomains)) {
+                scopedHosts[hostKey] = hostVal;
+              }
+            }
+            const { hosts: cleanHosts } = sanitizeHosts(scopedHosts, { allowInternal: false });
+            if (cleanHosts && Object.keys(cleanHosts).length > 0) {
+              configData._assetHosts = { ...(configData._assetHosts || {}), ...cleanHosts };
+            }
+          }
+
+          // 4. 专属 Nameserver-Policy 提取（节点私有 DoH 依赖闭包保留）
+          const rawPolicy = (subConfig.dns && subConfig.dns['nameserver-policy']) || subConfig['nameserver-policy'];
+          if (rawPolicy && typeof rawPolicy === 'object') {
+            const scopedPolicy = {};
+            for (const [polKey, polVal] of Object.entries(rawPolicy)) {
+              if (matchesAssetDomain(polKey, assetDomains)) {
+                scopedPolicy[polKey] = polVal;
+              }
+            }
+            const { policy: cleanPolicy } = sanitizeNameserverPolicy(scopedPolicy, { isMaster: true });
+            if (cleanPolicy && Object.keys(cleanPolicy).length > 0) {
+              configData._assetPolicies = { ...(configData._assetPolicies || {}), ...cleanPolicy };
+            }
+          }
+
+          // 5. Fake-IP Filter 节点与专属过滤继承
+          const rawFakeFilters = subConfig.dns && subConfig.dns['fake-ip-filter'];
+          if (Array.isArray(rawFakeFilters)) {
+            configData._assetFakeIpFilters = configData._assetFakeIpFilters || [];
+            for (const f of rawFakeFilters) {
+              if (typeof f === 'string' && matchesAssetDomain(f, assetDomains)) {
+                configData._assetFakeIpFilters.push(f);
+              }
             }
           }
         }

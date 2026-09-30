@@ -89,7 +89,7 @@
 
 | 交付模式 (`outputMode`) | 核心契约 (Contract) | 关键行为与边界 | 典型场景 |
 | :--- | :--- | :--- | :--- |
-| **`config`**<br>*(默认全量交付)* | 交付完整可直接交付内核运行的 Mihomo YAML 配置。 | 1. `passthrough: false`：全自动执行节点清洗、高颜值看板合成、六维策略组装配、分流规则集与内核优化调优。<br>2. `passthrough: true`：**原配置透传模式**。100% 保留输入配置中的 `dns`、`rules`、`tun` 等外围字段，仅将 `proxies` 替换为洗白后的节点。 | 软路由、Clash Verge、Mihomo 服务端部署。 |
+| **`config`**<br>*(默认全量交付)* | 交付完整可直接交付内核运行的 Mihomo YAML 配置。 | 1. 采用「智能节点资产依赖保活沙箱」，自动继承节点专属的 Hosts（CDN 优选）与 Nameserver-Policy（私有 DoH），动态将节点域名注入 fake-ip-filter 防环路。<br>2. 物理剥离订阅中一切外部端口（port）、监听面（allow-lan）、反向隧道（tunnels）与 API 夺权字段（external-controller/secret），控制面保持纯净与安全。<br>3. 全自动执行节点清洗、看板合成、六维策略组装配、分流规则集与内核优化调优。 | 软路由、Clash Verge、Mihomo 服务端部署。 |
 | **`nodes`**<br>*(纯净节点交付)* | 契约绝对纯粹：**仅输出干净的 `{ proxies: [...] }` 列表**。 | 执行物理去重、广告与垃圾拦截、属性提取、地区识别与重命名。**严禁输出任何策略组或外围规则**（即使输入自带 rules 也坚决剥离）。 | Sub-Store 节点管理、自建节点池维护。 |
 | **`report`**<br>*(健康审计交付)* | 交付标准格式的清洗与质量审计报告 (JSON)。 | 统计输入总数、有效保留数、去重剔除数、广告拦截数、未知地区数、裂变产生数，输出结构化健康评估指标。 | CI/CD 自动化质检、机场节点质量监控。 |
 
@@ -147,6 +147,17 @@
 * **Stale 兜底容灾缓存**：
   为每个订阅维护最近一次成功拉取的内存快照。若某次远程拉取彻底失败且容灾周期未过期（`fetchStaleTtl`，默认 24h），自动降级复用上一轮有效内容，并打印黄色告警。**确保下游用户设备上的节点绝不因为机场暂时抽风而全军覆没**。
 
+### 5. 控制面净化沙箱与节点专属资产闭包 (`src/core/security/`)
+* **设计考量**：
+  外部机场订阅本质上属于不可信第三方输入。传统“全盘透传”存在致命隐患：订阅可借由 `external-controller` 和 `secret` 窃取内核 API 控制权、利用 `allow-lan` 将客户端暴露为公网开放代理、通过 `geox-url` 投毒反转全量 GEOIP 分流。同时，直接一刀切剥离全部私有字段又会导致依赖私有 DoH 或 CDN 优选 Hosts 的节点无法连通。
+* **算法与闭包机制**：
+  1. **控制面与数据面物理隔离 (`control-plane.js`)**：
+     白名单限制 `DATA_PLANE_KEYS`（仅 `proxies` / `proxy-providers` 可跨源聚合）。所有控制面键与攻击特征签名（`HOSTILE_SIGNATURES`）在接入点即刻完成审计与剥离。
+  2. **节点专属资产域推导 (Dependency Tracing)**：
+     系统自动从节点属性（`server`, `sni`, `servername`）及订阅源提取资产域名集合；对订阅携带的 `hosts` 与 `nameserver-policy` 进行**作用域匹配**：仅放行指向自身节点资产域名的优选 IP 与私有 DoH，严禁越权劫持公共高危域名（`github.com`, `apple.com`, `google.com`, `alipay.com` 等）。
+  3. **Bootstrap 破死锁与 Fake-IP 避环 (`dns-sanitizer.js` & `resolver-plan.js`)**：
+     强制规范 `default-nameserver` 与 `proxy-server-nameserver` 100% 纯 IP 引导；从节点池动态提取节点域名注入 `fake-ip-filter`，彻底杜绝 Fake-IP 虚拟自环与解析连环死锁。
+
 ---
 
 ## 📂 四、 目录职责与代码地图
@@ -158,7 +169,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │
 │   ├── pipeline/                 # 🚀 交付流水线 (与交付形态 1:1 映射)
 │   │   ├── engine.js             # runPipelineEngine: 总调度引擎，按 Checkpoint 截断控制交付
-│   │   ├── config.js             # runConfigPipeline: 交付完整 config (支持 passthrough)
+│   │   ├── config.js             # runConfigPipeline: 交付完整 config (智能资产保活沙箱)
 │   │   ├── nodes.js              # runNodesPipeline: 交付纯净节点 proxies 数组
 │   │   ├── report.js             # buildAuditReport: 交付结构化健康审计 JSON
 │   │   ├── strategy.js           # runStrategyPipeline: 纯策略组与分流拓扑组装流水线
@@ -169,6 +180,10 @@ E:\CODE\mihomo-toolkit-next\
 │   │   └── server.js             # 常驻 HTTP 订阅服务 (/sub, /healthz, Token 鉴权)
 │   │
 │   ├── core/                     # 🧮 节点清洗核心算法层 (Pure & Deterministic)
+│   │   ├── security/             # 🛡️ 安全沙箱与仲裁核心 (纯函数安全网关)
+│   │   │   ├── control-plane.js  # 控制面剥离、夺权特征拦截与 Master 仲裁
+│   │   │   ├── dns-sanitizer.js  # DNS 净化沙箱、DoH 修饰符剥离与 Hosts 审计
+│   │   │   └── resolver-plan.js  # 解析链规划器、节点避环与 INV 内核不变式自检
 │   │   ├── cleaner.js            # 垃圾拦截、倍率线路提取、属性智能分类打标
 │   │   ├── dedupe.js             # 底层物理网络指纹提取与特征去重
 │   │   ├── transport.js          # 统一传输层门面 (Host/SNI/Path提取、Host注入与类型识别)
@@ -210,7 +225,7 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── test/                         # 🧪 自动化测试套件 (18 个测试套件，100 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (19 个测试套件，124 个全绿用例)
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
@@ -269,6 +284,6 @@ E:\CODE\mihomo-toolkit-next\
 ## 🛡️ 六、 开发质量守则
 
 任何针对本工程的 PR 或重构，必须满足以下三项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 100 个测试必须 100% 通过；
+1. **测试不破**：改动后执行 `npm test`，全量 124 个测试必须 100% 通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
 3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用。

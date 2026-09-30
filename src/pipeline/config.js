@@ -33,45 +33,42 @@ function runConfigPipeline({
   userConfig = {},
   logger
 }) {
-  const isPassthrough = !!(userConfig.passthrough || userConfig.preserveRawConfig);
   let outputData;
 
   const expireAggregation = userConfig.expireAggregation || 'min';
   const agg = aggregateSubscriptions(collectedSubInfos, { expireAggregation, logger });
 
-  if (isPassthrough) {
-    // 1. 透传模式：仅将 proxies 替换为干净节点，原订阅外围规则完好保留
-    outputData = { ...configData, proxies: cleanProxies };
-    if (logger) logger.log(`✅ 透传完成: 继承原配置并替换为 ${cleanProxies.length} 个干净节点`);
-  } else {
-    // 2. 全量组装模式：注入策略组拓扑与分流规则
-    configData.proxies = cleanProxies;
-    outputData = configData;
+  if ((userConfig.passthrough || userConfig.preserveRawConfig) && logger) {
+    logger.info('💡 提示: 全局裸透传已升级为「智能节点资产依赖保活沙箱」，节点专属 DNS/Hosts 自动挂载，宿主控制面保持洁净');
+  }
 
-    outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes, logger });
+  // 1. 全量组装模式：注入安全 DNS、TUN、策略组拓扑与分流规则
+  configData.proxies = cleanProxies;
+  outputData = configData;
 
-    const groups = outputData['proxy-groups'] || [];
-    const proxies = outputData.proxies || [];
-    const rules = outputData.rules || [];
-    if (logger) {
-      const realProxies = proxies.filter(p => !p.isSyntheticInfo);
-      const isZeroNode = realProxies.length === 0;
-      const synthCount = proxies.filter(p => p.isSyntheticInfo).length;
-      const regionalGroups = groups.filter(g => g.name && /节点/.test(g.name));
-      const serviceGroups = groups.filter(g => g.name && !/节点/.test(g.name));
-      const lines = [`📐 拓扑策略装配完成:`];
+  outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes, logger });
 
-      if (isZeroNode) {
-        lines.push(`├── 🛡️ 纯分流拦截模式: 无代理节点，已清空区域组并保留拦截/直连规则`);
-      } else {
-        if (synthCount > 0) {
-          lines.push(`├── 📊 状态看板: ${synthCount} 条目 (已合成全局总额与独立看板)`);
-        }
-        lines.push(`├── 🌏 地区拓扑: ${regionalGroups.length} 个区域组`);
+  const groups = outputData['proxy-groups'] || [];
+  const proxies = outputData.proxies || [];
+  const rules = outputData.rules || [];
+  if (logger) {
+    const realProxies = proxies.filter(p => !p.isSyntheticInfo);
+    const isZeroNode = realProxies.length === 0;
+    const synthCount = proxies.filter(p => p.isSyntheticInfo).length;
+    const regionalGroups = groups.filter(g => g.name && /节点/.test(g.name));
+    const serviceGroups = groups.filter(g => g.name && !/节点/.test(g.name));
+    const lines = [`📐 拓扑策略装配完成:`];
+
+    if (isZeroNode) {
+      lines.push(`├── 🛡️ 纯分流拦截模式: 无代理节点，已清空区域组并保留拦截/直连规则`);
+    } else {
+      if (synthCount > 0) {
+        lines.push(`├── 📊 状态看板: ${synthCount} 条目 (已合成全局总额与独立看板)`);
       }
-      lines.push(`└── 🎯 分流服务: ${serviceGroups.length} 个规则组 (${rules.length} 条分流规则)`);
-      logger.info(lines.join('\n'));
+      lines.push(`├── 🌏 地区拓扑: ${regionalGroups.length} 个区域组`);
     }
+    lines.push(`└── 🎯 分流服务: ${serviceGroups.length} 个规则组 (${rules.length} 条分流规则)`);
+    logger.info(lines.join('\n'));
   }
 
   // 3. 简繁中文四路同步
@@ -86,6 +83,9 @@ function runConfigPipeline({
         }
       }
     }
+  }
+  for (const key of Object.keys(outputData)) {
+    if (key.startsWith('_')) delete outputData[key];
   }
 
   // 5. YAML 序列化与标头注入
