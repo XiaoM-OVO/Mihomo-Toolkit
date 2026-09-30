@@ -76,11 +76,21 @@ proxies:
     assert.equal(outputData['proxy-groups'], undefined);
   });
 
-  test('buildProfile - config 模式 + passthrough 透传原订阅外围配置', async () => {
-    // 模拟输入带有原生 rules 和 dns 的完整 YAML
+  test('buildProfile - config 模式智能资产保活沙箱（自动继承节点专属 DNS 与 Hosts 依赖，绝不泄漏外部端口与夺权字段）', async () => {
+    // 模拟输入带有潜在越权控制字段（port, external-controller）、受污染 hosts 以及专属节点解析依赖的 YAML
     const rawYamlContent = `
 port: 7890
 socks-port: 7891
+external-controller: 0.0.0.0:9090
+secret: evil-token
+allow-lan: true
+hosts:
+  node.airport.com: 104.16.1.1
+  github.com: 1.2.3.4
+dns:
+  nameserver-policy:
+    +.airport.com: https://doh.airport.com/dns-query
+    baidu.com: 1.1.1.1
 rules:
   - DOMAIN-SUFFIX,google.com,PROXY
   - MATCH,DIRECT
@@ -93,7 +103,7 @@ proxies:
     password: pass
   - name: "🇭🇰 香港 01"
     type: ss
-    server: 1.2.3.4
+    server: node.airport.com
     port: 443
     cipher: aes-128-gcm
     password: pass
@@ -103,22 +113,36 @@ proxies:
       subscriptions: [
         {
           uri: rawYamlContent,
-          tag: 'SubWithRules'
+          tag: 'SubWithSecurityFields'
         }
-      ],
-      passthrough: true // 开启透传
+      ]
     };
 
     const { yamlStr } = await buildProfile(userConfig, { type: 'config' });
     const outputData = yaml.parse(yamlStr);
 
-    // 验证契约：原订阅的 port, socks-port, rules 完好无损透传
-    assert.equal(outputData.port, 7890);
-    assert.equal(outputData['socks-port'], 7891);
-    assert.ok(Array.isArray(outputData.rules));
-    assert.equal(outputData.rules.length, 2);
+    // 1. 验证安全隔离：原订阅的危险控制面字段被物理剥离，未泄漏至全局配置
+    assert.equal(outputData.port, undefined);
+    assert.equal(outputData['socks-port'], undefined);
+    assert.equal(outputData['external-controller'], undefined);
+    assert.equal(outputData.secret, undefined);
+    assert.equal(outputData['allow-lan'], undefined);
 
-    // 验证：proxies 中的脏广告节点已被清洗剔除，只保留干净节点
+    // 2. 验证节点资产闭包：节点专属优选 IP 保留，高危公共资产劫持被拦截
+    assert.ok(outputData.hosts);
+    assert.equal(outputData.hosts['node.airport.com'], '104.16.1.1');
+    assert.equal(outputData.hosts['github.com'], undefined);
+
+    // 3. 验证专属 DNS 策略：节点专属私有 DoH 保留，通用域名劫持被剥离
+    assert.ok(outputData.dns && outputData.dns['nameserver-policy']);
+    assert.equal(outputData.dns['nameserver-policy']['+.airport.com'], 'https://doh.airport.com/dns-query');
+    assert.equal(outputData.dns['nameserver-policy']['baidu.com'], undefined);
+
+    // 4. 验证防环路：节点域名自动进入 fake-ip-filter
+    assert.ok(Array.isArray(outputData.dns['fake-ip-filter']));
+    assert.ok(outputData.dns['fake-ip-filter'].includes('node.airport.com'));
+
+    // 5. 验证节点清洗：脏广告被剔除，保留干净节点
     assert.ok(Array.isArray(outputData.proxies));
     assert.equal(outputData.proxies.length, 1);
     assert.ok(outputData.proxies[0].name.includes('香港'));
