@@ -45,7 +45,7 @@ function startServer(options = {}) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({
         status: 'ok',
-        service: 'mihomo-toolkit-server',
+        service: 'Mihomo-Toolkit',
         version: pkg.version,
         uptime: Math.floor(process.uptime())
       }));
@@ -155,7 +155,8 @@ function startServer(options = {}) {
         const isReport = targetType === 'report' || targetType === 'audit' || targetType === 'meta';
         const headers = {
           'Content-Type': isReport ? 'application/json; charset=utf-8' : 'text/yaml; charset=utf-8',
-          'Profile-Update-Interval': '24'
+          'Profile-Update-Interval': '24',
+          'Server': `Mihomo-Toolkit/v${pkg.version}`
         };
 
         if (userInfo && (userInfo.total > 0 || userInfo.expire > 0)) {
@@ -173,11 +174,11 @@ function startServer(options = {}) {
     }
 
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Mihomo-Toolkit Server is running.\n\nUsage:\n  /sub?url=<subscription_url>\n  /sub?config=<remote_config_url>\n');
+    res.end(`Mihomo-Toolkit v${pkg.version} Server is running.\n\nUsage:\n  /sub?url=<subscription_url>\n  /sub?config=<remote_config_url>\n`);
   });
 
   server.listen(PORT, () => {
-    serverLogger.info(`Mihomo-Toolkit Server listening on port ${PORT}`);
+    serverLogger.info(`🛠️ Mihomo-Toolkit v${pkg.version} Server listening on port ${PORT}`);
   });
 
   return server;

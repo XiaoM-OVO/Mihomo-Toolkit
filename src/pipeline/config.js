@@ -88,14 +88,26 @@ function runConfigPipeline({
     }
   }
 
-  // 5. YAML 序列化与订阅头注入
+  // 5. YAML 序列化与标头注入
   let yamlStr = yaml.stringify(outputData);
+
+  let pkgVersion = '2.0.0-dev';
+  try {
+    const pkg = require('../../package.json');
+    if (pkg && pkg.version) pkgVersion = pkg.version;
+  } catch (e) {}
+
+  let banner = `# =====================================================================\n` +
+               `# Mihomo-Toolkit v${pkgVersion}\n` +
+               `# https://github.com/XiaoM-OVO/Mihomo-Toolkit\n` +
+               `# =====================================================================\n`;
+
   if (agg.globalTotal > 0 || agg.globalExpire > 0) {
-    yamlStr = `# subscription-userinfo: upload=${agg.globalUpload}; download=${agg.globalDownload}; total=${agg.globalTotal}; expire=${agg.globalExpire}\n` +
-              `# profile-web-page-url: https://github.com/mihomo-toolkit\n` +
-              `# upload=${agg.globalUpload}; download=${agg.globalDownload}; total=${agg.globalTotal}; expire=${agg.globalExpire}\n` +
-              yamlStr;
+    banner += `# subscription-userinfo: upload=${agg.globalUpload}; download=${agg.globalDownload}; total=${agg.globalTotal}; expire=${agg.globalExpire}\n` +
+              `# profile-web-page-url: https://github.com/XiaoM-OVO/Mihomo-Toolkit\n` +
+              `# upload=${agg.globalUpload}; download=${agg.globalDownload}; total=${agg.globalTotal}; expire=${agg.globalExpire}\n`;
   }
+  yamlStr = banner + yamlStr;
 
   return {
     yamlStr,

@@ -11,12 +11,13 @@ const yaml = require('yaml');
 const { program } = require('commander');
 const { buildProfile } = require('../pipeline/engine');
 const { createLogger } = require('../core/logger');
+const pkg = require('../../package.json');
 
 function run(argv = process.argv) {
   program
-    .name('mihomo-tk')
-    .description('Mihomo-Toolkit (MTK) - 自动化节点清洗与策略组构建引擎')
-    .version(require('../../package.json').version)
+    .name('mtk')
+    .description(`Mihomo-Toolkit v${pkg.version} - 自动化节点清洗与策略组构建引擎`)
+    .version(pkg.version)
     .option('-u, --url <url>', 'Subscription URL or local config file path')
     .option('-o, --out <path>', 'Output file path (default: config.yaml / nodes.yaml / report.json)')
     .option('-t, --type <mode>', 'Output mode: "config" (default), "nodes" (clean proxies only), or "report" (audit JSON)', 'config')
@@ -49,6 +50,7 @@ function run(argv = process.argv) {
 
   return (async () => {
     try {
+      logger.info(`🛠️ Mihomo-Toolkit v${pkg.version}`);
       let userConfig = {};
 
       if (options.config) {
