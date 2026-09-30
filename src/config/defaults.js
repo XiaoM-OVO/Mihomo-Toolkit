@@ -87,7 +87,7 @@ const DEFAULT_CONFIG = {
   dnsDefault: ["223.5.5.5", "119.29.29.29"],
   dnsDirect:  ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query", "223.5.5.5", "119.29.29.29"],
   dnsProxy:   ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],
-  dnsServer:  ["https://223.5.5.5/dns-query", "https://119.29.29.29/dns-query"],
+  dnsServer:  ["223.5.5.5", "119.29.29.29"],
 
   // 【8. 安全防漏与底层内核覆写】
   enableProcessDirect: true,   // 🛑 进程直连防漏
@@ -95,7 +95,7 @@ const DEFAULT_CONFIG = {
   enableQUICReject: false,     // ⚡ QUIC 智能分流
   overwriteTun: true,          // 🖧 覆写 TUN 配置
   overwriteDns: true,          // 📡 覆写 DNS 总开关
-  dnsMergeMode: "secure",      // 📡 DNS 覆写模式: secure | merge | passthrough
+  dnsMergeMode: "secure",      // 📡 DNS 覆写模式: secure | merge (自动识别并保护节点专属依赖)
   overwriteSniffer: true,      // 🔎 覆写 Sniffer 配置
   enableCoreOptimize: true     // ⚡ 覆写核心内核优化
 };

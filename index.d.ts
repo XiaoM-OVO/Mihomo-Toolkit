@@ -43,6 +43,8 @@ export interface SubscriptionConfig {
   retry?: number;
   /** 每月重置日（1-31），用于自动计算"距离重置剩余 X 天" */
   resetDay?: number;
+  /** 是否标记为主订阅源（用于主权仲裁与优先看板基准） */
+  master?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,8 +244,33 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   chineseConvertMode?: ChineseConvertMode;
   /** 交付输出形态：'config' (默认完整配置) | 'nodes' (纯节点) | 'report' (审计报告) */
   outputMode?: OutputMode;
-  /** 仅在 config 模式下生效：true=透传保留原订阅的 rules/dns/tun 等，仅替换 proxies 为洗白节点 */
+
+  // 📡 DNS 策略与安全沙箱
+  /** DNS 覆写总开关 */
+  overwriteDns?: boolean;
+  /** DNS 覆写合并模式：secure (权威基准) | merge (补缺合并，自动继承节点专属依赖) */
+  dnsMergeMode?: 'secure' | 'merge';
+  /** DNS 本地监听地址与端口（默认 127.0.0.1:1053） */
+  dnsListen?: string;
+  /** 基础引导 DNS（纯 IP 格式，防死锁） */
+  dnsDefault?: string[];
+  /** 直连域名 DoH */
+  dnsDirect?: string[];
+  /** 代理域名 DoH */
+  dnsProxy?: string[];
+  /** 节点域名专用直连解析器（纯 IP 格式，直连无死锁） */
+  dnsServer?: string[];
+  /** 自定义静态 Hosts 映射（高危公共资产防篡改保护） */
+  hosts?: Record<string, string | string[]>;
+  /** 自定义 Nameserver Policy 分流映射 */
+  nameserverPolicy?: Record<string, string | string[]>;
+  /** 自定义 Fake-IP 过滤名单 */
+  fakeIpFilter?: string[];
+
+  // ⚠️ 已废弃开关（智能节点资产保活沙箱已自动接管，宿主控制面保持纯净）
+  /** @deprecated 已废弃。系统已自动启用「智能节点资产依赖保活沙箱」，既保活节点专属 DNS/Hosts，又杜绝控制面夺权污染 */
   passthrough?: boolean;
+  /** @deprecated 已废弃。 */
   preserveRawConfig?: boolean;
 }
 
