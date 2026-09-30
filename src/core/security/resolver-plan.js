@@ -62,8 +62,8 @@ function pickAddress(entry, family, protocol) {
     if (protocol === 'dot') return entry.dot ? `tls://${host}` : null;
     return host;
   }
-  if (protocol === 'doh' && entry.doh) return entry.doh;
-  if (protocol === 'dot' && entry.dot) return entry.dot;
+  if (protocol === 'doh') return entry.doh || null;
+  if (protocol === 'dot') return entry.dot || null;
   return entry.v4 || null;
 }
 
@@ -310,12 +310,21 @@ function planResolverChain(input = {}) {
   notes(hostsResult.findings, 'hosts');
 
   // ── 3.8 组装 ────────────────────────────────────────────────────────────
-  const listenHost = opts.listenHost && /^(127\.0\.0\.1|\[?::1\]?)$/.test(opts.listenHost)
-    ? opts.listenHost
-    : '127.0.0.1';
-  if (opts.listenHost && listenHost !== opts.listenHost) {
+  const rawListen = String(opts.listenHost || '').trim();
+  let listenHost = '127.0.0.1';
+  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(rawListen)) {
+    listenHost = rawListen;
+  } else if (/^\[?::1\]?$/.test(rawListen)) {
+    listenHost = '[::1]';
+  } else if (rawListen) {
     findings.push({ id: 'DNS-OPEN-RESOLVER', severity: 'critical', note: `拒绝非回环 dns.listen (${opts.listenHost})，已回退 127.0.0.1` });
   }
+
+  // 节点域名自动注入 fake-ip-filter（INV-7 闭环保障）
+  const proxyList = Array.isArray(input.proxies) ? input.proxies : (input.inputs && Array.isArray(input.inputs.proxies) ? input.inputs.proxies : []);
+  const derivedFilters = deriveFakeIpFilterAdditions(proxyList);
+  const extras = Array.isArray(opts.fakeIpFilterExtras) ? opts.fakeIpFilterExtras : [];
+  const finalFakeIpFilters = [...new Set([...extras, ...derivedFilters])];
 
   const dns = {
     enable: true,
@@ -327,7 +336,7 @@ function planResolverChain(input = {}) {
     'fake-ip-range': fakeIpRange,
     ...(env.ipv6 ? { 'fake-ip-range6': fakeIpRange6 } : {}),
     'fake-ip-filter-mode': 'blacklist',
-    'fake-ip-filter': [],
+    'fake-ip-filter': finalFakeIpFilters,
     'use-hosts': true,
     'use-system-hosts': false,
     'respect-rules': true,
@@ -341,12 +350,8 @@ function planResolverChain(input = {}) {
     'nameserver-policy': policy
   };
 
-  if (opts.fakeIpFilterExtras) {
-    dns['fake-ip-filter'] = [...new Set(opts.fakeIpFilterExtras)];
-  }
-
   // ── 3.9 不变式自检 ──────────────────────────────────────────────────────
-  const violations = checkInvariants(dns);
+  const violations = checkInvariants(dns, { proxies: proxyList });
 
   const capabilities = {
     family,
@@ -368,7 +373,7 @@ function asArray(v) {
   return Array.isArray(v) ? v : [v];
 }
 
-function checkInvariants(dns = {}) {
+function checkInvariants(dns = {}, options = {}) {
   const v = [];
   const fakeRanges = [dns['fake-ip-range'] || '198.18.0.1/16'];
 
@@ -406,6 +411,23 @@ function checkInvariants(dns = {}) {
   // INV-6 direct-nameserver-follow-policy 依赖
   if (dns['direct-nameserver-follow-policy'] === true && asArray(dns['direct-nameserver']).length === 0) {
     v.push({ id: 'INV-6', detail: 'direct-nameserver-follow-policy=true 但 direct-nameserver 为空' });
+  }
+
+  // INV-7 enhanced-mode = fake-ip 时节点域名必须进入 fake-ip-filter（防虚拟自环）
+  if (dns['enhanced-mode'] === 'fake-ip' && options.proxies && Array.isArray(options.proxies)) {
+    const requiredDomains = deriveFakeIpFilterAdditions(options.proxies);
+    const filterList = Array.isArray(dns['fake-ip-filter']) ? dns['fake-ip-filter'] : [];
+    for (const req of requiredDomains) {
+      const covered = filterList.some(f => {
+        if (f === req) return true;
+        if (f.startsWith('+.') && (req === f.slice(2) || req.endsWith('.' + f.slice(2)))) return true;
+        if (f.startsWith('*.') && req.endsWith(f.slice(1))) return true;
+        return false;
+      });
+      if (!covered) {
+        v.push({ id: 'INV-7', detail: `节点域名 ${req} 未进入 fake-ip-filter，存在 Fake-IP 环路风险` });
+      }
+    }
   }
 
   // INV-8 监听面

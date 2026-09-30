@@ -225,7 +225,7 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── test/                         # 🧪 自动化测试套件 (19 个测试套件，124 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (19 个测试套件，133 个全绿用例)
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
@@ -284,6 +284,6 @@ E:\CODE\mihomo-toolkit-next\
 ## 🛡️ 六、 开发质量守则
 
 任何针对本工程的 PR 或重构，必须满足以下三项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 124 个测试必须 100% 通过；
+1. **测试不破**：改动后执行 `npm test`，全量 133 个测试必须 100% 通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
 3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用。
