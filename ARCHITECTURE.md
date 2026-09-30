@@ -177,6 +177,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── fission.js            # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
 │   │   ├── chinese-convert.js    # 简繁中文递归转换与无依赖回退降级
 │   │   ├── chinese-sync.js       # 节点名/策略组名/成员引用/分流规则四路简繁同步
+│   │   ├── logger.js             # 终端着色日志、子作用域继承与敏感凭证脱敏
 │   │   └── shared/               # 地区大区字典表 (regions.js) 与 图标字典 (icons.js)
 │   │
 │   ├── strategy/                 # 🌐 策略组拓扑与内核优化层
@@ -195,16 +196,21 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── cache.js              # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
 │   │   ├── ssrf.js               # SSRF 深度校验、私网拦截与 Token 脱敏
 │   │   ├── limits.js             # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
+│   │   ├── dns-resolver.js       # 系统原生与 DoH 异步安全解析器 (防污染/裂变支撑)
 │   │   ├── fetch-proxy.js        # 本地代理调度封装 (undici ProxyAgent)
-│   │   └── parsers/              # Vless / VMess / Trojan / SS / Hy2 / TUIC 协议注册表与解析器
-│   │       └── registry.js       # 协议解析器注册表 (Registry Pattern)
+│   │   └── parsers/              # 协议解析器注册表与全格式解析体系
+│   │       ├── registry.js       # 协议解析器注册表 (Registry Pattern)
+│   │       ├── index.js          # 统一调度入口 (Base64 / 多协议 URI / YAML)
+│   │       ├── base64.js         # 跨运行时 Base64 / URI 编解码与主机名规整
+│   │       ├── sub-info.js       # 订阅 Subscription-Userinfo 标头解析与到期计算
+│   │       └── *.js              # 各协议解析器 (vless, vmess, trojan, ss, hy2, tuic, socks, http)
 │   │
 │   └── config/                   # ⚙️ 配置中心 (单一事实来源 Source of Truth)
 │       ├── defaults.js           # 系统内置全局默认配置字典
 │       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── test/                         # 🧪 自动化测试套件 (100 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (18 个测试套件，100 个全绿用例)
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
