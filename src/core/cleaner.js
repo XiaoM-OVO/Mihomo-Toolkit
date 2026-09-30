@@ -8,6 +8,7 @@ const { escapeRegex, matchNodeRegion, extractCity } = require('./geo');
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
 const { looksLikeDomain } = require('./fission');
+const { getTransportType } = require('./transport');
 const { buildServiceCatalog } = require('../config/catalog');
 
 const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
@@ -425,8 +426,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   }
 
   const pType = String(proxy.type || '').toLowerCase();
-  const network = String(proxy.network || '').toLowerCase();
-  const transportTag = (network && network !== 'tcp') ? network.toUpperCase() : '';
+  const transportTag = getTransportType(proxy);
 
   const groupKey = regionInfo ? (regionInfo.id || regionInfo.name) : 'garbage';
 
