@@ -35,6 +35,52 @@ function isSubEnabled(s) {
   return s.enable !== false && s.enabled !== false && s.disabled !== true;
 }
 
+/** 格式化控制面沙箱告警，去除内部枚举 ID 并以分级树形分支展示 */
+function formatControlPlaneWarning(report) {
+  if (!report || !Array.isArray(report.hostile) || report.hostile.length === 0) return null;
+
+  const critical = [];
+  const config = [];
+  const unknown = [];
+
+  for (const h of report.hostile) {
+    if (h.severity === 'critical') {
+      critical.push(h.key);
+    } else if (h.id === 'CP-UNKNOWN') {
+      unknown.push(h.key);
+    } else {
+      config.push(h.key);
+    }
+  }
+
+  const count = report.hostile.length;
+  // 若剥离项极少（1~2 项）且无严重夺权风险，采用单行紧凑模式
+  if (count <= 2 && critical.length === 0) {
+    const keys = report.hostile.map(h => h.key).join(', ');
+    return `🛡️ 控制面沙箱: 订阅 [${report.tag}] 已安全剥离 ${count} 项配置字段 (${keys})`;
+  }
+
+  // 存在夺权威胁或多项改写时，采用树形分支结构化展示
+  const lines = [`🛡️ 控制面沙箱: 订阅 [${report.tag}] 触发越权防御，已物理剥离 ${count} 项控制字段:`];
+  const branches = [];
+  if (critical.length > 0) {
+    branches.push(`🚨 夺权风险: ${critical.join(', ')}`);
+  }
+  if (config.length > 0) {
+    branches.push(`⚙️ 配置改写: ${config.join(', ')}`);
+  }
+  if (unknown.length > 0) {
+    branches.push(`❓ 未知字段: ${unknown.join(', ')}`);
+  }
+
+  branches.forEach((b, idx) => {
+    const isLast = idx === branches.length - 1;
+    lines.push(`${isLast ? '└──' : '├──'} ${b}`);
+  });
+
+  return lines.join('\n');
+}
+
 /** 提取节点资产域名（用于专属依赖闭包识别） */
 function extractAssetDomains(proxies = [], subUrl = '') {
   const domains = new Set();
@@ -291,12 +337,14 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           hasInjectedTag = true;
         }
 
+        let strippedCount = 0;
         if (subConfig && typeof subConfig === 'object') {
           // 1. 控制面净化审计：物理剥离并记录越权篡改（夺权、开放代理、注入隧道等）
           const { report } = partitionControlPlane(subConfig, { isMaster: !!sub.master, tag: sub.tag || effectiveTag });
-          if (report.hostile.length > 0 && logger) {
-            const hostileDesc = report.hostile.map(h => `${h.key} [${h.id}]`).join(', ');
-            logger.warn(`🛡️ 控制面沙箱: 订阅 [${report.tag}] 包含越权控制字段并已安全剥离: ${hostileDesc}`);
+          strippedCount = (report.hostile && report.hostile.length) || 0;
+          if (strippedCount > 0 && logger) {
+            const warnMsg = formatControlPlaneWarning(report);
+            if (warnMsg) logger.warn(warnMsg);
           }
 
           // 2. 节点专属资产域推导（Dependency Tracing）
@@ -352,7 +400,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           tag: sub.tag || effectiveTag,
           total: nodeCount,
           filtered: filteredCount,
-          synth: synthNodes.length
+          synth: synthNodes.length,
+          stripped: strippedCount
         });
       } catch (e) {
         const subId = sub.uri ? 'direct-uri' : redactUrl(sub.url, showFullUrl);
@@ -400,6 +449,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           const details = [];
           if (s.filtered > 0) details.push(`过滤 ${s.filtered} 垃圾说明`);
           if (s.synth > 0) details.push(`合成 ${s.synth} 看板`);
+          if (s.stripped > 0) details.push(`🛡️ 剥离 ${s.stripped} 越权`);
           const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
           const namePart = s.type === 'uri' ? `${s.nameHint}${s.tag ? ` [${s.tag}]` : ''}` : `[${s.tag}]`;
           lines.push(`${branch} ${icon} ${namePart}: ${s.total} 个节点${detailStr}`);

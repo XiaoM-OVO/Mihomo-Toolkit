@@ -63,7 +63,9 @@ function getCacheKey(userConfig, options) {
  * @returns {Promise<object>} 构建交付结果
  */
 async function runPipelineEngine(userConfig = {}, options = {}) {
-  const effectiveLogLevel = options.debug ? 'debug' : (userConfig.logLevel || 'info');
+  const effectiveLogLevel = options.debug
+    ? 'debug'
+    : (options.silent || options.quiet ? 'silent' : (options.logLevel || userConfig.logLevel || 'info'));
   const logger = (options.logger && typeof options.logger.child === 'function')
     ? options.logger
     : createLogger({
