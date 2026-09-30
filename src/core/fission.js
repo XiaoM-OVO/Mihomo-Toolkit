@@ -8,6 +8,8 @@
  * 3. 负责节点深拷贝、servername/sni 注入与多协议 Host 防泄漏补全
  */
 
+const { injectTransportHost } = require('./transport');
+
 function looksLikeDomain(server) {
   if (!server || typeof server !== 'string') return false;
   const s = server.trim().replace(/^\[|\]$/g, '');
@@ -45,15 +47,7 @@ function fissionNode(proxy, ips = [], options = {}) {
   const originalProxy = { ...proxy };
   originalProxy._rawName = proxy._rawName || proxy.name || '';
   originalProxy.server = firstIp.includes(':') && !firstIp.startsWith('[') ? `[${firstIp}]` : firstIp;
-  if (proxy.tls || ['ws', 'grpc', 'h2', 'http'].includes(proxy.network)) {
-    if (!originalProxy.sni && !originalProxy.servername) originalProxy.servername = server;
-  }
-  if (originalProxy.network === 'ws' && !originalProxy['ws-opts']?.headers?.Host) {
-    originalProxy['ws-opts'] = {
-      ...(originalProxy['ws-opts'] || {}),
-      headers: { ...(originalProxy['ws-opts']?.headers || {}), Host: server }
-    };
-  }
+  injectTransportHost(originalProxy, server);
   result.push(originalProxy);
 
   // 其余 IP 裂变为独立分身节点
@@ -63,15 +57,7 @@ function fissionNode(proxy, ips = [], options = {}) {
     cloned._rawName = proxy._rawName || proxy.name || '';
     cloned.name = `${proxy.name || ''} #${i + 1}`;
     cloned.server = cloneIp.includes(':') && !cloneIp.startsWith('[') ? `[${cloneIp}]` : cloneIp;
-    if (proxy.tls || ['ws', 'grpc', 'h2', 'http'].includes(proxy.network)) {
-      if (!cloned.sni && !cloned.servername) cloned.servername = server;
-    }
-    if (cloned.network === 'ws' && !cloned['ws-opts']?.headers?.Host) {
-      cloned['ws-opts'] = {
-        ...(cloned['ws-opts'] || {}),
-        headers: { ...(cloned['ws-opts']?.headers || {}), Host: server }
-      };
-    }
+    injectTransportHost(cloned, server);
     cloned._isFission = true;
     result.push(cloned);
   }

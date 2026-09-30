@@ -97,12 +97,12 @@
 
 ## ⚙️ 三、 核心关键引擎机理深度解析
 
-### 1. 物理网络指纹去重引擎 (`src/core/dedupe.js`)
-* **设计考量**：若仅依据节点名称（`proxy.name`）去重，当订阅源对同一服务器赋予不同营销别名（如“香港专线01”、“香港VIP01”）时，会导致配置冗余并在故障转移时产生无意义切换。
+### 1. 物理网络指纹去重与传输层统一适配 (`src/core/transport.js` & `src/core/dedupe.js`)
+* **设计考量**：若仅依据节点名称（`proxy.name`）去重，当订阅源对同一服务器赋予不同营销别名（如“香港专线01”、“香港VIP01”）时，会导致配置冗余并在故障转移时产生无意义切换；若各模块分散处理协议字段，会因代码散落引发现代传输层协议（H2、HttpUpgrade 等）的支持盲区。
 * **实现机理**：
-  提取底层传输特征构建唯一的物理指纹串：
-  $$\text{Fingerprint} = \text{Type} + \text{Server} + \text{Port} + \text{UUID/Password} + \text{Network} + \text{Host/SNI} + \text{Path}$$
-  相同网络指纹的节点仅保留首次出现的合法项，并在统计中记录 `dedupeCount`。
+  建立单一事实来源 `transport.js`，统一提取底层传输特征构建唯一的物理指纹串：
+  $$\text{Fingerprint} = \text{Server} + \text{Port} + \text{Type} + \text{Network} + \text{SNI} + \text{Host} + \text{Path} + \text{AuthKey}$$
+  相同网络指纹的节点仅保留首次出现的合法项，并在统计中记录 `dedupeCount`；同时集中为节点裂变引擎提供全传输层 Host/SNI 自动补全注入能力。
 
 ### 2. DAG 级联空组剪枝与规则殉葬机制 (`src/strategy/prune.js`)
 * **设计考量**：在多层策略组嵌套中（例如：`🎯 全球直连` ➔ `🤖 ChatGPT` ➔ `🇺🇸 美国节点`），当输入节点池缺少某地区节点时，底层策略组变为空组。若直接写入配置会引发内核报错；若仅粗暴移除该组，引用该组的父策略组及分流规则（`RULE-SET,chatgpt,🤖 ChatGPT`）将产生悬空引用。
@@ -173,6 +173,7 @@ E:\CODE\mihomo-toolkit-next\
 │   ├── core/                     # 🧮 节点清洗核心算法层 (Pure & Deterministic)
 │   │   ├── cleaner.js            # 垃圾拦截、倍率线路提取、属性智能分类打标
 │   │   ├── dedupe.js             # 底层物理网络指纹提取与特征去重
+│   │   ├── transport.js          # 统一传输层门面 (Host/SNI/Path提取、Host注入与类型识别)
 │   │   ├── geo.js                # 地区智能正则匹配与落地城市精准提取
 │   │   ├── rename.js             # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
 │   │   ├── fission.js            # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
@@ -204,7 +205,7 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── test/                         # 🧪 自动化测试套件 (99 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (114 个全绿用例)
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置

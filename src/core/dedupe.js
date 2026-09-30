@@ -4,6 +4,13 @@
  * 基于 Server/Port/UUID/Password/SNI/Host/Path 等底层网络特征生成唯一指纹并去重。
  */
 
+const {
+  getTransportSni,
+  getTransportHost,
+  getTransportPath,
+  getTransportAuthKey
+} = require('./transport');
+
 /**
  * 计算单个节点的底层网络特征唯一指纹
  * @param {object} proxy
@@ -16,33 +23,10 @@ function getNodeFingerprint(proxy) {
   const type = String(proxy.type || '').toLowerCase();
   const network = String(proxy.network || '').toLowerCase();
 
-  const sni = String(
-    proxy.sni ||
-    proxy.servername ||
-    proxy.peer ||
-    proxy['reality-opts']?.['server-name'] ||
-    ''
-  ).toLowerCase();
-
-  const host = String(
-    proxy.host ||
-    proxy['ws-opts']?.headers?.Host ||
-    proxy['ws-opts']?.headers?.host ||
-    ''
-  ).toLowerCase();
-
-  const path = String(
-    proxy['ws-opts']?.path ||
-    proxy['grpc-opts']?.['grpc-service-name'] ||
-    ''
-  ).toLowerCase();
-
-  const authKey = String(
-    proxy.uuid ??
-    proxy.password ??
-    proxy.client_id ??
-    ''
-  ).toLowerCase();
+  const sni = getTransportSni(proxy).toLowerCase();
+  const host = getTransportHost(proxy).toLowerCase();
+  const path = getTransportPath(proxy).toLowerCase();
+  const authKey = getTransportAuthKey(proxy).toLowerCase();
 
   return [server, port, type, network, sni, host, path, authKey].join('\x01');
 }
