@@ -7,7 +7,7 @@
  * 2. 导出开箱即用的 JSON 审计报告，便于 CI/CD、自动化质检与监控集成
  */
 
-let VERSION = '1.7.0';
+let VERSION = '2.0.0-dev';
 try {
   const pkg = require('../../package.json');
   if (pkg && pkg.version) VERSION = pkg.version;

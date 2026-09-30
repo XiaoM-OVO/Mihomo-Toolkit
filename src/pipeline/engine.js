@@ -20,10 +20,10 @@ const dashboard = require('../strategy/dashboard');
 
 const { createLogger } = require('../core/logger');
 
-let BUILDER_VERSION = 'v1.7.0';
+let TOOLKIT_VERSION = 'v2.0.0-dev';
 try {
   const pkg = require('../../package.json');
-  if (pkg && pkg.version) BUILDER_VERSION = `v${pkg.version}`;
+  if (pkg && pkg.version) TOOLKIT_VERSION = `v${pkg.version}`;
 } catch (e) {}
 
 function normalizeTargetType(rawType) {
