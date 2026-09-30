@@ -26,7 +26,10 @@ function run(argv = process.argv) {
     .option('-r, --report <path>', 'Save extra audit report to a JSON file (optional)')
     .option('-m, --meta <path>', 'Alias for -r, --report')
     .option('--prod', 'Simulate production environment (enables security locks)')
-    .option('--debug', 'Enable debug output (verbose fetch logs, intermediate snapshots)');
+    .option('--debug', 'Enable debug output (verbose fetch logs, intermediate snapshots)')
+    .option('-q, --quiet', 'Suppress logging output (same as --silent)')
+    .option('--silent', 'Suppress all logging output')
+    .option('--log-level <level>', 'Explicit log level: silent | error | warn | info | debug');
 
   program.parse(argv);
   const options = program.opts();
@@ -37,9 +40,44 @@ function run(argv = process.argv) {
   if (mode === 'cleaner' || mode === 'pure') mode = 'nodes';
   if (mode === 'meta' || mode === 'audit') mode = 'report';
 
+  // 1. 预读取配置文件（探测 logLevel 并修正时序，避免在静默/告警级别下泄露启动标头）
+  let userConfig = {};
+  let configPath = null;
+  let configLoadError = null;
+
+  if (options.config) {
+    configPath = path.resolve(process.cwd(), options.config);
+    if (!fs.existsSync(configPath)) {
+      configLoadError = new Error(`Config file not found: ${configPath}`);
+    } else {
+      try {
+        const content = fs.readFileSync(configPath, 'utf-8');
+        if (options.config.endsWith('.yaml') || options.config.endsWith('.yml')) {
+          userConfig = yaml.parse(content) || {};
+        } else {
+          userConfig = JSON.parse(content);
+        }
+      } catch (err) {
+        configLoadError = err;
+      }
+    }
+  }
+
+  // 2. 判定生效日志等级：CLI 参数 > 配置文件 logLevel > 默认 'info'
+  let effectiveLevel = 'info';
+  if (options.silent || options.quiet) {
+    effectiveLevel = 'silent';
+  } else if (options.debug) {
+    effectiveLevel = 'debug';
+  } else if (options.logLevel) {
+    effectiveLevel = String(options.logLevel).toLowerCase();
+  } else if (userConfig.logLevel) {
+    effectiveLevel = String(userConfig.logLevel).toLowerCase();
+  }
+
   const logger = createLogger({
     tag: 'CLI',
-    level: options.debug ? 'debug' : 'info'
+    level: effectiveLevel
   });
 
   const VALID_MODES = ['config', 'nodes', 'report'];
@@ -50,24 +88,13 @@ function run(argv = process.argv) {
 
   return (async () => {
     try {
-      logger.info(`🛠️ Mihomo-Toolkit v${pkg.version}`);
-      let userConfig = {};
+      if (configLoadError) {
+        throw configLoadError;
+      }
 
+      logger.info(`🛠️ Mihomo-Toolkit v${pkg.version}`);
       if (options.config) {
-        const configPath = path.resolve(process.cwd(), options.config);
-        if (!fs.existsSync(configPath)) {
-          throw new Error(`Config file not found: ${configPath}`);
-        }
-        const content = fs.readFileSync(configPath, 'utf-8');
-        if (options.config.endsWith('.yaml') || options.config.endsWith('.yml')) {
-          userConfig = yaml.parse(content) || {};
-        } else {
-          userConfig = JSON.parse(content);
-        }
         logger.info(`📄 已加载配置文件: ${options.config}`);
-        if (!options.debug && userConfig.logLevel) {
-          logger.setLevel(userConfig.logLevel);
-        }
       }
 
       // 透传开关
@@ -94,7 +121,7 @@ function run(argv = process.argv) {
         fs.writeFileSync(outPath, JSON.stringify(reportData, null, 2), 'utf-8');
         logger.success(`🎉 审计报告已输出至: ${outPath}`);
 
-        if (meta?.stats) {
+        if (meta?.stats && logger.isLevelEnabled('info')) {
           console.log(`\n=== 📊 节点清洗与健康审计 ===`);
           console.log(`总节点数: ${meta.stats.total} | 有效输出: ${meta.stats.outputCount}`);
           console.log(`去重剔除: ${meta.stats.dedupeCount} | 广告/无效: ${meta.stats.discardedCount}`);
@@ -113,7 +140,7 @@ function run(argv = process.argv) {
         fs.writeFileSync(reportPath, JSON.stringify(extraReport, null, 2), 'utf-8');
         logger.info(`💾 审计报告已另存至: ${reportPath}`);
 
-        if (meta.stats) {
+        if (meta?.stats && logger.isLevelEnabled('info')) {
           console.log(`\n=== 📊 数据清洗统计 ===`);
           console.log(`总节点数: ${meta.stats.total} | 最终输出: ${meta.stats.outputCount}`);
           console.log(`去重剔除: ${meta.stats.dedupeCount} | 广告/无效: ${meta.stats.discardedCount}`);

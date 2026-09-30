@@ -154,4 +154,20 @@ describe('🪵 统一分级终端 Logger 模块测试', () => {
     assert.equal(legacyLogger.tag, 'Builder');
     assert.equal(legacyLogger.level, 4);
   });
+
+  it('流水线日志控制 - options.silent / quiet 彻底静默', async () => {
+    const { runPipelineEngine } = require('../src/pipeline/engine');
+    const logs = [];
+    const customLogger = createLogger({
+      level: 'silent',
+      out: (msg) => logs.push(msg)
+    });
+    const dummySub = {
+      uri: 'proxies:\n  - name: test\n    type: ss\n    server: 1.1.1.1\n    port: 443\n    cipher: aes-128-gcm\n    password: p',
+      tag: 'test'
+    };
+    const res = await runPipelineEngine({ subscriptions: [dummySub] }, { silent: true, logger: customLogger });
+    assert.ok(res);
+    assert.equal(logs.length, 0);
+  });
 });
