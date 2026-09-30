@@ -36,8 +36,19 @@ function safeDecodeURIComponent(str) {
   }
 }
 
+function cleanHostname(hostname) {
+  if (!hostname || typeof hostname !== 'string') return '';
+  const trimmed = hostname.trim();
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
 module.exports = {
   decodeBase64,
   decodeBase64UrlSafe,
-  safeDecodeURIComponent
+  safeDecodeURIComponent,
+  cleanHostname
 };
+

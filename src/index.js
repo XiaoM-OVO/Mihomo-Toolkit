@@ -13,10 +13,20 @@ const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('./io/limits')
 const { redactUrl, isAllowedUrl, validateUrlSsrf } = require('./io/ssrf');
 const {
   parseContent,
+  parseUri,
+  parseUriList,
+  registerParser,
+  getParser,
+  hasParser,
+  getRegisteredSchemes,
   parseVlessUri,
   parseVmessUri,
   parseTrojanUri,
-  parseSsUri
+  parseSsUri,
+  parseHysteria2Uri,
+  parseTuicUri,
+  parseSocksUri,
+  parseHttpUri
 } = require('./io/parsers');
 
 const { runNodesPipeline } = require('./pipeline/nodes');
@@ -41,8 +51,18 @@ module.exports = {
   DEFAULT_REQUEST_LIMITS,
   validateUrlSsrf,
   parseContent,
+  parseUri,
+  parseUriList,
+  registerParser,
+  getParser,
+  hasParser,
+  getRegisteredSchemes,
   parseVlessUri,
   parseVmessUri,
   parseTrojanUri,
-  parseSsUri
+  parseSsUri,
+  parseHysteria2Uri,
+  parseTuicUri,
+  parseSocksUri,
+  parseHttpUri
 };

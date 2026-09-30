@@ -11,7 +11,7 @@
 ```text
 ┌────────────────────────────────────────────────────────────────┐
 │ 1. Targets (多端宿主适配层)                                    │
-│    CLI (mtk) │ Server (HTTP 订阅中继服务)                       │
+│    CLI (mtk) │ Server (HTTP 订阅中继服务)                      │
 └──────────────────────────────┬─────────────────────────────────┘
                                │ 驱动调用 (无业务逻辑，仅做参数映射)
 ┌──────────────────────────────▼─────────────────────────────────┐
@@ -196,14 +196,15 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── ssrf.js               # SSRF 深度校验、私网拦截与 Token 脱敏
 │   │   ├── limits.js             # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
 │   │   ├── fetch-proxy.js        # 本地代理调度封装 (undici ProxyAgent)
-│   │   └── parsers/              # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
+│   │   └── parsers/              # Vless / VMess / Trojan / SS / Hy2 / TUIC 协议注册表与解析器
+│   │       └── registry.js       # 协议解析器注册表 (Registry Pattern)
 │   │
 │   └── config/                   # ⚙️ 配置中心 (单一事实来源 Source of Truth)
 │       ├── defaults.js           # 系统内置全局默认配置字典
 │       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── test/                         # 🧪 自动化测试套件 (92 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (100 个全绿用例)
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
@@ -255,13 +256,13 @@ E:\CODE\mihomo-toolkit-next\
 ### 3. 新增一种协议的 URI 解析器
 * 在 [`src/io/parsers/`](src/io/parsers/) 下新建解析模块：
   * 实现标准签名：`parseXxxUri(uri: string): ProxyNode | null`
-  * 在 `src/io/parsers/index.js` 的 `parseContent` 调度器中加入正则分发分支。
+  * 在 `src/io/parsers/index.js` 中使用 `registerParser('myproto', parseXxxUri)` 动态挂载到协议注册表（天然支持别名与分发）。
 
 ---
 
 ## 🛡️ 六、 开发质量守则
 
 任何针对本工程的 PR 或重构，必须满足以下三项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 83+ 测试必须 100% 通过；
+1. **测试不破**：改动后执行 `npm test`，全量 100 个测试必须 100% 通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
 3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用。
