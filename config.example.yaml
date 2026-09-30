@@ -4,10 +4,9 @@
 # 📖 三分钟概念速览
 # ─────────────────────────────────────────────────────────────────────
 # 统一流水线支持三种输出形态（outputMode 字段或 CLI -t 参数）：
-#   config  【默认/推荐】完整配置文件：订阅拉取 ➔ 节点清洗 ➔ 状态看板 ➔ 策略组与分流 ➔ 内核覆写
-#           • passthrough: false（默认）：脚本全新编排策略组与分流规则
-#           • passthrough: true ：保留并透传原订阅中的 rules/dns/tun 等，仅将 proxies 替换为洗白节点
-#   nodes   【纯净节点】仅执行节点清洗、去重与打标，输出干净的 proxies 节点数组
+#   config  【默认/推荐】完整配置文件：订阅拉取 ➔ 节点清洗 ➔ 状态看板 ➔ 策略组与分流 ➔ 内核优化
+#           • 全自动执行「智能节点资产依赖保活沙箱」，既保活节点专属 DNS/Hosts，又杜绝控制面夺权污染
+#   nodes   【纯净节点】仅执行节点清洗、去重与打标，输出干净的 proxies 节点数组（专供客户端）
 #   report  【审计报告】输出结构化节点清洗统计与健康审计报告 (JSON)
 #
 # 💡 不修改节点名称：只需将 enableNodeRename 设为 false 即可，
@@ -32,6 +31,7 @@ fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "机场A"
+    # master: true              # 显式标记主订阅（用于主权参考与优先基准）
     # enabled: true             # 是否启用该订阅（设为 false 可临时停用）
     # indexPrefix: "A"          # 节点序号前缀（如 A01/B01），不填按地区统一编号
     # proxy: false              # 单独指定是否走本地代理
@@ -43,10 +43,10 @@ subscriptions:
   # 本地文件示例
   # - url: "./my-local-nodes.yaml"
 
-  # 直接注入单节点 URI (支持 vless:// vmess:// trojan:// ss://)
-  # - uri: "vless://uuid@1.2.3.4:443?security=tls&type=ws&path=/ws#x-ray-HK"
+  # 直接注入单节点 URI (支持 hysteria2:// tuic:// vless:// vmess:// trojan:// ss:// socks:// http://)
+  # - uri: "hysteria2://password@node.example.com:443/?sni=node.example.com#Hy2-HK"
   #   tag: "自建"
-  #   name: "我的自建节点"
+  #   name: "我的自建Hy2节点"
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -54,7 +54,6 @@ subscriptions:
 # ─────────────────────────────────────────────────────────────────────
 outputMode: "config"            # config (完整配置) | nodes (纯节点) | report (审计报告)
 output: "./dist/config.yaml"    # 默认输出路径
-passthrough: false              # [仅 config 模式生效] true=保留并透传原订阅中的 rules/dns/tun 等顶层配置，仅替换 proxies 为洗白节点
 # logLevel: "info"              # silent | error | warn | info | debug
 # redactLevel: "partial"        # 日志脱敏档位：
 #   off     本地调试：完整展示 URL
@@ -310,20 +309,21 @@ testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，
 # ⑬ DNS 高级覆写与防泄漏模式
 # ─────────────────────────────────────────────────────────────────────
 # overwriteDns: true               # 注入权威防泄漏 DNS
-# dnsMergeMode: "secure"           # secure=权威覆写(脚本配置绝对优先) / merge=订阅优先(保留原订阅配置并补缺) / passthrough=完全透传跳过覆写
-# dnsListen: "127.0.0.1:1053"      # 本地 DNS 监听端口 (软路由可改为 "0.0.0.0:53")
-# dnsDefault:                      # 基础解析 DNS
+# dnsMergeMode: "secure"           # secure=权威覆写(脚本配置绝对优先) / merge=补缺合并(保留并安全挂载节点专属解析)
+# dnsListen: "127.0.0.1:1053"      # 本地 DNS 监听端口 (建议绑定回环，防止成为公网开放解析器)
+# dnsDefault:                      # 基础引导 DNS (必须为纯 IP，破除解析死锁)
 #   - "223.5.5.5"
 #   - "119.29.29.29"
+#   - "1.1.1.1"
 # dnsDirect:                       # 直连域名 DoH
 #   - "https://223.5.5.5/dns-query"
 #   - "https://120.53.53.53/dns-query"
 # dnsProxy:                        # 海外代理域名 DoH
 #   - "https://8.8.8.8/dns-query"
 #   - "https://1.1.1.1/dns-query"
-# dnsServer:                       # 节点域名专用解析 DNS (不受分流影响)
-#   - "https://223.5.5.5/dns-query"
-#   - "https://119.29.29.29/dns-query"
+# dnsServer:                       # 节点服务器域名专用解析 DNS
+#   - "223.5.5.5"
+#   - "119.29.29.29"
 
 
 # ─────────────────────────────────────────────────────────────────────
