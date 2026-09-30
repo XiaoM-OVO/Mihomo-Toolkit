@@ -98,8 +98,9 @@ function extractAssetDomains(proxies = [], subUrl = '') {
         domains.add(s);
       }
     }
-    if (p.sni && typeof p.sni === 'string') domains.add(p.sni.trim().toLowerCase());
-    if (p.servername && typeof p.servername === 'string') domains.add(p.servername.trim().toLowerCase());
+    // 注意：严禁将 sni 与 servername 作为订阅专属资产域！
+    // 伪装 SNI 通常为 apple.com、bilibili.com、hoyoverse.com 等公共 CDN，
+    // 若识别为资产域，会误将订阅中的公共域名 Hosts/Policy/Fake-IP 规则穿透继承，造成劫持或绕行。
   }
   return domains;
 }

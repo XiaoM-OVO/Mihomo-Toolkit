@@ -52,9 +52,12 @@ function applyDnsOverlay(config, userConfig = {}) {
   const finalPort = userL.port || '1053';
   const finalListen = `${finalHost}:${finalPort}`;
 
-  // 2. 节点域名自动避环：动态推导节点资产域名注入 fake-ip-filter
-  const nodeFilters = deriveFakeIpFilterAdditions(config.proxies || []);
-  const assetFilters = Array.isArray(config._assetFakeIpFilters) ? config._assetFakeIpFilters : [];
+  // 2. 节点域名自动避环：动态推导节点资产域名注入 fake-ip-filter (支持 smart 聚合泛化 / exact 精确 / off 关闭)
+  const fakeIpFilterMode = userConfig.fakeIpFilterNodes !== undefined ? userConfig.fakeIpFilterNodes : 'smart';
+  const nodeFilters = deriveFakeIpFilterAdditions(config.proxies || [], { mode: fakeIpFilterMode });
+  const assetFilters = (fakeIpFilterMode !== 'off' && fakeIpFilterMode !== false && Array.isArray(config._assetFakeIpFilters))
+    ? config._assetFakeIpFilters
+    : [];
   const userFilters = Array.isArray(userConfig.fakeIpFilter) ? userConfig.fakeIpFilter : [];
   const finalList = dedupe([...DEFAULT_SCRIPT_FILTERS, ...nodeFilters, ...assetFilters, ...userFilters]);
 
