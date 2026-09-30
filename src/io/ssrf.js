@@ -4,6 +4,8 @@
  * 校验并拦截 IPv4/IPv6 私网、回环、CGNAT 及云元数据地址，防范服务端请求伪造。
  */
 
+const ipaddr = require('ipaddr.js');
+
 let dns;
 try { dns = require('dns').promises; } catch { dns = null; }
 
@@ -13,72 +15,52 @@ const DNS_CACHE_MAX = 1000;
 
 function isPrivateIp(ip) {
   if (!ip || typeof ip !== 'string') return false;
-  const trimmed = ip.trim();
-  if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(trimmed)) return false;
-  const parts = trimmed.split('.').map(Number);
-  if (parts.some(n => isNaN(n) || n < 0 || n > 255)) return false;
-  const [a, b] = parts;
-  if (a === 0) return true; // 0.0.0.0/8 本地网络
-  if (a === 10) return true; // 10.0.0.0/8 私网
-  if (a === 127) return true; // 127.0.0.0/8 回环
-  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
-  if (a === 169 && b === 254) return true; // 169.254.0.0/16 链路本地 / 云元数据
-  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 私网
-  if (a === 192 && b === 168) return true; // 192.168.0.0/16 私网
-  if (a === 192 && b === 0 && parts[2] === 2) return true; // 192.0.2.0/24 TEST-NET-1
-  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 基准测试
-  if (a === 198 && b === 51 && parts[2] === 100) return true; // 198.51.100.0/24 TEST-NET-2
-  if (a === 203 && b === 0 && parts[2] === 113) return true; // 203.0.113.0/24 TEST-NET-3
-  if (a >= 224) return true; // 224.0.0.0/4 组播与保留
-  return false;
+  try {
+    const trimmed = ip.trim();
+    if (!ipaddr.isValid(trimmed)) return false;
+    const addr = ipaddr.parse(trimmed);
+    if (addr.kind() !== 'ipv4') return false;
+    return addr.range() !== 'unicast';
+  } catch {
+    return false;
+  }
 }
 
 function isPrivateIPv6(ip) {
   if (!ip || typeof ip !== 'string') return false;
-  let v6 = ip.trim().toLowerCase();
-  if (v6.startsWith('[') && v6.endsWith(']')) v6 = v6.slice(1, -1);
-  if (!v6.includes(':')) return false;
+  try {
+    let clean = ip.trim().toLowerCase();
+    if (clean.startsWith('[') && clean.endsWith(']')) clean = clean.slice(1, -1);
+    if (!ipaddr.isValid(clean)) return false;
+    const addr = ipaddr.parse(clean);
+    if (addr.kind() !== 'ipv6') return false;
 
-  if (v6 === '::1' || v6 === '::') return true;
-  // 完整未压缩格式 ::1
-  if (/^(0+:){7}0*1$/.test(v6) || /^(0+:){7}0*0$/.test(v6)) return true;
-  // 链路本地 (fe80::/10 -> fe80: ~ febf:)
-  if (/^fe[89ab][0-9a-f]{0,2}:/i.test(v6) || v6.startsWith('fe80:')) return true;
-  // 唯一本地地址 (fc00::/7 -> fc00: ~ fdff:)
-  if (/^f[cd][0-9a-f]{0,2}:/i.test(v6) || v6.startsWith('fc') || v6.startsWith('fd')) return true;
+    // IPv4 映射 IPv6 (如 ::ffff:127.0.0.1)
+    if (addr.isIPv4MappedAddress()) {
+      return addr.toIPv4Address().range() !== 'unicast';
+    }
 
-  // IPv4 映射 IPv6 (点分十进制形式: ::ffff:127.0.0.1)
-  const v4Dot = v6.match(/^::ffff:(?:0:)?(\d+\.\d+\.\d+\.\d+)$/i);
-  if (v4Dot) return isPrivateIp(v4Dot[1]);
+    // 6to4 (2002::/16)
+    if (addr.range() === '6to4') {
+      try {
+        const v4 = addr.toIPv4Address();
+        if (v4 && v4.range() !== 'unicast') return true;
+      } catch (e) {}
+    }
 
-  // IPv4 映射 IPv6 (十六进制形式)
-  const v4Hex = v6.match(/^(?:::|(?:0:)+)ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
-  if (v4Hex) {
-    const hi = parseInt(v4Hex[1], 16);
-    const lo = parseInt(v4Hex[2], 16);
-    const ipStr = [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff].join('.');
-    return isPrivateIp(ipStr);
-  }
-
-  // 6to4 映射地址 2002::/16
-  if (v6.startsWith('2002:')) {
-    const parts = v6.split(':');
-    if (parts.length >= 3) {
-      const hexA = parseInt(parts[1], 16);
-      if (!isNaN(hexA)) {
-        const ipA = (hexA >> 8) & 0xff;
-        const ipB = hexA & 0xff;
-        if (isPrivateIp(`${ipA}.${ipB}.0.1`)) return true;
+    // NAT64 (64:ff9b::/96)
+    if (clean.startsWith('64:ff9b::')) {
+      const rest = clean.slice(9);
+      if (ipaddr.isValid(rest)) {
+        const parsedRest = ipaddr.parse(rest);
+        if (parsedRest.kind() === 'ipv4') return parsedRest.range() !== 'unicast';
       }
     }
-  }
 
-  // NAT64 前缀 (64:ff9b::/96)
-  if (v6.startsWith('64:ff9b::')) {
-    const rest = v6.slice(9);
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(rest)) return isPrivateIp(rest);
+    return addr.range() !== 'unicast';
+  } catch {
+    return false;
   }
-  return false;
 }
 
 function isAllowedUrl(urlStr) {

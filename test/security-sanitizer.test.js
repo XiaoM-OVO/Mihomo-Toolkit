@@ -450,3 +450,137 @@ test('sanitizeHosts - userTrustedDomains 允许用户显式豁免受保护域名
   assert.strictEqual(r2.hosts['alibaba.com'], '1.2.3.4');
   assert.strictEqual(r2.hosts['github.com'], undefined);
 });
+
+// ── 深度安全沙箱修复专项测试 ────────────────────────────────────────────────
+
+test('P0 - default-nameserver 严格纯 IP 化，拒绝加密 DNS 与 URL 形式 IP', () => {
+  // 1. sanitizeDnsServer 拒绝 default 角色下的 DoH URL (即使 host 为 IP)
+  const dohWithIp = sanitizeDnsServer('https://223.5.5.5/dns-query', { role: ROLES.DEFAULT });
+  assert.strictEqual(dohWithIp.ok, false);
+  assert.strictEqual(dohWithIp.reason, 'bootstrap-must-be-ip');
+
+  // 2. checkInvariants INV-1 能捕获 default-nameserver 中的 URL 形式
+  const violations = checkInvariants({
+    'default-nameserver': ['https://223.5.5.5/dns-query']
+  });
+  assert.ok(violations.some(v => v.id === 'INV-1'));
+
+  // 3. planResolverChain 默认生成的 default-nameserver 均为纯 IP
+  const plan = planResolverChain({ env: { ipv4: true, dnsEgressAllowed: true } });
+  for (const s of plan.dns['default-nameserver']) {
+    const parsed = parseDnsServer(s);
+    assert.strictEqual(parsed.kind, 'ip');
+    assert.strictEqual(parsed.scheme, null);
+  }
+});
+
+test('P1 - userDns.nameserver-policy 正确合并且享有最高优先级', () => {
+  const plan = planResolverChain({
+    env: { kind: 'home', ipv4: true },
+    userDns: {
+      'nameserver-policy': {
+        '+.custom.user.org': '223.5.5.5',
+        'rule-set:cn-domain': '8.8.8.8' // 保留键应被剥离保护
+      }
+    },
+    masterDns: {
+      'nameserver-policy': {
+        '+.custom.user.org': '1.1.1.1', // 应当被 userDns 覆盖
+        '+.master.corp': '119.29.29.29'
+      }
+    }
+  });
+
+  const p = plan.dns['nameserver-policy'];
+  assert.strictEqual(p['+.custom.user.org'], '223.5.5.5', '用户本地声明应覆盖 master 声明');
+  assert.strictEqual(p['+.master.corp'], '119.29.29.29');
+  assert.notStrictEqual(p['rule-set:cn-domain'], '8.8.8.8', '保留键不应被覆盖');
+});
+
+test('P1 - external-controller-pipe 与 cors 纳入 critical 级夺权拦截', () => {
+  const { report } = partitionControlPlane({
+    'external-controller-pipe': '\\\\.\\pipe\\evil',
+    'external-controller-cors': 'http://evil.com'
+  }, { isMaster: false, tag: 'sub-pipe' });
+
+  assert.ok(report.stripped.includes('external-controller-pipe'));
+  assert.ok(report.stripped.includes('external-controller-cors'));
+
+  const pipeHostile = report.hostile.find(h => h.key === 'external-controller-pipe');
+  assert.ok(pipeHostile);
+  assert.strictEqual(pipeHostile.id, 'CP-EXT-CTRL');
+  assert.strictEqual(pipeHostile.severity, 'critical');
+
+  const corsHostile = report.hostile.find(h => h.key === 'external-controller-cors');
+  assert.ok(corsHostile);
+  assert.strictEqual(corsHostile.id, 'CP-EXT-CTRL');
+  assert.strictEqual(corsHostile.severity, 'critical');
+});
+
+test('P2 - deriveFakeIpFilterAdditions 兼容数字开头合法域名并排除 IP 字面量', () => {
+  const filters = deriveFakeIpFilterAdditions([
+    { server: '123.example.com', sni: '1password.com' },
+    { server: '1.2.3.4', sni: '8.8.8.8' },
+    { server: '2400:3200::1' }
+  ]);
+
+  assert.ok(filters.includes('123.example.com'), '应支持以数字开头的合法域名');
+  assert.ok(filters.includes('1password.com'), '应支持以数字开头的合法域名');
+  assert.ok(!filters.includes('1.2.3.4'), '应排除 IPv4 字面量');
+  assert.ok(!filters.includes('8.8.8.8'), '应排除 IPv4 字面量');
+  assert.ok(!filters.includes('2400:3200::1'), '应排除 IPv6 字面量');
+});
+
+test('P2 - canonicalJson 安全处理 undefined', () => {
+  const { mergeSubscriptionConfigs } = require('../src/core/security/control-plane');
+  // canonicalJson 纯测试
+  const jsonA = { a: 1, b: undefined };
+  const jsonB = { a: 1 };
+  // 经深度合并比较不应产出 broken json
+  const r = mergeSubscriptionConfigs([
+    {
+      tag: 'A',
+      isMaster: true,
+      config: {
+        proxies: [],
+        'proxy-providers': { p1: { foo: 'bar', und: undefined } }
+      }
+    },
+    {
+      tag: 'B',
+      isMaster: false,
+      config: {
+        proxies: [],
+        'proxy-providers': { p1: { foo: 'bar' } }
+      }
+    }
+  ], {});
+
+  assert.strictEqual(r.conflicts.length, 0, 'undefined 属性与缺失属性应视作深度一致，不产生虚假冲突');
+});
+
+test('Extra - sanitizeHosts 阻断 FQDN 尾随点绕过与非法 IP 伪造', () => {
+  const { hosts, dropped } = sanitizeHosts({
+    'github.com.': '1.2.3.4',       // 尾随点试图绕过 protectedDomains
+    'evil.com': '999.999.999.999'    // 非法 IPv4
+  });
+
+  assert.strictEqual(hosts['github.com.'], undefined);
+  assert.strictEqual(hosts['evil.com'], undefined);
+  assert.ok(dropped.some(d => d.key === 'github.com.' && d.reason === 'protected-domain'));
+  assert.ok(dropped.some(d => d.key === 'evil.com' && d.reason === 'non-literal-value'));
+});
+
+test('Extra - parseDnsServer 支持纯无括号 IPv6 且非法输入不崩溃', () => {
+  const v6 = parseDnsServer('2400:3200::1');
+  assert.strictEqual(v6.kind, 'ip');
+  assert.strictEqual(v6.isIpv6, true);
+  assert.strictEqual(v6.host, '2400:3200::1');
+
+  const invalid = parseDnsServer('invalid-@-server!!!');
+  assert.strictEqual(invalid.kind, 'invalid');
+
+  const sanitized = sanitizeDnsServer('invalid-@-server!!!');
+  assert.strictEqual(sanitized.ok, false);
+  assert.strictEqual(sanitized.reason, 'unparsable');
+});

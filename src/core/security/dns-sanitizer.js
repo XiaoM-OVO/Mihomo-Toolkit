@@ -14,6 +14,7 @@
 
 'use strict';
 
+const ipaddr = require('ipaddr.js');
 const { isPrivateIp, isPrivateIPv6 } = require('../../io/ssrf');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,75 +74,53 @@ function ipv4ToInt(ip) {
 
 /** 判断 IPv4 是否落在给定 CIDR 列表内 */
 function ipv4InCidrs(ip, cidrs = []) {
-  const value = ipv4ToInt(ip);
-  if (value === null) return false;
-  return cidrs.some(cidr => {
-    const range = parseV4CidrToRange(cidr);
-    return range !== null && value >= range.start && value <= range.end;
-  });
-}
-
-function ipv6ToBigInt(ip) {
-  if (!ip || typeof ip !== 'string') return null;
-  const clean = ip.trim().replace(/^\[|\]$/g, '').toLowerCase();
-  let full = clean;
-  if (full.includes('.')) {
-    const lastColon = full.lastIndexOf(':');
-    const v4Part = full.slice(lastColon + 1);
-    const octets = v4Part.split('.').map(Number);
-    if (octets.length !== 4 || octets.some(o => o < 0 || o > 255)) return null;
-    const hex1 = ((octets[0] << 8) | octets[1]).toString(16);
-    const hex2 = ((octets[2] << 8) | octets[3]).toString(16);
-    full = full.slice(0, lastColon + 1) + hex1 + ':' + hex2;
+  if (!ip || !Array.isArray(cidrs) || cidrs.length === 0) return false;
+  try {
+    const trimmed = String(ip).trim();
+    if (!ipaddr.isValid(trimmed)) return false;
+    const addr = ipaddr.parse(trimmed);
+    if (addr.kind() !== 'ipv4') return false;
+    for (const cidr of cidrs) {
+      try {
+        if (addr.match(ipaddr.parseCIDR(cidr))) return true;
+      } catch (e) {}
+    }
+    return false;
+  } catch {
+    return false;
   }
-  const parts = full.split('::');
-  if (parts.length > 2) return null;
-  let left = parts[0] ? parts[0].split(':') : [];
-  let right = parts[1] ? parts[1].split(':') : [];
-  if (parts.length === 2) {
-    const missing = 8 - (left.length + right.length);
-    if (missing < 0) return null;
-    const zeros = new Array(missing).fill('0');
-    left = [...left, ...zeros, ...right];
-  }
-  if (left.length !== 8) return null;
-  let result = 0n;
-  for (const part of left) {
-    if (!/^[0-9a-f]{1,4}$/i.test(part)) return null;
-    result = (result << 16n) + BigInt(parseInt(part, 16));
-  }
-  return result;
-}
-
-function parseV6Cidr(cidr) {
-  const m = String(cidr || '').trim().match(/^([0-9a-fA-F:]+)\/(\d{1,3})$/);
-  if (!m) return null;
-  const prefix = Number(m[2]);
-  if (prefix < 0 || prefix > 128) return null;
-  const base = ipv6ToBigInt(m[1]);
-  if (base === null) return null;
-  const mask = prefix === 0 ? 0n : (((1n << 128n) - 1n) << BigInt(128 - prefix)) & ((1n << 128n) - 1n);
-  const start = base & mask;
-  const end = start | (~mask & ((1n << 128n) - 1n));
-  return { start, end };
 }
 
 function ipv6InCidrs(ip, cidrs = []) {
-  const value = ipv6ToBigInt(ip);
-  if (value === null) return false;
-  return cidrs.some(cidr => {
-    const range = parseV6Cidr(cidr);
-    return range !== null && value >= range.start && value <= range.end;
-  });
+  if (!ip || !Array.isArray(cidrs) || cidrs.length === 0) return false;
+  try {
+    const clean = String(ip).trim().replace(/^\[|\]$/g, '');
+    if (!ipaddr.isValid(clean)) return false;
+    const addr = ipaddr.parse(clean);
+    if (addr.kind() !== 'ipv6') return false;
+    for (const cidr of cidrs) {
+      try {
+        if (addr.match(ipaddr.parseCIDR(cidr))) return true;
+      } catch (e) {}
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 /** 是否为「被保留/不可路由」的 IPv4（含私网、回环、CGNAT、基准测试、组播） */
 function isReservedV4(ip) {
-  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(String(ip).trim())) return false;
-  return isPrivateIp(ip) || ipv4InCidrs(ip, [
-    '192.0.0.0/24', '192.0.2.0/24', '192.88.99.0/24',
-    '198.18.0.0/15', '198.51.100.0/24', '203.0.113.0/24', '240.0.0.0/4'
-  ]);
+  if (!ip) return false;
+  try {
+    const trimmed = String(ip).trim();
+    if (!ipaddr.isValid(trimmed)) return false;
+    const addr = ipaddr.parse(trimmed);
+    if (addr.kind() !== 'ipv4') return false;
+    return addr.range() !== 'unicast';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -177,9 +156,9 @@ function parseDnsServer(entry) {
     return result;
   }
 
-  // 纯 IP:端口
+  // 纯 IP:端口 (IPv6 带括号: [2400:3200::1]:53 或 [2400:3200::1])
   const v6Bracket = raw.match(/^\[([0-9a-fA-F:.]+)\](?::(\d+))?$/);
-  if (v6Bracket) {
+  if (v6Bracket && ipaddr.isValid(v6Bracket[1]) && ipaddr.parse(v6Bracket[1]).kind() === 'ipv6') {
     result.kind = 'ip';
     result.host = v6Bracket[1];
     result.port = v6Bracket[2] || null;
@@ -188,16 +167,24 @@ function parseDnsServer(entry) {
     return result;
   }
 
-  const v4Port = raw.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?$/);
-  if (v4Port) {
-    const octets = v4Port[1].split('.').map(Number);
-    if (octets.every(o => o >= 0 && o <= 255)) {
+  // 纯 IPv6 无括号（如 2400:3200::1）
+  if (raw.includes(':') && !raw.includes('/') && !raw.includes('#')) {
+    if (ipaddr.isValid(raw) && ipaddr.parse(raw).kind() === 'ipv6') {
       result.kind = 'ip';
-      result.host = v4Port[1];
-      result.port = v4Port[2] || null;
+      result.host = raw;
       result.isIpLiteral = true;
+      result.isIpv6 = true;
       return result;
     }
+  }
+
+  const v4Port = raw.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?$/);
+  if (v4Port && ipaddr.isValid(v4Port[1]) && ipaddr.parse(v4Port[1]).kind() === 'ipv4') {
+    result.kind = 'ip';
+    result.host = v4Port[1];
+    result.port = v4Port[2] || null;
+    result.isIpLiteral = true;
+    return result;
   }
 
   // URL 形式（含修饰符）
@@ -213,8 +200,8 @@ function parseDnsServer(entry) {
       result.host = u.hostname.replace(/^\[|\]$/g, '');
       result.port = u.port || null;
       result.path = u.pathname;
-      result.isIpLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(result.host) || result.host.includes(':');
-      result.isIpv6 = result.host.includes(':');
+      result.isIpLiteral = ipaddr.isValid(result.host);
+      result.isIpv6 = result.isIpLiteral && ipaddr.parse(result.host).kind() === 'ipv6';
     } catch {
       result.kind = 'invalid';
     }
@@ -230,6 +217,9 @@ function parseDnsServer(entry) {
     result.port = bareMatch[2] || null;
     return result;
   }
+
+  result.kind = 'invalid';
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,12 +265,13 @@ const ROLES = {
  * @returns {{ ok: boolean, value: string|null, entry: object, findings: Array<object>, reason?: string }}
  */
 function sanitizeDnsServer(entry, options = {}) {
+  const opts = typeof options === 'string' ? { role: options } : (options || {});
   const {
     role = ROLES.NAMESERVER,
     fakeIpRanges = DEFAULT_FAKEIP_GUARD_RANGES,
     trustedPrivateCidrs = [],
     allowPrivateLiteral = false
-  } = options;
+  } = opts;
 
   const parsed = parseDnsServer(entry);
   const findings = [];
@@ -291,10 +282,21 @@ function sanitizeDnsServer(entry, options = {}) {
 
   if (parsed.kind === 'special') {
     // system / dhcp:// 不可用于 default-nameserver（会与「纯 IP」约束冲突）
-    if (role === ROLES.DEFAULT) {
+    if (role === ROLES.DEFAULT || role === ROLES.BOOTSTRAP) {
       return { ok: false, value: null, entry: parsed, findings, reason: 'special-not-allowed-in-bootstrap' };
     }
     return { ok: true, value: parsed.raw, entry: parsed, findings };
+  }
+
+  // default-nameserver (bootstrap) 必须是纯 IP，绝对禁止加密 URL 或域名格式（防内核死锁）
+  if (role === ROLES.DEFAULT || role === ROLES.BOOTSTRAP) {
+    if (parsed.kind !== 'ip' || (parsed.scheme && parsed.scheme !== 'plain')) {
+      findings.push({
+        id: 'DNS-BOOTSTRAP-NOT-IP', severity: 'critical',
+        note: `default-nameserver 必须为纯 IP 格式 (ip 或 ip:port)，禁止使用加密 DNS 或域名: ${parsed.raw}`
+      });
+      return { ok: false, value: null, entry: parsed, findings, reason: 'bootstrap-must-be-ip' };
+    }
   }
 
   findings.push(...analyzeModifiers(parsed.modifiers));
@@ -324,17 +326,7 @@ function sanitizeDnsServer(entry, options = {}) {
     }
 
     if (isPrivate && allowPrivateLiteral) {
-      const trusted = trustedPrivateCidrs.some(cidr => {
-        if (v4) {
-          const range = parseV4CidrToRange(cidr);
-          const value = ipv4ToInt(parsed.host);
-          return range && value !== null && value >= range.start && value <= range.end;
-        } else {
-          const range = parseV6Cidr(cidr);
-          const value = ipv6ToBigInt(parsed.host);
-          return range && value !== null && value >= range.start && value <= range.end;
-        }
-      });
+      const trusted = v4 ? ipv4InCidrs(parsed.host, trustedPrivateCidrs) : ipv6InCidrs(parsed.host, trustedPrivateCidrs);
       if (!trusted) {
         findings.push({
           id: 'DNS-PRIVATE-UNTRUSTED', severity: 'high',
@@ -390,13 +382,14 @@ function sanitizeDnsServer(entry, options = {}) {
  * @returns {{ servers: string[], findings: Array<object>, rejected: Array<object> }}
  */
 function sanitizeDnsServerList(list, options = {}) {
+  const opts = typeof options === 'string' ? { role: options } : (options || {});
   const servers = [];
   const findings = [];
   const rejected = [];
   const input = Array.isArray(list) ? list : (list == null ? [] : [list]);
 
   for (const entry of input) {
-    const r = sanitizeDnsServer(entry, options);
+    const r = sanitizeDnsServer(entry, opts);
     for (const f of r.findings) findings.push({ ...f, entry: String(entry) });
     if (r.ok) {
       if (!servers.includes(r.value)) servers.push(r.value);
@@ -441,7 +434,7 @@ function sanitizeHosts(hostsMap, options = {}) {
 
   for (const [rawKey, rawValue] of Object.entries(hostsMap)) {
     const key = String(rawKey).trim().toLowerCase();
-    const bare = key.replace(/^\+\./, '').replace(/^\*\./, '');
+    const bare = key.replace(/^\+\./, '').replace(/^\*\./, '').replace(/\.+$/, '');
     const values = (Array.isArray(rawValue) ? rawValue : [rawValue]).map(v => String(v).trim()).filter(Boolean);
 
     if (values.length === 0) continue;
@@ -460,17 +453,18 @@ function sanitizeHosts(hostsMap, options = {}) {
 
     const safeValues = [];
     for (const v of values) {
-      // 仅接受 IP 字面量；CNAME 形式一律拒绝（可构造指向受保护域名的解析链）
-      const isV4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(v);
-      const isV6 = /^[0-9a-fA-F:]+$/.test(v) && v.includes(':');
-      if (!isV4 && !isV6) {
+      // 仅接受合法 IP 字面量；CNAME 形式或非法 IP 一律拒绝（可构造指向受保护域名的解析链）
+      if (!ipaddr.isValid(v)) {
         findings.push({
           id: 'HOSTS-CNAME-REJECTED', severity: 'high',
-          note: `hosts 值 ${v} 非 IP 字面量（疑似 CNAME 链），已拒绝`
+          note: `hosts 值 ${v} 非合法 IP 字面量（疑似 CNAME 链或格式错误），已拒绝`
         });
         dropped.push({ key, values: [v], reason: 'non-literal-value' });
         continue;
       }
+      const addr = ipaddr.parse(v);
+      const isV4 = addr.kind() === 'ipv4';
+      const isV6 = addr.kind() === 'ipv6';
 
       // 非路由保留段（TEST-NET / 文档示例段）优先归类：这些地址不可能指向真实主机，
       // 语义上比「内网重定向」更精确，也避免误报为内网探测。

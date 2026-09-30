@@ -40,6 +40,8 @@
   "homepage": "https://github.com/XiaoM-OVO/Mihomo-Toolkit#readme",
   "dependencies": {
     "commander": "^15.0.0",
+    "fast-json-stable-stringify": "^2.1.0",
+    "ipaddr.js": "^2.5.0",
     "undici": "^8.10.0",
     "yaml": "^2.9.0"
   },

@@ -18,9 +18,11 @@
 
 'use strict';
 
+const ipaddr = require('ipaddr.js');
+
 const {
   ROLES, sanitizeDnsServerList, sanitizeNameserverPolicy, sanitizeHosts,
-  parseDnsServer, ipv4InCidrs, parseV4CidrToRange, ipv4ToInt
+  parseDnsServer, ipv4InCidrs
 } = require('./dns-sanitizer');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,14 +119,23 @@ function normalizeEnvProfile(env = {}) {
   };
 }
 
-/** 在给定网段列表中查出条目所属的网段下标 */
-function matchCidr(ip, cidrs) {
-  const value = ipv4ToInt(ip);
-  if (value === null) return -1;
-  return cidrs.findIndex(c => {
-    const r = parseV4CidrToRange(c);
-    return r && value >= r.start && value <= r.end;
-  });
+/** 在给定网段列表中查出条目所属的网段下标 (支持 IPv4 与 IPv6 CIDR) */
+function matchCidr(ip, cidrs = []) {
+  if (!ip || !Array.isArray(cidrs) || cidrs.length === 0) return -1;
+  try {
+    const clean = String(ip).trim().replace(/^\[|\]$/g, '');
+    if (!ipaddr.isValid(clean)) return -1;
+    const addr = ipaddr.parse(clean);
+    return cidrs.findIndex(c => {
+      try {
+        return addr.match(ipaddr.parseCIDR(c));
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return -1;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,7 +199,7 @@ function planResolverChain(input = {}) {
   }
 
   if (env.dnsEgressAllowed && bootstrapCandidates.length < 2) {
-    for (const addr of buildFromPool('domestic', family, 2, null)) {
+    for (const addr of buildFromPool('domestic', family, 2, 'udp')) {
       if (!bootstrapCandidates.includes(addr)) bootstrapCandidates.push(addr);
     }
   }
@@ -282,12 +293,6 @@ function planResolverChain(input = {}) {
     const target = env.localResolvers.length ? env.localResolvers : directNameserver;
     policy[`+${zone.startsWith('.') ? zone : `.${zone}`}`] = target;
   }
-  // 节点私有域统一走内网解析器
-  if (env.privateZones.length && env.localResolvers.length) {
-    for (const zone of env.privateZones) {
-      policy[`+.${zone.replace(/^\./, '')}`] = env.localResolvers;
-    }
-  }
 
   // master 订阅策略：仅在受信且非保留键时合并
   if (masterDns && masterDns['nameserver-policy']) {
@@ -300,6 +305,20 @@ function planResolverChain(input = {}) {
     notes(f3, 'master:nameserver-policy');
     for (const [k, v] of Object.entries(mp)) {
       if (!policy[k]) policy[k] = v;
+    }
+  }
+
+  // 用户本地声明策略：最高优先级，覆盖 master 与默认策略（保留键依然受保护）
+  if (userDns['nameserver-policy']) {
+    const { policy: up, findings: fUser } = sanitizeNameserverPolicy(userDns['nameserver-policy'], {
+      isMaster: true,
+      fakeIpRanges: guardRanges,
+      trustedPrivateCidrs: env.trustedPrivateCidrs,
+      allowPrivateLiteral: env.localResolvers.length > 0
+    });
+    notes(fUser, 'user:nameserver-policy');
+    for (const [k, v] of Object.entries(up)) {
+      policy[k] = v;
     }
   }
 
@@ -380,8 +399,8 @@ function checkInvariants(dns = {}, options = {}) {
   // INV-1 引导层纯 IP
   for (const s of asArray(dns['default-nameserver'])) {
     const p = parseDnsServer(s);
-    if (p.kind === 'url' && !p.isIpLiteral) {
-      v.push({ id: 'INV-1', detail: `default-nameserver 含域名形式: ${s}` });
+    if ((p.kind !== 'ip' && !(p.kind === 'special' && s === 'system')) || (p.scheme && p.scheme !== 'plain')) {
+      v.push({ id: 'INV-1', detail: `default-nameserver 必须为纯 IP 字面量，发现非纯 IP: ${s}` });
     }
   }
 
@@ -445,6 +464,19 @@ function checkInvariants(dns = {}, options = {}) {
 }
 
 /**
+ * 严格校验字符串是否为合法域名（排除 IPv4/IPv6，支持数字开头的合法域名如 123.com）
+ */
+function isValidDomain(str) {
+  if (typeof str !== 'string' || !str) return false;
+  const bare = str.trim().replace(/^\[|\]$/g, '').toLowerCase();
+  if (!bare || !bare.includes('.')) return false;
+  // 排除合法 IP 字面量 (IPv4 / IPv6)
+  if (ipaddr.isValid(bare)) return false;
+  // 域名合法性：字母数字开头，允许点和连字符，至少含一个字母或数字
+  return /^[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9]$/.test(bare) && /[a-zA-Z]/.test(bare);
+}
+
+/**
  * 从节点列表推导必须进入 fake-ip-filter 的域名（INV-7）。
  * 节点域名若被分配 fake-ip，内核在建立出站连接时会拿到虚拟地址，形成环路。
  */
@@ -452,13 +484,13 @@ function deriveFakeIpFilterAdditions(proxies = []) {
   const out = new Set();
   for (const p of proxies) {
     if (!p || typeof p !== 'object') continue;
-    const server = p.server;
-    if (typeof server !== 'string' || !server) continue;
-    const bare = server.replace(/^\[|\]$/g, '');
-    const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(bare) || bare.includes(':');
-    if (!isIp && bare.includes('.')) out.add(bare);
+    if (isValidDomain(p.server)) {
+      out.add(p.server.trim().replace(/^\[|\]$/g, ''));
+    }
     for (const key of ['sni', 'servername']) {
-      if (typeof p[key] === 'string' && p[key] && !/^\d/.test(p[key]) && p[key].includes('.')) out.add(p[key]);
+      if (isValidDomain(p[key])) {
+        out.add(p[key].trim().replace(/^\[|\]$/g, ''));
+      }
     }
   }
   return [...out];
