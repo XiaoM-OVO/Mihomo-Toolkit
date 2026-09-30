@@ -61,12 +61,12 @@ function applyDnsOverlay(config, userConfig = {}) {
   // 3. 破除死锁：引导 DNS 与节点解析器严格纯 IP 化
   const safeDefaultNs = sanitizeDnsServerList(
     userConfig.dnsDefault || ['223.5.5.5', '1.1.1.1'],
-    ROLES.DEFAULT
+    { role: ROLES.DEFAULT }
   ).servers;
 
   const safeProxyServerNs = sanitizeDnsServerList(
     serverDNS || ['223.5.5.5', '119.29.29.29'],
-    ROLES.PROXY_SERVER
+    { role: ROLES.PROXY_SERVER }
   ).servers;
 
   // 4. 解析器拓扑装配

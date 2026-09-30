@@ -13,6 +13,8 @@
 
 'use strict';
 
+const stableStringify = require('fast-json-stable-stringify');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 字段分类表 (Field Classification)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +62,7 @@ const CONTROL_PLANE_KEYS = new Set([
   'external-controller',
   'external-controller-tls',
   'external-controller-cors',
+  'external-controller-pipe',
   'external-controller-unix',
   'external-ui',
   'external-ui-name',
@@ -95,10 +98,10 @@ const CONTROL_PLANE_KEYS = new Set([
  * 用于在审计报告中升级告警，并可为调用方提供 fail-closed 依据。
  */
 const HOSTILE_SIGNATURES = [
-  { re: /^external-controller(-tls|-unix)?$/i, id: 'CP-EXT-CTRL', severity: 'critical', note: '订阅试图夺取内核 API 控制权（可被用于远程改写配置）' },
+  { re: /^external-controller(-tls|-unix|-pipe|-cors)?$/i, id: 'CP-EXT-CTRL', severity: 'critical', note: '订阅试图夺取内核 API 控制权（可被用于远程改写配置）' },
   { re: /^secret$/i, id: 'CP-SECRET', severity: 'critical', note: '订阅试图预设 API 密钥' },
   { re: /^external-ui(-name|-url)?$/i, id: 'CP-EXT-UI', severity: 'high', note: '订阅试图注入外部 Web 面板资源' },
-  { re: /^allow-lan$/i, id: 'CP-LAN', severity: 'critical', note: '订阅试图开放局域网/公网入站（开放代理）' },
+  { re: /^(allow-lan|bind-address|lan-allowed-ips|lan-disallowed-ips)$/i, id: 'CP-LAN', severity: 'critical', note: '订阅试图开放或改写局域网/公网入站与访问控制' },
   { re: /^(mixed-port|port|socks-port|tproxy-port|redir-port)$/i, id: 'CP-PORT', severity: 'high', note: '订阅试图改写监听端口' },
   { re: /^tunnels$/i, id: 'CP-TUNNEL', severity: 'critical', note: '订阅试图建立到内网的流量隧道' },
   { re: /^listeners$/i, id: 'CP-LISTENERS', severity: 'critical', note: '订阅试图注册入站监听器' },
@@ -168,10 +171,8 @@ function partitionControlPlane(subConfig, options = {}) {
 
 /** 稳定键顺序的 JSON 序列化，用于确定性深度比较 */
 function canonicalJson(obj) {
-  if (obj === null || typeof obj !== 'object') return JSON.stringify(obj);
-  if (Array.isArray(obj)) return `[${obj.map(canonicalJson).join(',')}]`;
-  const sortedKeys = Object.keys(obj).sort();
-  return `{${sortedKeys.map(k => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(',')}}`;
+  if (obj === undefined) return 'undefined';
+  return stableStringify(obj);
 }
 
 /**
