@@ -35,16 +35,33 @@
 └─────────────────────────────┬────────────────────────────────────┘
                               │
 ┌─────────────────────────────▼────────────────────────────────────┐
-│ 6. Config (单一事实来源 Source of Truth)                         │
-│    全局默认配置字典 │ 配置扁平合并器 │ 字典常量表                │
+│ 6. Config (配置策略层 - 合并语义与运行期兜底)                     │
+│    默认配置投影(派生自注册表) │ 配置合并器 │ 领域服务编目          │
+└─────────────────────────────┬────────────────────────────────────┘
+                              │
+┌─────────────────────────────▼────────────────────────────────────┐
+│ 7. Data (只读运行基础 - 程序所有 / 用户只读)                      │
+│    字段注册表(有哪些字段/默认值/合并语义/信任级) │ 安全基线词典   │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+### 📦 Data 与 Config 的分工（「有什么」与「改什么」）
+
+| 层 | 回答的问题 | 归属 | 可否被 `config.yaml` / `?config=` 改写 |
+| :--- | :--- | :--- | :--- |
+| `src/data/` | 程序里**有什么字段**、**什么算危险** | 程序所有，随版本发布 | **不可**。基线只能被追加，永不能被削减或替换 |
+| `src/config/` | 这次**调用什么、改什么** | 操作者所有 | 可信来源可改；`trust: 'local'` 的字段对 `?config=` 一律剥夺 |
+
+这样切分的直接收益：安全基线与「危险的定义」不再参与 `Object.assign(DEFAULT_CONFIG, userConfig)` 的合并，
+因此**不存在「把受保护域名清单写进配置就被远程链接摘掉」这类结构性风险**。
 
 ### 🛡️ 架构红线 (Non-negotiable Rules)
 
 1. **单向依赖 (Unidirectional Flow)**：
-   * 依赖关系严格为：`Targets` ➔ `Pipeline` ➔ `Strategy` / `Core` ➔ `IO` ➔ `Config`。
+   * 依赖关系严格为：`Targets` ➔ `Pipeline` ➔ `Strategy` / `Core` ➔ `IO` ➔ `Config` ➔ `Data`。
    * **底层模块严禁以任何形式反向 import/require 高层模块**。
+   * `src/data/` 是最底层：纯数据 + 纯函数，不得 require `config` / `core` / `strategy` / `io` / `pipeline` / `targets`，
+     不得引用 `fs` / `http` / `net` / `process.env`（由 `test/data-baseline.test.js` 的分层红线用例强制）。
 2. **纯计算隔离 (Pure Core Isolation)**：
    * `src/core/` 与 `src/strategy/` 内**严禁包含任何网络请求或磁盘读写**，必须是确定性的纯函数（相同的输入数据与配置，必须输出严格相同的结构）。
    * 所有的网络交互与文件读取，只能存在于 `src/io/` 或最外层的 `src/targets/`。
@@ -157,6 +174,8 @@
 
   1. **不可信配置能力剥夺（`remote-config.js`，纯函数）**
      服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（杜绝借本地路径读取服务器任意文件），并剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`fetchProxyPort`）类字段。
+     *剥夺清单**由只读数据层派生**：`src/data/field-registry.js` 中声明 `trust: 'local'` 的字段自动进入清单，
+     别名输入字段来自 `ALIAS_REMOTE_DENIED_FIELDS`。新增安全开关只需标注信任级，不存在「忘了同步清单」的漂移空间。*
      *库契约：`buildProfile(userConfig)` 的 `userConfig` 视为可信输入；处理不可信配置的调用方必须先经 `hardenRemoteConfig()` 降级。*
 
   2. **控制面净化审计 + 节点资产闭包（`control-plane.js::partitionControlPlane` + `io/sub-processor.js::applySubscriptionGuards`）**
@@ -242,14 +261,19 @@ E:\CODE\mihomo-toolkit-next\
 │   │       ├── sub-info.js       # 订阅 Subscription-Userinfo 标头解析 (re-export core/shared/sub-info)
 │   │       └── *.js              # 各协议解析器 (vless, vmess, trojan, ss, hy2, tuic, socks, http)
 │   │
-│   └── config/                   # ⚙️ 配置中心 (单一事实来源 Source of Truth)
-│       ├── defaults.js           # 系统内置全局默认配置字典
-│       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
-│       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
+│   ├── config/                   # ⚙️ 配置策略层 (操作者改什么)
+│   │   ├── defaults.js           # 出厂默认配置（由字段注册表派生，不再手写清单）
+│   │   ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
+│   │   └── index.js              # resolveConfig 合并器：注册表驱动的「只增不减」基线合并 + 外部服务配置挂载
+│   │
+│   └── data/                     # 📦 只读运行基础层 (最底层，程序所有 / 用户只读)
+│       ├── field-registry.js     # 字段注册表 SSOT：字段名 / 默认值 / 类型 / 合并语义 / 信任级
+│       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                         # 🧪 自动化测试套件 (22 个测试套件，183 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (23 个测试套件，199 个全绿用例)
 │                                 #    其中 security-delivery-contract / dns-invariants /
-│                                 #    server-security / security-sanitizer 为安全回归套件
+│                                 #    server-security / security-sanitizer / data-baseline
+│                                 #    为安全回归套件
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
@@ -260,8 +284,7 @@ E:\CODE\mihomo-toolkit-next\
 
 ## 🛠️ 五、 二次开发与扩展指引 (Extension Guide)
 
-### 1. 新增一个地区或落地城市识别
-* 打开 [`src/core/shared/regions.js`](src/core/shared/regions.js)：
+### 1. 新增一个地区或落地城市识别* 打开 [`src/core/shared/regions.js`](src/core/shared/regions.js)：
   * 在 `REGION_DEFS_RAW` 数组中添加条目：
     ```javascript
     {
@@ -303,16 +326,37 @@ E:\CODE\mihomo-toolkit-next\
   * 实现标准签名：`parseXxxUri(uri: string): ProxyNode | null`
   * 在 `src/io/parsers/index.js` 中使用 `registerParser('myproto', parseXxxUri)` 动态挂载到协议注册表（天然支持别名与分发）。
 
+### 4. 新增 / 修改一个配置字段（⚠️ 别再多处手抄）
+字段的**默认值只说一次**，就在 [`src/data/field-registry.js`](src/data/field-registry.js)：
+
+```javascript
+{ key: 'myKnob', type: 'boolean', default: false, merge: 'override', trust: 'any',
+  group: '基础全局配置', doc: '这个开关干什么' }
+```
+
+* `DEFAULT_CONFIG` 由注册表**派生**，不需要（也不允许）再去 `defaults.js` 抄一遍；
+* 字段若与安全相关（被误改后得利的是攻击者），标 `trust: 'local'` —— 它会**自动**进入 `?config=` 的剥夺清单；
+* 需要「只读基线 + 用户追加」语义时，用 `merge: 'additive'` + `baseline`（放在 `security-baselines.js`）+ `normalize`；
+  并在**判定点**用 `effectiveProtectedDomains()` / `effectiveExemptGroups()` 自持基线，避免编排层漏做合并而 fail-open；
+* 故意改动任何默认值，都必须同步更新 `test/fixtures/default-config.golden.json`，让改动显式出现在 diff 里；
+* 最后同步 [`config.example.yaml`](config.example.yaml) 与 [`index.d.ts`](index.d.ts)。
+
+### 5. 追加自己的受保护域名 / 骨架豁免组（用户视角）
+* `protectedDomains: ["mybank.example"]`：在只读安全基线之外**追加**禁止被 hosts 覆盖的域名（子域自动覆盖）。
+* `exemptGroups: ["🏠 家宽优选"]`：在只读骨架基线之外**追加**永不被空组剪枝斩首的策略组。
+* 两者都是**只增不减**：基线不可被配置文件删除或替换，写 `[]` 也不会降低保护；
+  条目会归一化（域名：小写、忽略 `+.`/`*.` 前缀与首尾点），非法条目丢弃并打印告警，不会静默 fail-open。
+
 ---
 
 ## 🛡️ 六、 开发质量守则
 
 任何针对本工程的 PR 或重构，必须满足以下五项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 183 个测试必须 100% 通过；
+1. **测试不破**：改动后执行 `npm test`，全量 199 个测试必须 100% 通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
 3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用；
 4. **交付契约不破**：`config` 交付形态的产物顶层键必须全部落在 `TOOLKIT_OUTPUT_KEYS` 白名单内。任何新增顶层字段都必须先登记进白名单，并补一条 `test/security-delivery-contract.test.js` 断言；
-5. **安全回归不可删**：`security-delivery-contract` / `dns-invariants` / `server-security` / `security-sanitizer` / `ssrf` 五个套件是历史漏洞的防复发护栏，只允许加强，不允许弱化或删除；修复安全问题时必须同时补一条能复现原漏洞的用例。
+5. **安全回归不可删**：`security-delivery-contract` / `dns-invariants` / `server-security` / `security-sanitizer` / `ssrf` / `data-baseline` 六个套件是历史漏洞与安全姿态的防复发护栏，只允许加强，不允许弱化或删除；修复安全问题时必须同时补一条能复现原漏洞的用例。
 
 ---
 
@@ -331,7 +375,8 @@ E:\CODE\mihomo-toolkit-next\
 
 ### 残余风险清单（设计上已知，不做过度承诺）
 
-1. **受保护域名清单为枚举式**（`dns-sanitizer.js::DEFAULT_PROTECTED_DOMAINS`）：无法穷尽长尾域名。非清单域名只要被订阅声明为节点 `server`，即可为其下发 hosts 映射。处置：`assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
+1. **受保护域名清单为枚举式**（`src/data/security-baselines.js::PROTECTED_DOMAINS`）：无法穷尽长尾域名。非清单域名只要被订阅声明为节点 `server`，即可为其下发 hosts 映射。
+   处置：用 `protectedDomains` **追加**自己的关键域名（只增不减，`?config=` 无法写入），或 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
 2. **SSRF 存在 TOCTOU 窗口**：校验与建连各做一次 DNS 解析，未做 IP pinning；对抗恶意 DNS 服务器时理论上可利用。
 3. **`?config=` 能力剥夺为黑名单式**：未来内核新增的控制面字段不会自动被剥夺；公开部署应使用 `enableUrlParams: false` 或强制 `authToken`。
 4. **`planResolverChain` / `mergeSubscriptionConfigs` 尚未接线**：两者有完整单测但不在主流程中，请勿据其推断生产行为。

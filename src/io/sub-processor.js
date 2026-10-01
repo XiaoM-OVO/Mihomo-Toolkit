@@ -17,6 +17,7 @@ const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, sub
 const { DEFAULT_REQUEST_LIMITS } = require('./limits');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
+const { effectiveProtectedDomains } = require('../data');
 
 // 统一解耦 Strategy 层看板逻辑：优先使用 Pipeline 注入的实现，保持单向无环依赖
 let _dashboard = null;
@@ -143,12 +144,13 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  *                  strict   — 仅允许 assetDomainAllowlist 中显式声明的注册域被继承
  *                  off      — 完全不继承（DNS 面 100% 由本工具重建）
  * @param {string[]} [options.assetDomainAllowlist=[]] strict 模式下的允许域名列表
+ * @param {string[]} [options.protectedDomains=[]] 用户在受保护域名基线上追加的域名
  * @returns {{ strippedCount: number, hosts: string[], policies: string[], fakeIpFilters: string[] }}
  */
 function applySubscriptionGuards(target, subConfig, options = {}) {
   const {
     proxies = [], subUrl = '', tag = '', isMaster = false, logger,
-    assetClosureMode = 'standard', assetDomainAllowlist = []
+    assetClosureMode = 'standard', assetDomainAllowlist = [], protectedDomains = []
   } = options;
   const result = { strippedCount: 0, hosts: [], policies: [], fakeIpFilters: [] };
 
@@ -189,7 +191,12 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
         scopedHosts[hostKey] = hostVal;
       }
     }
-    const { hosts: cleanHosts } = sanitizeHosts(scopedHosts, { allowInternal: false });
+    const { hosts: cleanHosts } = sanitizeHosts(scopedHosts, {
+      allowInternal: false,
+      // 与 dns.js 用户 hosts 路径共用同一份生效清单：基线 ∪ 用户追加。
+      // 否则用户新增的受保护域名在这条「节点资产闭包」通道上会被绕过。
+      protectedDomains: effectiveProtectedDomains(protectedDomains)
+    });
     if (cleanHosts && Object.keys(cleanHosts).length > 0) {
       target._assetHosts = { ...(target._assetHosts || {}), ...cleanHosts };
       result.hosts = Object.keys(cleanHosts);
@@ -481,6 +488,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           isMaster: !!sub.master,
           assetClosureMode: userConfig.assetClosure,
           assetDomainAllowlist: userConfig.assetDomainAllowlist,
+          protectedDomains: userConfig.protectedDomains,
           logger
         });
 
@@ -615,6 +623,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       isMaster: false,
       assetClosureMode: userConfig.assetClosure,
       assetDomainAllowlist: userConfig.assetDomainAllowlist,
+      protectedDomains: userConfig.protectedDomains,
       logger
     });
     perSubCounts[String(url)] = singleProxies.length;

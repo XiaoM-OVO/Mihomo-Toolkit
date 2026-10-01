@@ -16,6 +16,7 @@
 
 const ipaddr = require('ipaddr.js');
 const { isPrivateIp, isPrivateIPv6 } = require('../shared/ip');
+const { PROTECTED_DOMAINS, normalizeDomainList } = require('../../data');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 基础地址工具
@@ -32,23 +33,14 @@ const DEFAULT_FAKEIP_V6 = 'fdfe:dcba:9876::1/64';
  */
 const DEFAULT_FAKEIP_GUARD_RANGES = ['198.18.0.0/15'];
 
-/** 默认受保护域名：证书体系/开发/身份/支付/即时通讯/游戏/浏览器等被投毒后果最严重的域 */
-const DEFAULT_PROTECTED_DOMAINS = new Set([
-  'github.com', 'githubusercontent.com', 'gitlab.com', 'npmjs.com', 'npmjs.org',
-  'pypi.org', 'python.org', 'nodejs.org', 'rust-lang.org', 'golang.org',
-  'microsoft.com', 'windowsupdate.com', 'live.com', 'office.com', 'apple.com', 'icloud.com',
-  'google.com', 'gstatic.com', 'googleapis.com', 'android.com',
-  'cloudflare.com', 'cloudflare-dns.com', 'amazonaws.com', 'amazon.com',
-  'openai.com', 'anthropic.com', 'claude.ai', 'chatgpt.com',
-  'telegram.org', 't.me', 'whatsapp.com', 'signal.org',
-  'paypal.com', 'stripe.com', 'alipay.com', 'alibaba.com', 'alicdn.com',
-  'taobao.com', 'tmall.com', 'jd.com', 'qq.com', 'weixin.qq.com', 'tencent.com',
-  'baidu.com', 'bilibili.com', 'zhihu.com', 'weibo.com',
-  'steampowered.com', 'steamcommunity.com', 'epicgames.com', 'mozilla.org',
-  'letsencrypt.org', 'digicert.com', 'verisign.com',
-  'dns.alidns.com', 'doh.pub', 'dns.google', 'one.one.one.one',
-  'adguard-dns.io', 'nextdns.io', 'quad9.net', 'mozilla.cloudflare-dns.com'
-]);
+/**
+ * 默认受保护域名。
+ *
+ * 词表本体已迁至只读数据层 `src/data/security-baselines.js`（`PROTECTED_DOMAINS`），
+ * 此处仅保留一个 Set 视图供默认参数使用；用户可通过 `protectedDomains` 配置项
+ * **追加**（只能加不能减），合并逻辑见 `src/config/index.js::applyAdditiveFields`。
+ */
+const DEFAULT_PROTECTED_DOMAINS = new Set(PROTECTED_DOMAINS);
 
 /** 从 fake-ip-range 字符串解析出 [startInt, endInt] */
 function parseV4CidrToRange(cidr) {
@@ -436,7 +428,9 @@ function sanitizeDnsServerList(list, options = {}) {
  *
  * @param {object} hostsMap 形如 { 'github.com': ['1.1.1.1'], '+.example.com': '1.2.3.4' }
  * @param {object} options
- * @param {Set<string>} [options.protectedDomains] 禁止被 hosts 覆盖的高危域名后缀
+ * @param {Set<string>|string[]} [options.protectedDomains] 禁止被 hosts 覆盖的高危域名后缀。
+ *        本函数是纯原语：**传什么就用什么**（默认取只读基线），不与基线做并集；
+ *        「基线 ∪ 用户追加」的合并属于编排层职责，见 `effectiveProtectedDomains()`。
  * @param {string[]} [options.internalCidrs] 视为内网的网段
  * @param {boolean} [options.allowInternal=false] 是否允许内网映射（仅用户本地声明）
  * @returns {{ hosts: object, findings: Array<object>, dropped: Array<object> }}
@@ -456,6 +450,10 @@ function sanitizeHosts(hostsMap, options = {}) {
 
   if (!hostsMap || typeof hostsMap !== 'object') return { hosts, findings, dropped };
   const trustedSet = new Set((Array.isArray(userTrustedDomains) ? userTrustedDomains : []).map(d => String(d).toLowerCase().trim()));
+  // 规范化受保护域名：既支持只读基线的 Set，也支持配置侧传来的原始数组（含 `+.`、大小写、尾随点等写法）
+  const protectedSet = new Set(
+    normalizeDomainList(Array.isArray(protectedDomains) ? protectedDomains : [...(protectedDomains || [])])
+  );
 
   for (const [rawKey, rawValue] of Object.entries(hostsMap)) {
     const key = String(rawKey).trim().toLowerCase();
@@ -466,7 +464,7 @@ function sanitizeHosts(hostsMap, options = {}) {
 
     // 受保护域名检测（支持用户显式白名单 userTrustedDomains 豁免）
     const isExempt = trustedSet.has(bare) || [...trustedSet].some(t => bare.endsWith('.' + t));
-    const suffixHit = !isExempt && [...protectedDomains].find(p => bare === p || bare.endsWith(`.${p}`));
+    const suffixHit = !isExempt && [...protectedSet].find(p => bare === p || bare.endsWith(`.${p}`));
     if (suffixHit) {
       findings.push({
         id: 'HOSTS-PROTECTED-DOMAIN', severity: 'critical',

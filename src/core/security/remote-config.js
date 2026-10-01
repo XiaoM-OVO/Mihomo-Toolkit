@@ -17,35 +17,20 @@
 
 'use strict';
 
+const { REMOTE_DENIED_FIELDS } = require('../../data');
+
 /**
  * 不可信配置中被禁止的字段（能力剥夺清单）。
+ *
+ * ⚠️ 本清单**由只读数据层派生**，不再手工维护：`src/data/field-registry.js` 中
+ * 每个声明 `trust: 'local'` 的字段都会自动进入此处，别名输入字段则来自
+ * `ALIAS_REMOTE_DENIED_FIELDS`。新增安全开关时只需在注册表里标注信任级，
+ * 不存在「忘了同步清单 ⇒ 开关悄悄变成远程可写」的漂移空间。
  *
  * 部署方如需自定义 DNS 面，请写在服务端本地 config.yaml（可信来源）中，
  * 或通过本工具提供的显式配置项声明。
  */
-const REMOTE_CONFIG_FORBIDDEN_KEYS = [
-  // ① 触碰服务器本机资源
-  'servicesConfigFile',   // 可 require 任意本地 .js/.cjs
-  'servicesConfig',
-  'fetchProxyPort',       // 可把抓取指向服务器本地任意端口
-  'fetchProxyStrategy',
-  // ② DNS 控制面：解析链
-  'dnsListen',
-  'dnsAllowNonLoopback',
-  'dnsDefault',
-  'dnsDirect',
-  'dnsProxy',
-  'dnsServer',
-  'nameserverPolicy',
-  'allowPrivateDns',
-  'trustedPrivateCidrs',
-  // ③ DNS 控制面：hosts 与 fake-ip
-  'hosts',
-  'trustedHostDomains',
-  'allowInternalHosts',
-  'fakeIpFilter',
-  'fakeIpFilterNodes'
-];
+const REMOTE_CONFIG_FORBIDDEN_KEYS = [...REMOTE_DENIED_FIELDS];
 
 /**
  * 对不可信远程配置执行能力剥夺。
