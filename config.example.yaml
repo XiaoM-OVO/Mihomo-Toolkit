@@ -74,8 +74,8 @@ output: "./dist/config.yaml"    # 默认输出路径
 #   • 产物顶层键受「交付契约白名单」约束：订阅携带的 external-controller / secret /
 #     script / tunnels / hosts 等字段一律不会进入 config 产物。
 # serverHost: "127.0.0.1"          # 监听地址 (等价于环境变量 HOST)
-# enableCache: true                # 是否启用本地内存缓存（多租户共享进程时建议 false，避免配置互相命中）
-# cacheTtl: 300                    # 缓存有效时间（秒）
+# enableCache: true                # 是否启用本地内存缓存（缓存键按配置整体结构化摘要，不同配置不会互相命中）
+# cacheTtl: 300                    # 缓存有效时间（秒）；订阅远端内容更新仅在 TTL 到期后生效
 # authToken: "your-secret-token"   # 服务端访问鉴权 Token (?token=xxx 或 Authorization 头)
 # enableUrlParams: true            # 是否允许前端通过 ?url= / ?config= 动态传参
 # maxConcurrentBuilds: 8           # 并发构建上限，超出返回 503

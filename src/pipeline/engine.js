@@ -8,7 +8,9 @@
  * 3. 内存级 LRU-TTL 缓存管理与配额防御
  */
 
+const crypto = require('crypto');
 const yaml = require('yaml');
+const stableStringify = require('fast-json-stable-stringify');
 const { runNodesPipeline } = require('./nodes');
 const { runConfigPipeline } = require('./config');
 const { buildAuditReport } = require('./report');
@@ -34,24 +36,66 @@ function normalizeTargetType(rawType) {
   return targetType;
 }
 
-function getCacheKey(userConfig, options) {
+/**
+ * 缓存键结构版本号：键的组成方式发生不兼容变化时递增，避免历史条目被误命中。
+ */
+const CACHE_KEY_VERSION = 'v2';
+
+/**
+ * 除 userConfig 之外，仅这些 CLI / 运行时选项会影响产物内容
+ * （options.debug / silent / logger / colors 等只影响日志；options.type 经 normalizeTargetType
+ * 归一化后单独纳入，故此处不重复计入原始字面量）
+ */
+const CACHE_KEY_OPTION_KEYS = ['url'];
+
+/**
+ * 计算构建产物缓存键 (纯函数)
+ *
+ * 设计要点：配置主体整体参与哈希，而非手工枚举字段。此前仅摘取十余个字段，
+ * 导致 hosts / nameserver-policy / dnsServer / dnsListen / enableScript /
+ * assetClosure 等未登记配置项变化时命中旧产物（多租户 ?config= 场景下即为脏读）。
+ * 结构性纳入后，任何新增配置开关都会自动进入缓存键。
+ *
+ * @param {object} [userConfig={}] 用户全局配置
+ * @param {object} [options={}] CLI / 运行时选项
+ * @returns {string|null} 定长哈希键；无法确定性序列化时返回 null（放弃缓存，宁可不缓存也不脏读）
+ */
+function getCacheKey(userConfig = {}, options = {}) {
   try {
-    const subs = (userConfig.subscriptions || []).filter(isSubEnabled).map(s => ({ url: s.url, uri: s.uri, tag: s.tag, proxy: s.proxy }));
+    userConfig = userConfig || {};
+    options = options || {};
     const rawType = options.type || userConfig.outputMode || userConfig.type || 'config';
-    return JSON.stringify({
-      subs,
-      url: options.url,
+
+    // 订阅清单：仅纳入生效订阅的完整描述（retry / proxy / master 等字段同样影响抓取与产物），
+    // 已禁用订阅的变化不应破坏缓存
+    const subs = (userConfig.subscriptions || []).filter(isSubEnabled);
+
+    // 配置主体：剔除 subscriptions（已单独归一化）与交付形态原始字面量（已归一化计入 type），
+    // 其余全部纳入
+    const configRest = { ...userConfig };
+    delete configRest.subscriptions;
+    delete configRest.type;
+    delete configRest.outputMode;
+
+    const optionSubset = {};
+    for (const key of CACHE_KEY_OPTION_KEYS) {
+      if (options[key] !== undefined) optionSubset[key] = options[key];
+    }
+
+    const canonical = stableStringify({
+      v: CACHE_KEY_VERSION,
       type: normalizeTargetType(rawType),
-      convert: userConfig.enableChineseConvert,
-      convertMode: userConfig.chineseConvertMode,
-      redactLevel: userConfig.redactLevel,
-      fetchProxyPort: userConfig.fetchProxyPort,
-      fetchProxyStrategy: userConfig.fetchProxyStrategy,
-      enableDashboard: userConfig.enableDashboard,
-      expireAggregation: userConfig.expireAggregation,
-      passthrough: userConfig.passthrough || userConfig.preserveRawConfig
+      options: optionSubset,
+      subs,
+      config: configRest
     });
+    if (!canonical) return null;
+
+    // 哈希后作为键：既保证定长，也避免订阅 URL / Token 等敏感信息以明文形式驻留内存键
+    const digest = crypto.createHash('sha256').update(canonical).digest('hex');
+    return `profile:${CACHE_KEY_VERSION}:${digest}`;
   } catch (e) {
+    // 无法确定性序列化（如循环引用）时放弃缓存
     return null;
   }
 }
@@ -233,5 +277,6 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
 module.exports = {
   runPipelineEngine,
   buildProfile: runPipelineEngine,
+  buildProfileCacheKey: getCacheKey,
   createLogger
 };
