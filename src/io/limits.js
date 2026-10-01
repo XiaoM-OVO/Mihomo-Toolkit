@@ -7,6 +7,7 @@
 const DEFAULT_REQUEST_LIMITS = {
   maxSubscriptionUrls: 20,        // ?url= 参数最多允许的订阅数
   maxRemoteConfigBytes: 1048576,  // ?config= 远程配置文件最大字节数 (1MB)
+  maxSubscriptionBytes: 8388608,  // 单个订阅响应体最大字节数 (8MB，流式截断防内存耗尽)
   maxTotalNodes: 5000,            // 单次构建允许的最大节点总数
   perSubscriptionMaxNodes: 3000   // 单个订阅最多允许的节点数
 };

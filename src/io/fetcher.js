@@ -60,10 +60,58 @@ function buildFetchOpts(parsedUrl, signal) {
 }
 
 /**
+ * 带字节上限的响应体读取（流式截断）。
+ *
+ * 背景：原先直接 `res.text()` 会把任意大小的响应体整体读入内存，
+ * 恶意订阅/配置可借此耗尽进程内存。此处按块累加并在超限时立即中止。
+ *
+ * @param {Response} res
+ * @param {number} [maxBytes=0] 0 表示不限制
+ * @returns {Promise<string>}
+ */
+async function readBodyWithLimit(res, maxBytes = 0) {
+  const limited = Number.isFinite(maxBytes) && maxBytes > 0;
+  if (!limited) return await res.text();
+
+  // 快路径：Content-Length 已声明超限则直接拒绝，不读 body
+  const declared = Number(res.headers.get('content-length') || 0);
+  if (declared && declared > maxBytes) {
+    try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
+    const err = new Error(`Response too large: ${declared} > ${maxBytes} bytes`);
+    err.retryable = false;
+    throw err;
+  }
+
+  if (!res.body || typeof res.body.getReader !== 'function') return await res.text();
+
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch (e) {}
+        const err = new Error(`Response too large: exceeded ${maxBytes} bytes`);
+        err.retryable = false;
+        throw err;
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    try { reader.releaseLock(); } catch (e) {}
+  }
+  return Buffer.concat(chunks).toString('utf-8');
+}
+
+/**
  * 带有全套安全校验的文本抓取
  */
 async function safeFetchText(url, options = {}) {
-  const { maxRedirects = 5, timeoutMs = 15000, showFullUrl = false, proxyUrl = '' } = options;
+  const { maxRedirects = 5, timeoutMs = 15000, showFullUrl = false, proxyUrl = '', maxBytes = 0 } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -91,27 +139,32 @@ async function safeFetchText(url, options = {}) {
       if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
         redirects++;
         if (redirects > maxRedirects) {
+          try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
           const err = new Error(`Too many redirects (>${maxRedirects})`);
           err.retryable = false;
           throw err;
         }
         const location = res.headers.get('location');
         if (!location) {
+          try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
           const err = new Error(`Redirect with no Location header (status ${res.status})`);
           err.retryable = false;
           throw err;
         }
+        // 重定向响应体一律丢弃，避免连接池泄漏
+        try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
         const nextUrl = new URL(location, currentUrl).toString();
         currentUrl = nextUrl;
         continue;
       }
 
       if (!res.ok) {
+        try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
         const err = new Error(`HTTP Error: ${res.status}`);
         err.retryable = res.status >= 500; // 5xx 可重试，4xx 等确定性错误不重试
         throw err;
       }
-      const text = await res.text();
+      const text = await readBodyWithLimit(res, maxBytes);
       return { text, response: res, finalUrl: currentUrl };
     }
   } catch (err) {
@@ -218,12 +271,12 @@ function formatBytes(bytes = 0) {
  * 节点抓取主调度（带重试与自动降级）
  */
 async function fetchNodes(url, options = {}) {
-  const { showFullUrl = false, debug = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, retry = 2, timeoutMs = 15000 } = options;
+  const { showFullUrl = false, debug = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, retry = 2, timeoutMs = 15000, maxBytes = 0 } = options;
   const { mode } = resolveFetchPlan({ strategy, perSubProxy });
   const useProxy = mode === 'proxy';
 
   const doFetch = async (p) => {
-    const { text: content, response: res } = await safeFetchText(url, { showFullUrl, proxyUrl: p ? proxyUrl : '', timeoutMs });
+    const { text: content, response: res } = await safeFetchText(url, { showFullUrl, proxyUrl: p ? proxyUrl : '', timeoutMs, maxBytes });
     const subInfo = res.headers.get('subscription-userinfo');
     if (logger) {
       const sizeStr = formatBytes(Buffer.byteLength(content, 'utf-8'));
@@ -267,6 +320,7 @@ async function fetchNodes(url, options = {}) {
 
 module.exports = {
   safeFetchText,
+  readBodyWithLimit,
   fetchNodes,
   checkPortReachable,
   detectTunInterface,

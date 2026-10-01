@@ -33,6 +33,7 @@ const { runNodesPipeline } = require('./pipeline/nodes');
 const { runStrategyPipeline } = require('./pipeline/strategy');
 const { buildAuditReport } = require('./pipeline/report');
 const { createLogger, Logger } = require('./core/logger');
+const { hardenRemoteConfig, REMOTE_CONFIG_FORBIDDEN_KEYS } = require('./core/security/remote-config');
 
 module.exports = {
   createLogger,
@@ -50,6 +51,8 @@ module.exports = {
   validateRequestLimits,
   DEFAULT_REQUEST_LIMITS,
   validateUrlSsrf,
+  hardenRemoteConfig,
+  REMOTE_CONFIG_FORBIDDEN_KEYS,
   parseContent,
   parseUri,
   parseUriList,

@@ -15,7 +15,7 @@
 'use strict';
 
 const ipaddr = require('ipaddr.js');
-const { isPrivateIp, isPrivateIPv6 } = require('../../io/ssrf');
+const { isPrivateIp, isPrivateIPv6 } = require('../shared/ip');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 基础地址工具
@@ -233,6 +233,23 @@ const DANGEROUS_DNS_MODIFIERS = [
   { re: /^proxy$|^#?(direct|interface)/i, id: 'DNS-EGRESS', severity: 'high', note: '订阅试图指定 DNS 出口（可能制造解析死锁或流量绕行）' }
 ];
 
+/** 修饰符严重度排序，用于按来源信任级决定剥离范围 */
+const MODIFIER_SEVERITY_RANK = { low: 0, medium: 1, high: 2, critical: 3 };
+
+/**
+ * 判断某个修饰符在给定严重度阈值下是否必须剥离。
+ * 阈值语义：rank(修饰符) >= rank(阈值) 即剥离。
+ *   - 默认 'low'：剥离全部危险修饰符（用于不可信订阅来源）
+ *   - 'critical'：仅剥离 TLS 校验绕过等致命修饰符（用于用户本地显式声明）
+ */
+function shouldStripModifier(modifier, floor = 'low') {
+  const hit = DANGEROUS_DNS_MODIFIERS.find(d => d.re.test(modifier));
+  if (!hit) return false;
+  const hitRank = MODIFIER_SEVERITY_RANK[hit.severity] ?? 0;
+  const floorRank = MODIFIER_SEVERITY_RANK[floor] ?? 0;
+  return hitRank >= floorRank;
+}
+
 function analyzeModifiers(modifiers = []) {
   const findings = [];
   for (const m of modifiers) {
@@ -270,11 +287,18 @@ function sanitizeDnsServer(entry, options = {}) {
     role = ROLES.NAMESERVER,
     fakeIpRanges = DEFAULT_FAKEIP_GUARD_RANGES,
     trustedPrivateCidrs = [],
-    allowPrivateLiteral = false
+    allowPrivateLiteral = false,
+    modifierSeverityFloor = 'low'
   } = opts;
 
   const parsed = parseDnsServer(entry);
   const findings = [];
+
+  /** 按严重度阈值过滤危险修饰符后重组后缀 */
+  const rebuildModifiers = () => {
+    const kept = parsed.modifiers.filter(m => !shouldStripModifier(m, modifierSeverityFloor));
+    return kept.length ? `#${kept.join('&')}` : '';
+  };
 
   if (parsed.kind === 'invalid') {
     return { ok: false, value: null, entry: parsed, findings, reason: 'unparsable' };
@@ -299,7 +323,10 @@ function sanitizeDnsServer(entry, options = {}) {
     }
   }
 
-  findings.push(...analyzeModifiers(parsed.modifiers));
+  // 修饰符审计：标注每一项是「已剥离」还是「按信任级保留」
+  for (const f of analyzeModifiers(parsed.modifiers)) {
+    findings.push({ ...f, stripped: shouldStripModifier(f.modifier, modifierSeverityFloor) });
+  }
 
   // ── 纯 IP 字面量的网段校验 ─────────────────────────────────────────────
   if (parsed.isIpLiteral) {
@@ -344,8 +371,7 @@ function sanitizeDnsServer(entry, options = {}) {
     const path = isHttpDns
       ? (parsed.path && parsed.path !== '/' ? parsed.path : '/dns-query')
       : '';
-    const safeModifiers = parsed.modifiers.filter(m => !DANGEROUS_DNS_MODIFIERS.some(d => d.re.test(m)));
-    const suffix = safeModifiers.length ? `#${safeModifiers.join('&')}` : '';
+    const suffix = rebuildModifiers();
     return { ok: true, value: `${scheme}${host}${port}${path}${suffix}`, entry: parsed, findings };
   }
 
@@ -372,8 +398,7 @@ function sanitizeDnsServer(entry, options = {}) {
   const path = isHttpDnsDomain
     ? (parsed.path && parsed.path !== '/' ? parsed.path : '/dns-query')
     : '';
-  const safeModifiers = parsed.modifiers.filter(m => !DANGEROUS_DNS_MODIFIERS.some(d => d.re.test(m)));
-  const suffix = safeModifiers.length ? `#${safeModifiers.join('&')}` : '';
+  const suffix = rebuildModifiers();
   return { ok: true, value: `${scheme}${parsed.host}${port}${path}${suffix}`, entry: parsed, findings };
 }
 
@@ -556,7 +581,8 @@ function sanitizeNameserverPolicy(policy, options = {}) {
       role: ROLES.NAMESERVER,
       fakeIpRanges: rest.fakeIpRanges || DEFAULT_FAKEIP_GUARD_RANGES,
       trustedPrivateCidrs: rest.trustedPrivateCidrs || [],
-      allowPrivateLiteral: !!rest.allowPrivateLiteral
+      allowPrivateLiteral: !!rest.allowPrivateLiteral,
+      modifierSeverityFloor: rest.modifierSeverityFloor || 'low'
     });
     findings.push(...f2);
     if (rejected.length) dropped.push({ key, reason: 'all-servers-rejected', rejected });
@@ -575,6 +601,8 @@ module.exports = {
   DEFAULT_FAKEIP_V6,
   DEFAULT_PROTECTED_DOMAINS,
   DANGEROUS_DNS_MODIFIERS,
+  MODIFIER_SEVERITY_RANK,
+  shouldStripModifier,
   parseV4CidrToRange,
   ipv4ToInt,
   ipv4InCidrs,

@@ -266,10 +266,98 @@ function mergeSubscriptionConfigs(sources = [], localConfig = {}, options = {}) 
   return { merged, audits, conflicts };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. 交付契约 (Delivery Contract)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 工具自有顶层键 (Toolkit-Owned Top-Level Keys)。
+ *
+ * config 交付模式产出的内核配置**只允许**出现这些键，且全部由本工具的策略层
+ * (strategy.js / dns.js / kernel.js) 生成。任何来自外部的其它顶层键一律 fail-closed 剥离。
+ *
+ * 历史缺陷：config 模式曾直接复用外部输入的顶层配置作为输出骨架，导致订阅可把
+ * `external-controller` / `secret` / `script` / `tunnels` / `geox-url` / `hosts` 等
+ * 字段随产物下发到用户内核。现由「生成前重置 + 交付前收口」两层保证（见 pipeline/config.js）。
+ *
+ * 注意：`proxy-providers` 刻意不在白名单内 —— 它会让内核在运行时从外部 URL 拉取节点，
+ * 属于不可审计的运行时数据面来源，不参与交付。
+ */
+const TOOLKIT_OUTPUT_KEYS = new Set([
+  'proxies',              // 数据面：清洗后的节点
+  'proxy-groups',         // 策略层：策略组拓扑
+  'rules',                // 策略层：分流规则
+  'rule-providers',       // 策略层：规则集提供者
+  'dns',                  // 内核层：DNS 覆写
+  'hosts',                // 内核层：节点专属优选 IP (资产闭包内)
+  'ipv6',                 // 内核层：地址族开关
+  'tun',                  // 内核层：TUN 接管
+  'sniffer',              // 内核层：域名嗅探
+  'profile',              // 内核层：持久化
+  'unified-delay',
+  'tcp-concurrent',
+  'keep-alive-interval',
+  'find-process-mode'
+]);
+
+/**
+ * 生成前重置：删除输入骨架里全部工具自有键（`proxies` 除外，它由清洗流水线重建）。
+ *
+ * 目的：某些内核层覆写是可开关的（如 overwriteTun=false、overwriteDns=false），
+ * 若只做「生成后白名单」，被关闭的覆写会放任输入骨架里的同名键原样存活。
+ * 先在生成前清空，即可保证「工具自有键要么由本工具生成，要么不存在」。
+ *
+ * @param {object} config 待清理的配置骨架（原地修改）
+ * @returns {string[]} 被清除的键
+ */
+function resetToolkitOutputKeys(config) {
+  const removed = [];
+  if (!config || typeof config !== 'object') return removed;
+  for (const key of TOOLKIT_OUTPUT_KEYS) {
+    if (key === 'proxies') continue;
+    if (Object.prototype.hasOwnProperty.call(config, key)) {
+      delete config[key];
+      removed.push(key);
+    }
+  }
+  return removed;
+}
+
+/**
+ * 交付前收口：仅保留工具自有顶层键，其余一律剥离（fail-closed）。
+ *
+ * @param {object} config 待交付的配置对象（原地修改）
+ * @param {object} [options]
+ * @param {string[]} [options.extraAllowed] 调用方显式追加允许的键（默认无）
+ * @returns {{ kept: string[], stripped: string[] }}
+ */
+function enforceOutputContract(config, options = {}) {
+  const kept = [];
+  const stripped = [];
+  if (!config || typeof config !== 'object') return { kept, stripped };
+
+  const extra = Array.isArray(options.extraAllowed) ? options.extraAllowed : [];
+  const allowed = extra.length > 0 ? new Set([...TOOLKIT_OUTPUT_KEYS, ...extra]) : TOOLKIT_OUTPUT_KEYS;
+
+  for (const key of Object.keys(config)) {
+    if (allowed.has(key)) {
+      kept.push(key);
+      continue;
+    }
+    stripped.push(key);
+    delete config[key];
+  }
+
+  return { kept, stripped };
+}
+
 module.exports = {
   DATA_PLANE_KEYS,
   CONTROL_PLANE_KEYS,
   HOSTILE_SIGNATURES,
+  TOOLKIT_OUTPUT_KEYS,
   partitionControlPlane,
-  mergeSubscriptionConfigs
+  mergeSubscriptionConfigs,
+  resetToolkitOutputKeys,
+  enforceOutputContract
 };

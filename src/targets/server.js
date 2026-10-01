@@ -7,16 +7,40 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const yaml = require('yaml');
 const { buildProfile } = require('../pipeline/engine');
 const { createLogger } = require('../core/logger');
 const { safeFetchText } = require('../io/fetcher');
 const { isAllowedUrl, redactUrl } = require('../io/ssrf');
-const { validateRequestLimits } = require('../io/limits');
+const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits');
+const { hardenRemoteConfig } = require('../core/security/remote-config');
 const pkg = require('../../package.json');
+
+/** 回环地址判定（仅这些地址可视为「本机可信接入」） */
+function isLoopbackHost(host) {
+  const h = String(host || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+  return h === 'localhost' || h === '::1' || h === '0:0:0:0:0:0:0:1' || /^127\./.test(h);
+}
+
+/** 恒定时间字符串比较，避免 Token 被逐字节时序探测 */
+function safeTokenEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ab = Buffer.from(a, 'utf-8');
+  const bb = Buffer.from(b, 'utf-8');
+  if (ab.length !== bb.length) return false;
+  try {
+    return crypto.timingSafeEqual(ab, bb);
+  } catch (e) {
+    return false;
+  }
+}
 
 function startServer(options = {}) {
   const PORT = options.port || process.env.PORT || 3000;
+  // 默认仅监听回环：常驻服务承载「可发起外部请求 + 可读取本地订阅文件」的能力，
+  // 默认暴露到全网卡会让局域网/公网直接获得一个开放订阅中继。
+  const HOST = options.host || process.env.HOST || '127.0.0.1';
   const CONFIG_PATH = options.configPath || process.env.CONFIG_PATH || path.resolve(process.cwd(), 'config.yaml');
 
   let localConfig = {};
@@ -38,6 +62,14 @@ function startServer(options = {}) {
         level: options.debug ? 'debug' : (localConfig.logLevel || 'info')
       });
 
+  // 安全姿态：监听面是否回环 + 启动时是否已配置鉴权
+  const BOUND_LOOPBACK = isLoopbackHost(HOST);
+  const authTokenAtStartup = process.env.AUTH_TOKEN || localConfig.authToken || '';
+  const MAX_CONCURRENT_BUILDS = Number(localConfig.maxConcurrentBuilds) > 0
+    ? Number(localConfig.maxConcurrentBuilds)
+    : 8;
+  let activeBuilds = 0;
+
   const server = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
 
@@ -53,6 +85,13 @@ function startServer(options = {}) {
     }
 
     if (reqUrl.pathname === '/sub') {
+      // 并发上限：单次构建会触发多个外部抓取与全量拓扑计算，不设限可被轻易打满
+      if (activeBuilds >= MAX_CONCURRENT_BUILDS) {
+        res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' });
+        res.end('Service Unavailable: too many concurrent builds, please retry later.');
+        return;
+      }
+      activeBuilds++;
       try {
         // 允许实时读取配置文件热重载
         if (fs.existsSync(CONFIG_PATH)) {
@@ -70,12 +109,16 @@ function startServer(options = {}) {
           const headerAuth = req.headers['authorization'] || '';
           const bearerToken = headerAuth.startsWith('Bearer ') ? headerAuth.slice(7) : '';
           const providedToken = urlToken || bearerToken;
-          if (providedToken !== authToken) {
+          if (!safeTokenEqual(providedToken, authToken)) {
             res.writeHead(401, { 'Content-Type': 'text/plain' });
             res.end('Unauthorized: Invalid or missing token. Provide ?token=xxx or Authorization: Bearer xxx');
             return;
           }
         }
+
+        // 参数化请求属于「外部可控输入」入口：非回环监听且未配置 authToken 时一律 fail-closed
+        const enableUrlParams = localConfig.enableUrlParams !== false;
+        const paramsAllowed = enableUrlParams && (BOUND_LOOPBACK || !!authToken);
 
         let safeUrl = reqUrl.pathname;
         const safeParams = [];
@@ -91,7 +134,6 @@ function startServer(options = {}) {
         const configUrl = reqUrl.searchParams.get('config');
         const subUrls = reqUrl.searchParams.getAll('url');
 
-        const enableUrlParams = localConfig.enableUrlParams !== false;
         const securityLimits = localConfig.security || {};
 
         const urlLimitErr = validateRequestLimits({ subscriptionUrls: subUrls, limits: securityLimits });
@@ -101,10 +143,18 @@ function startServer(options = {}) {
           return;
         }
 
+        /** 参数化入口的统一拒绝响应（区分「管理员关闭」与「未加固的公网监听」） */
+        const rejectParams = () => {
+          res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(enableUrlParams
+            ? 'Forbidden: 该服务监听在非回环地址且未配置 authToken，已拒绝 ?url= / ?config= 参数请求。\n' +
+              '请在 config.yaml 中设置 authToken（或改用 127.0.0.1 监听）后重试。'
+            : 'Forbidden: URL params are disabled by enableUrlParams=false');
+        };
+
         if (configUrl) {
-          if (!enableUrlParams) {
-            res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('Forbidden: URL params are disabled by enableUrlParams=false');
+          if (!paramsAllowed) {
+            rejectParams();
             return;
           }
           if (!isAllowedUrl(configUrl)) {
@@ -112,7 +162,10 @@ function startServer(options = {}) {
             res.end('Bad Request: Invalid or disallowed config URL');
             return;
           }
-          const { text: content } = await safeFetchText(configUrl);
+          const maxRemoteBytes = Number(securityLimits.maxRemoteConfigBytes) > 0
+            ? Number(securityLimits.maxRemoteConfigBytes)
+            : DEFAULT_REQUEST_LIMITS.maxRemoteConfigBytes;
+          const { text: content } = await safeFetchText(configUrl, { maxBytes: maxRemoteBytes });
           const sizeLimitErr = validateRequestLimits({ remoteConfigSize: Buffer.byteLength(content, 'utf-8'), limits: securityLimits });
           if (sizeLimitErr) {
             res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -120,10 +173,19 @@ function startServer(options = {}) {
             return;
           }
           userConfig = yaml.parse(content) || {};
+
+          // 远程配置属于不可信输入：剥夺其触碰服务器本机资源的能力（任意文件读取/本地代理/代码挂载）
+          const hardened = hardenRemoteConfig(userConfig);
+          if (!hardened.ok) {
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end(`Bad Request: ${hardened.reason}`);
+            return;
+          }
+          userConfig = hardened.config;
+          hardened.strippedKeys.forEach(k => serverLogger.warn(`🛡️ 远程配置不可信: 已忽略字段 ${k}`));
         } else if (subUrls.length > 0) {
-          if (!enableUrlParams) {
-            res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('Forbidden: URL params are disabled by enableUrlParams=false');
+          if (!paramsAllowed) {
+            rejectParams();
             return;
           }
           const blocked = subUrls.filter(u => !isAllowedUrl(u));
@@ -166,9 +228,12 @@ function startServer(options = {}) {
         res.writeHead(200, headers);
         res.end(isReport && result.report ? JSON.stringify(result.report, null, 2) : yamlStr);
       } catch (err) {
+        // 仅记录日志，不回显内部错误细节（避免泄漏本地路径、上游状态等实现信息）
         serverLogger.error('Build Error:', err.message);
-        res.writeHead(500, { 'Content-Type': 'text/plain' });
-        res.end(`Server Internal Error: ${err.message}`);
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Server Internal Error: profile build failed. See server logs for details.');
+      } finally {
+        activeBuilds--;
       }
       return;
     }
@@ -177,8 +242,18 @@ function startServer(options = {}) {
     res.end(`Mihomo-Toolkit v${pkg.version} Server is running.\n\nUsage:\n  /sub?url=<subscription_url>\n  /sub?config=<remote_config_url>\n`);
   });
 
-  server.listen(PORT, () => {
-    serverLogger.info(`🛠️ Mihomo-Toolkit v${pkg.version} Server listening on port ${PORT}`);
+  server.listen(PORT, HOST, () => {
+    serverLogger.info(`🛠️ Mihomo-Toolkit v${pkg.version} Server listening on ${HOST}:${PORT}`);
+    if (!BOUND_LOOPBACK) {
+      if (authTokenAtStartup) {
+        serverLogger.warn(`⚠️ 服务监听在非回环地址 ${HOST}，已启用 authToken 鉴权；请确认该端口不面向不可信网络开放。`);
+      } else {
+        serverLogger.warn(
+          `🚨 服务监听在非回环地址 ${HOST} 且未配置 authToken：已自动拒绝 ?url= / ?config= 参数请求（fail-closed）。\n` +
+          `   如需开放参数化订阅转换，请设置 AUTH_TOKEN 环境变量或 config.yaml 的 authToken。`
+        );
+      }
+    }
   });
 
   return server;
@@ -188,4 +263,4 @@ if (require.main === module) {
   startServer();
 }
 
-module.exports = { startServer };
+module.exports = { startServer, hardenRemoteConfig, isLoopbackHost, safeTokenEqual };
