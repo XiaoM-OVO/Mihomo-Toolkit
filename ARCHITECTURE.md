@@ -62,7 +62,7 @@
                                      │
                                      ▼
                      ┌───────────────────────────────┐
-                     │    src/pipeline/engine.js     │ ➔ 配额校验、LRU 缓存管理
+                     │    src/pipeline/engine.js     │ ➔ 配额校验、结构化缓存键与 LRU 缓存
                      │     (全生命周期工作流总调度)  │
                      └───────────────┬───────────────┘
                                      │
@@ -230,7 +230,7 @@ E:\CODE\mihomo-toolkit-next\
 │   ├── io/                       # 📡 外部世界通信层 (唯一允许副作用的底层)
 │   │   ├── fetcher.js            # 安全 HTTP 抓取调度、逐跳重定向校验、响应流式限长与 Stale 容灾兜底缓存
 │   │   ├── sub-processor.js      # 多订阅并发抓取、统一安全网关(净化审计+资产闭包)、树状日志
-│   │   ├── cache.js              # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
+│   │   ├── cache.js              # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏；缓存键由 engine 结构化生成)
 │   │   ├── ssrf.js               # SSRF 深度校验、私网拦截与 Token 脱敏
 │   │   ├── limits.js             # 资源超限拦截 (URL 上限、配置大小、响应限长、节点总量与单订阅配额)
 │   │   ├── dns-resolver.js       # 系统原生与 DoH 异步安全解析器 (防污染/裂变支撑)
@@ -335,4 +335,4 @@ E:\CODE\mihomo-toolkit-next\
 2. **SSRF 存在 TOCTOU 窗口**：校验与建连各做一次 DNS 解析，未做 IP pinning；对抗恶意 DNS 服务器时理论上可利用。
 3. **`?config=` 能力剥夺为黑名单式**：未来内核新增的控制面字段不会自动被剥夺；公开部署应使用 `enableUrlParams: false` 或强制 `authToken`。
 4. **`planResolverChain` / `mergeSubscriptionConfigs` 尚未接线**：两者有完整单测但不在主流程中，请勿据其推断生产行为。
-5. **缓存键覆盖范围有限**（`enableCache`）：`profileCache` 的键包含订阅列表与主要交付选项，但**不含** `hosts`/`dns*`/`nameserverPolicy` 等字段；多租户共享同一进程时，相同订阅列表的不同配置会在 TTL（默认 300s）内互相命中。服务端多租户部署建议 `enableCache: false`。
+5. **构建缓存为 TTL 语义**（`enableCache` / `cacheTtl`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。仍未覆盖的是**订阅远端内容**的更新：TTL（默认 300s）内机场改动节点，缓存会继续复用旧快照，需要实时性请下调 `cacheTtl` 或使用 `noCache`。

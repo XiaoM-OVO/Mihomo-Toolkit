@@ -220,9 +220,9 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   redactLevel?: RedactLevel;
 
   // ⚡ 缓存与代理
-  /** 是否启用本地内存缓存（默认 true） */
+  /** 是否启用本地内存缓存（默认 true；缓存键按配置整体结构化摘要，不同配置不会互相命中） */
   enableCache?: boolean;
-  /** 本地缓存过期时间（秒，默认 300） */
+  /** 本地缓存过期时间（秒，默认 300）；订阅远端内容的更新仅在 TTL 到期后生效 */
   cacheTtl?: number;
   /** 本地订阅抓取代理端口（如 7890） */
   fetchProxyPort?: number;
