@@ -9,7 +9,7 @@
  * 4. 契合客户端 2 列网格布局的全局配对汇总节点
  */
 
-const { parseSubscriptionInfo, isExpiredNow } = require('../io/parsers');
+const { parseSubscriptionInfo, isExpiredNow } = require('../core/shared/sub-info');
 
 const REGEX_INFO_NODES = /剩余|到期|过期|套餐|流量|时间|有效|更新|官网|维护|群|发布|节点说明|失效|获取|网址|Q群|电报|Tg群|下次|关注|官方|签到/i;
 

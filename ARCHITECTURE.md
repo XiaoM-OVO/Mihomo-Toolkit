@@ -89,7 +89,7 @@
 
 | 交付模式 (`outputMode`) | 核心契约 (Contract) | 关键行为与边界 | 典型场景 |
 | :--- | :--- | :--- | :--- |
-| **`config`**<br>*(默认全量交付)* | 交付完整可直接交付内核运行的 Mihomo YAML 配置。 | 1. 采用「智能节点资产依赖保活沙箱」，自动继承节点专属的 Hosts（CDN 优选）与 Nameserver-Policy（私有 DoH），动态将节点域名注入 fake-ip-filter 防环路。<br>2. 物理剥离订阅中一切外部端口（port）、监听面（allow-lan）、反向隧道（tunnels）与 API 夺权字段（external-controller/secret），控制面保持纯净与安全。<br>3. 全自动执行节点清洗、看板合成、六维策略组装配、分流规则集与内核优化调优。 | 软路由、Clash Verge、Mihomo 服务端部署。 |
+| **`config`**<br>*(默认全量交付)* | 交付完整可直接交付内核运行的 Mihomo YAML 配置。产物顶层键**只能由本工具生成**（交付契约白名单，fail-closed）。 | 1. 采用「智能节点资产依赖保活沙箱」，自动继承节点专属的 Hosts（CDN 优选）与 Nameserver-Policy（私有 DoH），动态将节点域名注入 fake-ip-filter 防环路；闭包强度可用 `assetClosure` 调为 `strict` / `off`。<br>2. **交付契约双重保证**：生成前重置工具自有键 + 交付前白名单收口，因此订阅携带的 `port` / `allow-lan` / `tunnels` / `external-controller` / `secret` / `script` / `geox-url` 等字段以及任何未登记字段都不可能进入产物（即使对应的覆写开关被关闭也不会残留）。<br>3. 全自动执行节点清洗、看板合成、六维策略组装配、分流规则集与内核优化调优。<br>4. 交付前执行 DNS INV-1~INV-9 不变式自检，违规项写入 `result.invariantViolations` 并打印告警。 | 软路由、Clash Verge、Mihomo 服务端部署。 |
 | **`nodes`**<br>*(纯净节点交付)* | 契约绝对纯粹：**仅输出干净的 `{ proxies: [...] }` 列表**。 | 执行物理去重、广告与垃圾拦截、属性提取、地区识别与重命名。**严禁输出任何策略组或外围规则**（即使输入自带 rules 也坚决剥离）。 | Sub-Store 节点管理、自建节点池维护。 |
 | **`report`**<br>*(健康审计交付)* | 交付标准格式的清洗与质量审计报告 (JSON)。 | 统计输入总数、有效保留数、去重剔除数、广告拦截数、未知地区数、裂变产生数，输出结构化健康评估指标。 | CI/CD 自动化质检、机场节点质量监控。 |
 
@@ -140,6 +140,9 @@
 ### 4. 网络容灾与三态抓取调度器 (`src/io/fetcher.js`)
 * **SSRF 纵深防御**：
   在请求前置阶段，对 URL 进行协议校验（仅放行 http/https）、私网网段与保留地址拦截；通过 DNS 预解析对目标 IP 实施动态私网回环（127.0.0.1、192.168.x、10.x、169.254.x）拦截，防止针对内网服务的探测攻击。
+  **重定向逐跳复核**：使用 `redirect: 'manual'` 自行接管跳转循环，每一跳都重新执行完整 SSRF 校验（而非只校验初始 URL）。
+  **残余风险（如实告知）**：校验时的 DNS 解析与实际建连的解析是两次独立查询，存在 TOCTOU / DNS Rebinding 窗口，当前实现未做 IP 固定（pinning）。
+* **响应限长**：以流式读取累加字节数，超限立即中止（`maxBytes`，默认单订阅 8MB / 远程配置 1MB），避免恶意超大响应体耗尽内存。
 * **智能可重试机制**：
   区分确定性错误与瞬时抖动：
   * HTTP 4xx（如 401 Unauthorized、404 Not Found）➔ 确定性错误，**立即放弃，绝不无效重试**；
@@ -147,16 +150,33 @@
 * **Stale 兜底容灾缓存**：
   为每个订阅维护最近一次成功拉取的内存快照。若某次远程拉取彻底失败且容灾周期未过期（`fetchStaleTtl`，默认 24h），自动降级复用上一轮有效内容，并打印黄色告警。**确保下游用户设备上的节点绝不因为机场暂时抽风而全军覆没**。
 
-### 5. 控制面净化沙箱与节点专属资产闭包 (`src/core/security/`)
+### 5. 三层纵深安全网关 (`src/core/security/`)
 * **设计考量**：
   外部机场订阅本质上属于不可信第三方输入。传统“全盘透传”存在致命隐患：订阅可借由 `external-controller` 和 `secret` 窃取内核 API 控制权、利用 `allow-lan` 将客户端暴露为公网开放代理、通过 `geox-url` 投毒反转全量 GEOIP 分流。同时，直接一刀切剥离全部私有字段又会导致依赖私有 DoH 或 CDN 优选 Hosts 的节点无法连通。
-* **算法与闭包机制**：
-  1. **控制面与数据面物理隔离 (`control-plane.js`)**：
-     白名单限制 `DATA_PLANE_KEYS`（仅 `proxies` / `proxy-providers` 可跨源聚合）。所有控制面键与攻击特征签名（`HOSTILE_SIGNATURES`）在接入点即刻完成审计与剥离。
-  2. **节点专属资产域推导 (Dependency Tracing)**：
-     系统自动从节点属性（`server`）及订阅源提取真实资产域名集合（严格排除 `sni`/`servername` 等伪装域名）；对订阅携带的 `hosts` 与 `nameserver-policy` 进行**作用域匹配**：仅放行指向自身节点资产域名的优选 IP 与私有 DoH，严禁越权劫持公共高危域名（`github.com`, `apple.com`, `google.com`, `alipay.com` 等）。
-  3. **Bootstrap 破死锁与 Fake-IP 避环智能聚合 (`dns-sanitizer.js` & `resolver-plan.js`)**：
-     强制规范 `default-nameserver` 与 `proxy-server-nameserver` 100% 纯 IP 引导；从节点池动态推导节点服务器域名并进行**智能主域泛化聚合（如折叠为 `+.lxyun.xyz`）**注入 `fake-ip-filter`，彻底杜绝 Fake-IP 虚拟自环，同时规避海量子域名膨胀与伪装 SNI 污染。
+* **三层机制（按数据流顺序）**：
+
+  1. **不可信配置能力剥夺（`remote-config.js`，纯函数）**
+     服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（杜绝借本地路径读取服务器任意文件），并剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`fetchProxyPort`）类字段。
+     *库契约：`buildProfile(userConfig)` 的 `userConfig` 视为可信输入；处理不可信配置的调用方必须先经 `hardenRemoteConfig()` 降级。*
+
+  2. **控制面净化审计 + 节点资产闭包（`control-plane.js::partitionControlPlane` + `io/sub-processor.js::applySubscriptionGuards`）**
+     字段按「数据面（`proxies` / `proxy-providers`）｜控制面｜攻击特征签名｜未登记字段（fail-closed）」分类并审计；
+     多订阅与单 URL/本地文件**两条输入路径共用同一网关**，避免净化逻辑分叉。
+     同时执行 **Dependency Tracing**：只收编指向自身节点资产域的 Hosts / Nameserver-Policy / Fake-IP-Filter，
+     严格排除 `sni`/`servername` 伪装域名，并拒绝受保护公网域名与内网重定向。
+     闭包强度可配置：`standard`（默认）｜`strict`（仅 `assetDomainAllowlist`）｜`off`（完全不继承）。
+
+  3. **交付契约白名单收口（`control-plane.js::resetToolkitOutputKeys` / `enforceOutputContract`）**
+     产物顶层键只允许工具自有的 15 个键（`proxies`/`proxy-groups`/`rules`/`rule-providers`/`dns`/`hosts`/`ipv6`/`tun`/`sniffer`/`profile` 及 4 个内核性能键）。
+     生成前重置 + 交付前收口，任何路径遗漏净化都会被这一层兜住（fail-closed）。
+     *注：`proxy-providers` 刻意不在白名单内 —— 它会让内核在运行时从外部 URL 拉取节点，属于不可审计的运行时数据面来源。*
+
+* **Bootstrap 破死锁与 Fake-IP 避环智能聚合 (`dns-sanitizer.js` + `strategy/dns.js`)**：
+  强制规范 `default-nameserver` 与 `proxy-server-nameserver` 100% 纯 IP 引导；从节点池动态推导节点服务器域名并进行**智能主域泛化聚合（如折叠为 `+.lxyun.xyz`）**注入 `fake-ip-filter`，彻底杜绝 Fake-IP 虚拟自环，同时规避海量子域名膨胀与伪装 SNI 污染。
+  解析链与 `nameserver-policy` 同样过净化沙箱（剥离 `#skip-cert-verify` 等危险修饰符、拦截私网与 fake-ip 自环地址、保留键不可被覆盖），`dns.listen` 非回环一律回退（需 `dnsAllowNonLoopback: true` 显式放行）。
+* **INV 不变式自检（`resolver-plan.js::checkInvariants`）**：
+  INV-1~INV-9 在 `config` 交付路径中实际执行，违规项写入 `result.invariantViolations` 并打印告警。
+  *状态说明：同文件的 `planResolverChain`（环境画像规划器，支持企业内网/captive/IPv6-only/split-horizon）具备完整测试但与主流程并存、当前**未被主流程调用**，属于备用规划器；生产 DNS 装配以 `strategy/dns.js` 为准。`control-plane.js::mergeSubscriptionConfigs`（多 master 仲裁）同样**尚未接线**。*
 
 ---
 
@@ -177,13 +197,14 @@ E:\CODE\mihomo-toolkit-next\
 │   │
 │   ├── targets/                  # 🔌 宿主环境终端适配器 (仅做参数与调用封装)
 │   │   ├── cli.js                # CLI 入口 (支持 mtk / mihomo-tk / mihomo-toolkit)
-│   │   └── server.js             # 常驻 HTTP 订阅服务 (/sub, /healthz, Token 鉴权)
+│   │   └── server.js             # 常驻 HTTP 订阅服务 (/sub, /healthz, Token 鉴权, 默认回环监听, 并发上限)
 │   │
 │   ├── core/                     # 🧮 节点清洗核心算法层 (Pure & Deterministic)
 │   │   ├── security/             # 🛡️ 安全沙箱与仲裁核心 (纯函数安全网关)
-│   │   │   ├── control-plane.js  # 控制面剥离、夺权特征拦截与 Master 仲裁
-│   │   │   ├── dns-sanitizer.js  # DNS 净化沙箱、DoH 修饰符剥离与 Hosts 审计
-│   │   │   └── resolver-plan.js  # 解析链规划器、节点避环与 INV 内核不变式自检
+│   │   │   ├── control-plane.js  # 控制面分类审计、交付契约白名单与生成前重置
+│   │   │   ├── remote-config.js  # 不可信远程配置能力剥夺 (本机资源 / DNS 控制面)
+│   │   │   ├── dns-sanitizer.js  # DNS 净化沙箱、DoH 修饰符分级剥离与 Hosts 审计
+│   │   │   └── resolver-plan.js  # INV 不变式自检(已接入交付路径) + 备用解析链规划器
 │   │   ├── cleaner.js            # 垃圾拦截、倍率线路提取、属性智能分类打标
 │   │   ├── dedupe.js             # 底层物理网络指纹提取与特征去重
 │   │   ├── transport.js          # 统一传输层门面 (Host/SNI/Path提取、Host注入与类型识别)
@@ -193,7 +214,8 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── chinese-convert.js    # 简繁中文递归转换与无依赖回退降级
 │   │   ├── chinese-sync.js       # 节点名/策略组名/成员引用/分流规则四路简繁同步
 │   │   ├── logger.js             # 终端着色日志、子作用域继承与敏感凭证脱敏
-│   │   └── shared/               # 地区大区字典表 (regions.js) 与 图标字典 (icons.js)
+│   │   └── shared/               # Core 共享纯工具：地区字典 (regions.js)、图标字典 (icons.js)、
+│   │                             # IP 分类 (ip.js)、订阅元信息解析 (sub-info.js)
 │   │
 │   ├── strategy/                 # 🌐 策略组拓扑与内核优化层
 │   │   ├── dashboard.js          # 看板合成、多订阅流量与到期聚合中心
@@ -206,18 +228,18 @@ E:\CODE\mihomo-toolkit-next\
 │   │   └── kernel.js             # TUN 网卡、Sniffer 嗅探器及内核性能调优
 │   │
 │   ├── io/                       # 📡 外部世界通信层 (唯一允许副作用的底层)
-│   │   ├── fetcher.js            # 安全 HTTP 抓取调度与 Stale 容灾兜底缓存
-│   │   ├── sub-processor.js      # 多订阅并发抓取、URI 分流、单订阅说明过滤与树状日志
+│   │   ├── fetcher.js            # 安全 HTTP 抓取调度、逐跳重定向校验、响应流式限长与 Stale 容灾兜底缓存
+│   │   ├── sub-processor.js      # 多订阅并发抓取、统一安全网关(净化审计+资产闭包)、树状日志
 │   │   ├── cache.js              # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
 │   │   ├── ssrf.js               # SSRF 深度校验、私网拦截与 Token 脱敏
-│   │   ├── limits.js             # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
+│   │   ├── limits.js             # 资源超限拦截 (URL 上限、配置大小、响应限长、节点总量与单订阅配额)
 │   │   ├── dns-resolver.js       # 系统原生与 DoH 异步安全解析器 (防污染/裂变支撑)
 │   │   ├── fetch-proxy.js        # 本地代理调度封装 (undici ProxyAgent)
 │   │   └── parsers/              # 协议解析器注册表与全格式解析体系
 │   │       ├── registry.js       # 协议解析器注册表 (Registry Pattern)
 │   │       ├── index.js          # 统一调度入口 (Base64 / 多协议 URI / YAML)
 │   │       ├── base64.js         # 跨运行时 Base64 / URI 编解码与主机名规整
-│   │       ├── sub-info.js       # 订阅 Subscription-Userinfo 标头解析与到期计算
+│   │       ├── sub-info.js       # 订阅 Subscription-Userinfo 标头解析 (re-export core/shared/sub-info)
 │   │       └── *.js              # 各协议解析器 (vless, vmess, trojan, ss, hy2, tuic, socks, http)
 │   │
 │   └── config/                   # ⚙️ 配置中心 (单一事实来源 Source of Truth)
@@ -225,7 +247,9 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
 │       └── index.js              # resolveConfig 配置合并器与外部服务配置文件挂载
 │
-├── test/                         # 🧪 自动化测试套件 (19 个测试套件，133 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (22 个测试套件，183 个全绿用例)
+│                                 #    其中 security-delivery-contract / dns-invariants /
+│                                 #    server-security / security-sanitizer 为安全回归套件
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
@@ -283,7 +307,32 @@ E:\CODE\mihomo-toolkit-next\
 
 ## 🛡️ 六、 开发质量守则
 
-任何针对本工程的 PR 或重构，必须满足以下三项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 133 个测试必须 100% 通过；
+任何针对本工程的 PR 或重构，必须满足以下五项硬性准则：
+1. **测试不破**：改动后执行 `npm test`，全量 183 个测试必须 100% 通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
-3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用。
+3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用；
+4. **交付契约不破**：`config` 交付形态的产物顶层键必须全部落在 `TOOLKIT_OUTPUT_KEYS` 白名单内。任何新增顶层字段都必须先登记进白名单，并补一条 `test/security-delivery-contract.test.js` 断言；
+5. **安全回归不可删**：`security-delivery-contract` / `dns-invariants` / `server-security` / `security-sanitizer` / `ssrf` 五个套件是历史漏洞的防复发护栏，只允许加强，不允许弱化或删除；修复安全问题时必须同时补一条能复现原漏洞的用例。
+
+---
+
+## 📌 七、 信任边界与残余风险（如实声明）
+
+### 信任分级
+
+| 输入来源 | 信任级 | 允许的能力 |
+| :--- | :--- | :--- |
+| 本地 `config.yaml` / `-c` | 可信 | DNS 控制面、本机资源、策略编排全量能力 |
+| CLI `-u <本地文件>` | 可信（操作者显式指定） | 同上 |
+| 机场订阅（远程 URL / 内联 `uri`） | 不可信 | 仅节点数据面；控制面字段剥离 |
+| 服务端 `?config=<远程URL>` | 不可信 | 仅订阅源 + 策略编排偏好（经 `hardenRemoteConfig`） |
+
+`buildProfile(userConfig, options)` 的 `userConfig` 按契约视为**可信**输入；SDK 调用方若需处理来自网络或他人分享的配置，必须先调用 `hardenRemoteConfig()`。
+
+### 残余风险清单（设计上已知，不做过度承诺）
+
+1. **受保护域名清单为枚举式**（`dns-sanitizer.js::DEFAULT_PROTECTED_DOMAINS`）：无法穷尽长尾域名。非清单域名只要被订阅声明为节点 `server`，即可为其下发 hosts 映射。处置：`assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
+2. **SSRF 存在 TOCTOU 窗口**：校验与建连各做一次 DNS 解析，未做 IP pinning；对抗恶意 DNS 服务器时理论上可利用。
+3. **`?config=` 能力剥夺为黑名单式**：未来内核新增的控制面字段不会自动被剥夺；公开部署应使用 `enableUrlParams: false` 或强制 `authToken`。
+4. **`planResolverChain` / `mergeSubscriptionConfigs` 尚未接线**：两者有完整单测但不在主流程中，请勿据其推断生产行为。
+5. **缓存键覆盖范围有限**（`enableCache`）：`profileCache` 的键包含订阅列表与主要交付选项，但**不含** `hosts`/`dns*`/`nameserverPolicy` 等字段；多租户共享同一进程时，相同订阅列表的不同配置会在 TTL（默认 300s）内互相命中。服务端多租户部署建议 `enableCache: false`。

@@ -98,7 +98,7 @@ mihomo-toolkit/
 - 🔀 **开箱即用分流**：内置 AI 助手 (ChatGPT/Claude/Gemini)、流媒体 (YouTube/Netflix/Disney+)、游戏平台 (Steam/Epic)、社交与学术等分流体系。
 - 🗡️ **DAG 级联空组剪枝**：基于有向无环图深度遍历，节点为空的策略组自动级联淘汰，关联分流规则自动殉葬注销，彻底杜绝内核崩溃与黑洞路由。
 - 📊 **彩色状态看板**：提取订阅头流量与到期时间，合成双列网格虚拟信息节点，面板内直观展示剩余流量、到期预警与重置倒计时。
-- 🛡️ **生产级安全与容灾**：DNS 动态私网拦截防 SSRF，请求超限防御，自带 Stale 容灾兜底缓存（网络抖动时平滑复用上次成功数据，节点绝不掉线）。
+- 🛡️ **生产级安全与容灾**：SSRF 纵深拦截（含逐跳重定向校验与响应限长）、交付契约白名单（订阅控制面字段绝不进入产物）、DNS 净化沙箱与 INV 不变式自检，自带 Stale 容灾兜底缓存（网络抖动时平滑复用上次成功数据，节点绝不掉线）。
 - 🔤 **简繁中文四路同步**：繁体节点名全链路自动识别，节点名、策略组名、组内引用、路由规则四路简繁严格统一。
 
 ---
@@ -125,14 +125,25 @@ npm run build
 将 Mihomo-Toolkit 部署为私有订阅转换 API：
 
 ```bash
-# 启动本地服务（默认端口 3000，自动读取根目录 config.yaml）
+# 启动本地服务（默认 127.0.0.1:3000，自动读取根目录 config.yaml）
 npm start
 
-# 或自定义端口与配置文件
-PORT=8080 CONFIG_PATH=/path/to/my-config.yaml npm start
+# 或自定义监听与配置文件
+HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token npm start
 ```
 
-启动后即可在客户端直接订阅：`http://你的服务器IP:3000/sub`。
+启动后即可在客户端直接订阅：`http://127.0.0.1:3000/sub`。
+
+**⚠️ 服务端安全姿态（务必阅读）**
+
+| 场景 | 行为 |
+| :--- | :--- |
+| 默认监听 `127.0.0.1` | 仅本机可访问，`?url=` / `?config=` 参数可用 |
+| 监听非回环地址（如 `HOST=0.0.0.0`）**且未配置 `authToken`** | **fail-closed**：自动拒绝 `?url=` / `?config=` 参数请求（返回 403），无参数的 `/sub`（走本地 config.yaml 订阅清单）仍可用 |
+| 监听非回环地址且已配置 `authToken` | 参数入口放行，但所有 `/sub` 请求必须携带 `?token=xxx` 或 `Authorization: Bearer xxx` |
+| `?config=` 拉取的远程配置 | 视为**不可信输入**：仅允许引用 http(s) 订阅源，且 DNS 控制面与本地资源类字段会被剥夺（见下文安全模型） |
+
+其余硬性限制：单次最多 20 个订阅 URL、远程配置 ≤ 1MB、单订阅响应体 ≤ 8MB（流式截断）、单次构建节点总量 ≤ 5000、单订阅 ≤ 3000 节点、并发构建上限 8（超出返回 503）。
 
 ### 方式三：与 Clash Verge Rev 搭配使用
 
@@ -241,6 +252,53 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 
 ---
 
+## 🔐 安全模型与信任边界
+
+本工具的核心前提是：**机场订阅是不可信的第三方输入**。因此所有外部输入都按「能力最小化」处理。
+
+### 信任分级
+
+| 输入来源 | 信任级 | 被允许的能力 |
+| :--- | :--- | :--- |
+| `config.yaml` / `-c` 指定的本地配置 | **可信** | 可声明 DNS 控制面、本机资源路径、策略编排偏好 |
+| CLI `-u <本地文件>` | **可信**（本机操作者显式指定） | 同上 |
+| 机场订阅（远程 URL / 内联 `uri`） | **不可信** | 只能提供节点数据面；控制面字段一律剥离 |
+| 服务端 `?config=<远程URL>` | **不可信** | 只能提供订阅源与策略编排偏好；DNS 控制面、本机资源、本地代理类字段被剥夺 |
+
+### 不可信输入的处置机制
+
+1. **交付契约白名单**（`src/core/security/control-plane.js`）
+   `config` 模式的产物顶层键只能由本工具生成：生成前重置 + 交付前白名单收口，双重保证
+   `external-controller` / `secret` / `script` / `tunnels` / `geox-url` / `hosts` 等字段
+   既不会被订阅继承，也不会在关闭某个覆写开关时残留。
+2. **控制面净化审计 + 资产闭包**（`src/io/sub-processor.js::applySubscriptionGuards`）
+   多订阅与单 URL 两条路径共用同一套网关：审计并记录越权字段；只收编「指向自身节点资产域」的
+   Hosts / Nameserver-Policy / Fake-IP-Filter 依赖，其余丢弃。闭包强度可用 `assetClosure` 调为
+   `strict`（仅白名单域名）或 `off`（完全不继承）。
+3. **DNS 净化沙箱与 INV 不变式**（`src/strategy/dns.js` + `src/core/security/dns-sanitizer.js`）
+   引导层强制纯 IP、解析链剥离 `#skip-cert-verify` 等危险修饰符、私网与 fake-ip 自环地址拦截、
+   `nameserver-policy` 保留键不可被订阅覆盖、`dns.listen` 非回环一律回退（需 `dnsAllowNonLoopback: true` 显式放行）。
+   config 交付前会执行 INV-1~INV-9 自检，违规项通过 `result.invariantViolations` 暴露并打印告警。
+4. **远程配置能力剥夺**（`src/core/security/remote-config.js`）
+   处理不可信配置的调用方可直接复用该纯函数；`buildProfile` 的 `userConfig` 参数按契约视为可信输入。
+5. **SSRF 与资源限制**（`src/io/ssrf.js` / `src/io/fetcher.js` / `src/io/limits.js`）
+   协议白名单、私网/回环/CGNAT/云元数据拦截、DNS 解析结果复核、重定向逐跳校验、
+   响应体流式限长、订阅数/配置大小/节点总量/单订阅节点量配额、并发构建上限。
+
+### 已知边界与残余风险（如实告知）
+
+- **受保护域名清单是枚举式的**：`DEFAULT_PROTECTED_DOMAINS` 覆盖常见高危域名，但不可能穷尽长尾。
+  非清单内的域名，订阅只要能把自己的节点 `server` 指向该域名，就能为其下发 hosts 映射。
+  介意此风险请使用 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
+- **SSRF 校验与实际连接之间存在 DNS 解析窗口**（TOCTOU / DNS Rebinding）：校验依赖系统解析器结果，
+  未做 IP 固定（pinning）。对抗恶意 DNS 服务器时该窗口理论上可利用。
+- **`?config=` 的能力剥夺是黑名单式**：清单外的「未来新控制面字段」不会被自动剥夺。
+  公开部署建议直接 `enableUrlParams: false` 或强制 `authToken`。
+- **DNS 出口修饰符策略分级**：订阅来源剥离全部危险修饰符；用户本地声明的解析链仅剥离
+  `#skip-cert-verify` 等致命项，`#proxy` / `#h3` / `#interface` 保留并在审计中上报。
+
+---
+
 ## ❓ 常见问题
 
 <details>
@@ -254,6 +312,23 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 <summary><b>Q: 为什么我拉取订阅时偶尔报错 403 / 502，但节点没有消失？</b></summary>
 
 这是本系统的 **Stale 容灾兜底机制**在生效。当远程机场网络抖动或超时时，系统会自动重试；若依然失败，会自动激活最近一次成功抓取的本地缓存快照（默认保留 24h），并在控制台打印告警，保障你设备上的节点永远可用。
+</details>
+
+<details>
+<summary><b>Q: 为什么产物里看不到订阅原本的 <code>log-level</code> / <code>mode</code> / <code>dns</code> / <code>hosts</code> 等顶层字段了？</b></summary>
+
+这是**交付契约白名单**在生效（安全设计，非 Bug）。`config` 交付形态的产物顶层键只能由本工具生成，
+订阅携带的任何控制面字段都会被剥离并在日志中报告（`🛡️ 交付契约: 已剥离 N 个非工具自有顶层字段`）。
+需要额外字段时请在本地 `config.yaml` 中用对应功能开关声明（如 `enableIPv6`、`logLevel`、`dnsDirect`、`hosts`），
+本地配置属于可信来源，具备完整能力。
+</details>
+
+<details>
+<summary><b>Q: 我把服务监听到 0.0.0.0 之后，<code>?url=</code> 参数返回 403？</b></summary>
+
+这是**默认安全（fail-closed）**行为：常驻服务具备「发起外部请求 + 读取本地订阅文件」的能力，
+暴露到非回环地址且没有鉴权时，任何人都会得到一个开放订阅中继。此时必须配置 `authToken`
+（`AUTH_TOKEN` 环境变量或 config.yaml 中的 `authToken`）才会放行参数化请求。
 </details>
 
 <details>

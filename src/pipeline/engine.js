@@ -130,7 +130,8 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     configData,
     collectedSubInfos,
     hasFailedSub,
-    hasInjectedTag
+    hasInjectedTag,
+    perSubCounts
   } = await processSubscriptionSources({
     subscriptions: userConfig.subscriptions,
     url: options.url,
@@ -139,6 +140,15 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     logger: ioLogger,
     dashboard
   });
+
+  // 5.1 资源配额二次校验：节点总量与单订阅节点量
+  //     （limits.js 早已定义 maxTotalNodes / perSubscriptionMaxNodes，但此前无任何调用方传参）
+  const nodeLimitErr = validateRequestLimits({
+    totalNodes: (configData.proxies || []).length,
+    perSubCounts,
+    limits: securityLimits
+  });
+  if (nodeLimitErr) throw nodeLimitErr;
 
   // 6. Step 2: 节点标准化清洗与打标 (Core 纯算法阶段)
   const nodeConfig = { ...userConfig };
@@ -194,7 +204,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   }
 
   // ─── 🛑 Checkpoint 3: 交付完整配置 (config 模式跑完全程) ───
-  const { yamlStr, outputData, userInfo } = runConfigPipeline({
+  const { yamlStr, outputData, userInfo, invariantViolations } = runConfigPipeline({
     configData,
     cleanProxies,
     classifiedNodes,
@@ -208,6 +218,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     meta,
     proxies: cleanProxies,
     outputData,
+    invariantViolations,
     userInfo
   };
 

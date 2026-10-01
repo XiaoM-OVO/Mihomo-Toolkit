@@ -137,7 +137,7 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
 
   // 7. 内核层高级配置覆写
   if (userConfig.overwriteDns) {
-    applyDnsOverlay(config, userConfig);
+    applyDnsOverlay(config, userConfig, { logger });
   }
   if (userConfig.overwriteTun) {
     applyTunOverlay(config, userConfig);

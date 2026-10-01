@@ -5,6 +5,9 @@
  */
 
 const ipaddr = require('ipaddr.js');
+// 私网判定下沉到 Core 层纯工具（满足「core/strategy 不得反向依赖 io」的架构红线），
+// 此处 re-export 保持既有调用方路径不变。
+const { isPrivateIp, isPrivateIPv6 } = require('../core/shared/ip');
 
 let dns;
 try { dns = require('dns').promises; } catch { dns = null; }
@@ -12,56 +15,6 @@ try { dns = require('dns').promises; } catch { dns = null; }
 const dnsCache = new Map();
 const DNS_CACHE_TTL_MS = 30000;
 const DNS_CACHE_MAX = 1000;
-
-function isPrivateIp(ip) {
-  if (!ip || typeof ip !== 'string') return false;
-  try {
-    const trimmed = ip.trim();
-    if (!ipaddr.isValid(trimmed)) return false;
-    const addr = ipaddr.parse(trimmed);
-    if (addr.kind() !== 'ipv4') return false;
-    return addr.range() !== 'unicast';
-  } catch {
-    return false;
-  }
-}
-
-function isPrivateIPv6(ip) {
-  if (!ip || typeof ip !== 'string') return false;
-  try {
-    let clean = ip.trim().toLowerCase();
-    if (clean.startsWith('[') && clean.endsWith(']')) clean = clean.slice(1, -1);
-    if (!ipaddr.isValid(clean)) return false;
-    const addr = ipaddr.parse(clean);
-    if (addr.kind() !== 'ipv6') return false;
-
-    // IPv4 映射 IPv6 (如 ::ffff:127.0.0.1)
-    if (addr.isIPv4MappedAddress()) {
-      return addr.toIPv4Address().range() !== 'unicast';
-    }
-
-    // 6to4 (2002::/16)
-    if (addr.range() === '6to4') {
-      try {
-        const v4 = addr.toIPv4Address();
-        if (v4 && v4.range() !== 'unicast') return true;
-      } catch (e) {}
-    }
-
-    // NAT64 (64:ff9b::/96)
-    if (clean.startsWith('64:ff9b::')) {
-      const rest = clean.slice(9);
-      if (ipaddr.isValid(rest)) {
-        const parsedRest = ipaddr.parse(rest);
-        if (parsedRest.kind() === 'ipv4') return parsedRest.range() !== 'unicast';
-      }
-    }
-
-    return addr.range() !== 'unicast';
-  } catch {
-    return false;
-  }
-}
 
 function isAllowedUrl(urlStr) {
   try {

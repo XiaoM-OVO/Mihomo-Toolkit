@@ -14,6 +14,7 @@ const path = require('path');
 const { parseContent, parseSubscriptionInfo, isExpiredNow } = require('./parsers');
 const { redactUrl } = require('./ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache } = require('./fetcher');
+const { DEFAULT_REQUEST_LIMITS } = require('./limits');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
 
@@ -118,6 +119,133 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
 }
 
 /**
+ * 订阅配置统一安全网关 (Subscription Security Gateway)
+ *
+ * 对「单个订阅源」的原始配置执行两步处理，供多订阅与单 URL/本地文件两条输入路径**共用**，
+ * 杜绝净化逻辑分叉 —— 历史上单 URL 路径完全没有调用净化，导致订阅的控制面字段直接进入产物。
+ *
+ *   1. 控制面净化审计：报告并记录夺权/开放入站/隧道注入等越权字段（产物侧再由交付契约收口）；
+ *   2. 节点专属资产闭包提取 (Dependency Tracing)：只把「指向自身节点资产域」的
+ *      Hosts / Nameserver-Policy / Fake-IP-Filter 收编进目标配置，其余一律丢弃。
+ *
+ * 本函数只做「审计与提取」，不负责删除目标配置的顶层键 —— 那是交付契约白名单的职责。
+ *
+ * @param {object} target 目标配置对象 (configData)，原地写入 _asset* 私有键
+ * @param {object} subConfig 订阅源解析出的原始配置对象
+ * @param {object} [options={}]
+ * @param {Array}   [options.proxies=[]] 该订阅的节点列表（用于推导资产域）
+ * @param {string}  [options.subUrl=''] 订阅源地址（其 hostname 亦计入资产域）
+ * @param {string}  [options.tag=''] 订阅标识（审计用）
+ * @param {boolean} [options.isMaster=false] 是否为受信 master 订阅
+ * @param {object}  [options.logger] 日志器
+ * @param {string}  [options.assetClosureMode='standard'] 资产闭包强度：
+ *                  standard — 允许订阅为其自称的节点域名下发 hosts/policy（依赖受保护域名清单兜底）
+ *                  strict   — 仅允许 assetDomainAllowlist 中显式声明的注册域被继承
+ *                  off      — 完全不继承（DNS 面 100% 由本工具重建）
+ * @param {string[]} [options.assetDomainAllowlist=[]] strict 模式下的允许域名列表
+ * @returns {{ strippedCount: number, hosts: string[], policies: string[], fakeIpFilters: string[] }}
+ */
+function applySubscriptionGuards(target, subConfig, options = {}) {
+  const {
+    proxies = [], subUrl = '', tag = '', isMaster = false, logger,
+    assetClosureMode = 'standard', assetDomainAllowlist = []
+  } = options;
+  const result = { strippedCount: 0, hosts: [], policies: [], fakeIpFilters: [] };
+
+  if (!subConfig || typeof subConfig !== 'object') return result;
+  if (!target || typeof target !== 'object') return result;
+
+  // 1. 控制面净化审计（记录越权字段，供日志与审计统计使用）
+  const { report } = partitionControlPlane(subConfig, { isMaster, tag });
+  result.strippedCount = (report.hostile && report.hostile.length) || 0;
+  if (result.strippedCount > 0 && logger) {
+    const warnMsg = formatControlPlaneWarning(report);
+    if (warnMsg) logger.warn(warnMsg);
+  }
+
+  // 2. 资产闭包强度判定
+  //    背景：节点 server 字段由订阅控制，因此「自己的节点域名」这一说法天然可被伪造，
+  //    订阅可借 hosts/nameserver-policy 劫持任意非受保护域名。此处提供可收紧的开关，
+  //    并对外显式审计每一次继承（透明化是这一机制唯一可靠的兜底）。
+  const closureOff = assetClosureMode === 'off' || assetClosureMode === false;
+  if (closureOff) return result;
+
+  const strictList = assetClosureMode === 'strict'
+    ? (Array.isArray(assetDomainAllowlist) ? assetDomainAllowlist : []).map(d => String(d).toLowerCase().trim()).filter(Boolean)
+    : null;
+
+  const assetDomains = extractAssetDomains(proxies, subUrl);
+  const isInheritable = (key) => {
+    if (!matchesAssetDomain(key, assetDomains)) return false;
+    if (strictList) return strictList.some(d => matchesAssetDomain(key, [d]));
+    return true;
+  };
+
+  // 3. 专属 Hosts 提取（优选 IP 闭包保留，排除公共资产劫持与私网重定向）
+  if (subConfig.hosts && typeof subConfig.hosts === 'object') {
+    const scopedHosts = {};
+    for (const [hostKey, hostVal] of Object.entries(subConfig.hosts)) {
+      if (isInheritable(hostKey)) {
+        scopedHosts[hostKey] = hostVal;
+      }
+    }
+    const { hosts: cleanHosts } = sanitizeHosts(scopedHosts, { allowInternal: false });
+    if (cleanHosts && Object.keys(cleanHosts).length > 0) {
+      target._assetHosts = { ...(target._assetHosts || {}), ...cleanHosts };
+      result.hosts = Object.keys(cleanHosts);
+    }
+  }
+
+  // 4. 专属 Nameserver-Policy 提取（节点私有 DoH 依赖闭包保留）
+  const rawPolicy = (subConfig.dns && subConfig.dns['nameserver-policy']) || subConfig['nameserver-policy'];
+  if (rawPolicy && typeof rawPolicy === 'object') {
+    const scopedPolicy = {};
+    for (const [polKey, polVal] of Object.entries(rawPolicy)) {
+      if (isInheritable(polKey)) {
+        scopedPolicy[polKey] = polVal;
+      }
+    }
+    const { policy: cleanPolicy } = sanitizeNameserverPolicy(scopedPolicy, { isMaster: true });
+    if (cleanPolicy && Object.keys(cleanPolicy).length > 0) {
+      target._assetPolicies = { ...(target._assetPolicies || {}), ...cleanPolicy };
+      result.policies = Object.keys(cleanPolicy);
+    }
+  }
+
+  // 5. Fake-IP Filter 节点专属过滤继承
+  const rawFakeFilters = subConfig.dns && subConfig.dns['fake-ip-filter'];
+  if (Array.isArray(rawFakeFilters)) {
+    const kept = [];
+    for (const f of rawFakeFilters) {
+      if (typeof f === 'string' && isInheritable(f)) kept.push(f);
+    }
+    if (kept.length > 0) {
+      target._assetFakeIpFilters = target._assetFakeIpFilters || [];
+      target._assetFakeIpFilters.push(...kept);
+      result.fakeIpFilters = kept;
+    }
+  }
+
+  // 6. 继承审计：让使用者看得见「订阅为我挂载了哪些 DNS 依赖」
+  if (logger && typeof logger.info === 'function') {
+    const inherited = [
+      ...result.hosts.map(h => `hosts:${h}`),
+      ...result.policies.map(p => `dns-policy:${p}`),
+      ...result.fakeIpFilters.map(f => `fake-ip-filter:${f}`)
+    ];
+    if (inherited.length > 0) {
+      const preview = inherited.slice(0, 6).join(', ');
+      logger.info(
+        `🛡️ 资产闭包: 订阅 [${tag}] 继承 ${inherited.length} 项节点专属 DNS 依赖 ` +
+        `(${preview}${inherited.length > 6 ? ', …' : ''})`
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
  * 处理所有订阅源或单 URL，并完成前置解析与看板合成
  */
 async function processSubscriptionSources({ subscriptions, url, userConfig = {}, options = {}, logger, dashboard }) {
@@ -132,11 +260,17 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   const fetchRetry = typeof userConfig.fetchRetry === 'number' ? userConfig.fetchRetry : 2;
   const fetchTimeoutSec = typeof userConfig.fetchTimeout === 'number' ? userConfig.fetchTimeout : 15;
   const staleMaxAgeMs = (typeof userConfig.fetchStaleTtl === 'number' ? userConfig.fetchStaleTtl : 24) * 60 * 60 * 1000;
+  const securityLimits = (userConfig.security && typeof userConfig.security === 'object') ? userConfig.security : {};
+  const maxSubscriptionBytes = typeof securityLimits.maxSubscriptionBytes === 'number'
+    ? securityLimits.maxSubscriptionBytes
+    : DEFAULT_REQUEST_LIMITS.maxSubscriptionBytes;
 
   let configData = { proxies: [] };
   let hasInjectedTag = false;
   let hasFailedSub = false;
   const collectedSubInfos = [];
+  /** 单订阅节点数统计，用于资源配额校验 (perSubscriptionMaxNodes) */
+  const perSubCounts = {};
 
   // 前置自检本地代理端口与 TUN 虚拟网卡状态
   const proxyPort = userConfig.fetchProxyPort;
@@ -211,7 +345,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
                 strategy: effectiveStrategy,
                 perSubProxy: isProxyAvailable ? sub.proxy : false,
                 retry: typeof sub.retry === 'number' ? sub.retry : fetchRetry,
-                timeoutMs: fetchTimeoutSec * 1000
+                timeoutMs: fetchTimeoutSec * 1000,
+                maxBytes: maxSubscriptionBytes
               });
             if (!rawResult.content || (parseContent(rawResult.content).proxies || []).length === 0) {
               throw new Error('Subscription returned no nodes');
@@ -338,63 +473,21 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           hasInjectedTag = true;
         }
 
-        let strippedCount = 0;
-        if (subConfig && typeof subConfig === 'object') {
-          // 1. 控制面净化审计：物理剥离并记录越权篡改（夺权、开放代理、注入隧道等）
-          const { report } = partitionControlPlane(subConfig, { isMaster: !!sub.master, tag: sub.tag || effectiveTag });
-          strippedCount = (report.hostile && report.hostile.length) || 0;
-          if (strippedCount > 0 && logger) {
-            const warnMsg = formatControlPlaneWarning(report);
-            if (warnMsg) logger.warn(warnMsg);
-          }
-
-          // 2. 节点专属资产域推导（Dependency Tracing）
-          const assetDomains = extractAssetDomains(subProxies, sub.url);
-
-          // 3. 专属 Hosts 提取（优选 IP 闭包保留，排除公共资产劫持与私网重定向）
-          if (subConfig.hosts && typeof subConfig.hosts === 'object') {
-            const scopedHosts = {};
-            for (const [hostKey, hostVal] of Object.entries(subConfig.hosts)) {
-              if (matchesAssetDomain(hostKey, assetDomains)) {
-                scopedHosts[hostKey] = hostVal;
-              }
-            }
-            const { hosts: cleanHosts } = sanitizeHosts(scopedHosts, { allowInternal: false });
-            if (cleanHosts && Object.keys(cleanHosts).length > 0) {
-              configData._assetHosts = { ...(configData._assetHosts || {}), ...cleanHosts };
-            }
-          }
-
-          // 4. 专属 Nameserver-Policy 提取（节点私有 DoH 依赖闭包保留）
-          const rawPolicy = (subConfig.dns && subConfig.dns['nameserver-policy']) || subConfig['nameserver-policy'];
-          if (rawPolicy && typeof rawPolicy === 'object') {
-            const scopedPolicy = {};
-            for (const [polKey, polVal] of Object.entries(rawPolicy)) {
-              if (matchesAssetDomain(polKey, assetDomains)) {
-                scopedPolicy[polKey] = polVal;
-              }
-            }
-            const { policy: cleanPolicy } = sanitizeNameserverPolicy(scopedPolicy, { isMaster: true });
-            if (cleanPolicy && Object.keys(cleanPolicy).length > 0) {
-              configData._assetPolicies = { ...(configData._assetPolicies || {}), ...cleanPolicy };
-            }
-          }
-
-          // 5. Fake-IP Filter 节点与专属过滤继承
-          const rawFakeFilters = subConfig.dns && subConfig.dns['fake-ip-filter'];
-          if (Array.isArray(rawFakeFilters)) {
-            configData._assetFakeIpFilters = configData._assetFakeIpFilters || [];
-            for (const f of rawFakeFilters) {
-              if (typeof f === 'string' && matchesAssetDomain(f, assetDomains)) {
-                configData._assetFakeIpFilters.push(f);
-              }
-            }
-          }
-        }
+        // 统一安全网关：控制面净化审计 + 节点专属资产闭包提取（详见 applySubscriptionGuards）
+        const { strippedCount } = applySubscriptionGuards(configData, subConfig, {
+          proxies: subProxies,
+          subUrl: sub.url,
+          tag: sub.tag || effectiveTag,
+          isMaster: !!sub.master,
+          assetClosureMode: userConfig.assetClosure,
+          assetDomainAllowlist: userConfig.assetDomainAllowlist,
+          logger
+        });
 
         configData.proxies = configData.proxies.concat(subProxies);
 
         const nodeCount = subProxies.length;
+        perSubCounts[sub.uri ? `uri:${sub.tag || effectiveTag}` : String(sub.url)] = nodeCount;
         subSummaries.push({
           type: sub.uri ? 'uri' : 'url',
           nameHint: sub.uri ? (subProxies[0] ? subProxies[0].name : '未知') : '',
@@ -499,19 +592,38 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         proxyUrl: effectiveProxyUrl,
         strategy: effectiveStrategy,
         retry: fetchRetry,
-        timeoutMs: fetchTimeoutSec * 1000
+        timeoutMs: fetchTimeoutSec * 1000,
+        maxBytes: maxSubscriptionBytes
       });
     }
     recordSubInfo(rawResult.subInfo, '');
-    configData = parseContent(rawResult.content);
-    if (userConfig.removeInfoNodes !== false && configData.proxies) {
-      configData.proxies = filterRawInfoNodes(configData.proxies, logger);
+
+    // 关键：单 URL/本地文件同样属于「外部不可信输入」，输出骨架必须重建为纯数据面对象，
+    // 严禁直接复用订阅顶层配置（否则 external-controller / script / tunnels 等会随产物下发）。
+    const rawSubConfig = parseContent(rawResult.content);
+    let singleProxies = Array.isArray(rawSubConfig.proxies) ? rawSubConfig.proxies : [];
+    if (userConfig.removeInfoNodes !== false) {
+      singleProxies = filterRawInfoNodes(singleProxies, logger);
     }
-    const nodeCount = configData.proxies ? configData.proxies.length : 0;
+    configData = { proxies: singleProxies };
+
+    // 与多订阅路径共用同一套控制面净化审计 + 节点专属资产闭包（保持两条路径行为一致）
+    applySubscriptionGuards(configData, rawSubConfig, {
+      proxies: singleProxies,
+      subUrl: /^https?:\/\//i.test(url) ? url : '',
+      tag: /^https?:\/\//i.test(url) ? redactUrl(url, showFullUrl) : String(url),
+      isMaster: false,
+      assetClosureMode: userConfig.assetClosure,
+      assetDomainAllowlist: userConfig.assetDomainAllowlist,
+      logger
+    });
+    perSubCounts[String(url)] = singleProxies.length;
+
+    const nodeCount = configData.proxies.length;
     logger.log(`📡 节点解析完成: ${nodeCount} 个节点`);
     if (enableDashboard) {
       const { nodes: synthNodes } = generateInfoNodes(rawResult.subInfo, '');
-      if (synthNodes.length > 0 && configData.proxies) {
+      if (synthNodes.length > 0) {
         configData.proxies.unshift(...synthNodes);
       }
     }
@@ -523,11 +635,15 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     configData,
     collectedSubInfos,
     hasFailedSub,
-    hasInjectedTag
+    hasInjectedTag,
+    perSubCounts
   };
 }
 
 module.exports = {
   isSubEnabled,
-  processSubscriptionSources
+  processSubscriptionSources,
+  applySubscriptionGuards,
+  extractAssetDomains,
+  matchesAssetDomain
 };

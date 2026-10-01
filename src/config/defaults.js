@@ -19,6 +19,8 @@ const DEFAULT_CONFIG = {
 
   // 【2. 节点清洗与处理】
   enableDedupe: false,         // 🧽 节点去重：开启后自动剔除底层完全重复的“注水”节点
+  assetClosure: "standard",    // 🛡️ 节点专属 DNS 依赖继承强度: standard=按节点域名继承 / strict=仅继承 assetDomainAllowlist / off=完全不继承
+  assetDomainAllowlist: [],    // 🛡️ strict 模式下允许被继承的域名（如 ["myairport.com"]）
   enableDashboard: true,       // 📊 订阅看板: 开启后为流量/到期等信息建立独立的「📊 订阅与状态看板」策略组
   removeInfoNodes: true,       // 🗑️ 过滤原生说明节点: 开启后剔除机场自带的原生说明/流量提示伪节点
   renameTemplate: "[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}", // 🔤 节点重命名模板
@@ -84,6 +86,9 @@ const DEFAULT_CONFIG = {
 
   // 【7. DNS 服务器配置】
   dnsListen: "127.0.0.1:1053",
+  dnsAllowNonLoopback: false,  // 🛡️ 安全铁律(INV-8)：dns.listen 默认只允许回环，软路由对外提供 DNS 才显式开启
+  allowPrivateDns: false,      // 🛡️ 是否允许私网/保留地址作为解析器（需配合 trustedPrivateCidrs 显式信任）
+  trustedPrivateCidrs: [],     // 🛡️ 显式信任的私网解析器网段，例如 ["192.168.1.0/24"]
   dnsDefault: ["223.5.5.5", "119.29.29.29"],
   dnsDirect:  ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query", "223.5.5.5", "119.29.29.29"],
   dnsProxy:   ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"],
@@ -95,7 +100,7 @@ const DEFAULT_CONFIG = {
   enableQUICReject: false,     // ⚡ QUIC 智能分流
   overwriteTun: true,          // 🖧 覆写 TUN 配置
   overwriteDns: true,          // 📡 覆写 DNS 总开关
-  dnsMergeMode: "secure",      // 📡 DNS 覆写模式: secure | merge (自动识别并保护节点专属依赖)
+  dnsMergeMode: "secure",      // ⚠️ 保留字段：当前生产实现固定为权威覆写（等价 secure）；merge 模式尚未实现
   overwriteSniffer: true,      // 🔎 覆写 Sniffer 配置
   enableCoreOptimize: true     // ⚡ 覆写核心内核优化
 };

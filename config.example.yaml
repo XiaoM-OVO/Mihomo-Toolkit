@@ -5,7 +5,9 @@
 # ─────────────────────────────────────────────────────────────────────
 # 统一流水线支持三种输出形态（outputMode 字段或 CLI -t 参数）：
 #   config  【默认/推荐】完整配置文件：订阅拉取 ➔ 节点清洗 ➔ 状态看板 ➔ 策略组与分流 ➔ 内核优化
-#           • 全自动执行「智能节点资产依赖保活沙箱」，既保活节点专属 DNS/Hosts，又杜绝控制面夺权污染
+#           • 全自动执行「智能节点资产依赖保活沙箱」：只继承节点专属 DNS/Hosts 依赖
+#           • 交付契约白名单：产物顶层键只能由本工具生成，订阅的 external-controller / secret /
+#             script / tunnels / geox-url 等控制面字段一律不会进入产物
 #   nodes   【纯净节点】仅执行节点清洗、去重与打标，输出干净的 proxies 节点数组（专供客户端）
 #   report  【审计报告】输出结构化节点清洗统计与健康审计报告 (JSON)
 #
@@ -31,7 +33,7 @@ fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "机场A"
-    # master: true              # 显式标记主订阅（用于主权参考与优先基准）
+    # master: true              # 保留字段：标记主订阅（当前仅记录在审计报告中；多 master 仲裁尚未接线）
     # enabled: true             # 是否启用该订阅（设为 false 可临时停用）
     # indexPrefix: "A"          # 节点序号前缀（如 A01/B01），不填按地区统一编号
     # proxy: false              # 单独指定是否走本地代理
@@ -64,13 +66,23 @@ output: "./dist/config.yaml"    # 默认输出路径
 # ─────────────────────────────────────────────────────────────────────
 # ③ 部署与安全（常驻 server 模式生效，CLI 本地运行不受限）
 # ─────────────────────────────────────────────────────────────────────
-# enableCache: true                # 是否启用本地内存缓存
+# 安全姿态（默认值即安全）：
+#   • 服务默认只监听 127.0.0.1；对外提供请同时配置 authToken，
+#     否则监听非回环地址时 ?url= / ?config= 参数会被自动拒绝 (fail-closed)。
+#   • ?config= 拉取的远程配置视为不可信输入：只允许 http(s) 订阅源，
+#     DNS 控制面与本机资源类字段会被剥夺。
+#   • 产物顶层键受「交付契约白名单」约束：订阅携带的 external-controller / secret /
+#     script / tunnels / hosts 等字段一律不会进入 config 产物。
+# serverHost: "127.0.0.1"          # 监听地址 (等价于环境变量 HOST)
+# enableCache: true                # 是否启用本地内存缓存（多租户共享进程时建议 false，避免配置互相命中）
 # cacheTtl: 300                    # 缓存有效时间（秒）
 # authToken: "your-secret-token"   # 服务端访问鉴权 Token (?token=xxx 或 Authorization 头)
 # enableUrlParams: true            # 是否允许前端通过 ?url= / ?config= 动态传参
+# maxConcurrentBuilds: 8           # 并发构建上限，超出返回 503
 # security:
 #   maxSubscriptionUrls: 20        # 单次允许的最大订阅 URL 数
 #   maxRemoteConfigBytes: 1048576  # 远程配置最大字节数 (1MB)
+#   maxSubscriptionBytes: 8388608  # 单个订阅响应体最大字节数 (8MB，流式截断)
 #   maxTotalNodes: 5000            # 单次允许最大处理节点总数
 #   perSubscriptionMaxNodes: 3000  # 单个订阅最大允许节点数
 
@@ -309,19 +321,25 @@ testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，
 # ⑬ DNS 高级覆写与防泄漏模式
 # ─────────────────────────────────────────────────────────────────────
 # overwriteDns: true               # 注入权威防泄漏 DNS
-# dnsMergeMode: "secure"           # secure=权威覆写(脚本配置绝对优先) / merge=补缺合并(保留并安全挂载节点专属解析)
 # fakeIpFilterNodes: "smart"       # 节点防环注入模式:
                                    #   smart  【推荐】智能主域聚合泛化（折叠为 +.<主域>），排除 SNI 伪装干扰，配置清爽紧凑
                                    #   exact  逐项保留节点完整服务器域名（旧版兼容行为，仍剔除 SNI 伪装）
                                    #   off    完全不向 fake-ip-filter 注入任何节点域名（由内核原生出站机制直连）
 # fakeIpFilter:                    # 自定义 fake-ip-filter 规则名单追加
 #   - "+.my-internal.company"
-# dnsListen: "127.0.0.1:1053"      # 本地 DNS 监听端口 (建议绑定回环，防止成为公网开放解析器)
+# dnsListen: "127.0.0.1:1053"      # 本地 DNS 监听端口
+# dnsAllowNonLoopback: false       # 安全铁律(INV-8)：非回环监听会成为对外开放 DNS 解析器，需显式开启
+#                                  # 软路由对外提供 DNS 时才设为 true（如 dnsListen: "0.0.0.0:53"）
+# allowPrivateDns: false           # 是否允许私网地址作为解析器（企业内网 DNS 需配合下方网段信任）
+# trustedPrivateCidrs: []          # 显式信任的私网解析器网段，例如 ["192.168.1.0/24"]
+# trustedHostDomains: []           # 允许被 hosts 覆盖的受保护域名例外清单（谨慎使用）
+# allowInternalHosts: false        # 是否允许 hosts 指向内网地址（TUN 场景下等同开放内网探测）
 # dnsDefault:                      # 基础引导 DNS (必须为纯 IP，破除解析死锁)
 #   - "223.5.5.5"
 #   - "119.29.29.29"
 #   - "1.1.1.1"
-# dnsDirect:                       # 直连域名 DoH
+# dnsDirect:                       # 直连域名 DoH（用户声明属可信来源：#proxy/#h3 等修饰符保留，
+#                                  # #skip-cert-verify 等致命修饰符仍会被剥离并审计）
 #   - "https://223.5.5.5/dns-query"
 #   - "https://120.53.53.53/dns-query"
 # dnsProxy:                        # 海外代理域名 DoH
@@ -330,6 +348,11 @@ testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，
 # dnsServer:                       # 节点服务器域名专用解析 DNS
 #   - "223.5.5.5"
 #   - "119.29.29.29"
+# assetClosure: "standard"         # 订阅节点专属 DNS 依赖继承强度：
+#                                  #   standard 按节点域名继承（依赖受保护域名清单兜底）
+#                                  #   strict   仅继承 assetDomainAllowlist 中声明的域名（推荐给高安全需求）
+#                                  #   off      完全不继承订阅的 hosts / nameserver-policy / fake-ip-filter
+# assetDomainAllowlist: []         # assetClosure=strict 时允许继承的域名，例如 ["myairport.com"]
 
 
 # ─────────────────────────────────────────────────────────────────────

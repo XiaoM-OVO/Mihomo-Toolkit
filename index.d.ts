@@ -236,6 +236,8 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   fetchStaleTtl?: number;
   /** 多订阅到期时间聚合策略：min (临近到期优先预警，默认) | max (最晚到期) | first (首个订阅优先) */
   expireAggregation?: 'min' | 'max' | 'first';
+  /** 请求与资源配额（服务端/常驻模式主要用于防御滥用） */
+  security?: RequestLimits;
 
   // 🔤 简繁中文转换
   /** 是否开启简繁中文全链路转换（需 opencc-js 依赖） */
@@ -248,10 +250,23 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   // 📡 DNS 策略与安全沙箱
   /** DNS 覆写总开关 */
   overwriteDns?: boolean;
-  /** DNS 覆写合并模式：secure (权威基准) | merge (补缺合并，自动继承节点专属依赖) */
+  /**
+   * @deprecated 保留字段但**尚未实现**：生产 DNS 装配固定为权威覆写（等价 secure）。
+   * 节点专属 DoH/Hosts 依赖由资产闭包机制（assetClosure）处理，不依赖本开关。
+   */
   dnsMergeMode?: 'secure' | 'merge';
   /** DNS 本地监听地址与端口（默认 127.0.0.1:1053） */
   dnsListen?: string;
+  /**
+   * 是否允许 dns.listen 绑定非回环地址（默认 false）。
+   * 安全铁律 INV-8：非回环监听会让内核对外提供开放 DNS 解析服务；
+   * 仅软路由等确需对外提供 DNS 的场景才应显式开启。
+   */
+  dnsAllowNonLoopback?: boolean;
+  /** 是否允许私网/保留地址作为解析器（默认 false，需配合 trustedPrivateCidrs 显式信任） */
+  allowPrivateDns?: boolean;
+  /** 显式信任的私网解析器网段，例如 ["192.168.1.0/24"] */
+  trustedPrivateCidrs?: string[];
   /** 基础引导 DNS（纯 IP 格式，防死锁） */
   dnsDefault?: string[];
   /** 直连域名 DoH */
@@ -260,12 +275,26 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   dnsProxy?: string[];
   /** 节点域名专用直连解析器（纯 IP 格式，直连无死锁） */
   dnsServer?: string[];
-  /** 自定义静态 Hosts 映射（高危公共资产防篡改保护） */
+  /** 自定义静态 Hosts 映射（受保护域名与内网重定向默认被拒绝） */
   hosts?: Record<string, string | string[]>;
-  /** 自定义 Nameserver Policy 分流映射 */
+  /** 允许 hosts 豁免受保护域名清单的域名（如 "my-internal-cdn.com"） */
+  trustedHostDomains?: string[];
+  /** 是否允许 hosts 指向内网/保留地址（默认 false） */
+  allowInternalHosts?: boolean;
+  /** 自定义 Nameserver Policy 分流映射（保留键 rule-set:cn-domain / rule-set:non-cn 不可覆盖） */
   nameserverPolicy?: Record<string, string | string[]>;
   /** 自定义 Fake-IP 过滤名单 */
   fakeIpFilter?: string[];
+
+  // 🔗 节点资产闭包强度
+  /**
+   * 订阅声明的节点专属 DNS 依赖（Hosts / Nameserver-Policy / Fake-IP-Filter）继承强度：
+   * standard (默认，按节点域名继承) | strict (仅继承 assetDomainAllowlist) | off (完全不继承)。
+   * 注意：节点 server 字段由订阅控制，「自己的节点域名」可被伪造，故标准模式依赖受保护域名清单兜底。
+   */
+  assetClosure?: 'standard' | 'strict' | 'off';
+  /** strict 模式下允许被继承的域名列表 */
+  assetDomainAllowlist?: string[];
 
   // ⚠️ 已废弃开关（智能节点资产保活沙箱已自动接管，宿主控制面保持纯净）
   /** @deprecated 已废弃。系统已自动启用「智能节点资产依赖保活沙箱」，既保活节点专属 DNS/Hosts，又杜绝控制面夺权污染 */
@@ -354,6 +383,11 @@ export interface BuildResult {
   meta?: PureMeta;
   /** 解析后的原生 JavaScript 配置对象 */
   config?: Record<string, any>;
+  /**
+   * config 交付模式下，对最终 DNS 块执行的 INV 不变式自检结果（无违规时为空数组）。
+   * 违反项不会阻断交付，但会同步打印告警，便于 CI 断言与问题定位。
+   */
+  invariantViolations?: Array<{ id: string; detail: string }>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,6 +423,83 @@ export function redactUrl(url: string): string;
  * @param urlString 待校验的 URL
  */
 export function isAllowedUrl(urlString: string): boolean;
+
+/**
+ * 请求与资源配额（全部为可选，未配置项使用内置默认值）
+ */
+export interface RequestLimits {
+  /** 单次请求允许的最大订阅 URL 数（默认 20） */
+  maxSubscriptionUrls?: number;
+  /** ?config= 远程配置最大字节数（默认 1MB） */
+  maxRemoteConfigBytes?: number;
+  /** 单个订阅响应体最大字节数，流式截断（默认 8MB） */
+  maxSubscriptionBytes?: number;
+  /** 单次构建允许的最大节点总数（默认 5000） */
+  maxTotalNodes?: number;
+  /** 单个订阅最多允许的节点数（默认 3000） */
+  perSubscriptionMaxNodes?: number;
+}
+
+/**
+ * 安全 HTTP 抓取选项
+ */
+export interface SafeFetchOptions {
+  /** 最大重定向跳数（默认 5，每一跳都会重新做 SSRF 校验） */
+  maxRedirects?: number;
+  /** 整体超时毫秒数（默认 15000） */
+  timeoutMs?: number;
+  /** 日志中是否展示完整 URL（默认 false，仅保留协议与主机） */
+  showFullUrl?: boolean;
+  /** 本地回环代理地址（只允许 127.0.0.1 / localhost / ::1） */
+  proxyUrl?: string;
+  /** 响应体字节上限，超出即中止（0 表示不限制） */
+  maxBytes?: number;
+}
+
+export interface SafeFetchResult {
+  text: string;
+  response: any;
+  finalUrl: string;
+}
+
+/**
+ * 带 SSRF 防护、超时、限长与手动重定向校验的文本抓取
+ */
+export function safeFetchText(url: string, options?: SafeFetchOptions): Promise<SafeFetchResult>;
+
+/**
+ * 深度 SSRF 校验：协议白名单、私网/回环/CGNAT/云元数据与 DNS 解析结果拦截
+ */
+export function validateUrlSsrf(urlString: string): Promise<true>;
+
+/**
+ * 校验请求与资源配额，返回 null 表示通过
+ */
+export function validateRequestLimits(input: {
+  subscriptionUrls?: string[];
+  remoteConfigSize?: number;
+  totalNodes?: number;
+  perSubCounts?: Record<string, number>;
+  limits?: RequestLimits;
+}): Error | null;
+
+/**
+ * 不可信配置中被禁止的字段清单（能力剥夺名单）
+ */
+export const REMOTE_CONFIG_FORBIDDEN_KEYS: string[];
+
+/**
+ * 不可信远程配置加固：剥夺其触碰本机资源与改写 DNS 控制面的能力。
+ *
+ * `buildProfile` 的 userConfig 参数按契约视为**可信**输入；若配置来自网络或他人分享
+ * （如服务端 `?config=`），必须先经本函数降级，`ok=false` 时应整体拒绝该配置。
+ */
+export function hardenRemoteConfig(rawConfig: Record<string, any>): {
+  ok: boolean;
+  reason?: string;
+  config: Record<string, any>;
+  strippedKeys: string[];
+};
 
 /**
  * 解析各种格式的订阅内容（Base64, Clash YAML, 多行 URI 等）
