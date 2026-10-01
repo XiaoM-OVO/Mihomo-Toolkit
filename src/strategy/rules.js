@@ -4,6 +4,8 @@
  * 根据开启的服务列表（AI、流媒体、社交、游戏、系统服务等）生成 Mihomo 路由规则与远端规则集配置。
  */
 
+const { FIELDS_BY_KEY } = require('../data');
+
 function dedupe(arr) {
   return [...new Set(arr)];
 }
@@ -180,9 +182,10 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   }
 
   // 进程防漏与下载软件规则
-  const procDirectWin = userConfig.processDirectWin || ['qBittorrent', 'Thunder', 'BitComet', 'uTorrent', 'aria2c'];
-  const procDirectMac = userConfig.processDirectMac || ['Thunder', 'BitComet', 'uTorrent', 'qbittorrent', 'aria2c', 'transmission-daemon'];
-  const procDirectLin = userConfig.processDirectLin || ['qbittorrent', 'aria2c', 'transmission-daemon'];
+  // 默认名单以只读数据层的字段注册表为单一来源，避免此处再抄一份导致漂移
+  const procDirectWin = userConfig.processDirectWin || FIELDS_BY_KEY.processDirectWin.default;
+  const procDirectMac = userConfig.processDirectMac || FIELDS_BY_KEY.processDirectMac.default;
+  const procDirectLin = userConfig.processDirectLin || FIELDS_BY_KEY.processDirectLin.default;
 
   if (userConfig.enableProcessDirect) {
     if (isWin) routingRules.push(...procDirectWin.map(p => `PROCESS-NAME,${p}.exe,DIRECT`));
@@ -193,9 +196,9 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     routingRules.push('RULE-SET,bt-trackers-pt,下载策略', 'RULE-SET,bt-trackers-public,下载策略');
   }
 
-  const procProxyWin = userConfig.processProxyWin || ['IDMan', 'fdm'];
-  const procProxyMac = userConfig.processProxyMac || ['fdm'];
-  const procProxyLin = userConfig.processProxyLin || [];
+  const procProxyWin = userConfig.processProxyWin || FIELDS_BY_KEY.processProxyWin.default;
+  const procProxyMac = userConfig.processProxyMac || FIELDS_BY_KEY.processProxyMac.default;
+  const procProxyLin = userConfig.processProxyLin || FIELDS_BY_KEY.processProxyLin.default;
   if (isWin) routingRules.push(...procProxyWin.map(p => `PROCESS-NAME,${p}.exe,下载策略`));
   if (isMac) routingRules.push(...procProxyMac.map(p => `PROCESS-NAME,${p},下载策略`));
   if (isLin) routingRules.push(...procProxyLin.map(p => `PROCESS-NAME,${p},下载策略`));

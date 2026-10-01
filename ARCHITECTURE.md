@@ -55,6 +55,41 @@
 这样切分的直接收益：安全基线与「危险的定义」不再参与 `Object.assign(DEFAULT_CONFIG, userConfig)` 的合并，
 因此**不存在「把受保护域名清单写进配置就被远程链接摘掉」这类结构性风险**。
 
+### 📏 配置面设计约束（四条尺子）
+
+任何新增配置项、新增配置文件、新增文档字段，都先过这四条：
+
+1. **唯一入口**：用户只需要认识 `config.yaml` 一个文件。需要拆的时候，用**通用的 `include`** 挂载片段，
+   片段与主文件共用**同一份 schema**，不额外发明「层」的概念、也不给片段起专属文件名。
+   先例：nginx `include` / git `include.path` / systemd drop-in / ESLint `extends` / 以及 **mihomo 自己的 `rule-providers`**。
+   *反面教材：为一个新功能单独发明 `xxxFile` 字段并赋予它一层新的语义身份——那会让「定义有什么」这件事出现第二个真相源。*
+2. **不自创词汇**：能从 mihomo 原生字段名直接透传的（`type` / `tolerance` / `interval` / `icon` / `behavior`），不要再起别名。
+   判据很硬：**如果一个组的定义比直接写 mihomo 的 group 还长，这层就是负价值。**
+3. **文档即真相**：`config.example.yaml` 与 `index.d.ts` 只能是**已实现字段的投影**，
+   不得承诺任何尚未实现的能力。新增字段必须先在 `src/data/field-registry.js` 登记，再写文档与示例；
+   反之，删掉一个实现前，先把文档里的承诺删掉。
+4. **基线只读且只增不减**：安全基线归 `src/data/`，用户只能在基线之上追加，永不能削减或替换。
+
+> 落实状态：第 4 条由 `test/data-baseline.test.js` 强制；**第 1/2/3 条由 `test/config-surface.test.js` 强制**——
+> 该套件会静态扫描 `src` 的字段读取、`config.example.yaml` 的键与 `index.d.ts` 的配置接口，
+> 任何「隐形字段」「空承诺」「类型缺口」都会直接让测试失败。
+
+### 📎 外挂配置文件（`include` 机制的前身）
+
+目前唯一的外挂入口是 `servicesConfigFile`（可写 `servicesConfig` 别名），
+其装载逻辑集中在 [`src/config/mounts.js`](src/config/mounts.js)。四条语义已经定型，
+将来泛化成 `include: [...]` 时直接复用：
+
+| 语义 | 行为 | 为什么 |
+| :--- | :--- | :--- |
+| **路径基准** | 相对路径一律相对**配置文件所在目录**，在读取配置的现场转成绝对路径 | 旧实现按 `process.cwd()` 解析，换个目录启动（systemd / 定时任务）即静默失效 |
+| **失败姿态** | 文件缺失 / 扩展名不支持 / 解析失败 → **显式抛错** | 旧实现静默返回 `{}`，用户只会看到「自定义服务凭空消失」 |
+| **热更新** | `.js` / `.cjs` 装载前清理 `require` 缓存 | 否则长驻服务永远读不到 `.js` 挂载文件的改动 |
+| **缓存参与** | 构建缓存键包含挂载文件的**内容摘要**（sha256） | 旧实现键里只有路径字符串，改文件在 `cacheTtl` 内不生效 |
+
+> 路线图：把它泛化为 `config.yaml` 里的 `include: ["./a.yaml", "./b.yaml"]`——
+> 片段与主文件**同一份 schema**，不额外发明配置文件层级（见上表第 1 条约束）。
+
 ### 🛡️ 架构红线 (Non-negotiable Rules)
 
 1. **单向依赖 (Unidirectional Flow)**：
@@ -64,7 +99,7 @@
      不得引用 `fs` / `http` / `net` / `process.env`（由 `test/data-baseline.test.js` 的分层红线用例强制）。
 2. **纯计算隔离 (Pure Core Isolation)**：
    * `src/core/` 与 `src/strategy/` 内**严禁包含任何网络请求或磁盘读写**，必须是确定性的纯函数（相同的输入数据与配置，必须输出严格相同的结构）。
-   * 所有的网络交互与文件读取，只能存在于 `src/io/` 或最外层的 `src/targets/`。
+   * 所有的网络交互与文件读取，只能存在于 `src/io/`（外部世界边界）、`src/config/`（配置装载，`mounts.js` 是唯一的外挂文件读取点）或最外层的 `src/targets/`。
 3. **平台中立性 (Universal Compatibility)**：
    * 核心流水线不依赖特定宿主环境变量（避免在核心层直接读取 `process.argv` 或 Node 原生专属 C++ 模块），以便可移植至浏览器控制台、脚本沙箱及轻量运行时。
 
@@ -270,10 +305,10 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── field-registry.js     # 字段注册表 SSOT：字段名 / 默认值 / 类型 / 合并语义 / 信任级
 │       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                         # 🧪 自动化测试套件 (23 个测试套件，199 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (25 个测试文件，209 个全绿用例)
 │                                 #    其中 security-delivery-contract / dns-invariants /
-│                                 #    server-security / security-sanitizer / data-baseline
-│                                 #    为安全回归套件
+│                                 #    server-security / security-sanitizer / data-baseline /
+│                                 #    config-surface 为安全与契约回归套件
 ├── config.example.yaml           # 极简扁平化配置模板
 ├── index.d.ts                    # 完整 TypeScript 类型契约声明
 ├── package.json                  # 项目依赖与多命令配置
@@ -352,11 +387,14 @@ E:\CODE\mihomo-toolkit-next\
 ## 🛡️ 六、 开发质量守则
 
 任何针对本工程的 PR 或重构，必须满足以下五项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 199 个测试必须 100% 通过；
+1. **测试不破**：改动后执行 `npm test`，全量 209 个测试必须 100% 通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
 3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用；
 4. **交付契约不破**：`config` 交付形态的产物顶层键必须全部落在 `TOOLKIT_OUTPUT_KEYS` 白名单内。任何新增顶层字段都必须先登记进白名单，并补一条 `test/security-delivery-contract.test.js` 断言；
 5. **安全回归不可删**：`security-delivery-contract` / `dns-invariants` / `server-security` / `security-sanitizer` / `ssrf` / `data-baseline` 六个套件是历史漏洞与安全姿态的防复发护栏，只允许加强，不允许弱化或删除；修复安全问题时必须同时补一条能复现原漏洞的用例。
+6. **文档不吹牛**：文档、类型声明与配置示例里出现的每一个配置字段，都必须能在 `src/` 里找到**读取它的代码**。
+   禁止出现「文档承诺了、代码里不存在」的字段；也禁止出现「代码在读、任何地方都查不到」的隐形字段。
+   两者都是历史遗留问题（见 §七 残余风险），新增内容不得重蹈。
 
 ---
 
@@ -381,3 +419,14 @@ E:\CODE\mihomo-toolkit-next\
 3. **`?config=` 能力剥夺为黑名单式**：未来内核新增的控制面字段不会自动被剥夺；公开部署应使用 `enableUrlParams: false` 或强制 `authToken`。
 4. **`planResolverChain` / `mergeSubscriptionConfigs` 尚未接线**：两者有完整单测但不在主流程中，请勿据其推断生产行为。
 5. **构建缓存为 TTL 语义**（`enableCache` / `cacheTtl`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。仍未覆盖的是**订阅远端内容**的更新：TTL（默认 300s）内机场改动节点，缓存会继续复用旧快照，需要实时性请下调 `cacheTtl` 或使用 `noCache`。
+6. **配置面已完成一轮「字段清账」**（本轮）：
+   * 原 7 个**隐形字段**（`geositeRepo` / `geoipRepo` / `devServices` / `processDirectMac|Lin` / `processProxyMac|Lin`）
+     与 4 个节点裂变字段已登记进注册表，并补齐 `index.d.ts` 类型与示例说明；
+   * 原 20 个**空承诺**（`blockKeywords` / `blockServers` / `serverHost` / `enableIpEnrich` 等 7 个 ipEnrich 字段 /
+     `enableTlsOptimizations` / `customProxyGroups` / `dnsMergeMode` / `humanReport` …）已从文档与类型中**撤回**，
+     不再存在于任何契约中（将来若要实现，按新字段重新登记）；
+   * 注册表从 83 个字段扩到 124 个，`index.d.ts` 覆盖率达到 100%；
+   * 三道防线已自动化：反隐形 / 反空承诺 / 反漂移（见 `test/config-surface.test.js`）。
+   * **仍然存在的能力缺口（非缺陷，属路线图）**：
+     * 服务需同时写进 `customServices` 与激活列表（`aiServices` 等）才生效，只写一处会静默不激活；
+     * **无法新建自定义策略组**——`customNodeGroups` 只能把节点塞进已有组，自建组需等声明式组模型（2.x 路线图）。

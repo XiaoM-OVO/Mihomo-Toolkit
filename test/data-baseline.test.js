@@ -58,15 +58,30 @@ const LEGACY_REMOTE_DENIED = [
 
 test('📊 字段注册表 — 默认值 golden 基线与注册表一一对应', () => {
   // 1. 旧字段的默认值必须逐项一字不差（默认值即安全姿态，改动必须显式体现在 git diff 里）
+  //    刻意移除的字段单独列出：撤回一个无效字段同样是必须显式承认的改动
+  const REMOVED_BY_DESIGN = ['dnsMergeMode'];
   for (const [key, expected] of Object.entries(GOLDEN)) {
+    if (REMOVED_BY_DESIGN.includes(key)) {
+      assert.ok(!(key in DEFAULT_CONFIG), `${key} 应已被移除（无效字段撤回）`);
+      continue;
+    }
     assert.deepStrictEqual(DEFAULT_CONFIG[key], expected, `默认值 ${key} 与 golden 基线不一致`);
   }
-  // 2. 本次重构刻意新增的两个字段之外，不得凭空多出字段
+  // 2. 除刻意新增的字段外，不得凭空多出字段
   const goldenKeys = new Set(Object.keys(GOLDEN));
   const added = Object.keys(DEFAULT_CONFIG).filter(k => !goldenKeys.has(k));
   assert.deepStrictEqual(
     added.sort(),
-    ['exemptGroups', 'protectedDomains'],
+    [
+      // 只读基线可追加的两个安全开关
+      'exemptGroups', 'protectedDomains',
+      // 规则集/服务来源、节点裂变与进程分流名单：
+      // 原为「代码在读、任何地方都查不到」的隐形字段，P0 清账时登记
+      'devServices', 'geoipRepo', 'geositeRepo',
+      'enableFission', 'fissionStack', 'fissionMaxNodes', 'fissionExcludeKeywords',
+      'processDirectLin', 'processDirectMac', 'processDirectWin',
+      'processProxyLin', 'processProxyMac', 'processProxyWin'
+    ].sort(),
     '出现了未登记的默认字段：新增字段必须先在 field-registry.js 声明'
   );
 });
@@ -78,8 +93,16 @@ test('📊 字段注册表 — 声明与默认配置双向无孤儿', () => {
     registryKeys.length,
     '注册表存在重复 key'
   );
-  for (const key of registryKeys) {
-    assert.ok(key in DEFAULT_CONFIG, `注册表字段 ${key} 未派生进 DEFAULT_CONFIG`);
+  for (const field of FIELDS) {
+    if (field.default === undefined) {
+      // 无出厂默认值的已登记字段：代码内有兜底，不得混入 DEFAULT_CONFIG
+      assert.ok(
+        !(field.key in DEFAULT_CONFIG),
+        `无默认值字段 ${field.key} 不应出现在 DEFAULT_CONFIG`
+      );
+    } else {
+      assert.ok(field.key in DEFAULT_CONFIG, `注册表字段 ${field.key} 未派生进 DEFAULT_CONFIG`);
+    }
   }
   for (const key of Object.keys(DEFAULT_CONFIG)) {
     assert.ok(registryKeys.includes(key), `DEFAULT_CONFIG 字段 ${key} 未在注册表登记`);

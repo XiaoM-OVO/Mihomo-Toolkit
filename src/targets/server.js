@@ -15,6 +15,7 @@ const { safeFetchText } = require('../io/fetcher');
 const { isAllowedUrl, redactUrl } = require('../io/ssrf');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { hardenRemoteConfig } = require('../core/security/remote-config');
+const { absolutizeMountPaths } = require('../config/mounts');
 const pkg = require('../../package.json');
 
 /** 回环地址判定（仅这些地址可视为「本机可信接入」） */
@@ -43,16 +44,33 @@ function startServer(options = {}) {
   const HOST = options.host || process.env.HOST || '127.0.0.1';
   const CONFIG_PATH = options.configPath || process.env.CONFIG_PATH || path.resolve(process.cwd(), 'config.yaml');
 
+  /**
+   * 读取本地配置文件。
+   *
+   * 两点与旧行为不同：
+   *   1. 外挂配置路径（servicesConfigFile 等）以**配置文件所在目录**为基准转绝对路径，
+   *      否则服务从别的工作目录启动时相对路径会静默失效；
+   *   2. 解析失败**抛出**，由调用方决定是致命（启动）还是保住上一份有效配置（热重载），
+   *      不再用 `catch (e) {}` 把错误吞掉。
+   */
+  function readLocalConfig() {
+    if (!fs.existsSync(CONFIG_PATH)) return {};
+    const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
+    const parsed = (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml'))
+      ? (yaml.parse(content) || {})
+      : JSON.parse(content);
+    return absolutizeMountPaths(parsed, path.dirname(CONFIG_PATH));
+  }
+
   let localConfig = {};
   if (fs.existsSync(CONFIG_PATH)) {
     try {
-      const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
-      if (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml')) {
-        localConfig = yaml.parse(content) || {};
-      } else {
-        localConfig = JSON.parse(content);
-      }
-    } catch (e) {}
+      localConfig = readLocalConfig();
+    } catch (e) {
+      // 启动阶段配置即损坏：fail-closed，直接拒绝带病启动
+      console.error(`[Server] 配置文件无法解析 ${CONFIG_PATH}: ${e.message}`);
+      throw e;
+    }
   }
 
   const serverLogger = (options.logger && typeof options.logger.child === 'function')
@@ -93,13 +111,12 @@ function startServer(options = {}) {
       }
       activeBuilds++;
       try {
-        // 允许实时读取配置文件热重载
+        // 允许实时读取配置文件热重载；解析失败时保住上一份有效配置并显式告警
         if (fs.existsSync(CONFIG_PATH)) {
-          const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
-          if (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml')) {
-            localConfig = yaml.parse(content) || {};
-          } else {
-            localConfig = JSON.parse(content);
+          try {
+            localConfig = readLocalConfig();
+          } catch (e) {
+            serverLogger.error(`配置文件热重载失败，继续使用上一份有效配置: ${e.message}`);
           }
         }
 

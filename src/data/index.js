@@ -34,6 +34,7 @@ const {
   FIELDS_BY_KEY,
   ALIAS_REMOTE_DENIED_FIELDS,
   ADDITIVE_FIELDS,
+  DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,
   buildDefaultConfig
 } = require('./field-registry');
@@ -44,6 +45,7 @@ module.exports = {
   FIELDS_BY_KEY,
   ALIAS_REMOTE_DENIED_FIELDS,
   ADDITIVE_FIELDS,
+  DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,
   buildDefaultConfig,
   // 只读安全基线
