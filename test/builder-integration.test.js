@@ -18,8 +18,7 @@ describe('🔨 端到端构建流程集成测试模块', () => {
       minorNodeThreshold: 1, // 允许单节点独立建组
       enableAI: true,
       enableStreaming: true,
-      enableGame: true,
-      dnsMergeMode: 'secure'
+      enableGame: true
     };
 
     const { yamlStr } = await buildProfile(userConfig, { type: 'config', production: true });

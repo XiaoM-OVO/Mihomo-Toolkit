@@ -226,32 +226,125 @@ const FIELDS = [
     group: '安全防漏与内核覆写', doc: '覆写 TUN 配置' },
   { key: 'overwriteDns', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '安全防漏与内核覆写', doc: '覆写 DNS 总开关' },
-  { key: 'dnsMergeMode', type: 'string', default: 'secure', merge: 'override', trust: 'any',
-    group: '安全防漏与内核覆写', doc: '保留字段：生产实现固定为权威覆写（等价 secure）' },
   { key: 'overwriteSniffer', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '安全防漏与内核覆写', doc: '覆写 Sniffer 配置' },
   { key: 'enableCoreOptimize', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '安全防漏与内核覆写', doc: '覆写核心内核优化' }
+    group: '安全防漏与内核覆写', doc: '覆写核心内核优化' },
+
+  // ── 【9. 节点裂变】（代码以 `config.enableFission` 形式读取，此前同样未登记） ──
+  { key: 'enableFission', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '节点裂变', doc: '是否开启单域名多 IP 裂变增殖' },
+  { key: 'fissionStack', type: 'string', default: 'all', merge: 'override', trust: 'any',
+    group: '节点裂变', doc: '裂变协议栈偏好: all(双栈) | v4 | v6' },
+  { key: 'fissionMaxNodes', type: 'number', default: 5, merge: 'override', trust: 'any',
+    group: '节点裂变', doc: '单域名最大裂变节点数（代码实际兜底值为 5，历史文档误写为 4）' },
+  { key: 'fissionExcludeKeywords', type: 'string[]', default: [], merge: 'override', trust: 'any',
+    group: '节点裂变', doc: '包含这些关键词的节点跳过裂变' },
+
+  // ── 【10. 规则集与图标仓库来源】（此前代码读取但从未登记，用户无从发现） ──────
+  { key: 'geositeRepo', type: 'string', default: 'MetaCubeX/meta-rules-dat@meta/geo/geosite',
+    merge: 'override', trust: 'any', group: '规则集与图标仓库来源',
+    doc: 'geosite 域名规则集仓库路径（配合 ruleProviderCDN 组成完整 URL）' },
+  { key: 'geoipRepo', type: 'string', default: 'MetaCubeX/meta-rules-dat@meta/geo/geoip',
+    merge: 'override', trust: 'any', group: '规则集与图标仓库来源',
+    doc: 'geoip 网段规则集仓库路径（配合 ruleProviderCDN 组成完整 URL）' },
+  { key: 'devServices', type: 'string[]', default: ['github', 'scholar'],
+    merge: 'override', trust: 'any', group: '规则集与图标仓库来源',
+    doc: 'dev 分类下启用的服务 key 列表（此前只能改代码，无法从配置控制）' },
+
+  // ── 【10. 进程分流名单】（此前代码读取但从未登记） ────────────────────────
+  { key: 'processDirectWin', type: 'string[]',
+    default: ['qBittorrent', 'Thunder', 'BitComet', 'uTorrent', 'aria2c'],
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Windows 强制直连进程名单' },
+  { key: 'processDirectMac', type: 'string[]',
+    default: ['Thunder', 'BitComet', 'uTorrent', 'qbittorrent', 'aria2c', 'transmission-daemon'],
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'macOS 强制直连进程名单' },
+  { key: 'processDirectLin', type: 'string[]',
+    default: ['qbittorrent', 'aria2c', 'transmission-daemon'],
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Linux 强制直连进程名单' },
+  { key: 'processProxyWin', type: 'string[]', default: ['IDMan', 'fdm'],
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Windows 强制走下载策略的进程名单' },
+  { key: 'processProxyMac', type: 'string[]', default: ['fdm'],
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'macOS 强制走下载策略的进程名单' },
+  { key: 'processProxyLin', type: 'string[]', default: [],
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Linux 强制走下载策略的进程名单' },
+
+  // ── 【11. 订阅源与拉取设置】（无出厂默认值：由代码内兜底，此处仅登记契约） ──
+  // 说明：`default: undefined` 的字段不会进入 DEFAULT_CONFIG（保持出厂配置面不变），
+  // 但它们**被登记**了，因此会参与「代码读取 ⊆ 注册表」的一致性校验与远程信任级派生。
+  { key: 'subscriptions', type: 'object[]', merge: 'override', trust: 'any',
+    group: '订阅源与拉取设置', doc: '订阅源列表（url/uri/tag/master/enabled/proxy/retry/resetDay…）' },
+  { key: 'fetchProxyPort', type: 'number', merge: 'override', trust: 'local',
+    group: '订阅源与拉取设置', doc: '抓取代理端口（可把抓取指向本机任意端口，仅可信来源可写）' },
+  { key: 'fetchProxyStrategy', type: 'string', merge: 'override', trust: 'local',
+    group: '订阅源与拉取设置', doc: '抓取出口策略: direct | proxy | auto' },
+  { key: 'fetchRetry', type: 'number', merge: 'override', trust: 'any',
+    group: '订阅源与拉取设置', doc: '拉取失败重试次数（代码内兜底 2）' },
+  { key: 'fetchTimeout', type: 'number', merge: 'override', trust: 'any',
+    group: '订阅源与拉取设置', doc: '单次拉取超时秒数（代码内兜底 15）' },
+  { key: 'fetchStaleTtl', type: 'number', merge: 'override', trust: 'any',
+    group: '订阅源与拉取设置', doc: '容灾复用上次成功缓存的小时数（代码内兜底 24）' },
+  { key: 'expireAggregation', type: 'string', merge: 'override', trust: 'any',
+    group: '订阅源与拉取设置', doc: '多订阅到期聚合策略: min | max | first' },
+
+  // ── 【12. 运行模式与缓存】 ───────────────────────────────────────────────
+  { key: 'outputMode', type: 'string', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: '交付形态: config | nodes | report（等价于 CLI -t）' },
+  { key: 'type', type: 'string', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: 'outputMode 的兼容别名' },
+  { key: 'output', type: 'string', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: '产物输出路径（等价于 CLI -o）' },
+  { key: 'enableCache', type: 'boolean', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: '是否启用内存构建缓存（默认 true）' },
+  { key: 'cacheTtl', type: 'number', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: '缓存有效秒数（默认 300）' },
+  { key: 'redactLevel', type: 'string', merge: 'override', trust: 'local',
+    group: '运行模式与缓存', doc: '日志脱敏档位: off | partial | full（远程配置不得降级脱敏）' },
+  { key: 'enableChineseConvert', type: 'boolean', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: '简繁智能转换开关' },
+  { key: 'chineseConvertMode', type: 'string', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: '简繁转换方向: s2t | t2s' },
+  { key: 'passthrough', type: 'boolean', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: '已废弃（保留原订阅策略字段的旧开关，当前无效果）' },
+  { key: 'preserveRawConfig', type: 'boolean', merge: 'override', trust: 'any',
+    group: '运行模式与缓存', doc: '已废弃（同上，当前无效果）' },
+
+  // ── 【13. 自定义规则入口】 ───────────────────────────────────────────────
+  { key: 'customRules', type: 'string[]', merge: 'override', trust: 'any',
+    group: '自定义规则入口', doc: '注入到 MATCH 之前的自定义分流规则（优先级最高）' },
+  { key: 'customRuleProviders', type: 'object', merge: 'override', trust: 'any',
+    group: '自定义规则入口', doc: '自定义 Rule-Provider 定义（name → {type, behavior, url…}）' },
+
+  // ── 【14. 安全与资源配额】 ───────────────────────────────────────────────
+  { key: 'security', type: 'object', merge: 'override', trust: 'local',
+    group: '安全与资源配额',
+    doc: '资源配额上限（maxTotalNodes / perSubscriptionMaxNodes / maxSubscriptionBytes…）；' +
+         '标记为 local 是因为流水线会直接读取它，若远程 ?config= 可写即可自我放宽配额、绕过 DoS 防御' },
+  { key: 'servicesConfig', type: 'string', merge: 'override', trust: 'local',
+    group: '安全与资源配额', doc: 'servicesConfigFile 的兼容别名（外挂服务定义文件路径）' },
+  { key: 'hosts', type: 'object', merge: 'override', trust: 'local',
+    group: '安全与资源配额', doc: '静态 hosts 映射（受保护域名与内网重定向默认被拒绝）' },
+  { key: 'nameserverPolicy', type: 'object', merge: 'override', trust: 'local',
+    group: '安全与资源配额', doc: '按域分流解析链（保留键不可被覆盖）' },
+  { key: 'trustedHostDomains', type: 'string[]', merge: 'override', trust: 'local',
+    group: '安全与资源配额', doc: 'hosts 豁免受保护域名的例外清单（可解除基线保护，仅可信来源可写）' },
+  { key: 'allowInternalHosts', type: 'boolean', merge: 'override', trust: 'local',
+    group: '安全与资源配额', doc: '是否允许 hosts 指向内网（等同开放内网探测）' },
+  { key: 'fakeIpFilter', type: 'string[]', merge: 'override', trust: 'local',
+    group: '安全与资源配额', doc: 'fake-ip-filter 追加条目' },
+  { key: 'fakeIpFilterNodes', type: 'string', merge: 'override', trust: 'local',
+    group: '安全与资源配额', doc: '节点防环注入模式: smart | exact | off' }
 ];
 
 /**
- * 别名输入字段：流水线与历史版本接受、但**没有出厂默认值**的字段名。
+ * 别名输入字段：历史上由流水线接受、但没有出厂默认值的字段名。
  *
- * 它们同样承载「触碰本机资源 / 改写 DNS 控制面」的能力，因此必须与注册表中
- * `trust: 'local'` 的字段一同被远程不可信配置剥夺。之所以不在 `FIELDS` 里，
- * 是因为它们不属于「程序声明的默认字段面」，无法从注册表派生默认值。
+ * ⚠️ 已清空：这些字段（`hosts` / `nameserverPolicy` / `fetchProxyPort` …）
+ * 现已作为正式字段登记进 `FIELDS`（`default: undefined`），因此不再需要单独的别名清单。
+ * 保留此常量是为了让「远程剥夺清单 = 注册表 trust:'local'」这一等式在结构上单一来源；
+ * 如确有既无默认值、又无法用 `default: undefined` 表达的字段，再往这里追加。
  */
-const ALIAS_REMOTE_DENIED_FIELDS = [
-  { key: 'servicesConfig', doc: 'servicesConfigFile 的行内别名' },
-  { key: 'fetchProxyPort', doc: '把抓取指向本机任意端口' },
-  { key: 'fetchProxyStrategy', doc: '抓取出口策略（可强制走本机代理）' },
-  { key: 'nameserverPolicy', doc: 'DNS 控制面：按域分流解析链' },
-  { key: 'hosts', doc: 'DNS 控制面：静态 hosts 映射' },
-  { key: 'trustedHostDomains', doc: '受保护域名的豁免清单（可解除基线保护）' },
-  { key: 'allowInternalHosts', doc: '允许 hosts 指向内网（等同开放内网探测）' },
-  { key: 'fakeIpFilter', doc: 'DNS 控制面：fake-ip-filter 注入' },
-  { key: 'fakeIpFilterNodes', doc: 'DNS 控制面：节点防环注入模式' }
-];
+const ALIAS_REMOTE_DENIED_FIELDS = [];
 
 /** 字段名 → 声明 索引 */
 const FIELDS_BY_KEY = Object.freeze(
@@ -260,11 +353,17 @@ const FIELDS_BY_KEY = Object.freeze(
 
 /**
  * 由注册表派生出厂默认配置（保持声明顺序）。
+ *
+ * `default` 为 `undefined` 的字段**不进入** DEFAULT_CONFIG：它们代表「代码内有兜底、
+ * 但没有出厂默认值」的配置项（如 `fetchRetry`）。登记它们是为了让
+ * 「代码读取 ⊆ 注册表」的一致性校验与信任级派生能覆盖到，而不是为了给它们编一个默认值。
+ *
  * @returns {object}
  */
 function buildDefaultConfig() {
   const config = {};
   for (const field of FIELDS) {
+    if (field.default === undefined) continue;
     const value = field.merge === 'additive' && field.baseline
       ? []                       // 基线不落到 defaults：它由 data 层持有，合并时注入
       : field.default;
@@ -272,6 +371,9 @@ function buildDefaultConfig() {
   }
   return config;
 }
+
+/** 无出厂默认值的已登记字段（用户可写、代码内兜底） */
+const DEFAULTLESS_FIELDS = Object.freeze(FIELDS.filter(f => f.default === undefined));
 
 /** 需要「基线 ∪ 用户值」合并的字段（基线永远保留） */
 const ADDITIVE_FIELDS = Object.freeze(FIELDS.filter(f => f.merge === 'additive'));
@@ -290,6 +392,7 @@ module.exports = {
   FIELDS_BY_KEY,
   ALIAS_REMOTE_DENIED_FIELDS,
   ADDITIVE_FIELDS,
+  DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,
   buildDefaultConfig
 };

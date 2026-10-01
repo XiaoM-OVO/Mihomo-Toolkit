@@ -73,13 +73,14 @@ output: "./dist/config.yaml"    # 默认输出路径
 #     DNS 控制面与本机资源类字段会被剥夺。
 #   • 产物顶层键受「交付契约白名单」约束：订阅携带的 external-controller / secret /
 #     script / tunnels / hosts 等字段一律不会进入 config 产物。
-# serverHost: "127.0.0.1"          # 监听地址 (等价于环境变量 HOST)
-# enableCache: true                # 是否启用本地内存缓存（缓存键按配置整体结构化摘要，不同配置不会互相命中）
+# ⚠️ 监听地址不在本文件配置：由环境变量 HOST（或 startServer({host})）控制。
+#    历史模板里的 serverHost 从未被读取，已移除；等价做法：HOST=0.0.0.0 node src/targets/server.js
+# enableCache: true                # 启用本地内存缓存（键含配置整体结构摘要 + 外挂文件内容摘要）
 # cacheTtl: 300                    # 缓存有效时间（秒）；订阅远端内容更新仅在 TTL 到期后生效
 # authToken: "your-secret-token"   # 服务端访问鉴权 Token (?token=xxx 或 Authorization 头)
 # enableUrlParams: true            # 是否允许前端通过 ?url= / ?config= 动态传参
 # maxConcurrentBuilds: 8           # 并发构建上限，超出返回 503
-# security:
+# security:                        # 资源配额：声明为「本机可信字段」，?config= 远程配置无法写入
 #   maxSubscriptionUrls: 20        # 单次允许的最大订阅 URL 数
 #   maxRemoteConfigBytes: 1048576  # 远程配置最大字节数 (1MB)
 #   maxSubscriptionBytes: 8388608  # 单个订阅响应体最大字节数 (8MB，流式截断)
@@ -106,15 +107,13 @@ enableAirportTag: true             # 多订阅时自动为节点打上机场来�
 # whitelistKeywords:               # 白名单豁免关键词（包含即放行并保留原名）
 #   - "x-ray"
 #   - "自建"
-# blockKeywords: []                # 节点名黑名单关键词（包含即直接剔除）
-# blockServers: []                 # 节点服务器地址黑名单（包含即直接剔除）
 
 
 # ─────────────────────────────────────────────────────────────────────
 # ⑥ 域名多 IP 节点裂变（fission）
 # ─────────────────────────────────────────────────────────────────────
 # enableFission: false             # 开启单域名并发解析为多个 IP 独立实体节点
-# fissionMaxNodes: 4               # 单域名最大裂变节点数
+# fissionMaxNodes: 5               # 单域名最大裂变节点数（代码实际默认值为 5）
 # fissionStack: "all"              # all=双栈 / v4=纯 IPv4 / v6=纯 IPv6
 # fissionExcludeKeywords:          # 包含这些关键词的节点跳过裂变
 #   - "负载均衡"
@@ -206,10 +205,7 @@ streamingServices:
   - bahamut
   - pixiv
   - twitch
-# biliPreferredRegions:            # Bili 港澳台专属优选用组 (默认: 台湾、澳门、香港)
-#   - "🇹🇼 台湾节点"
-#   - "🇲🇴 澳门节点"
-#   - "🇭🇰 香港节点"
+# ⚠️ biliPreferredRegions 已移除：该字段从未被实现（历史文档遗留的空承诺）
 
 # 💬 海外社交平台服务列表 (需开启 enableSocial: true)
 socialServices:
@@ -240,8 +236,15 @@ systemServices:
   - apple
   - google
 
+# 🐱 开发者服务列表 (dev 分类；此前该分类无法从配置控制，只能全开)
+# devServices:
+#   - github
+#   - scholar
+
 # 🧩 动态服务编目扩展（支持行内定义或外部挂载配置文件）
-# servicesConfigFile: "./services.config.js" # 外部服务定义配置文件路径 (支持 .js / .yaml / .json)
+# servicesConfigFile: "./services.config.js" # 外部服务定义文件路径 (支持 .js / .yaml / .json)
+#                                  # ⚠️ 相对路径以「本配置文件所在目录」为基准；文件缺失/格式不支持会直接报错
+#                                  #    （不会像旧版那样静默忽略）；.js 改动无需重启即可生效
 # customServices:
 #   ai:
 #     # 场景 A: 仅覆盖官方内置服务的某些字段（未写的字段如正则、图标、规则集全量继承）
@@ -291,9 +294,13 @@ enableProcessDirect: true          # P2P/BT 强制直连
 #   - BitComet
 #   - uTorrent
 #   - aria2c
-# processProxyWin:                 # Windows 强制走下载策略的工具
+# processDirectMac:                # macOS 强制直连进程名单 (默认: Thunder/BitComet/uTorrent/qbittorrent/aria2c/transmission-daemon)
+# processDirectLin:                # Linux 强制直连进程名单 (默认: qbittorrent/aria2c/transmission-daemon)
+# processProxyWin:                 # Windows 强制走下载策略的工具 (默认: IDMan/fdm)
 #   - IDMan
 #   - fdm
+# processProxyMac: []              # macOS 强制走下载策略的工具 (默认: fdm)
+# processProxyLin: []              # Linux 强制走下载策略的工具 (默认: 空)
 
 # 🎯 自定义路由规则与 Rule-Providers (注入到 MATCH 之前，优先级最高)
 # customRules:
@@ -318,6 +325,9 @@ testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，
 # testURL: "https://cp.cloudflare.com/generate_204"
 # useMRS: true                     # 启用 Mihomo Rule-Set 极速二进制规则集格式 (节省内存)
 # ruleProviderCDN: "https://fastly.jsdelivr.net/gh" # 规则集加速 CDN 前缀
+# geositeRepo: "MetaCubeX/meta-rules-dat@meta/geo/geosite" # geosite 域名规则集仓库路径（与 CDN 前缀拼接）
+# geoipRepo: "MetaCubeX/meta-rules-dat@meta/geo/geoip"     # geoip 网段规则集仓库路径
+#                                  # ↑ 想换成自建/镜像规则集仓库，改这两个即可（此前未文档化但一直可用）
 
 
 # ─────────────────────────────────────────────────────────────────────

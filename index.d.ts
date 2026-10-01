@@ -13,7 +13,6 @@ export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug';
 export type RedactLevel = 'off' | 'partial' | 'full';
 export type ProxyStrategy = 'direct' | 'proxy' | 'auto';
 export type FissionStack = 'all' | 'v4' | 'v6';
-export type IpEnrichMode = 'missing' | 'all';
 export type ChineseConvertMode = 's2t' | 't2s';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,8 +36,6 @@ export interface SubscriptionConfig {
   proxy?: boolean;
   /** 自定义请求头（如 User-Agent、Authorization 等） */
   headers?: Record<string, string>;
-  /** 自定义 User-Agent 字符串 */
-  userAgent?: string;
   /** 订阅解析失败重试次数（覆盖全局 fetchRetry，默认继承全局值） */
   retry?: number;
   /** 每月重置日（1-31），用于自动计算"距离重置剩余 X 天" */
@@ -51,15 +48,6 @@ export interface SubscriptionConfig {
 // 节点清洗模块配置 (pure-nodes)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface CustomRegexRule {
-  /** 规则名称 */
-  name: string;
-  /** 正则表达式字符串或 RegExp 对象 */
-  pattern: string | RegExp;
-  /** 匹配成功后赋予的地区 ID 或标签 */
-  target?: string;
-}
-
 export interface PureConfig {
   /** 是否启用「📊 订阅与状态看板」独立展示策略组（展示流量/到期/重置，不污染主力节点池） */
   enableDashboard?: boolean;
@@ -71,8 +59,6 @@ export interface PureConfig {
   showFeatureIcon?: boolean;
   /** 是否开启节点重命名格式化 */
   enableNodeRename?: boolean;
-  /** 节点重命名模板（如 "{flag} {name} {index}"） */
-  nodeRenamePattern?: string;
   /** 节点重命名模板字符串或自定义命名函数 */
   renameTemplate?: string | ((vars: Record<string, string>, proxy: any) => string);
   /** 允许作为分隔符被自动清理的悬空符号列表 */
@@ -85,44 +71,14 @@ export interface PureConfig {
   enableFission?: boolean;
   /** 裂变协议栈偏好：all (保留所有), v4 (仅IPv4), v6 (仅IPv6) */
   fissionStack?: FissionStack;
-  /** 单个节点最大裂变生成的子节点数量（默认 4） */
+  /** 单个节点最大裂变生成的子节点数量（默认 5） */
   fissionMaxNodes?: number;
   /** 裂变黑名单关键词（包含这些词的节点跳过裂变） */
   fissionExcludeKeywords?: string[];
 
-  // 🔍 IP 检测与地理位置
-  /** 是否开启外部 IP API 补充检测（默认为 false） */
-  enableIpEnrich?: boolean;
-  /** IP 检测模式：missing (仅未知地区), all (所有节点) */
-  ipEnrichMode?: IpEnrichMode;
-  /** IP 检测安全熔断阈值（有效节点数超过此值自动跳过防超时，默认 80） */
-  ipEnrichThreshold?: number;
-  /** IP 检测总体超时时间（毫秒，默认 15000） */
-  ipEnrichTimeout?: number;
-  /** IP API 批量查询批次大小（默认 100） */
-  ipApiBatchSize?: number;
-  /** IP API 批次请求间隔延时（毫秒，防 429 限流，默认 4000） */
-  ipApiBatchDelay?: number;
-  /** 自定义 IP API 端点（默认 http://ip-api.com/batch） */
-  ipApiEndpoint?: string;
-
-  // 🏷️ 特征打标
-  /** 是否开启 IPv6 节点打标识别 */
-  enableIpv6Tag?: boolean;
-  /** 是否开启家宽/住宅 ISP 节点打标识别 */
-  enableResidentialTag?: boolean;
-  /** 是否开启蜂窝/移动网络节点打标识别 */
-  enableCellularTag?: boolean;
-
-  // 🚫 过滤黑白名单
+  // 🚫 节点名白名单
   /** 全局节点名白名单关键词列表（白名单节点不被剔除） */
   whitelistKeywords?: string[];
-  /** 全局节点名黑名单关键词列表（命中一律当作垃圾节点剔除） */
-  blockKeywords?: string[];
-  /** 全局服务器域名/IP黑名单列表 */
-  blockServers?: string[];
-  /** 自定义特征识别正则规则列表 */
-  customRegexRules?: CustomRegexRule[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,31 +92,7 @@ export interface SpecialNodeRule {
   targetName: string;
 }
 
-export interface ProxyGroupConfig {
-  /** 策略组名称 */
-  name: string;
-  /** 策略组类型 (select | url-test | fallback | load-balance) */
-  type: 'select' | 'url-test' | 'fallback' | 'load-balance';
-  /** 测速 URL */
-  url?: string;
-  /** 测速间隔（秒） */
-  interval?: number;
-  /** 包含的节点或子策略组名称列表 */
-  proxies?: string[];
-  /** 包含的 Provider 引用 */
-  use?: string[];
-  /** 容差（毫秒，用于 url-test） */
-  tolerance?: number;
-  /** 负载均衡策略 (consistent-hashing | round-robin) */
-  strategy?: 'consistent-hashing' | 'round-robin';
-  [key: string]: any;
-}
-
 export interface ToolkitConfig {
-  /** 基础模板配置对象（包含 dns, tun, rules 等原生字段） */
-  template?: Record<string, any>;
-  /** 规则集配置 */
-  ruleProviders?: Record<string, any>;
   /** 注入节点分组：关键词 -> 目标应用策略组名称数组 */
   customNodeGroups?: Record<string, string[]>;
   /** 注入节点重命名规则列表 */
@@ -193,8 +125,6 @@ export interface ToolkitConfig {
   isolateExperimental?: boolean;
   /** 是否开启家宽/住宅 IP 节点隔离分组 */
   enableResidential?: boolean;
-  /** 是否为 TLS 节点注入客户端指纹与 TCP 并发优化 */
-  enableTlsOptimizations?: boolean;
   /** 自定义地区分组阈值（节点数达到此值时独立建组，默认 2） */
   minorNodeThreshold?: number;
   /**
@@ -207,8 +137,134 @@ export interface ToolkitConfig {
    * @example ["🏠 家宽优选", "🧪 实验节点"]
    */
   exemptGroups?: string[];
-  /** 自定义附加策略组列表 */
-  customProxyGroups?: ProxyGroupConfig[];
+
+  // ── 以下字段与只读数据层的字段注册表（src/data/field-registry.js）一一对应 ──
+  // 基础全局配置
+  /** 脚本总控：设为 false 则原样输出订阅内容 */
+  enableScript?: boolean;
+  /** 设备类型: windows | mac | linux | all */
+  osType?: string;
+  /** 路由偏好：true(海外代理优先) / false(国内直连优先) */
+  proxyFirst?: boolean;
+  /** 默认代理策略: auto | manual | fallback（特殊: direct / reject） */
+  defaultProxyMode?: string;
+  /** 全局 IPv6：控制 TUN / DNS 及路由（本地无物理 IPv6 请保持 false） */
+  enableIPv6?: boolean;
+  /** 标签提取：订阅合并时自动/手动捕捉标签内容 */
+  enableAirportTag?: boolean;
+  /** 手动指定标签（逗号分隔），为空则自动正则检测 */
+  airportTag?: string;
+  /** 自定义标签提取正则（默认提取首部方括号内容） */
+  airportTagReg?: RegExp;
+
+  // 节点清洗
+  /** 过滤机场自带的原生说明/流量提示伪节点 */
+  removeInfoNodes?: boolean;
+  /** 纯文本广告判定长度阈值（无数字/线路特征且长度超过此值判定为广告） */
+  adTextThreshold?: number;
+  /** 低倍率分流阈值（倍率 <= 此值归入下载策略，设为 0 关闭） */
+  lowMultiThreshold?: number;
+
+  // 策略组建组与 UI 面板
+  /** 地区组行为: url-test | select | fallback */
+  regionGroupType?: 'url-test' | 'select' | 'fallback';
+  /** 地区组是否增加哈希负载均衡策略组 */
+  enableRegionHashLB?: boolean;
+  /** 是否在面板中隐藏「🗑️ 未知识别」组 */
+  hideGarbageGroup?: boolean;
+  /** 策略组图标模式: emoji | icon | both */
+  groupIconMode?: 'emoji' | 'icon' | 'both';
+  /** 在线图标仓库前缀 (Orz-3) */
+  iconRepoOrz?: string;
+  /** 在线图标仓库前缀 (Koolson) */
+  iconRepoKoolson?: string;
+  /** 在线图标仓库前缀 (lige47) */
+  iconRepoLige47?: string;
+
+  // 核心分流开关
+  /** 广告拦截分流 */
+  enableAdBlock?: boolean;
+  /** AI 助手独立分流 */
+  enableAI?: boolean;
+  /** Telegram 独立分流 */
+  enableTelegram?: boolean;
+  /** 流媒体服务分流 */
+  enableStreaming?: boolean;
+  /** 游戏平台分流 */
+  enableGame?: boolean;
+  /** 系统服务分流 */
+  enableSystemServices?: boolean;
+  /** 中国分流独立策略组 */
+  enableDomesticGroup?: boolean;
+
+  // 扩展分流开关
+  /** 独立成组的社交应用（其余合并到「💬 社交平台」） */
+  independentSocial?: string[];
+  /** 激进广告拦截规则集 (anti-AD) */
+  enableAntiAD?: boolean;
+  /** GitHub 极速分流 */
+  enableGitHub?: boolean;
+  /** 学术资源分流 */
+  enableScholar?: boolean;
+  /** 海外社交分流 */
+  enableSocial?: boolean;
+  /** 加密货币分流 */
+  enableCrypto?: boolean;
+  /** 金融支付分流 */
+  enablePayPal?: boolean;
+  /** WebRTC 专项分流 */
+  enableWebRTC?: boolean;
+  /** 家宽节点注入映射：键=地区("all" / "hk" / "us")，值=目标策略组列表 */
+  residentialNodeGroups?: Record<string, string[]>;
+
+  // 网络测速与规则集
+  /** 自动健康检查测速间隔（秒） */
+  testInterval?: number;
+  /** 自动选择组切换延迟容忍度（毫秒，防止频繁颠簸） */
+  testTolerance?: number;
+  /** 是否使用 Mihomo Rule-Set 极速二进制格式 (MRS) */
+  useMRS?: boolean;
+  /** 延迟测速地址 */
+  testURL?: string;
+  /** 规则集 CDN 前缀（与 geositeRepo / geoipRepo 组成完整 URL） */
+  ruleProviderCDN?: string;
+
+  // 规则集与图标仓库来源
+  /** geosite 域名规则集仓库路径（默认 MetaCubeX/meta-rules-dat@meta/geo/geosite） */
+  geositeRepo?: string;
+  /** geoip 网段规则集仓库路径（默认 MetaCubeX/meta-rules-dat@meta/geo/geoip） */
+  geoipRepo?: string;
+  /** dev 分类下启用的服务 key 列表（默认 ["github", "scholar"]） */
+  devServices?: string[];
+
+  // 进程分流名单（P2P 下载软件防封号）
+  /** Windows 强制直连进程名单 */
+  processDirectWin?: string[];
+  /** macOS 强制直连进程名单 */
+  processDirectMac?: string[];
+  /** Linux 强制直连进程名单 */
+  processDirectLin?: string[];
+  /** Windows 强制走下载策略的进程名单 */
+  processProxyWin?: string[];
+  /** macOS 强制走下载策略的进程名单 */
+  processProxyMac?: string[];
+  /** Linux 强制走下载策略的进程名单 */
+  processProxyLin?: string[];
+
+  // 自定义规则入口
+  /** 注入到 MATCH 之前的自定义分流规则（优先级最高） */
+  customRules?: string[];
+  /** 自定义 Rule-Provider 定义（name → { type, behavior, url, path… }） */
+  customRuleProviders?: Record<string, any>;
+
+  // 安全与资源配额
+  /** servicesConfigFile 的兼容别名（外挂服务定义文件路径） */
+  servicesConfig?: string;
+  /**
+   * 节点防环注入模式：smart(智能主域聚合，推荐) | exact(逐项保留) | off(不注入)。
+   * 属于本机 DNS 安全面，`?config=` 远程配置无法写入。
+   */
+  fakeIpFilterNodes?: 'smart' | 'exact' | 'off';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -222,8 +278,6 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   subscriptions?: SubscriptionConfig[];
   /** 最终配置输出文件路径（CLI 模式使用） */
   output?: string;
-  /** 清洗统计报告 JSON 导出路径（可选） */
-  meta?: string;
   /** 日志等级：silent | error | warn | info | debug */
   logLevel?: LogLevel;
   /** 日志脱敏等级：off (本地开发) | partial (生产推荐) | full (分享日志) */
@@ -260,11 +314,18 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   // 📡 DNS 策略与安全沙箱
   /** DNS 覆写总开关 */
   overwriteDns?: boolean;
-  /**
-   * @deprecated 保留字段但**尚未实现**：生产 DNS 装配固定为权威覆写（等价 secure）。
-   * 节点专属 DoH/Hosts 依赖由资产闭包机制（assetClosure）处理，不依赖本开关。
-   */
-  dnsMergeMode?: 'secure' | 'merge';
+  /** 进程直连防漏开关（P2P/BT 应用强制直连，见 processDirectWin/Mac/Lin） */
+  enableProcessDirect?: boolean;
+  /** 流量审计：非标端口流量强制直连 */
+  enableTrafficAudit?: boolean;
+  /** 屏蔽海外 UDP 443 (QUIC)，强制降级 TCP */
+  enableQUICReject?: boolean;
+  /** 覆写 TUN 配置 */
+  overwriteTun?: boolean;
+  /** 覆写 Sniffer 域名嗅探器配置 */
+  overwriteSniffer?: boolean;
+  /** 覆写核心内核性能调优与指纹伪装 */
+  enableCoreOptimize?: boolean;
   /** DNS 本地监听地址与端口（默认 127.0.0.1:1053） */
   dnsListen?: string;
   /**
@@ -355,29 +416,9 @@ export interface PureStats {
   fissionCount: number;
 }
 
-export interface RegionMeta {
-  id: string;
-  name: string;
-  icon: string;
-}
-
-export interface NodeMeta {
-  rawName: string;
-  proxyIndex: number;
-  isInfo: boolean;
-  isGarbage: boolean;
-  isSpecial: boolean;
-  isFission: boolean;
-  regionMeta?: RegionMeta;
-  tags?: string[];
-  features?: string[];
-}
-
 export interface PureMeta {
   buckets: Record<string, number[]>;
   stats: PureStats;
-  humanReport: string;
-  nodeMeta: NodeMeta[];
 }
 
 export interface BuildOptions {

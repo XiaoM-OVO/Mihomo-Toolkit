@@ -13,14 +13,23 @@
 // ─────────────────────────────────────────────────────────────
 // 1. 全局默认仓库与源头映射表 (DEFAULT_REPOS)
 // ─────────────────────────────────────────────────────────────
+const { FIELDS_BY_KEY } = require('../data');
+
+/**
+ * 默认仓库前缀。
+ *
+ * ⚠️ 数值一律取自只读数据层的字段注册表，不在此处重抄字面量：
+ * 这些前缀同时也是用户可配置项（`ruleProviderCDN` / `geositeRepo` / `geoipRepo` /
+ * `iconRepoXxx`）的出厂默认值，抄两份迟早会漂移成两个真相。
+ */
 const DEFAULT_REPOS = {
-  cdn: 'https://fastly.jsdelivr.net/gh',
-  geosite: 'MetaCubeX/meta-rules-dat@meta/geo/geosite',
-  geoip: 'MetaCubeX/meta-rules-dat@meta/geo/geoip',
+  cdn: FIELDS_BY_KEY.ruleProviderCDN.default,
+  geosite: FIELDS_BY_KEY.geositeRepo.default,
+  geoip: FIELDS_BY_KEY.geoipRepo.default,
   icons: {
-    orz: 'https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/',
-    koolson: 'https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/',
-    lige47: 'https://fastly.jsdelivr.net/gh/lige47/lige_icon@main/icon/'
+    orz: FIELDS_BY_KEY.iconRepoOrz.default,
+    koolson: FIELDS_BY_KEY.iconRepoKoolson.default,
+    lige47: FIELDS_BY_KEY.iconRepoLige47.default
   }
 };
 

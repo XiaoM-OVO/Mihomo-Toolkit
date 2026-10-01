@@ -18,6 +18,7 @@ const { validateRequestLimits } = require('../io/limits');
 const { profileCache } = require('../io/cache');
 const { processSubscriptionSources, isSubEnabled } = require('../io/sub-processor');
 const { chineseConvert } = require('../core/chinese-sync');
+const { computeMountDigest } = require('../config/mounts');
 const dashboard = require('../strategy/dashboard');
 
 const { createLogger } = require('../core/logger');
@@ -82,11 +83,17 @@ function getCacheKey(userConfig = {}, options = {}) {
       if (options[key] !== undefined) optionSubset[key] = options[key];
     }
 
+    // 外挂配置文件的内容指纹：配置主体里只有「路径字符串」，改动被挂载的文件
+    // 不会改变键值，于是在 cacheTtl 内一直命中旧产物（文件是对的、产物是旧的）。
+    // 带上内容摘要后，改文件即刻产生新键。
+    const mounts = computeMountDigest(configRest);
+
     const canonical = stableStringify({
       v: CACHE_KEY_VERSION,
       type: normalizeTargetType(rawType),
       options: optionSubset,
       subs,
+      mounts,
       config: configRest
     });
     if (!canonical) return null;

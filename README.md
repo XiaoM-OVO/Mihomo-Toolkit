@@ -86,7 +86,7 @@ mihomo-toolkit/
 │       ├── field-registry.js  # 字段注册表 SSOT：有哪些字段 / 默认值 / 合并语义 / 信任级
 │       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                      # 🧪 自动化测试套件 (199 个全绿用例)
+├── test/                      # 🧪 自动化测试套件 (209 个全绿用例)
 ├── config.example.yaml        # 极简扁平化配置模板
 ├── index.d.ts                 # 完整 TypeScript 类型契约声明
 ├── package.json               # 项目依赖与多命令配置

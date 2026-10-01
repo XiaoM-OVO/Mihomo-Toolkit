@@ -4,43 +4,25 @@
  * 将用户自定义参数与 DEFAULT_CONFIG 深度合并，并做基础类型与默认值兜底。
  */
 
-const fs = require('fs');
-const path = require('path');
-const yaml = require('yaml');
 const { DEFAULT_CONFIG } = require('./defaults');
 const { ADDITIVE_FIELDS, ENTRY_NORMALIZERS, mergeBaseline } = require('../data');
+const { resolveMountPath, readMountFile } = require('./mounts');
 const { buildServiceCatalog, deepMerge } = require('./catalog');
 
 /**
  * 加载外部服务定义配置文件 (.js, .cjs, .yaml, .yml, .json)
+ *
+ * 失败即抛错（fail-closed）：文件缺失、扩展名不支持、解析异常都会带上完整路径抛出。
+ * 旧实现在这些情况下静默返回 `{}`，用户会看到「自定义服务凭空消失」且日志里毫无线索。
+ *
  * @param {string} filePath
  * @param {string} [baseDir]
  * @returns {object}
  */
 function loadExternalServicesConfig(filePath, baseDir = process.cwd()) {
-  if (!filePath || typeof filePath !== 'string') return {};
-  const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(baseDir, filePath);
-  if (!fs.existsSync(fullPath)) return {};
-
-  const ext = path.extname(fullPath).toLowerCase();
-  try {
-    if (ext === '.js' || ext === '.cjs') {
-      const loaded = require(fullPath);
-      return typeof loaded === 'function' ? loaded() : loaded;
-    }
-    if (ext === '.yaml' || ext === '.yml') {
-      const content = fs.readFileSync(fullPath, 'utf8');
-      return yaml.parse(content) || {};
-    }
-    if (ext === '.json') {
-      const content = fs.readFileSync(fullPath, 'utf8');
-      return JSON.parse(content) || {};
-    }
-  } catch (err) {
-    // 保持轻量警告，不打断主流程
-    console.warn(`[Config] 加载外部服务配置文件异常: ${fullPath}`, err.message);
-  }
-  return {};
+  const fullPath = resolveMountPath(filePath, baseDir);
+  if (!fullPath) return {};
+  return readMountFile(fullPath);
 }
 
 /**
@@ -119,5 +101,6 @@ function resolveConfig(userConfig = {}) {
 
 module.exports = {
   DEFAULT_CONFIG,
-  resolveConfig
+  resolveConfig,
+  loadExternalServicesConfig
 };

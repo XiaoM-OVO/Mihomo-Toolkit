@@ -10,6 +10,7 @@ const path = require('path');
 const yaml = require('yaml');
 const { program } = require('commander');
 const { buildProfile } = require('../pipeline/engine');
+const { absolutizeMountPaths } = require('../config/mounts');
 const { createLogger } = require('../core/logger');
 const pkg = require('../../package.json');
 
@@ -57,6 +58,9 @@ function run(argv = process.argv) {
         } else {
           userConfig = JSON.parse(content);
         }
+        // 外挂配置文件路径以「配置文件所在目录」为基准转绝对路径：
+        // 否则从别的工作目录运行 CLI 时，相对路径会静默失效。
+        userConfig = absolutizeMountPaths(userConfig, path.dirname(configPath));
       } catch (err) {
         configLoadError = err;
       }
