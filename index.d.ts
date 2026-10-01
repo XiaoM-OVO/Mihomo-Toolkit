@@ -197,6 +197,16 @@ export interface ToolkitConfig {
   enableTlsOptimizations?: boolean;
   /** 自定义地区分组阈值（节点数达到此值时独立建组，默认 2） */
   minorNodeThreshold?: number;
+  /**
+   * 在**只读骨架基线**（`手动选择` / `漏网之鱼` 及其 Emoji 变体）之外**追加**
+   * 「即便暂时无节点也不被空组剪枝斩首」的策略组名。
+   *
+   * 只增不减：基线永远保留；用于让自建常驻组不会因为一次空池而被 DAG 级联清理误删。
+   * 该字段无法被 `?config=` 远程配置写入。
+   *
+   * @example ["🏠 家宽优选", "🧪 实验节点"]
+   */
+  exemptGroups?: string[];
   /** 自定义附加策略组列表 */
   customProxyGroups?: ProxyGroupConfig[];
 }
@@ -267,6 +277,17 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   allowPrivateDns?: boolean;
   /** 显式信任的私网解析器网段，例如 ["192.168.1.0/24"] */
   trustedPrivateCidrs?: string[];
+  /**
+   * 在**只读安全基线**（`github.com` / `paypal.com` / CA 与公共 DNS 域名等 60 余个域）之外
+   * **追加**禁止被 hosts 覆盖的域名。
+   *
+   * 只增不减：基线永远保留，写 `[]` 不会清空保护；条目会按域名规则归一化
+   * （小写、剥离 `+.` / `*.` / 首尾点），非法条目被丢弃并告警。
+   * 该字段属于本机安全面，`?config=` 远程配置无法写入（会自动剥夺）。
+   *
+   * @example ["mybank.example", "internal.company.com"]
+   */
+  protectedDomains?: string[];
   /** 基础引导 DNS（纯 IP 格式，防死锁） */
   dnsDefault?: string[];
   /** 直连域名 DoH */

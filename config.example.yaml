@@ -151,6 +151,9 @@ defaultProxyMode: "manual"         # auto (自动测速) | manual (手动选择)
 regionGroupType: "url-test"        # 地区策略组类型: url-test (测速优选) | select (手动选择) | fallback (故障转移)
 # minorNodeThreshold: 3            # 小众地区独立建组最小节点数（低于此值自动折叠至大洲组）
 # hideGarbageGroup: false          # 是否在面板中隐藏「🗑️ 未知识别」组
+# exemptGroups:                    # 在只读骨架基线（手动选择 / 漏网之鱼）之外【追加】永不被空组剪枝斩首的组名
+#                                  # 同样只增不减：用于保护自建常驻组不被 DAG 级联清理误删
+#   - "🏠 家宽优选"
 
 # 基础应用策略组开关
 enableAI: true                     # 启用独立 AI 策略组 (ChatGPT, Claude, Gemini, Copilot 等)
@@ -334,6 +337,11 @@ testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，
 # trustedPrivateCidrs: []          # 显式信任的私网解析器网段，例如 ["192.168.1.0/24"]
 # trustedHostDomains: []           # 允许被 hosts 覆盖的受保护域名例外清单（谨慎使用）
 # allowInternalHosts: false        # 是否允许 hosts 指向内网地址（TUN 场景下等同开放内网探测）
+# protectedDomains:                # 在只读安全基线之外【追加】受保护域名（github/paypal/CA/DNS 等 60 余个域已内置）
+#                                  # 语义为「只增不减」：基线不可被此处清空或替换，写 [] 也不会降低保护强度；
+#                                  # 条目按域名规则归一化（小写、忽略 +./*. 前缀与首尾点），非法条目丢弃并告警。
+#   - "mybank.example"
+#   - "+.internal.company.com"
 # dnsDefault:                      # 基础引导 DNS (必须为纯 IP，破除解析死锁)
 #   - "223.5.5.5"
 #   - "119.29.29.29"

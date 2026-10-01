@@ -26,6 +26,7 @@ const {
   sanitizeHosts
 } = require('../core/security/dns-sanitizer');
 const { deriveFakeIpFilterAdditions } = require('../core/security/resolver-plan');
+const { FAKEIP_FILTER_BASELINE, effectiveProtectedDomains } = require('../data');
 
 function dedupe(arr) {
   return [...new Set(arr)];
@@ -61,13 +62,11 @@ function normalizeLoopbackHost(host) {
   return bare;
 }
 
-const DEFAULT_SCRIPT_FILTERS = [
-  '*.lan', '*.local', '*.arpa', 'time.*.com', 'ntp.*.com',
-  'localhost.ptlogin2.qq.com', '*.msftncsi.com', '*.msftconnecttest.com', 'www.msftconnecttest.com',
-  'ipv6.msftncsi.com', 'ipv6.msftconnecttest.com', '*.ipv6-literal.net', 'google.cn',
-  '*.music.163.com', '*.music.126.net', '+.stun.*.*',
-  '+.nintendo.net', '+.playstation.net', '+.xboxlive.com'
-];
+/**
+ * fake-ip-filter 保底名单（只读基线，见 `src/data/security-baselines.js`）。
+ * 用户追加走 `fakeIpFilter` 配置项，基线本身不可被配置删除。
+ */
+const DEFAULT_SCRIPT_FILTERS = [...FAKEIP_FILTER_BASELINE];
 
 /**
  * 注入或覆写 Mihomo DNS 配置
@@ -176,6 +175,9 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   const userHosts = userConfig.hosts || {};
   const { hosts: safeUserHosts, findings: userHostFindings } = sanitizeHosts(userHosts, {
     allowInternal: userConfig.allowInternalHosts === true,
+    // 受保护域名 = 只读安全基线 ∪ 用户通过 protectedDomains 追加的条目。
+    // 在判定点再次合并是刻意的：即便调用方漏做配置合并，也绝不会退化成「无受保护域名」。
+    protectedDomains: effectiveProtectedDomains(userConfig.protectedDomains),
     userTrustedDomains: Array.isArray(userConfig.trustedHostDomains) ? userConfig.trustedHostDomains : []
   });
   if (userHostFindings.length > 0) findings.push(...userHostFindings);

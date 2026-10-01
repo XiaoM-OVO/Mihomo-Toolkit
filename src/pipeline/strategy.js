@@ -126,6 +126,7 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
     proxies: config.proxies,
     rules: config.rules,
     ruleProviders: config['rule-providers'],
+    exemptGroups: userConfig.exemptGroups,
     userConfig
   });
   config['proxy-groups'] = pruned.proxyGroups;

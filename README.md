@@ -77,12 +77,16 @@ mihomo-toolkit/
 │   │   ├── fetch-proxy.js     # 本地代理调度封装 (undici ProxyAgent)
 │   │   └── parsers/           # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
 │   │
-│   └── config/                # ⚙️ 配置中心 (单一事实来源 Source of Truth)
-│       ├── defaults.js        # 系统内置全局默认配置字典
-│       ├── catalog.js         # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
-│       └── index.js           # resolveConfig 配置合并器与外部服务配置文件挂载
+│   ├── config/                # ⚙️ 配置策略层 (操作者改什么)
+│   │   ├── defaults.js        # 出厂默认配置（由只读数据层的字段注册表派生）
+│   │   ├── catalog.js         # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
+│   │   └── index.js           # resolveConfig 合并器（注册表驱动的只增不减基线合并）
+│   │
+│   └── data/                  # 📦 只读运行基础层 (程序所有 / 用户只读，最底层)
+│       ├── field-registry.js  # 字段注册表 SSOT：有哪些字段 / 默认值 / 合并语义 / 信任级
+│       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                      # 🧪 自动化测试套件 (99 个全绿用例)
+├── test/                      # 🧪 自动化测试套件 (199 个全绿用例)
 ├── config.example.yaml        # 极简扁平化配置模板
 ├── index.d.ts                 # 完整 TypeScript 类型契约声明
 ├── package.json               # 项目依赖与多命令配置
@@ -278,6 +282,8 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 3. **DNS 净化沙箱与 INV 不变式**（`src/strategy/dns.js` + `src/core/security/dns-sanitizer.js`）
    引导层强制纯 IP、解析链剥离 `#skip-cert-verify` 等危险修饰符、私网与 fake-ip 自环地址拦截、
    `nameserver-policy` 保留键不可被订阅覆盖、`dns.listen` 非回环一律回退（需 `dnsAllowNonLoopback: true` 显式放行）。
+   受保护域名基线（`github.com` / `paypal.com` / CA 与公共 DNS 等 60 余个域）覆盖「用户 hosts」与「节点资产闭包」
+   两条独立通道；可用 `protectedDomains` **追加**自己的关键域名（只增不减，远程 `?config=` 无法写入）。
    config 交付前会执行 INV-1~INV-9 自检，违规项通过 `result.invariantViolations` 暴露并打印告警。
 4. **远程配置能力剥夺**（`src/core/security/remote-config.js`）
    处理不可信配置的调用方可直接复用该纯函数；`buildProfile` 的 `userConfig` 参数按契约视为可信输入。
@@ -287,9 +293,9 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 
 ### 已知边界与残余风险（如实告知）
 
-- **受保护域名清单是枚举式的**：`DEFAULT_PROTECTED_DOMAINS` 覆盖常见高危域名，但不可能穷尽长尾。
+- **受保护域名清单是枚举式的**：`src/data/security-baselines.js` 覆盖常见高危域名，但不可能穷尽长尾。
   非清单内的域名，订阅只要能把自己的节点 `server` 指向该域名，就能为其下发 hosts 映射。
-  介意此风险请使用 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
+  处置：用 `protectedDomains` 追加自己的关键域名（只增不减），或 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
 - **SSRF 校验与实际连接之间存在 DNS 解析窗口**（TOCTOU / DNS Rebinding）：校验依赖系统解析器结果，
   未做 IP 固定（pinning）。对抗恶意 DNS 服务器时该窗口理论上可利用。
 - **`?config=` 的能力剥夺是黑名单式**：清单外的「未来新控制面字段」不会被自动剥夺。

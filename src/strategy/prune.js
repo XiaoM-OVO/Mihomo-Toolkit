@@ -5,7 +5,9 @@
  * 避免 Mihomo 内核因引用不存在的策略组而启动崩溃。
  */
 
-const DEFAULT_EXEMPT_GROUPS = ['手动选择', '漏网之鱼', '📍 手动选择', '🐟 漏网之鱼'];
+const { SKELETON_EXEMPT_GROUPS, effectiveExemptGroups } = require('../data');
+
+const DEFAULT_EXEMPT_GROUPS = [...SKELETON_EXEMPT_GROUPS];
 const VALID_BUILTIN_TARGETS = ['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS'];
 
 /**
@@ -32,7 +34,9 @@ function pruneEmptyGroups({
     if (p?.name) validBasics.add(p.name);
   });
 
-  const exemptSet = new Set(exemptGroups);
+  // 豁免组 = 只读骨架基线 ∪ 用户追加（`exemptGroups` 只能加不能减）。
+  // 判定点自持基线：即便调用方未经过 resolveConfig、或显式传入空数组，骨架组也不会被误斩首。
+  const exemptSet = new Set(effectiveExemptGroups(exemptGroups));
   const removedGroups = new Set();
   let groups = proxyGroups.map(g => ({ ...g, proxies: Array.isArray(g.proxies) ? [...g.proxies] : [] }));
   let currentRules = Array.isArray(rules) ? [...rules] : [];
