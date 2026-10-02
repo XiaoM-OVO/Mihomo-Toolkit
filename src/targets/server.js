@@ -16,6 +16,7 @@ const { isAllowedUrl, redactUrl } = require('../io/ssrf');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { hardenRemoteConfig } = require('../core/security/remote-config');
 const { absolutizeMountPaths } = require('../config/mounts');
+const { expandIncludes } = require('../config/include');
 const pkg = require('../../package.json');
 
 /** 回环地址判定（仅这些地址可视为「本机可信接入」） */
@@ -59,7 +60,11 @@ function startServer(options = {}) {
     const parsed = (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml'))
       ? (yaml.parse(content) || {})
       : JSON.parse(content);
-    return absolutizeMountPaths(parsed, path.dirname(CONFIG_PATH));
+    const absolutized = absolutizeMountPaths(parsed, path.dirname(CONFIG_PATH));
+    // 与 CLI 对齐：在装载现场展开 include 片段，使 server 自身在 buildProfile 之前读取的
+    // authToken / maxConcurrentBuilds / security / logLevel 等字段也能来自片段。
+    // engine 入口还有一次幂等兜底展开。基准目录 = 配置文件所在目录。
+    return expandIncludes(absolutized, path.dirname(CONFIG_PATH));
   }
 
   let localConfig = {};
