@@ -80,7 +80,9 @@ test('📊 字段注册表 — 默认值 golden 基线与注册表一一对应',
       'devServices', 'geoipRepo', 'geositeRepo',
       'enableFission', 'fissionStack', 'fissionMaxNodes', 'fissionExcludeKeywords',
       'processDirectLin', 'processDirectMac', 'processDirectWin',
-      'processProxyLin', 'processProxyMac', 'processProxyWin'
+      'processProxyLin', 'processProxyMac', 'processProxyWin',
+      // 清洗层用户黑名单（自旧版恢复：节点名/服务器命中即拦截，优先于白名单）
+      'blockKeywords', 'blockServers'
     ].sort(),
     '出现了未登记的默认字段：新增字段必须先在 field-registry.js 声明'
   );

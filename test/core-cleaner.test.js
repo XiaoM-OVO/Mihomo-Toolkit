@@ -39,6 +39,26 @@ test('🧹 节点清洗模块测试 - 阻断与垃圾拦截 (blockReason)', () =
   assert.equal(checkNodeBlockReason(adProxy, '防失联地址发布页点击关注'), '广告词');
 });
 
+test('🧹 节点清洗模块测试 - 用户黑名单拦截 (blockKeywords / blockServers)', () => {
+  const cfg = { blockKeywords: ['免费领取'], blockServers: ['bad.example.com'] };
+
+  const byName = classifyNode({ name: '🇭🇰 香港01 免费领取', server: '1.2.3.4', port: 443 }, cfg);
+  assert.ok(byName.skip);
+  assert.equal(byName.blockReason, '黑名单关键词');
+
+  const byServer = classifyNode({ name: '🇭🇰 香港01', server: 'bad.example.com', port: 443 }, cfg);
+  assert.ok(byServer.skip);
+  assert.equal(byServer.blockReason, '黑名单服务器');
+
+  // 黑名单优先于白名单：同时命中时以拦截为准
+  const both = classifyNode(
+    { name: 'x-ray 节点', server: '1.2.3.4', port: 443 },
+    { whitelistKeywords: ['x-ray'], blockKeywords: ['x-ray'] }
+  );
+  assert.ok(both.skip);
+  assert.equal(both.blockReason, '黑名单关键词');
+});
+
 test('🧹 节点清洗模块测试 - 综合分类打标 (classifyNode)', () => {
   const hkProxy = {
     name: '🇭🇰 香港 01 BGP 4K流媒体',

@@ -80,7 +80,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   // 5. 统一计算动态序号与重命名
   const templateCleaners = createSeparatorCleaners(config.renameSeparators);
   const renameTemplate = config.renameTemplate;
-  const isRenameEnabled = config.enableNodeRename !== false && config.enableStandardRename !== false;
+  const isRenameEnabled = config.enableNodeRename !== false;
 
   const indexMap = computeNodeIndices(validItems, config);
 
