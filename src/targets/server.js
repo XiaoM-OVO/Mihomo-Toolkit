@@ -240,6 +240,9 @@ function startServer(options = {}) {
         const headers = {
           'Content-Type': isReport ? 'application/json; charset=utf-8' : 'text/yaml; charset=utf-8',
           'Profile-Update-Interval': '24',
+          // 订阅卡片「主页」按钮：Clash Verge Rev 等客户端只读响应头、不读文件体注释，
+          // 缺了它远程订阅模式下按钮永不出现（文件体里的同名注释对这些客户端无效）。
+          'Profile-Web-Page-Url': 'https://github.com/XiaoM-OVO/Mihomo-Toolkit',
           'Server': `Mihomo-Toolkit/v${pkg.version}`
         };
 
