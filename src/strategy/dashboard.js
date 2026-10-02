@@ -124,26 +124,6 @@ function generateInfoNodes(subInfo, tag, options = {}) {
 }
 
 /**
- * 为单个订阅合成全套看板条目（流量、到期、重置周期与拉取失败）
- */
-function generateSubscriptionDashboardNodes({ subInfo, tag, resetText, isStale = false, error = null } = {}) {
-  if (error) {
-    return [createFetchErrorNode(tag, error.message || String(error))];
-  }
-  const { nodes: synthNodes, expireDays } = generateInfoNodes(subInfo, tag, { isStale });
-  if (resetText && (expireDays === -1 || expireDays > 30)) {
-    synthNodes.push({
-      name: `🔄 [${tag}] ${resetText}`,
-      type: 'direct',
-      server: '1.0.0.1',
-      port: 80,
-      isSyntheticInfo: true
-    });
-  }
-  return synthNodes;
-}
-
-/**
  * 过滤机场原生自带的说明/伪节点
  */
 function filterRawInfoNodes(proxies = [], logger) {
@@ -313,6 +293,5 @@ module.exports = {
   createFetchErrorNode,
   formatBytes,
   calcResetDays,
-  generateInfoNodes,
-  generateSubscriptionDashboardNodes
+  generateInfoNodes
 };

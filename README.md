@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
 [![Version](https://img.shields.io/badge/Version-v2.0.0--dev-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-107%20Passed-brightgreen)](test/)
+[![Tests](https://img.shields.io/badge/Tests-195%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底 · 零维护** 」
 
@@ -40,8 +40,7 @@ mihomo-toolkit/
 │   │   ├── config.js          # 完整配置装配流水线 (支持 passthrough 透传)
 │   │   ├── nodes.js           # 纯净节点清洗流水线 (去重/打标/重命名)
 │   │   ├── report.js          # 健康审计报告流水线 (生成结构化 JSON)
-│   │   ├── strategy.js        # 策略拓扑与分流规则注入流水线
-│   │   └── index.js           # 流水线统一导出入口
+│   │   └── strategy.js        # 策略拓扑与分流规则注入流水线
 │   │
 │   ├── targets/               # 🔌 宿主环境终端适配器 (轻量适配层)
 │   │   ├── cli.js             # 命令行工具 (mtk / mihomo-tk / mihomo-toolkit)
@@ -86,7 +85,7 @@ mihomo-toolkit/
 │       ├── field-registry.js  # 字段注册表 SSOT：有哪些字段 / 默认值 / 合并语义 / 信任级
 │       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                      # 🧪 自动化测试套件 (209 个全绿用例)
+├── test/                      # 🧪 自动化测试套件 (195 个全绿用例)
 ├── config.example.yaml        # 极简扁平化配置模板
 ├── index.d.ts                 # 完整 TypeScript 类型契约声明
 ├── package.json               # 项目依赖与多命令配置

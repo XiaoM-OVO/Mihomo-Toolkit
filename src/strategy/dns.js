@@ -13,8 +13,7 @@
  *      INV-8        dns.listen 必须绑定回环，否则将对外提供开放 DNS 解析
  *      另：直连/主解析链与 nameserver-policy 同样过净化沙箱，剥离 #skip-cert-verify 等危险修饰符
  *
- * 说明：本函数是生产路径的 DNS 装配实现；resolver-plan.js 的 planResolverChain 为
- * 具备环境画像能力的备用规划器（当前主流程未调用），两者共用 dns-sanitizer 的纯函数沙箱。
+ * 说明：本函数是生产路径的 DNS 装配实现，复用 dns-sanitizer 的纯函数沙箱。
  */
 
 'use strict';

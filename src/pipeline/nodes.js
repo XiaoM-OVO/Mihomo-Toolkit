@@ -213,7 +213,5 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
 }
 
 module.exports = {
-  runNodesPipeline,
-  runNodePipeline: runNodesPipeline,
-  runCleanerPipeline: runNodesPipeline
+  runNodesPipeline
 };
