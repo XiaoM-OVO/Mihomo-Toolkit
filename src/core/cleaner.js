@@ -169,6 +169,20 @@ function extractNodeAttributes(name, userConfig = {}) {
 }
 
 /**
+ * 用户显式黑名单判定：节点名关键词 / 服务器字段命中即拦截。
+ * 优先级高于白名单——显式拒绝不应被白名单关键词放行。
+ */
+function matchUserBlacklist(proxy, rawName, userConfig = {}) {
+  const nameLower = (rawName || '').toLowerCase();
+  const serverLower = (proxy?.server || '').toLowerCase();
+  const keywords = (userConfig.blockKeywords || []).map(k => String(k).toLowerCase()).filter(Boolean);
+  const servers = (userConfig.blockServers || []).map(s => String(s).toLowerCase()).filter(Boolean);
+  if (keywords.some(k => nameLower.includes(k))) return '黑名单关键词';
+  if (servers.some(s => serverLower.includes(s))) return '黑名单服务器';
+  return '';
+}
+
+/**
  * 拦截与阻断判定
  */
 function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
@@ -342,7 +356,12 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     return { isInfo: true, proxy, rawName, groupKey: 'info' };
   }
 
-  // 3. 白名单与自定义特殊节点
+  // 3. 用户黑名单（显式拒绝优先于白名单）与白名单、自定义特殊节点
+  const blacklistReason = matchUserBlacklist(proxy, rawName, userConfig);
+  if (blacklistReason) {
+    return { skip: true, rawName, blockReason: blacklistReason };
+  }
+
   const tempNameLower = rawName.toLowerCase();
   const subTagLower = (proxy._subTag || '').toLowerCase();
   const whitelist = (userConfig.whitelistKeywords || []).map(k => k.toLowerCase());

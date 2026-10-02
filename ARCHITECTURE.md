@@ -315,7 +315,7 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── field-registry.js     # 字段注册表 SSOT：字段名 / 默认值 / 类型 / 合并语义 / 信任级
 │       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                         # 🧪 自动化测试套件 (25 个测试文件，202 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (25 个测试文件，203 个全绿用例)
 │                                 #    其中 security-delivery-contract / dns-invariants /
 │                                 #    server-security / security-sanitizer / data-baseline /
 │                                 #    config-surface 为安全与契约回归套件
@@ -397,7 +397,7 @@ E:\CODE\mihomo-toolkit-next\
 ## 🛡️ 六、 开发质量守则
 
 任何针对本工程的 PR 或重构，必须满足以下五项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 195 个测试必须 100% 通过；
+1. **测试不破**：改动后执行 `npm test`，全量 203 个测试必须 100% 通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
 3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用；
 4. **交付契约不破**：`config` 交付形态的产物顶层键必须全部落在 `TOOLKIT_OUTPUT_KEYS` 白名单内。任何新增顶层字段都必须先登记进白名单，并补一条 `test/security-delivery-contract.test.js` 断言；
@@ -431,10 +431,12 @@ E:\CODE\mihomo-toolkit-next\
 5. **配置面已完成一轮「字段清账」**（本轮）：
    * 原 7 个**隐形字段**（`geositeRepo` / `geoipRepo` / `devServices` / `processDirectMac|Lin` / `processProxyMac|Lin`）
      与 4 个节点裂变字段已登记进注册表，并补齐 `index.d.ts` 类型与示例说明；
-   * 原 20 个**空承诺**（`blockKeywords` / `blockServers` / `serverHost` / `enableIpEnrich` 等 7 个 ipEnrich 字段 /
+   * 原 20 个**空承诺**中的大部分（`serverHost` / `enableIpEnrich` 等 7 个 ipEnrich 字段 /
      `enableTlsOptimizations` / `customProxyGroups` / `dnsMergeMode` / `humanReport` …）已从文档与类型中**撤回**，
      不再存在于任何契约中（将来若要实现，按新字段重新登记）；
-   * 注册表从 83 个字段扩到 124 个，`index.d.ts` 覆盖率达到 100%；
+   * 其中 `blockKeywords` / `blockServers` 经评估确有价值，已于后续轮次**按新字段重新实现**
+     （清洗层用户黑名单：节点名 / server 字段命中即拦截，优先于白名单）；
+   * 注册表从 83 个字段扩到 127 个，`index.d.ts` 覆盖率达到 100%；
    * 三道防线已自动化：反隐形 / 反空承诺 / 反漂移（见 `test/config-surface.test.js`）。
    * **仍然存在的能力缺口（非缺陷，属路线图）**：
      * 服务需同时写进 `customServices` 与激活列表（`aiServices` 等）才生效，只写一处会静默不激活；
