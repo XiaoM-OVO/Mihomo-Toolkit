@@ -19,6 +19,7 @@ const { profileCache } = require('../io/cache');
 const { processSubscriptionSources, isSubEnabled } = require('../io/sub-processor');
 const { chineseConvert } = require('../core/chinese-sync');
 const { computeMountDigest } = require('../config/mounts');
+const { expandIncludes } = require('../config/include');
 const dashboard = require('../strategy/dashboard');
 
 const { createLogger } = require('../core/logger');
@@ -114,6 +115,13 @@ function getCacheKey(userConfig = {}, options = {}) {
  * @returns {Promise<object>} 构建交付结果
  */
 async function runPipelineEngine(userConfig = {}, options = {}) {
+  // 入口统一展开 include 片段（server / SDK 等未在装载现场展开的调用方兜底）。
+  // 合并结果刻意保留 `include` 键（缓存指纹 computeMountDigest 依赖它），因此再次展开
+  // 会重复读取片段文件但结果不变 —— 对 cli.js 已展开过的配置是幂等的。
+  // 相对路径以 cwd 为基准：配置文件现场（CLI / server）已把 include 转为绝对路径，
+  // 这里只兜底处理「SDK 直接传对象且写相对路径」的场景。
+  userConfig = expandIncludes(userConfig || {}, process.cwd());
+
   const effectiveLogLevel = options.debug
     ? 'debug'
     : (options.silent || options.quiet ? 'silent' : (options.logLevel || userConfig.logLevel || 'info'));

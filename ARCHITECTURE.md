@@ -74,12 +74,16 @@
 > 该套件会静态扫描 `src` 的字段读取、`config.example.yaml` 的键与 `index.d.ts` 的配置接口，
 > 任何「隐形字段」「空承诺」「类型缺口」都会直接让测试失败。
 > 第 1 条的通用 `include` 已落地（`src/config/include.js` + `src/config/mounts.js`），
-> 其回归用例同样收在 `test/config-surface.test.js`（优先级 / 并集去重 / 递归 / 环路 / fail-closed / 缓存指纹 / 远程剥夺）。
+> 语义回归收在 `test/config-surface.test.js`（优先级 / 并集去重 / 递归 / 环路 / fail-closed / 缓存指纹 / 远程剥夺），
+> 全链路回归收在 `test/include-pipeline.test.js`（片段提供 `subscriptions` / `output` 必须能真正驱动产出）。
 
 ### 📎 外挂配置文件（通用 `include` 挂载）
 
 外挂入口现已泛化为通用的 `include: ["./a.yaml", "./b.yaml"]`：片段与主文件**共用同一份 schema**，
 任何配置项都能放进片段；`servicesConfigFile`（可写 `servicesConfig` 别名）作为单一文件入口继续保留。
+**展开时机是硬约束**：`include` 必须在配置装载现场（CLI / server 读盘后）先展开，早于任何字段读取——
+否则 `subscriptions` / `output` / `logLevel` 这类在订阅抓取前就被读取的字段，放进片段会「配了等于没配」；
+`runPipelineEngine` 入口另有一次幂等兜底，覆盖 SDK 直接传对象的调用方。
 装载逻辑集中在 [`src/config/mounts.js`](src/config/mounts.js)（路径 / 读取 / 摘要）
 与 [`src/config/include.js`](src/config/include.js)（展开 / 合并）。四条基础语义已经定型：
 
