@@ -197,7 +197,8 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     userConfig,
     options,
     logger: ioLogger,
-    dashboard
+    dashboard,
+    deliveryMode: targetType
   });
 
   // 5.1 资源配额二次校验：节点总量与单订阅节点量

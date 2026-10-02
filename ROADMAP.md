@@ -36,9 +36,16 @@
 | 能力 | 旧版来源 | 涉及字段 | 暂缓理由 |
 | :--- | :--- | :--- | :--- |
 | **IP 富化子系统**（ip-api.com 地理/ASN/运营商补全） | 旧版 ⑦ | `enableIpEnrich`、`ipEnrichMode`、`ipEnrichTimeout`、`ipEnrichThreshold`、`ipApiKey`、`ipApiEndpoint`、`ipApiBatchSize`、`ipApiBatchDelay`、`ipApiDnsConcurrency`、`ipApiDnsEndpoint`、`enableIpv6Tag`、`enableCellularTag`、`enableResidentialTag`（13 项） | ① 家宽/机房判定是 IP"用途分类"，**免费库（GeoLite2/ip2region/DB-IP Lite）均无此字段**，付费库才准，性价比低；② ip-api.com 限流、不稳定、且会把节点 IP 传给第三方；③ next 现行依赖全为轻量纯 JS，引入数据文件会破坏基调。**家宽分流已由节点名关键词识别覆盖**，无实际阻塞。 |
+| **nodes 模式下节点专属解析依赖丢失**（订阅把解析私货塞进 `dns.nameserver-policy` / 顶层 `hosts` / `dns.fake-ip-filter`，指定节点域名用什么解析） | 无（新发现，非旧版恢复项） | 无新增字段（属交付形态的结构性限制） | nodes 产物只有 `{ proxies }`，**结构上没有 `dns` 段**；`_assetHosts` / `_assetPolicies` / `_assetFakeIpFilters` 三桶仅由 [`src/strategy/dns.js`](src/strategy/dns.js)（config 模式）消费，nodes 模式下随早退截断被静默丢弃。若某源节点域名只能靠其私货解析，产物中的节点将无法连接。**本轮只加显式告警**（见 §三），不实现自动解析。 |
 
-> **决策留痕**：若将来重新评估，优先考虑"本地库只做地理/城市/ASN（供 `{isp}/{asn}/{org}` 模板变量），家宽继续走关键词"的折中路线；
+> **决策留痕（IP 富化）**：若将来重新评估，优先考虑"本地库只做地理/城市/ASN（供 `{isp}/{asn}/{org}` 模板变量），家宽继续走关键词"的折中路线；
 > 不建议恢复 ip-api.com 在线方案。旧版**没有**残留代码需要清理——next 从未实现过 IP 富化。
+
+> **决策留痕（解析依赖）**：实测已证伪"含 `dns` 字段会导致解析期崩溃"——完整 `dns`、畸形 `dns` 均不抛错，
+> 问题只在 nodes 产物的**运行期**丢失解析依赖。候选改造方向（仅留痕，**暂不做**，真要做时方案细节进 `ARCHITECTURE.md`）：
+> 按源、在合并前用订阅顶层 `hosts` 映射改写节点 `server`，并**固定 `servername` / `sni` 回原域名**（否则会连 TLS 证书校验一起改坏）；
+> 多订阅必须逐源处理，不能合并后再改。真解析（DoH / 本地库）会引入网络与文件副作用，
+> 与 `src/core`、`src/strategy` 的纯函数约束冲突，风险更高。
 
 ---
 
@@ -51,6 +58,7 @@
 | **`enableStandardRename`** | ✅ 已处理 | 在 [`src/pipeline/nodes.js`](src/pipeline/nodes.js#L83) 原是**死读取**（从未登记、恒为 `undefined`、零效果）。已删除，语义由 `enableNodeRename` 覆盖。 |
 | **`customPrefix`** | 🔁 已废弃 | 现有 tag 系统 + `indexPrefixMap` + 重命名模板已覆盖该需求，无需专门字段。 |
 | **`dnsMergeMode`** | 🔁 已废弃 | 旧版确有实现，但 next 的独立 DNS 安全面（`protectedDomains` / `assetClosure` / `fakeIpFilter` 等）已更强，不再恢复分级。 |
+| **nodes 模式解析依赖告警** | ✅ 新实现 | [`src/io/sub-processor.js::applySubscriptionGuards`](src/io/sub-processor.js#L150) 复用已提取的 `_asset*` 三桶，在 `deliveryMode === 'nodes'` 且资产非空时改为 `warn`（config 模式仍为 `info`），提示"内容不会随产物交付、相关节点可能无法连接"。`deliveryMode` 由 [`engine.js`](src/pipeline/engine.js#L201) 按归一化后的 `targetType` 注入。 |
 
 ---
 
