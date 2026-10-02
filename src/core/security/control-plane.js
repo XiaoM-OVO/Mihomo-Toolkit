@@ -13,8 +13,6 @@
 
 'use strict';
 
-const stableStringify = require('fast-json-stable-stringify');
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 字段分类表 (Field Classification)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,105 +167,8 @@ function partitionControlPlane(subConfig, options = {}) {
   return { data, report };
 }
 
-/** 稳定键顺序的 JSON 序列化，用于确定性深度比较 */
-function canonicalJson(obj) {
-  if (obj === undefined) return 'undefined';
-  return stableStringify(obj);
-}
-
-/**
- * 合并多个订阅的数据面，并仲裁控制面归属。
- *
- * 仲裁规则（确定性、与完成顺序无关）：
- *   R1. 用户本地配置 > master 订阅 > 非 master 订阅（非 master 无控制面权）
- *   R2. 严格 Fail-Closed：未在 masterControlWhitelist 明确允许的未知控制面键坚决剥离，绝不泄漏穿透
- *   R3. 同一层级内出现**互斥取值**时 fail-closed：丢弃该字段并上报，而非先到先得
- *   R4. 多个 master 声明视为配置错误，直接抛错（防止隐式竞争）
- *
- * @param {Array<{tag:string, config:object, isMaster:boolean}>} sources
- * @param {object} [localConfig={}] 用户本地声明的控制面（最高优先级）
- * @param {object} [options={}]
- * @param {string[]} [options.masterControlWhitelist] 显式允许 master 订阅合并的受控控制面字段白名单
- * @returns {{ merged: object, audits: Array<object>, conflicts: Array<object> }}
- */
-function mergeSubscriptionConfigs(sources = [], localConfig = {}, options = {}) {
-  const audits = [];
-  const conflicts = [];
-  const masters = sources.filter(s => s.isMaster);
-
-  if (masters.length > 1) {
-    throw new Error(
-      `[ControlPlane] 检测到 ${masters.length} 个 master 订阅 (${masters.map(m => m.tag).join(', ')})，` +
-      `控制权仲裁必须唯一，请在配置中显式指定且仅指定一个 master。`
-    );
-  }
-
-  const merged = { proxies: [] };
-  const claimedBy = new Map(); // key -> { tag, value }
-  const masterWhitelist = new Set(options.masterControlWhitelist || []);
-
-  for (const { tag, config, isMaster } of sources) {
-    const { data, report } = partitionControlPlane(config, { isMaster, tag });
-    audits.push(report);
-
-    // 数据面：proxies 无条件并集
-    if (Array.isArray(data.proxies)) {
-      merged.proxies = merged.proxies.concat(data.proxies);
-    }
-
-    // 数据面：proxy-providers 深度合并与冲突上报
-    if (data['proxy-providers'] && typeof data['proxy-providers'] === 'object') {
-      merged['proxy-providers'] = merged['proxy-providers'] || {};
-      for (const [pKey, pVal] of Object.entries(data['proxy-providers'])) {
-        if (!merged['proxy-providers'][pKey]) {
-          merged['proxy-providers'][pKey] = pVal;
-          claimedBy.set(`proxy-providers.${pKey}`, { tag, value: pVal });
-        } else {
-          const prev = claimedBy.get(`proxy-providers.${pKey}`);
-          if (prev && canonicalJson(prev.value) !== canonicalJson(pVal)) {
-            conflicts.push({
-              key: `proxy-providers.${pKey}`,
-              a: prev.tag,
-              b: tag,
-              resolution: 'conflict:kept-first'
-            });
-          }
-        }
-      }
-    }
-
-    // 控制面：仅当显式授权 masterControlWhitelist 且为 master 时，才允许白名单内的字段合并
-    // 任何未在白名单登记的未知字段一律 fail-closed，杜绝任何未知键被合并穿透！
-    if (isMaster && masterWhitelist.size > 0) {
-      for (const [key, value] of Object.entries(config)) {
-        if (!masterWhitelist.has(key)) continue;
-        if (DATA_PLANE_KEYS.has(key)) continue;
-        if (Object.prototype.hasOwnProperty.call(localConfig, key)) continue;
-
-        if (!claimedBy.has(key)) {
-          claimedBy.set(key, { tag, value });
-          merged[key] = value;
-        } else {
-          const prev = claimedBy.get(key);
-          if (canonicalJson(prev.value) !== canonicalJson(value)) {
-            conflicts.push({ key, a: prev.tag, b: tag, resolution: 'fail-closed:dropped' });
-            delete merged[key];
-          }
-        }
-      }
-    }
-  }
-
-  // 用户本地声明始终拥有最终否决权
-  for (const [key, value] of Object.entries(localConfig)) {
-    if (value !== undefined) merged[key] = value;
-  }
-
-  return { merged, audits, conflicts };
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. 交付契约 (Delivery Contract)
+// 2. 交付契约 (Delivery Contract)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -357,7 +258,6 @@ module.exports = {
   HOSTILE_SIGNATURES,
   TOOLKIT_OUTPUT_KEYS,
   partitionControlPlane,
-  mergeSubscriptionConfigs,
   resetToolkitOutputKeys,
   enforceOutputContract
 };

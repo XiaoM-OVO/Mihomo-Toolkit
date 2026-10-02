@@ -230,7 +230,6 @@
   解析链与 `nameserver-policy` 同样过净化沙箱（剥离 `#skip-cert-verify` 等危险修饰符、拦截私网与 fake-ip 自环地址、保留键不可被覆盖），`dns.listen` 非回环一律回退（需 `dnsAllowNonLoopback: true` 显式放行）。
 * **INV 不变式自检（`resolver-plan.js::checkInvariants`）**：
   INV-1~INV-9 在 `config` 交付路径中实际执行，违规项写入 `result.invariantViolations` 并打印告警。
-  *状态说明：同文件的 `planResolverChain`（环境画像规划器，支持企业内网/captive/IPv6-only/split-horizon）具备完整测试但与主流程并存、当前**未被主流程调用**，属于备用规划器；生产 DNS 装配以 `strategy/dns.js` 为准。`control-plane.js::mergeSubscriptionConfigs`（多 master 仲裁）同样**尚未接线**。*
 
 ---
 
@@ -246,8 +245,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── config.js             # runConfigPipeline: 交付完整 config (智能资产保活沙箱)
 │   │   ├── nodes.js              # runNodesPipeline: 交付纯净节点 proxies 数组
 │   │   ├── report.js             # buildAuditReport: 交付结构化健康审计 JSON
-│   │   ├── strategy.js           # runStrategyPipeline: 纯策略组与分流拓扑组装流水线
-│   │   └── index.js              # 流水线统一导出入口
+│   │   └── strategy.js           # runStrategyPipeline: 纯策略组与分流拓扑组装流水线
 │   │
 │   ├── targets/                  # 🔌 宿主环境终端适配器 (仅做参数与调用封装)
 │   │   ├── cli.js                # CLI 入口 (支持 mtk / mihomo-tk / mihomo-toolkit)
@@ -258,7 +256,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   │   ├── control-plane.js  # 控制面分类审计、交付契约白名单与生成前重置
 │   │   │   ├── remote-config.js  # 不可信远程配置能力剥夺 (本机资源 / DNS 控制面)
 │   │   │   ├── dns-sanitizer.js  # DNS 净化沙箱、DoH 修饰符分级剥离与 Hosts 审计
-│   │   │   └── resolver-plan.js  # INV 不变式自检(已接入交付路径) + 备用解析链规划器
+│   │   │   └── resolver-plan.js  # INV 不变式自检 + Fake-IP 域名聚合
 │   │   ├── cleaner.js            # 垃圾拦截、倍率线路提取、属性智能分类打标
 │   │   ├── dedupe.js             # 底层物理网络指纹提取与特征去重
 │   │   ├── transport.js          # 统一传输层门面 (Host/SNI/Path提取、Host注入与类型识别)
@@ -305,7 +303,7 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── field-registry.js     # 字段注册表 SSOT：字段名 / 默认值 / 类型 / 合并语义 / 信任级
 │       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                         # 🧪 自动化测试套件 (25 个测试文件，209 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (25 个测试文件，195 个全绿用例)
 │                                 #    其中 security-delivery-contract / dns-invariants /
 │                                 #    server-security / security-sanitizer / data-baseline /
 │                                 #    config-surface 为安全与契约回归套件
@@ -387,7 +385,7 @@ E:\CODE\mihomo-toolkit-next\
 ## 🛡️ 六、 开发质量守则
 
 任何针对本工程的 PR 或重构，必须满足以下五项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 209 个测试必须 100% 通过；
+1. **测试不破**：改动后执行 `npm test`，全量 195 个测试必须 100% 通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
 3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用；
 4. **交付契约不破**：`config` 交付形态的产物顶层键必须全部落在 `TOOLKIT_OUTPUT_KEYS` 白名单内。任何新增顶层字段都必须先登记进白名单，并补一条 `test/security-delivery-contract.test.js` 断言；
@@ -417,9 +415,8 @@ E:\CODE\mihomo-toolkit-next\
    处置：用 `protectedDomains` **追加**自己的关键域名（只增不减，`?config=` 无法写入），或 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
 2. **SSRF 存在 TOCTOU 窗口**：校验与建连各做一次 DNS 解析，未做 IP pinning；对抗恶意 DNS 服务器时理论上可利用。
 3. **`?config=` 能力剥夺为黑名单式**：未来内核新增的控制面字段不会自动被剥夺；公开部署应使用 `enableUrlParams: false` 或强制 `authToken`。
-4. **`planResolverChain` / `mergeSubscriptionConfigs` 尚未接线**：两者有完整单测但不在主流程中，请勿据其推断生产行为。
-5. **构建缓存为 TTL 语义**（`enableCache` / `cacheTtl`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。仍未覆盖的是**订阅远端内容**的更新：TTL（默认 300s）内机场改动节点，缓存会继续复用旧快照，需要实时性请下调 `cacheTtl` 或使用 `noCache`。
-6. **配置面已完成一轮「字段清账」**（本轮）：
+4. **构建缓存为 TTL 语义**（`enableCache` / `cacheTtl`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。仍未覆盖的是**订阅远端内容**的更新：TTL（默认 300s）内机场改动节点，缓存会继续复用旧快照，需要实时性请下调 `cacheTtl` 或使用 `noCache`。
+5. **配置面已完成一轮「字段清账」**（本轮）：
    * 原 7 个**隐形字段**（`geositeRepo` / `geoipRepo` / `devServices` / `processDirectMac|Lin` / `processProxyMac|Lin`）
      与 4 个节点裂变字段已登记进注册表，并补齐 `index.d.ts` 类型与示例说明；
    * 原 20 个**空承诺**（`blockKeywords` / `blockServers` / `serverHost` / `enableIpEnrich` 等 7 个 ipEnrich 字段 /

@@ -1,14 +1,11 @@
 /**
- * 控制面净化 / DNS 沙箱 / 解析链规划 回归测试
+ * 控制面净化 / DNS 沙箱 回归测试
  */
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const {
-  partitionControlPlane,
-  mergeSubscriptionConfigs
-} = require('../src/core/security/control-plane');
+const { partitionControlPlane } = require('../src/core/security/control-plane');
 
 const {
   sanitizeHosts,
@@ -20,7 +17,6 @@ const {
 } = require('../src/core/security/dns-sanitizer');
 
 const {
-  planResolverChain,
   checkInvariants,
   deriveFakeIpFilterAdditions
 } = require('../src/core/security/resolver-plan');
@@ -63,33 +59,6 @@ test('partitionControlPlane - 未登记字段 fail-closed', () => {
   );
   assert.strictEqual(data['some-future-kernel-key'], undefined);
   assert.ok(report.hostile.some(h => h.id === 'CP-UNKNOWN'));
-});
-
-test('mergeSubscriptionConfigs - 数据面并集且与抓取完成顺序无关', () => {
-  const sources = [
-    { tag: 'A', isMaster: false, config: { proxies: [{ name: 'a' }], dns: { nameserver: ['10.0.0.1'] }, hosts: { 'github.com': '1.1.1.1' } } },
-    { tag: 'B', isMaster: false, config: { proxies: [{ name: 'b' }] } }
-  ];
-  const r1 = mergeSubscriptionConfigs(sources, {});
-  const r2 = mergeSubscriptionConfigs([...sources].reverse(), {});
-  assert.deepStrictEqual(r1.merged.proxies.map(p => p.name).sort(), ['a', 'b']);
-  assert.deepStrictEqual(r2.merged.proxies.map(p => p.name).sort(), ['a', 'b']);
-  assert.strictEqual(r1.merged.dns, undefined);
-  assert.strictEqual(r1.merged.hosts, undefined);
-});
-
-test('mergeSubscriptionConfigs - 多 master 直接抛错', () => {
-  assert.throws(() => mergeSubscriptionConfigs([
-    { tag: 'A', isMaster: true, config: { proxies: [] } },
-    { tag: 'B', isMaster: true, config: { proxies: [] } }
-  ], {}), /master/);
-});
-
-test('mergeSubscriptionConfigs - 用户本地声明具备最终否决权', () => {
-  const { merged } = mergeSubscriptionConfigs([
-    { tag: 'A', isMaster: true, config: { proxies: [], mode: 'global' } }
-  ], { mode: 'rule' });
-  assert.strictEqual(merged.mode, 'rule');
 });
 
 // ── DNS 条目解析与净化 ───────────────────────────────────────────────────────
@@ -224,68 +193,6 @@ test('sanitizeNameserverPolicy - master 保留安全条目但剔除保留键', (
   assert.strictEqual(policy['safe.example'], 'https://223.5.5.5/dns-query');
 });
 
-// ── 解析链规划 ──────────────────────────────────────────────────────────────
-
-test('planResolverChain - 家庭环境产出满足全部不变式的解析链', () => {
-  const plan = planResolverChain({ env: { kind: 'home', ipv4: true, ipv6: false } });
-
-  assert.deepStrictEqual(plan.violations, []);
-  assert.strictEqual(plan.dns['use-system-hosts'], false);
-  assert.strictEqual(plan.dns['use-hosts'], true);
-  assert.strictEqual(plan.dns['respect-rules'], true);
-  assert.ok(plan.dns['proxy-server-nameserver'].length > 0);
-  assert.ok(plan.dns['fallback-filter'], 'fallback 必须带显式 fallback-filter');
-  assert.ok(plan.dns['fallback-filter'].ipcidr.includes('100.64.0.0/10'));
-  assert.ok(plan.dns['fallback-filter'].ipcidr.includes('127.0.0.0/8'));
-  assert.ok(plan.dns.listen.startsWith('127.0.0.1:'));
-  assert.strictEqual(plan.dns['prefer-h3'], false);
-});
-
-test('planResolverChain - 企业内网使用本地解析器且不误杀', () => {
-  const plan = planResolverChain({
-    env: {
-      kind: 'enterprise',
-      ipv4: true,
-      ipv6: false,
-      dnsEgressAllowed: false,
-      localResolvers: ['10.10.0.53', '10.10.0.54'],
-      trustedPrivateCidrs: ['10.10.0.0/16'],
-      privateZones: ['corp', 'internal']
-    }
-  });
-
-  assert.deepStrictEqual(plan.violations, []);
-  assert.ok(plan.dns['default-nameserver'].includes('10.10.0.53'));
-  assert.ok(plan.dns['proxy-server-nameserver'].includes('10.10.0.53'));
-  assert.deepStrictEqual(plan.dns['nameserver-policy']['+.corp'], ['10.10.0.53', '10.10.0.54']);
-  assert.strictEqual(plan.capabilities.splitHorizon, true);
-  assert.strictEqual(plan.warnings.length, 0);
-});
-
-test('planResolverChain - 未受信 localResolvers 被拒绝并告警', () => {
-  const plan = planResolverChain({
-    env: { kind: 'enterprise', localResolvers: ['10.99.0.53'], trustedPrivateCidrs: [] }
-  });
-  assert.ok(plan.warnings.some(w => /trustedPrivateCidrs/.test(w)));
-  assert.ok(!plan.dns['default-nameserver'].includes('10.99.0.53'));
-});
-
-test('planResolverChain - IPv6-only 单栈环境选用 v6 引导地址', () => {
-  const plan = planResolverChain({ env: { kind: 'ipv6-only', ipv4: false, ipv6: true } });
-  assert.deepStrictEqual(plan.violations, []);
-  assert.strictEqual(plan.capabilities.family, 'v6');
-  const joined = [...plan.dns['default-nameserver'], ...plan.dns['proxy-server-nameserver']].join(' ');
-  assert.ok(/\[2400:3200::1\]|\[2606:4700:4700::1111\]|\[2001:4860:4860::8888\]|\[2402:4e00::\]|\[2620:fe::fe\]/.test(joined),
-    `IPv6-only 应使用 v6 引导地址: ${joined}`);
-  assert.ok(!/\b223\.5\.5\.5\b|\b119\.29\.29\.29\b/.test(joined), '不应混入纯 v4 地址');
-});
-
-test('planResolverChain - 拒绝非回环监听并降级', () => {
-  const plan = planResolverChain({ env: { kind: 'home' }, options: { listenHost: '0.0.0.0' } });
-  assert.strictEqual(plan.dns.listen, '127.0.0.1:1053');
-  assert.ok(plan.findings.some(f => f.id === 'DNS-OPEN-RESOLVER'));
-});
-
 test('checkInvariants - 能检出各类危险配置', () => {
   const bad = {
     'default-nameserver': ['https://doh.pub/dns-query'],
@@ -326,39 +233,6 @@ test('deriveFakeIpFilterAdditions - 节点域名进入 fake-ip-filter (smart 聚
 });
 
 // ── 深度评审缺陷修复专项回归测试 ──────────────────────────────────────────
-
-test('mergeSubscriptionConfigs - 未登记未知字段严格 fail-closed，杜绝穿透漏洞 (Blocker 1)', () => {
-  const sources = [
-    {
-      tag: 'master-sub',
-      isMaster: true,
-      config: {
-        proxies: [{ name: 'm-node' }],
-        'unknown-future-kernel-key': 'attacker-payload',
-        'another-unrecognized-control': { evil: true }
-      }
-    }
-  ];
-  // 即使是 master，未登记字段也坚决不能合并进最终配置
-  const { merged, audits } = mergeSubscriptionConfigs(sources, {});
-  assert.strictEqual(merged['unknown-future-kernel-key'], undefined);
-  assert.strictEqual(merged['another-unrecognized-control'], undefined);
-  assert.strictEqual(merged.proxies.length, 1);
-  assert.ok(audits[0].hostile.some(h => h.id === 'CP-UNKNOWN'));
-});
-
-test('mergeSubscriptionConfigs - proxy-providers 深度合并与冲突上报', () => {
-  const sources = [
-    { tag: 'A', isMaster: false, config: { proxies: [], 'proxy-providers': { p1: { url: 'http://a.com' } } } },
-    { tag: 'B', isMaster: false, config: { proxies: [], 'proxy-providers': { p2: { url: 'http://b.com' } } } },
-    { tag: 'C', isMaster: false, config: { proxies: [], 'proxy-providers': { p1: { url: 'http://conflict.com' } } } }
-  ];
-  const { merged, conflicts } = mergeSubscriptionConfigs(sources, {});
-  assert.ok(merged['proxy-providers'].p1);
-  assert.ok(merged['proxy-providers'].p2);
-  assert.strictEqual(merged['proxy-providers'].p1.url, 'http://a.com');
-  assert.ok(conflicts.some(c => c.key === 'proxy-providers.p1'));
-});
 
 test('sanitizeDnsServer - DoT 协议严禁错误拼接 /dns-query 路径 (Blocker 2)', () => {
   const dotV4 = sanitizeDnsServer('tls://223.5.5.5', { role: ROLES.PROXY_SERVER });
@@ -407,44 +281,6 @@ test('parseDnsServer - 裸域名带端口干净拆分 host 与 port', () => {
   assert.strictEqual(r.port, '53');
 });
 
-test('planResolverChain - 自动为节点域名生成 fake-ip-filter 并通过 INV-7 检查 (Blocker 3 & INV-7)', () => {
-  const plan = planResolverChain({
-    env: { kind: 'home' },
-    inputs: {
-      proxies: [
-        { name: 'Node1', server: 'hk.node.airport.com' },
-        { name: 'Node2', server: 'us.node.airport.com' },
-        { name: 'Node3', server: 'cdn.fast.net' }
-      ]
-    }
-  });
-
-  // smart 模式下折叠聚合为主域通配
-  assert.ok(plan.dns['fake-ip-filter'].includes('+.airport.com'));
-  assert.ok(plan.dns['fake-ip-filter'].includes('+.fast.net'));
-
-  // 验证 checkInvariants INV-7 自检无违规（+.airport.com 覆盖 hk.node.airport.com）
-  const violations = checkInvariants(plan.dns, {
-    proxies: [{ server: 'hk.node.airport.com' }]
-  });
-  assert.ok(!violations.some(v => v.id === 'INV-7'));
-
-  // 验证人为缺失节点域名时，INV-7 能够准确告警
-  const badDns = { ...plan.dns, 'fake-ip-filter': ['baidu.com'] };
-  const badViolations = checkInvariants(badDns, {
-    proxies: [{ server: 'unfiltered.node.com' }]
-  });
-  assert.ok(badViolations.some(v => v.id === 'INV-7'));
-});
-
-test('planResolverChain - IPv6 回环地址 listenHost 正确规范化为 [::1]', () => {
-  const plan = planResolverChain({
-    env: { kind: 'home' },
-    options: { listenHost: '::1', listenPort: 5353 }
-  });
-  assert.strictEqual(plan.dns.listen, '[::1]:5353');
-});
-
 test('sanitizeHosts - userTrustedDomains 允许用户显式豁免受保护域名', () => {
   const raw = {
     'alibaba.com': '1.2.3.4',
@@ -475,37 +311,6 @@ test('P0 - default-nameserver 严格纯 IP 化，拒绝加密 DNS 与 URL 形式
     'default-nameserver': ['https://223.5.5.5/dns-query']
   });
   assert.ok(violations.some(v => v.id === 'INV-1'));
-
-  // 3. planResolverChain 默认生成的 default-nameserver 均为纯 IP
-  const plan = planResolverChain({ env: { ipv4: true, dnsEgressAllowed: true } });
-  for (const s of plan.dns['default-nameserver']) {
-    const parsed = parseDnsServer(s);
-    assert.strictEqual(parsed.kind, 'ip');
-    assert.strictEqual(parsed.scheme, null);
-  }
-});
-
-test('P1 - userDns.nameserver-policy 正确合并且享有最高优先级', () => {
-  const plan = planResolverChain({
-    env: { kind: 'home', ipv4: true },
-    userDns: {
-      'nameserver-policy': {
-        '+.custom.user.org': '223.5.5.5',
-        'rule-set:cn-domain': '8.8.8.8' // 保留键应被剥离保护
-      }
-    },
-    masterDns: {
-      'nameserver-policy': {
-        '+.custom.user.org': '1.1.1.1', // 应当被 userDns 覆盖
-        '+.master.corp': '119.29.29.29'
-      }
-    }
-  });
-
-  const p = plan.dns['nameserver-policy'];
-  assert.strictEqual(p['+.custom.user.org'], '223.5.5.5', '用户本地声明应覆盖 master 声明');
-  assert.strictEqual(p['+.master.corp'], '119.29.29.29');
-  assert.notStrictEqual(p['rule-set:cn-domain'], '8.8.8.8', '保留键不应被覆盖');
 });
 
 test('P1 - external-controller-pipe 与 cors 纳入 critical 级夺权拦截', () => {
@@ -567,34 +372,6 @@ test('P3 - fake-ip-filter 智能聚合与防伪装 SNI 污染专项测试', () =
   assert.ok(!smart.includes('www.apple.com'));
   assert.ok(!smart.includes('bilibili-jp.biliimg.com'));
   assert.ok(!smart.includes('dl.google.com'));
-});
-
-test('P2 - canonicalJson 安全处理 undefined', () => {
-  const { mergeSubscriptionConfigs } = require('../src/core/security/control-plane');
-  // canonicalJson 纯测试
-  const jsonA = { a: 1, b: undefined };
-  const jsonB = { a: 1 };
-  // 经深度合并比较不应产出 broken json
-  const r = mergeSubscriptionConfigs([
-    {
-      tag: 'A',
-      isMaster: true,
-      config: {
-        proxies: [],
-        'proxy-providers': { p1: { foo: 'bar', und: undefined } }
-      }
-    },
-    {
-      tag: 'B',
-      isMaster: false,
-      config: {
-        proxies: [],
-        'proxy-providers': { p1: { foo: 'bar' } }
-      }
-    }
-  ], {});
-
-  assert.strictEqual(r.conflicts.length, 0, 'undefined 属性与缺失属性应视作深度一致，不产生虚假冲突');
 });
 
 test('Extra - sanitizeHosts 阻断 FQDN 尾随点绕过与非法 IP 伪造', () => {

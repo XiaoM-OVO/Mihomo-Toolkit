@@ -22,9 +22,6 @@ const { PROTECTED_DOMAINS, normalizeDomainList } = require('../../data');
 // 1. 基础地址工具
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_FAKEIP_V4 = '198.18.0.1/16';
-const DEFAULT_FAKEIP_V6 = 'fdfe:dcba:9876::1/64';
-
 /**
  * Fake-IP 自环守卫网段。
  * 注意必须覆盖整个 198.18.0.0/15（含 198.19.0.0/16），
@@ -41,28 +38,6 @@ const DEFAULT_FAKEIP_GUARD_RANGES = ['198.18.0.0/15'];
  * **追加**（只能加不能减），合并逻辑见 `src/config/index.js::applyAdditiveFields`。
  */
 const DEFAULT_PROTECTED_DOMAINS = new Set(PROTECTED_DOMAINS);
-
-/** 从 fake-ip-range 字符串解析出 [startInt, endInt] */
-function parseV4CidrToRange(cidr) {
-  const m = String(cidr || '').trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
-  if (!m) return null;
-  const octets = [m[1], m[2], m[3], m[4]].map(Number);
-  const prefix = Number(m[5]);
-  if (octets.some(o => o > 255) || prefix > 32) return null;
-  const base = ((octets[0] << 24) >>> 0) + (octets[1] << 16) + (octets[2] << 8) + octets[3];
-  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
-  const start = (base & mask) >>> 0;
-  const end = (start | (~mask >>> 0)) >>> 0;
-  return { start, end };
-}
-
-function ipv4ToInt(ip) {
-  const parts = String(ip).trim().split('.');
-  if (parts.length !== 4) return null;
-  const nums = parts.map(Number);
-  if (nums.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return null;
-  return ((nums[0] << 24) >>> 0) + (nums[1] << 16) + (nums[2] << 8) + nums[3];
-}
 
 /** 判断 IPv4 是否落在给定 CIDR 列表内 */
 function ipv4InCidrs(ip, cidrs = []) {
@@ -594,15 +569,11 @@ function sanitizeNameserverPolicy(policy, options = {}) {
 
 module.exports = {
   ROLES,
-  DEFAULT_FAKEIP_V4,
   DEFAULT_FAKEIP_GUARD_RANGES,
-  DEFAULT_FAKEIP_V6,
   DEFAULT_PROTECTED_DOMAINS,
   DANGEROUS_DNS_MODIFIERS,
   MODIFIER_SEVERITY_RANK,
   shouldStripModifier,
-  parseV4CidrToRange,
-  ipv4ToInt,
   ipv4InCidrs,
   isReservedV4,
   parseDnsServer,

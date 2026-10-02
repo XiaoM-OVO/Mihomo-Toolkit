@@ -1,15 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const {
-  runNodesPipeline,
-  runConfigPipeline,
-  runStrategyPipeline,
-  buildAuditReport,
-  runCleanerPipeline,
-  runNodePipeline,
-  runProfilePipeline
-} = require('../src/pipeline');
+const { runNodesPipeline } = require('../src/pipeline/nodes');
+const { runConfigPipeline } = require('../src/pipeline/config');
+const { runStrategyPipeline } = require('../src/pipeline/strategy');
+const { buildAuditReport } = require('../src/pipeline/report');
 
 test('🚀 流水线单元测试 - runNodesPipeline 纯节点清洗与去重', async () => {
   const proxies = [
@@ -21,12 +16,6 @@ test('🚀 流水线单元测试 - runNodesPipeline 纯节点清洗与去重', a
   const cleaned = await runNodesPipeline(proxies, { enableDedupe: true, removeInfoNodes: true });
   assert.equal(cleaned.length, 1);
   assert.ok(cleaned[0].name.includes('香港'));
-
-  // 验证别名一致性
-  const aliasCleaned = await runNodePipeline(proxies, { enableDedupe: true, removeInfoNodes: true });
-  assert.equal(aliasCleaned.length, 1);
-  const aliasCleaner = await runCleanerPipeline(proxies, { enableDedupe: true, removeInfoNodes: true });
-  assert.equal(aliasCleaner.length, 1);
 });
 
 test('🚀 流水线单元测试 - runStrategyPipeline 策略组拓扑与分流规则', () => {
@@ -50,10 +39,6 @@ test('🚀 流水线单元测试 - runStrategyPipeline 策略组拓扑与分流�
   assert.ok(groupNames.includes('📍 手动选择'));
   assert.ok(groupNames.includes('🇭🇰 香港节点'));
   assert.ok(groupNames.includes('🇯🇵 日本节点'));
-
-  // 验证别名一致性
-  const aliasConfig = runProfilePipeline(config);
-  assert.equal(aliasConfig['proxy-groups'].length, finalConfig['proxy-groups'].length);
 });
 
 test('🚀 流水线单元测试 - buildAuditReport 结构化审计生成', () => {

@@ -170,6 +170,5 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
 }
 
 module.exports = {
-  runStrategyPipeline,
-  runProfilePipeline: runStrategyPipeline
+  runStrategyPipeline
 };
