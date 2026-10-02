@@ -64,6 +64,7 @@
   "enableGame": true,
   "enableSystemServices": true,
   "enableDomesticGroup": false,
+  "include": [],
   "servicesConfigFile": "",
   "customServices": {},
   "aiServices": [

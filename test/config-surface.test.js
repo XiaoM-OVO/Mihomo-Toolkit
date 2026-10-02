@@ -20,13 +20,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { FIELDS, DEFAULTLESS_FIELDS } = require('../src/data');
+const { FIELDS, DEFAULTLESS_FIELDS, REMOTE_DENIED_FIELDS } = require('../src/data');
 const {
   absolutizeMountPaths,
   readMountFile,
   computeMountDigest,
   resolveMountPath
 } = require('../src/config/mounts');
+const { expandIncludes } = require('../src/config/include');
 const { resolveConfig } = require('../src/config');
 const { buildProfileCacheKey } = require('../src/pipeline/engine');
 const { hardenRemoteConfig } = require('../src/core/security/remote-config');
@@ -225,4 +226,97 @@ test('🛡️ 配额不可远程放宽 — ?config= 无法通过 security 字段
   // 而可信本地来源仍然可以正常收紧/放宽配额
   const local = resolveConfig({ security: { maxTotalNodes: 123 } });
   assert.equal(local.security.maxTotalNodes, 123);
+});
+
+test('📁 挂载回归 — include 片段与主文件共用 schema，冲突时主文件优先', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-priority-'));
+  const frag = path.join(dir, 'base.yaml');
+  fs.writeFileSync(frag, 'logLevel: debug\n');
+
+  // 片段 logLevel=debug，主文件 logLevel=info → 主文件值胜出
+  const expanded = expandIncludes({ include: [frag], logLevel: 'info' }, dir);
+  assert.equal(expanded.logLevel, 'info', '主文件未覆盖片段标量');
+  // 主对象自身的 include 键保留到结果里（与 servicesConfigFile 保留行为一致）
+  assert.deepStrictEqual(expanded.include, [frag]);
+
+  // 端到端：resolveConfig 亦生效（绝对路径不受 cwd 影响）
+  assert.equal(resolveConfig({ include: [frag], logLevel: 'info' }).logLevel, 'info');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('📁 挂载回归 — include 数组合并为并集去重且保留先出现顺序', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-union-'));
+  const frag = path.join(dir, 'base.yaml');
+  fs.writeFileSync(frag, 'whitelistKeywords: ["x", "y"]\n');
+
+  const expanded = expandIncludes({ include: [frag], whitelistKeywords: ['y', 'z'] }, dir);
+  assert.deepStrictEqual(expanded.whitelistKeywords, ['x', 'y', 'z'], '数组未按并集去重 / 保序');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('📁 挂载回归 — include 支持递归，片段内相对路径以该片段目录为基准', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-rec-'));
+  const sub = path.join(dir, 'sub');
+  fs.mkdirSync(sub);
+  // 主文件（dir）include ./sub/outer.yaml；outer.yaml（在 sub/）再 include ./inner.yaml。
+  // 若内层相对路径错以主文件目录为基准，会找 dir/inner.yaml（不存在），此处即暴露。
+  fs.writeFileSync(path.join(sub, 'outer.yaml'), 'include: ["./inner.yaml"]\n');
+  fs.writeFileSync(path.join(sub, 'inner.yaml'), 'testURL: "https://inner.example/204"\n');
+
+  const expanded = expandIncludes({ include: ['./sub/outer.yaml'] }, dir);
+  assert.equal(expanded.testURL, 'https://inner.example/204');
+  // 主文件的 include 保留；片段自身的 include 已被消费、不渗入结果
+  assert.deepStrictEqual(expanded.include, ['./sub/outer.yaml']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('📁 挂载回归 — include 环路检测抛错且错误信息含环路链', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-cycle-'));
+  const a = path.join(dir, 'a.yaml');
+  const b = path.join(dir, 'b.yaml');
+  fs.writeFileSync(a, 'include: ["./b.yaml"]\n');
+  fs.writeFileSync(b, 'include: ["./a.yaml"]\n');
+
+  assert.throws(
+    () => expandIncludes({ include: [a] }, dir),
+    /Circular config include detected/
+  );
+  // 错误信息须能看出环路链
+  assert.throws(() => expandIncludes({ include: [a] }, dir), new RegExp(`${path.sep}a\\.yaml`));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('📁 挂载回归 — include 片段缺失时显式抛错（fail-closed）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-miss-'));
+  const missing = path.join(dir, 'nope.yaml');
+  assert.throws(() => expandIncludes({ include: [missing] }, dir), /Config mount not found/);
+  assert.throws(() => resolveConfig({ include: [missing] }), /Config mount not found/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('📁 挂载回归 — 被嵌套的 include 片段内容变化同样刷新构建缓存键', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-digest-'));
+  const outer = path.join(dir, 'outer.yaml');
+  const inner = path.join(dir, 'inner.yaml');
+  fs.writeFileSync(outer, 'include: ["./inner.yaml"]\n');
+  fs.writeFileSync(inner, 'customServices:\n  deepseek:\n    name: v1\n');
+
+  const cfg = { include: [outer], enableAI: true };
+  const digest1 = computeMountDigest(cfg, dir);
+  const key1 = buildProfileCacheKey(cfg, {});
+  assert.ok(digest1 && key1);
+
+  // 只改「被外层片段嵌套」的内层文件：指纹与缓存键都必须随之变化
+  fs.writeFileSync(inner, 'customServices:\n  deepseek:\n    name: v2\n');
+  assert.notEqual(computeMountDigest(cfg, dir), digest1, '嵌套片段内容未计入挂载指纹');
+  assert.notEqual(buildProfileCacheKey(cfg, {}), key1, '嵌套片段变化未刷新构建缓存键');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('🛡️ 远程配置 — include 属本地资源，?config= 无法借它读取本机文件', () => {
+  assert.ok(REMOTE_DENIED_FIELDS.includes('include'), 'include 必须是远程剥夺字段');
+  const hardened = hardenRemoteConfig({ include: ['./x.yaml'], enableAI: true });
+  assert.equal(hardened.ok, true);
+  assert.equal(hardened.config.include, undefined, 'include 未被远程剥离');
+  assert.ok(hardened.strippedKeys.includes('include'));
 });
