@@ -140,6 +140,8 @@ const FIELDS = [
     group: '核心分流开关', doc: '中国分流独立策略组' },
 
   // ── 【5. 扩展分流开关】 ───────────────────────────────────────────────────
+  { key: 'include', type: 'string[]', default: [], merge: 'override', trust: 'local',
+    group: '扩展分流开关', doc: '通用配置片段挂载：片段与主文件同一 schema，主文件优先、数组并集去重、支持递归 include（可读本地文件，仅可信来源可写）' },
   { key: 'servicesConfigFile', type: 'string', default: '', merge: 'override', trust: 'local',
     group: '扩展分流开关', doc: '外部服务定义配置文件路径（可 require 本地代码，仅可信来源可写）' },
   { key: 'customServices', type: 'object', default: {}, merge: 'override', trust: 'any',

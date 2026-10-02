@@ -99,6 +99,13 @@ export interface ToolkitConfig {
   specialNodeRules?: SpecialNodeRule[];
   /** 外部服务配置文件路径 (.js / .yaml / .json) */
   servicesConfigFile?: string;
+  /**
+   * 通用配置片段挂载：片段与主文件共用同一份 schema，可放任意配置项。
+   * 优先级：主文件优先（合并顺序 = include[0] ⊕ … ⊕ 主文件）；数组并集去重、对象深合并、标量覆盖；
+   * 支持片段内递归 include（相对路径以所在片段目录为基准，含环路检测与深度上限）。
+   * 可读取本地文件，属可信本地字段，`?config=` 远程配置无法写入。
+   */
+  include?: string[];
   /** 动态自定义服务字典 */
   customServices?: Record<string, any>;
   /** 激活的 AI 服务列表 */

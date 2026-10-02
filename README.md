@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
 [![Version](https://img.shields.io/badge/Version-v2.0.0--dev-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-195%20Passed-brightgreen)](test/)
+[![Tests](https://img.shields.io/badge/Tests-202%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底 · 零维护** 」
 
@@ -79,13 +79,14 @@ mihomo-toolkit/
 │   ├── config/                # ⚙️ 配置策略层 (操作者改什么)
 │   │   ├── defaults.js        # 出厂默认配置（由只读数据层的字段注册表派生）
 │   │   ├── catalog.js         # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
+│   │   ├── include.js         # 通用配置片段挂载 include（主文件优先 / 递归 / 环路防护）
 │   │   └── index.js           # resolveConfig 合并器（注册表驱动的只增不减基线合并）
 │   │
 │   └── data/                  # 📦 只读运行基础层 (程序所有 / 用户只读，最底层)
 │       ├── field-registry.js  # 字段注册表 SSOT：有哪些字段 / 默认值 / 合并语义 / 信任级
 │       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                      # 🧪 自动化测试套件 (195 个全绿用例)
+├── test/                      # 🧪 自动化测试套件 (202 个全绿用例)
 ├── config.example.yaml        # 极简扁平化配置模板
 ├── index.d.ts                 # 完整 TypeScript 类型契约声明
 ├── package.json               # 项目依赖与多命令配置

@@ -7,6 +7,7 @@
 const { DEFAULT_CONFIG } = require('./defaults');
 const { ADDITIVE_FIELDS, ENTRY_NORMALIZERS, mergeBaseline } = require('../data');
 const { resolveMountPath, readMountFile } = require('./mounts');
+const { expandIncludes } = require('./include');
 const { buildServiceCatalog, deepMerge } = require('./catalog');
 
 /**
@@ -66,7 +67,12 @@ function applyAdditiveFields(merged) {
  * @returns {object} 合并后的最终配置
  */
 function resolveConfig(userConfig = {}) {
-  const merged = Object.assign({}, DEFAULT_CONFIG, userConfig || {});
+  // 0. 先展开通用片段挂载（include）：主文件优先、数组并集去重、支持递归 include。
+  //    CLI / server 在读取配置文件现场已把挂载路径转成绝对路径，故此处以 cwd 为基准
+  //    只影响「SDK 直接传对象且写相对路径」的场景。
+  const expanded = expandIncludes(userConfig || {}, process.cwd());
+
+  const merged = Object.assign({}, DEFAULT_CONFIG, expanded || {});
 
   // 1. 处理外部服务配置文件挂载
   const externalFile = merged.servicesConfigFile || merged.servicesConfig;

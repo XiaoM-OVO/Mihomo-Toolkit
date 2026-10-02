@@ -73,22 +73,33 @@
 > 落实状态：第 4 条由 `test/data-baseline.test.js` 强制；**第 1/2/3 条由 `test/config-surface.test.js` 强制**——
 > 该套件会静态扫描 `src` 的字段读取、`config.example.yaml` 的键与 `index.d.ts` 的配置接口，
 > 任何「隐形字段」「空承诺」「类型缺口」都会直接让测试失败。
+> 第 1 条的通用 `include` 已落地（`src/config/include.js` + `src/config/mounts.js`），
+> 其回归用例同样收在 `test/config-surface.test.js`（优先级 / 并集去重 / 递归 / 环路 / fail-closed / 缓存指纹 / 远程剥夺）。
 
-### 📎 外挂配置文件（`include` 机制的前身）
+### 📎 外挂配置文件（通用 `include` 挂载）
 
-目前唯一的外挂入口是 `servicesConfigFile`（可写 `servicesConfig` 别名），
-其装载逻辑集中在 [`src/config/mounts.js`](src/config/mounts.js)。四条语义已经定型，
-将来泛化成 `include: [...]` 时直接复用：
+外挂入口现已泛化为通用的 `include: ["./a.yaml", "./b.yaml"]`：片段与主文件**共用同一份 schema**，
+任何配置项都能放进片段；`servicesConfigFile`（可写 `servicesConfig` 别名）作为单一文件入口继续保留。
+装载逻辑集中在 [`src/config/mounts.js`](src/config/mounts.js)（路径 / 读取 / 摘要）
+与 [`src/config/include.js`](src/config/include.js)（展开 / 合并）。四条基础语义已经定型：
 
 | 语义 | 行为 | 为什么 |
 | :--- | :--- | :--- |
-| **路径基准** | 相对路径一律相对**配置文件所在目录**，在读取配置的现场转成绝对路径 | 旧实现按 `process.cwd()` 解析，换个目录启动（systemd / 定时任务）即静默失效 |
+| **路径基准** | 相对路径一律相对**引用它的文件所在目录**，在读取配置的现场转成绝对路径 | 旧实现按 `process.cwd()` 解析，换个目录启动（systemd / 定时任务）即静默失效 |
 | **失败姿态** | 文件缺失 / 扩展名不支持 / 解析失败 → **显式抛错** | 旧实现静默返回 `{}`，用户只会看到「自定义服务凭空消失」 |
 | **热更新** | `.js` / `.cjs` 装载前清理 `require` 缓存 | 否则长驻服务永远读不到 `.js` 挂载文件的改动 |
-| **缓存参与** | 构建缓存键包含挂载文件的**内容摘要**（sha256） | 旧实现键里只有路径字符串，改文件在 `cacheTtl` 内不生效 |
+| **缓存参与** | 构建缓存键包含挂载文件的**内容摘要**（sha256，含递归片段） | 旧实现键里只有路径字符串，改文件在 `cacheTtl` 内不生效 |
 
-> 路线图：把它泛化为 `config.yaml` 里的 `include: ["./a.yaml", "./b.yaml"]`——
-> 片段与主文件**同一份 schema**，不额外发明配置文件层级（见上表第 1 条约束）。
+`include` 在基础语义之上补充：
+
+| 语义 | 行为 |
+| :--- | :--- |
+| **主文件优先** | 合并顺序 = `include[0] ⊕ include[1] ⊕ … ⊕ 主文件自身`，越靠后优先级越高 |
+| **数组合并** | 并集去重（保留先出现的顺序，后出现的重复项丢弃） |
+| **对象合并** | 深度递归合并；标量高优先级覆盖 |
+| **递归 include** | 片段内可再 `include`（相对路径以该片段所在目录为基准），带环路检测与深度上限 |
+
+`include` 声明为 `trust: 'local'`，会自动进入远程剥夺清单：`?config=` 远程配置无法借它读取本机任意文件。
 
 ### 🛡️ 架构红线 (Non-negotiable Rules)
 
@@ -208,7 +219,7 @@
 * **三层机制（按数据流顺序）**：
 
   1. **不可信配置能力剥夺（`remote-config.js`，纯函数）**
-     服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（杜绝借本地路径读取服务器任意文件），并剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`fetchProxyPort`）类字段。
+     服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（杜绝借本地路径读取服务器任意文件），并剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`include`、`fetchProxyPort`）类字段。
      *剥夺清单**由只读数据层派生**：`src/data/field-registry.js` 中声明 `trust: 'local'` 的字段自动进入清单，
      别名输入字段来自 `ALIAS_REMOTE_DENIED_FIELDS`。新增安全开关只需标注信任级，不存在「忘了同步清单」的漂移空间。*
      *库契约：`buildProfile(userConfig)` 的 `userConfig` 视为可信输入；处理不可信配置的调用方必须先经 `hardenRemoteConfig()` 降级。*
@@ -297,13 +308,14 @@ E:\CODE\mihomo-toolkit-next\
 │   ├── config/                   # ⚙️ 配置策略层 (操作者改什么)
 │   │   ├── defaults.js           # 出厂默认配置（由字段注册表派生，不再手写清单）
 │   │   ├── catalog.js            # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
+│   │   ├── include.js            # 通用配置片段挂载：include 展开 / 主文件优先合并 / 环路与深度防护
 │   │   └── index.js              # resolveConfig 合并器：注册表驱动的「只增不减」基线合并 + 外部服务配置挂载
 │   │
 │   └── data/                     # 📦 只读运行基础层 (最底层，程序所有 / 用户只读)
 │       ├── field-registry.js     # 字段注册表 SSOT：字段名 / 默认值 / 类型 / 合并语义 / 信任级
 │       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                         # 🧪 自动化测试套件 (25 个测试文件，195 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (25 个测试文件，202 个全绿用例)
 │                                 #    其中 security-delivery-contract / dns-invariants /
 │                                 #    server-security / security-sanitizer / data-baseline /
 │                                 #    config-surface 为安全与契约回归套件

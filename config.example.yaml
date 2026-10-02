@@ -241,6 +241,14 @@ systemServices:
 #   - github
 #   - scholar
 
+# 🧩 通用配置片段挂载（include）：把配置拆成多个片段，片段与主文件共用同一份 schema
+# 优先级：主文件优先（合并顺序 = include[0] ⊕ include[1] ⊕ … ⊕ 主文件自身）
+# 合并规则：数组并集去重（保留先出现的顺序）、对象深度递归合并、标量高优先级覆盖
+# 支持片段内再 include（相对路径以该片段所在目录为基准），环路与超深会直接报错
+# include:
+#   - "./base.yaml"
+#   - "./overrides.yaml"
+
 # 🧩 动态服务编目扩展（支持行内定义或外部挂载配置文件）
 # servicesConfigFile: "./services.config.js" # 外部服务定义文件路径 (支持 .js / .yaml / .json)
 #                                  # ⚠️ 相对路径以「本配置文件所在目录」为基准；文件缺失/格式不支持会直接报错

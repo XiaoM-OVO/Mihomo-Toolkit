@@ -12,7 +12,10 @@
  *   4. **内容摘要**：为构建缓存键提供挂载文件的内容指纹
  *      （旧实现只把路径字符串放进缓存键，改了文件在 TTL 内不生效）
  *
- * 新增挂载机制时，只需把字段名登记进 `MOUNT_PATH_KEYS`，上述四项会自动覆盖它。
+ * 新增挂载机制时，只需把字段名登记进 `MOUNT_PATH_KEYS`（值 = 单个路径）或
+ * `MOUNT_LIST_KEYS`（值 = 路径数组），上述四项会自动覆盖它。
+ * 通用片段挂载 `include` 已经落地：它属于 `MOUNT_LIST_KEYS`，装载本体在 `include.js`，
+ * 这里的 `absolutizeMountPaths` / `computeMountDigest` 负责路径绝对化与内容指纹（含递归片段）。
  */
 
 'use strict';
@@ -22,8 +25,11 @@ const path = require('path');
 const crypto = require('crypto');
 const yaml = require('yaml');
 
-/** 路径型外挂配置字段（值 = 文件路径）。新增 include 机制时在此登记。 */
+/** 路径型外挂配置字段（值 = 单个文件路径） */
 const MOUNT_PATH_KEYS = ['servicesConfigFile'];
+
+/** 路径数组型外挂配置字段（值 = 文件路径数组，如通用片段挂载 `include`） */
+const MOUNT_LIST_KEYS = ['include'];
 
 /** 受支持的挂载文件扩展名 */
 const SUPPORTED_EXTS = ['.yaml', '.yml', '.json', '.js', '.cjs'];
@@ -60,6 +66,21 @@ function absolutizeMountPaths(userConfig, baseDir) {
     const abs = resolveMountPath(out[key], baseDir);
     if (abs && abs !== out[key]) {
       out[key] = abs;
+      changed = true;
+    }
+  }
+  // 路径数组字段（如 include）：逐项就地转绝对路径，空串 / 非字符串项跳过
+  for (const key of MOUNT_LIST_KEYS) {
+    const list = out[key];
+    if (!Array.isArray(list)) continue;
+    let listChanged = false;
+    const next = list.map((item) => {
+      const abs = resolveMountPath(item, baseDir);
+      if (abs && abs !== item) { listChanged = true; return abs; }
+      return item;
+    });
+    if (listChanged) {
+      out[key] = next;
       changed = true;
     }
   }
@@ -112,6 +133,10 @@ function readMountFile(fullPath) {
  * 覆盖「路径 + 是否存在 + 内容」三者：只放路径字符串会让改动挂载文件在
  * `cacheTtl` 内不生效；带上内容后，改文件即刻产生新键。
  *
+ * `include` 片段采用**传递式**收集：片段内部若再 include 了更深的文件，
+ * 那些文件的内容同样要计入指纹，否则「只改被嵌套片段」不会刷新缓存。
+ * 本函数仅用于指纹，读取片段失败时容错跳过（真正装载阶段由 `include.js` fail-closed）。
+ *
  * @param {object} userConfig
  * @param {string} [baseDir] 基准目录（默认 cwd；配置文件现场已转绝对路径时不需要）
  * @returns {string} 稳定摘要；无挂载源时返回空串
@@ -119,9 +144,12 @@ function readMountFile(fullPath) {
 function computeMountDigest(userConfig, baseDir) {
   if (!userConfig || typeof userConfig !== 'object') return '';
   const entries = [];
-  for (const key of MOUNT_PATH_KEYS) {
-    const fullPath = resolveMountPath(userConfig[key], baseDir);
-    if (!fullPath) continue;
+  const seen = new Set();
+
+  // 记录一个挂载文件（path 去重，防重复 / 防环）：指纹 = 内容 sha256
+  const record = (key, fullPath) => {
+    if (!fullPath || seen.has(fullPath)) return;
+    seen.add(fullPath);
     let fingerprint = 'missing';
     try {
       if (fs.existsSync(fullPath)) {
@@ -131,13 +159,41 @@ function computeMountDigest(userConfig, baseDir) {
       fingerprint = `unreadable:${err.code || 'error'}`;
     }
     entries.push(`${key}:${fullPath}:${fingerprint}`);
+  };
+
+  for (const key of MOUNT_PATH_KEYS) {
+    record(key, resolveMountPath(userConfig[key], baseDir));
   }
+
+  // 传递式收集：片段内 include 的相对路径以**该片段所在目录**为基准
+  const collectLists = (cfg, dir) => {
+    if (!cfg || typeof cfg !== 'object') return;
+    for (const key of MOUNT_LIST_KEYS) {
+      const list = cfg[key];
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        const fullPath = resolveMountPath(item, dir);
+        if (!fullPath || seen.has(fullPath)) continue;
+        record(key, fullPath);
+        let fragment;
+        try {
+          fragment = readMountFile(fullPath);
+        } catch (err) {
+          continue; // 指纹阶段容错：真正的装载阶段会显式报错
+        }
+        collectLists(fragment, path.dirname(fullPath));
+      }
+    }
+  };
+  collectLists(userConfig, baseDir);
+
   if (entries.length === 0) return '';
   return crypto.createHash('sha256').update(entries.join('\n')).digest('hex');
 }
 
 module.exports = {
   MOUNT_PATH_KEYS,
+  MOUNT_LIST_KEYS,
   SUPPORTED_EXTS,
   resolveMountPath,
   absolutizeMountPaths,
