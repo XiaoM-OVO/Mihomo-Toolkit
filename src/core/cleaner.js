@@ -452,10 +452,11 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     }
   }
 
-  const pType = String(proxy.type || '').toLowerCase();
+  const protocol = String(proxy.type || '').toLowerCase();
   const transportTag = getTransportType(proxy);
 
-  const groupKey = regionInfo ? (regionInfo.id || regionInfo.name) : 'garbage';
+  const isUnknownRegion = !regionInfo;
+  const groupKey = regionInfo ? (regionInfo.id || regionInfo.name) : 'unknown';
 
   return {
     proxy,
@@ -464,11 +465,11 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     destCity,
     tags: Array.from(tags),
     featurePools,
-    pType,
+    protocol,
     transportTag,
     attrs,
     groupKey,
-    isGarbage: !regionInfo
+    isUnknownRegion
   };
 }
 

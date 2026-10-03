@@ -45,7 +45,7 @@ function buildProxyTopology({
 
   // 1. 初始化分发桶
   const buckets = {
-    garbage: [],
+    unknown: [],
     download: [],
     highMulti: [],
     experimental: [],
@@ -78,8 +78,8 @@ function buildProxyTopology({
       return;
     }
 
-    if (item.isGarbage) {
-      buckets.garbage.push(finalName);
+    if (item.isUnknownRegion) {
+      buckets.unknown.push(finalName);
       return;
     }
 
@@ -391,7 +391,7 @@ function buildProxyTopology({
 
   finalGroups.push(
     buildSelect('其他节点', buckets.other),
-    buildSelect('未知识别', buckets.garbage, userConfig.hideGarbageGroup)
+    buildSelect('未知识别', buckets.unknown, userConfig.hideUnknownGroup)
   );
 
   // 自定义节点分组注入

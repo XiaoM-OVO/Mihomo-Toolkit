@@ -30,12 +30,12 @@ try {
   if (pkg && pkg.version) TOOLKIT_VERSION = `v${pkg.version}`;
 } catch (e) {}
 
-function normalizeTargetType(rawType) {
-  let targetType = String(rawType || 'config').toLowerCase();
-  if (targetType === 'full') targetType = 'config';
-  if (targetType === 'cleaner' || targetType === 'pure') targetType = 'nodes';
-  if (targetType === 'meta' || targetType === 'audit') targetType = 'report';
-  return targetType;
+function normalizeOutputMode(rawMode) {
+  let mode = String(rawMode || 'config').toLowerCase();
+  if (mode === 'full') mode = 'config';
+  if (mode === 'cleaner' || mode === 'pure') mode = 'nodes';
+  if (mode === 'meta' || mode === 'audit') mode = 'report';
+  return mode;
 }
 
 /**
@@ -45,7 +45,7 @@ const CACHE_KEY_VERSION = 'v2';
 
 /**
  * 除 userConfig 之外，仅这些 CLI / 运行时选项会影响产物内容
- * （options.debug / silent / logger / colors 等只影响日志；options.type 经 normalizeTargetType
+ * （options.debug / silent / logger / colors 等只影响日志；options.type / options.mode 经 normalizeOutputMode
  * 归一化后单独纳入，故此处不重复计入原始字面量）
  */
 const CACHE_KEY_OPTION_KEYS = ['url'];
@@ -54,7 +54,7 @@ const CACHE_KEY_OPTION_KEYS = ['url'];
  * 计算构建产物缓存键 (纯函数)
  *
  * 设计要点：配置主体整体参与哈希，而非手工枚举字段。此前仅摘取十余个字段，
- * 导致 hosts / nameserver-policy / dnsServer / dnsListen / enableScript /
+ * 导致 hosts / nameserver-policy / dnsServer / dnsListen / enablePipeline /
  * assetClosure 等未登记配置项变化时命中旧产物（多租户 ?config= 场景下即为脏读）。
  * 结构性纳入后，任何新增配置开关都会自动进入缓存键。
  *
@@ -91,7 +91,7 @@ function getCacheKey(userConfig = {}, options = {}) {
 
     const canonical = stableStringify({
       v: CACHE_KEY_VERSION,
-      type: normalizeTargetType(rawType),
+      type: normalizeOutputMode(rawType),
       options: optionSubset,
       subs,
       mounts,
@@ -139,7 +139,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   const stratLogger = typeof logger.child === 'function' ? logger.child('Strategy') : logger;
 
   // 1. 交付形态解析: config | nodes | report
-  const targetType = normalizeTargetType(options.type || userConfig.outputMode || userConfig.type || 'config');
+  const outputMode = normalizeOutputMode(options.mode || options.type || userConfig.outputMode || userConfig.type || 'config');
 
   // 2. 资源安全配额防御
   const securityLimits = userConfig.security || {};
@@ -189,7 +189,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
 
   // 5. Step 1: 订阅抓取与预处理网关 (IO 阶段)
   const {
-    configData,
+    sourceSkeleton,
     collectedSubInfos,
     hasFailedSub,
     hasInjectedTag,
@@ -201,13 +201,13 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     options,
     logger: ioLogger,
     dashboard,
-    deliveryMode: targetType
+    deliveryMode: outputMode
   });
 
   // 5.1 资源配额二次校验：节点总量与单订阅节点量
   //     （limits.js 早已定义 maxTotalNodes / perSubscriptionMaxNodes，但此前无任何调用方传参）
   const nodeLimitErr = validateRequestLimits({
-    totalNodes: (configData.proxies || []).length,
+    totalNodes: (sourceSkeleton.proxies || []).length,
     perSubCounts,
     limits: securityLimits
   });
@@ -221,7 +221,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     proxies: cleanProxies,
     classifiedNodes,
     meta
-  } = await runNodesPipeline(configData.proxies, {
+  } = await runNodesPipeline(sourceSkeleton.proxies, {
     ...nodeConfig,
     withClassified: true,
     logger: cleanLogger
@@ -238,7 +238,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   }
 
   // ─── 🛑 Checkpoint 1: 交付纯净节点 (nodes 模式早退截断) ───
-  if (targetType === 'nodes') {
+  if (outputMode === 'nodes') {
     const nodesResult = {
       yamlStr: yaml.stringify({ proxies: cleanProxies }),
       proxies: cleanProxies,
@@ -252,7 +252,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   }
 
   // ─── 🛑 Checkpoint 2: 交付审计报告 (report 模式早退截断) ───
-  if (targetType === 'report') {
+  if (outputMode === 'report') {
     const reportData = buildAuditReport(meta, cleanProxies);
     const reportResult = {
       yamlStr: JSON.stringify(reportData, null, 2),
@@ -268,7 +268,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
 
   // ─── 🛑 Checkpoint 3: 交付完整配置 (config 模式跑完全程) ───
   const { yamlStr, outputData, userInfo, invariantViolations } = runConfigPipeline({
-    configData,
+    sourceSkeleton,
     cleanProxies,
     classifiedNodes,
     collectedSubInfos,
@@ -297,5 +297,6 @@ module.exports = {
   runPipelineEngine,
   buildProfile: runPipelineEngine,
   buildProfileCacheKey: getCacheKey,
+  normalizeOutputMode,
   createLogger
 };

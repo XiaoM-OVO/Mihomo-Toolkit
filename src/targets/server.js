@@ -234,17 +234,18 @@ function startServer(options = {}) {
         }
 
         const debugMode = reqUrl.searchParams.get('debug') === '1';
-        const targetType = reqUrl.searchParams.get('type') || reqUrl.searchParams.get('mode') || userConfig.outputMode;
+        const outputMode = reqUrl.searchParams.get('mode') || reqUrl.searchParams.get('type') || userConfig.outputMode;
         const buildLogger = serverLogger.child('CLI');
         const result = await buildProfile(userConfig, {
           production: true,
           debug: debugMode,
-          type: targetType,
+          mode: outputMode,
+          type: outputMode,
           logger: buildLogger
         });
         const { yamlStr, userInfo } = result;
 
-        const isReport = targetType === 'report' || targetType === 'audit' || targetType === 'meta';
+        const isReport = outputMode === 'report' || outputMode === 'audit' || outputMode === 'meta';
         const headers = {
           'Content-Type': isReport ? 'application/json; charset=utf-8' : 'text/yaml; charset=utf-8',
           'Profile-Update-Interval': '24',

@@ -20,20 +20,21 @@ const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../
 
 /**
  * 运行策略组完整构建流水线 (strategy pipeline)
- * @param {object} config 原始 Mihomo 配置 (包含 proxies 列表)
- * @param {object} [extConfig={}] 用户外部配置参数
+ * @param {object} sourceSkeleton 原始 Mihomo 配置骨架 (包含 proxies 列表)
+ * @param {object} [userConfigOrProfile={}] 用户外部配置参数
+ * @param {object} [pipelineContext={}] 流水线上下文
  * @returns {object} 构建完毕的 Mihomo 配置
  */
-function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) {
-  const safeExtConfig = (typeof extConfig === 'object' && extConfig !== null) ? extConfig : {};
+function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipelineContext = {}) {
+  const safeExtConfig = (typeof userConfigOrProfile === 'object' && userConfigOrProfile !== null) ? userConfigOrProfile : {};
   const userConfig = resolveConfig(safeExtConfig);
-  if (!userConfig.enableScript) return config;
+  if (!userConfig.enablePipeline) return sourceSkeleton;
 
   let classifiedNodes = pipelineContext.classifiedNodes;
 
   // 若上游流水线未提供已分类打标的节点（如 Clash Verge 独立脚本入口），则在本地执行打标与格式化
   if (!classifiedNodes) {
-    const rawProxies = config.proxies || [];
+    const rawProxies = sourceSkeleton.proxies || [];
     const isPreCleaned = rawProxies.some(p => p && p._cleaned);
     let proxies = rawProxies;
 
@@ -79,7 +80,7 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
           }
         });
 
-        const protocolIcon = PROTOCOL_ICONS[item.pType] || '';
+        const protocolIcon = PROTOCOL_ICONS[item.protocol] || '';
         const numStr = indexMap.get(item) || '';
         const vars = {
           airport: item.airportTag || '',
@@ -113,50 +114,50 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
     registries,
     logger
   });
-  config['proxy-groups'] = proxyGroups;
+  sourceSkeleton['proxy-groups'] = proxyGroups;
 
   // 5. 组装路由规则与 Rule-Providers
   const { rules, providers } = buildRoutingRules(userConfig, registries);
-  config['rules'] = rules;
-  config['rule-providers'] = providers;
+  sourceSkeleton['rules'] = rules;
+  sourceSkeleton['rule-providers'] = providers;
 
   // 6. DAG 级联空组清理机制
   const pruned = pruneEmptyGroups({
-    proxyGroups: config['proxy-groups'],
-    proxies: config.proxies,
-    rules: config.rules,
-    ruleProviders: config['rule-providers'],
+    proxyGroups: sourceSkeleton['proxy-groups'],
+    proxies: sourceSkeleton.proxies,
+    rules: sourceSkeleton.rules,
+    ruleProviders: sourceSkeleton['rule-providers'],
     exemptGroups: userConfig.exemptGroups,
     userConfig
   });
-  config['proxy-groups'] = pruned.proxyGroups;
-  config['rules'] = pruned.rules;
-  config['rule-providers'] = pruned.ruleProviders;
+  sourceSkeleton['proxy-groups'] = pruned.proxyGroups;
+  sourceSkeleton['rules'] = pruned.rules;
+  sourceSkeleton['rule-providers'] = pruned.ruleProviders;
 
   // 6.5 终末装配：根据 groupIconMode (emoji | both | icon) 统一赋予徽标或装配在线图标
-  applyPresentation(config, userConfig, registries);
+  applyPresentation(sourceSkeleton, userConfig, registries);
 
   // 7. 内核层高级配置覆写
   if (userConfig.overwriteDns) {
-    applyDnsOverlay(config, userConfig, { logger });
+    applyDnsOverlay(sourceSkeleton, userConfig, { logger });
   }
   if (userConfig.overwriteTun) {
-    applyTunOverlay(config, userConfig);
+    applyTunOverlay(sourceSkeleton, userConfig);
   }
   if (userConfig.overwriteSniffer) {
-    applySnifferOverlay(config, userConfig);
+    applySnifferOverlay(sourceSkeleton, userConfig);
   }
   if (userConfig.enableCoreOptimize) {
-    applyCoreOptimize(config, userConfig);
+    applyCoreOptimize(sourceSkeleton, userConfig);
   }
 
   // 8. 独立运行收尾：若非上游总调度驱动（如由 Clash Verge 独立调用），执行简繁同步与私有字段清理
   if (!pipelineContext.classifiedNodes) {
     const { syncChineseConvert } = require('../core/chinese-sync');
-    syncChineseConvert(config, userConfig);
+    syncChineseConvert(sourceSkeleton, userConfig);
 
-    if (Array.isArray(config.proxies)) {
-      for (const p of config.proxies) {
+    if (Array.isArray(sourceSkeleton.proxies)) {
+      for (const p of sourceSkeleton.proxies) {
         if (p && typeof p === 'object') {
           for (const key of Object.keys(p)) {
             if (key.startsWith('_')) delete p[key];
@@ -166,7 +167,7 @@ function runStrategyPipeline(config = {}, extConfig = {}, pipelineContext = {}) 
     }
   }
 
-  return config;
+  return sourceSkeleton;
 }
 
 module.exports = {

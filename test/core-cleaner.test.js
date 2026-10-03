@@ -103,3 +103,18 @@ test('🧹 节点清洗模块测试 - 综合分类打标 (classifyNode)', () => 
   assert.equal(specialResult.isSpecial, true);
   assert.equal(specialResult.groupKey, 'special');
 });
+
+test('🧹 节点分类打标 - protocol 与 isUnknownRegion 语义规范', () => {
+  const proxy = {
+    name: '火星直连节点 01',
+    type: 'hysteria2',
+    server: '1.2.3.4',
+    port: 443
+  };
+  const result = classifyNode(proxy, {});
+  assert.equal(result.protocol, 'hysteria2');
+  assert.equal(result.isUnknownRegion, true);
+  assert.equal(result.groupKey, 'unknown');
+  assert.equal(result.pType, undefined);
+  assert.equal(result.isGarbage, undefined);
+});

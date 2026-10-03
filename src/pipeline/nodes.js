@@ -130,7 +130,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       const parts = [`[归组]: ${groupName}${isolateReason ? ` (${isolateReason})` : ''}`];
 
       // 仅展示命中并影响策略分流的业务池 (如 AI, 流媒体, 游戏, 家宽)，绝不重复已在节点名中呈现的协议与线路
-      const activePools = (item.featurePools || []).filter(p => p !== 'garbage');
+      const activePools = (item.featurePools || []).filter(p => p !== 'unknown');
       const poolLabels = activePools.map(p => effectiveFeatureTexts[p] || p);
       if (poolLabels.length > 0) {
         parts.push(`业务: ${poolLabels.join(' · ')}`);
@@ -150,7 +150,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
         }
       });
 
-      const protocolIcon = PROTOCOL_ICONS[item.pType] || '';
+      const protocolIcon = PROTOCOL_ICONS[item.protocol] || '';
       const numStr = indexMap.get(item) || '';
 
       const vars = {

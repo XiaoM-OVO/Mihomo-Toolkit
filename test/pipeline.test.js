@@ -60,3 +60,28 @@ test('🚀 流水线单元测试 - buildAuditReport 结构化审计生成', () =
   assert.equal(report.summary.cleanOutput, 8);
   assert.equal(report.summary.fissionCreated, 2);
 });
+
+test('🚀 流水线单元测试 - runConfigPipeline 支持 sourceSkeleton 入参', () => {
+  const skeleton = {
+    proxies: [{ name: 'Test', type: 'ss', server: '1.1.1.1', port: 8388, cipher: 'aes-128-gcm', password: 'pwd' }]
+  };
+  const { outputData } = runConfigPipeline({
+    sourceSkeleton: skeleton,
+    cleanProxies: skeleton.proxies,
+    userConfig: { enablePipeline: false }
+  });
+  assert.ok(Array.isArray(outputData.proxies));
+});
+
+test('🚀 交付形态解析 - normalizeOutputMode 归一化各路别名', () => {
+  const { normalizeOutputMode } = require('../src/pipeline/engine');
+  assert.equal(normalizeOutputMode('config'), 'config');
+  assert.equal(normalizeOutputMode('full'), 'config');
+  assert.equal(normalizeOutputMode('nodes'), 'nodes');
+  assert.equal(normalizeOutputMode('cleaner'), 'nodes');
+  assert.equal(normalizeOutputMode('pure'), 'nodes');
+  assert.equal(normalizeOutputMode('report'), 'report');
+  assert.equal(normalizeOutputMode('audit'), 'report');
+  assert.equal(normalizeOutputMode('meta'), 'report');
+  assert.equal(normalizeOutputMode(), 'config');
+});
