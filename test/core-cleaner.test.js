@@ -32,6 +32,15 @@ test('🧹 节点清洗模块测试 - 阻断与垃圾拦截 (blockReason)', () =
   const fakeIpProxy = { server: '127.0.0.1', port: 8080 };
   assert.equal(checkNodeBlockReason(fakeIpProxy, 'Test'), '假IP');
 
+  const rfc1918Proxy = { server: '172.20.0.1', port: 443 };
+  assert.equal(checkNodeBlockReason(rfc1918Proxy, 'Test'), '假IP');
+
+  const cgnatProxy = { server: '100.64.1.1', port: 443 };
+  assert.equal(checkNodeBlockReason(cgnatProxy, 'Test'), '假IP');
+
+  const ipv6PrivateProxy = { server: '[fc00::1]', port: 443 };
+  assert.equal(checkNodeBlockReason(ipv6PrivateProxy, 'Test'), '假IP');
+
   const dummyProxy = { server: '1.2.3.4', port: 443, password: 'password' };
   assert.equal(checkNodeBlockReason(dummyProxy, 'Test'), '假密码');
 

@@ -55,18 +55,24 @@ async function dnsResolveWithTimeout(host, family) {
     }
   })();
 
-  const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('DNS timeout')), 5000)
-  );
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('DNS timeout')), 5000);
+  });
   try {
     return await Promise.race([dnsPromise, timeout]);
   } catch {
     return [];
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
 async function validateUrlSsrf(urlStr) {
   const parsedUrl = new URL(urlStr);
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error(`SSRF blocked: illegal protocol ${parsedUrl.protocol}`);
+  }
   let host = parsedUrl.hostname.toLowerCase();
   if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
   if (/^(localhost|0\.0\.0\.0|::1)$/i.test(host)) {

@@ -59,5 +59,15 @@ describe('🔐 SSRF 安全拦截与 URL 校验模块', () => {
       async () => { await validateUrlSsrf('http://[::ffff:169.254.169.254]/sub'); },
       /SSRF blocked/
     );
+
+    await assert.rejects(
+      async () => { await validateUrlSsrf('file:///etc/passwd'); },
+      /SSRF blocked: illegal protocol/
+    );
+
+    await assert.rejects(
+      async () => { await validateUrlSsrf('ftp://example.com/sub'); },
+      /SSRF blocked: illegal protocol/
+    );
   });
 });

@@ -17,6 +17,10 @@ const REGEX_FORBID_DL_STR = '(?:禁止|禁|严禁|请勿|勿|不要|不能|拒�
 const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)`, 'ig');
 const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, 'i');
 
+// 虚假/私网/回环与占位 IP 判定
+const REGEX_FAKE_IPV4 = /^(?:0\.|127\.|10\.|192\.168\.|169\.254\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.|(?:1\.1\.1\.1|8\.8\.8\.8)(?:$|:))/;
+const REGEX_FAKE_IPV6 = /^(?:\[?(?:::1|0*(?::0*)*:0*1)\]?(?:$|:)|\[?f[cd][0-9a-f]{2}:|\[?fe80:)/i;
+
 // 入口城市关键词
 const ENTRY_CITIES = ['深','深圳','广','广州','上海','沪','京','北京','杭','杭州','四川','川','渝','重庆','辽','莞','东莞','苏','江苏','无锡','鲁','徐','湘','宁','南京','汉','武汉','穗','港','香港','台','台湾','日本','日','新加坡','英国','英','韩国','韩','美国','美','Ingress'];
 const EXIT_REGIONS = ['港','台','美','日','韩','新','英','德','法','俄','印','澳','狮城','多伦多','芝加哥','中','台湾','日本','新加坡','上海','沪','广','深','Exit','Destination'];
@@ -186,7 +190,11 @@ function matchUserBlacklist(proxy, rawName, userConfig = {}) {
  * 拦截与阻断判定
  */
 function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
-  const isFakeServer = /^(?:127\.|0\.|10\.|192\.168\.|(?:1\.1\.1\.1|8\.8\.8\.8)(?:$|:))/.test(proxy.server || '') || proxy.port === 0;
+  const server = (proxy?.server || '').trim();
+  const isFakeServer = proxy?.port === 0
+    || server === 'localhost'
+    || REGEX_FAKE_IPV4.test(server)
+    || REGEX_FAKE_IPV6.test(server);
   const isDummyAuth = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i.test(proxy.uuid || proxy.password || '');
   const isAdTypo = /防.{0,3}失|失.{0,3}联|地.{0,3}[址止]|官.{0,3}[网罔]|发.{0,3}[布步]|交.{0,3}流|群.{0,3}组|客.{0,3}服|定.{0,3}制/i.test(rawName)
     || (

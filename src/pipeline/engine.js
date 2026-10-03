@@ -172,7 +172,10 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       if (logger.isLevelEnabled('debug')) {
         logger.debug(`🔤 简繁转换就绪: opencc-js (${modeText})`);
       }
-      userConfig = chineseConvert.deepConvertStrings(userConfig, chineseConvert.toSimplified);
+      const convertFn = userConfig.chineseConvertMode === 's2t'
+        ? chineseConvert.toTraditional
+        : chineseConvert.toSimplified;
+      userConfig = chineseConvert.deepConvertStrings(userConfig, convertFn);
     }
   } else if (logger.isLevelEnabled('debug')) {
     logger.debug(`🔤 简繁转换插件: opencc-js ${isOpenccReady ? '已安装' : '未安装(可选)'}`);

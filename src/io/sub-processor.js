@@ -19,17 +19,9 @@ const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
 const { effectiveProtectedDomains } = require('../data');
 
-// 统一解耦 Strategy 层看板逻辑：优先使用 Pipeline 注入的实现，保持单向无环依赖
-let _dashboard = null;
+// 统一解耦 Strategy 层看板逻辑：遵循洋葱模型，由上层 Pipeline 显式注入依赖，杜绝反向 require
 function getDashboard(injected) {
-  if (injected) return injected;
-  if (_dashboard) return _dashboard;
-  try {
-    _dashboard = require('../strategy/dashboard');
-    return _dashboard;
-  } catch (e) {
-    return {};
-  }
+  return injected || {};
 }
 
 function isSubEnabled(s) {

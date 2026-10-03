@@ -1,8 +1,30 @@
-const { test, describe } = require('node:test');
+const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const dns = require('dns').promises;
 const { runNodesPipeline } = require('../src/pipeline/nodes');
 
 describe('🧬 节点裂变算法模块 (enableFission)', () => {
+  let origResolve4;
+  let origResolve6;
+
+  beforeEach(() => {
+    origResolve4 = dns.resolve4;
+    origResolve6 = dns.resolve6;
+    dns.resolve4 = async (domain) => {
+      if (domain === 'dns.google') return ['8.8.8.8', '8.8.4.4'];
+      return [];
+    };
+    dns.resolve6 = async (domain) => {
+      if (domain === 'dns.google') return ['2001:4860:4860::8888', '2001:4860:4860::8844'];
+      return [];
+    };
+  });
+
+  afterEach(() => {
+    dns.resolve4 = origResolve4;
+    dns.resolve6 = origResolve6;
+  });
+
   test('pure-nodes - 单域名多 IP 节点裂变增殖测试', async () => {
     // 使用通常具备多个 A/AAAA 记录的域名进行测试
     const domainProxies = [

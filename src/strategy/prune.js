@@ -80,7 +80,7 @@ function pruneEmptyGroups({
   if (removedGroups.size > 0 && currentRules.length > 0) {
     currentRules = currentRules.filter(rule => {
       if (typeof rule !== 'string') return true;
-      const parts = rule.split(',');
+      const parts = rule.split(',').map(s => s.trim());
       const target = parts[parts.length - 1] === 'no-resolve' ? parts[parts.length - 2] : parts[parts.length - 1];
       return !removedGroups.has(target);
     });
@@ -90,8 +90,9 @@ function pruneEmptyGroups({
   if (removedGroups.size > 0 && Object.keys(providers).length > 0) {
     const usedProviders = new Set();
     currentRules.forEach(rule => {
-      if (typeof rule === 'string' && rule.startsWith('RULE-SET,')) {
-        usedProviders.add(rule.split(',')[1]);
+      if (typeof rule === 'string' && rule.trim().startsWith('RULE-SET,')) {
+        const parts = rule.split(',').map(s => s.trim());
+        if (parts[1]) usedProviders.add(parts[1]);
       }
     });
     Object.keys(providers).forEach(key => {

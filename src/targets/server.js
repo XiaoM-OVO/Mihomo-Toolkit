@@ -68,9 +68,12 @@ function startServer(options = {}) {
   }
 
   let localConfig = {};
+  let lastConfigMtime = 0;
   if (fs.existsSync(CONFIG_PATH)) {
     try {
+      const stat = fs.statSync(CONFIG_PATH);
       localConfig = readLocalConfig();
+      lastConfigMtime = stat.mtimeMs;
     } catch (e) {
       // 启动阶段配置即损坏：fail-closed，直接拒绝带病启动
       console.error(`[Server] 配置文件无法解析 ${CONFIG_PATH}: ${e.message}`);
@@ -116,10 +119,15 @@ function startServer(options = {}) {
       }
       activeBuilds++;
       try {
-        // 允许实时读取配置文件热重载；解析失败时保住上一份有效配置并显式告警
+        // 允许实时读取配置文件热重载（基于 mtime 校验，避免无变更时反复全量解析 YAML）；
+        // 解析失败时保住上一份有效配置并显式告警
         if (fs.existsSync(CONFIG_PATH)) {
           try {
-            localConfig = readLocalConfig();
+            const stat = fs.statSync(CONFIG_PATH);
+            if (stat.mtimeMs !== lastConfigMtime) {
+              localConfig = readLocalConfig();
+              lastConfigMtime = stat.mtimeMs;
+            }
           } catch (e) {
             serverLogger.error(`配置文件热重载失败，继续使用上一份有效配置: ${e.message}`);
           }

@@ -14,8 +14,8 @@ test('🧩 策略模块单元测试 - DAG 级联空组清理与规则殉葬', ()
     { name: 'Node1', server: '1.2.3.4', port: 443 }
   ];
   const rules = [
-    'RULE-SET,parent-rule,ParentGroup',
-    'RULE-SET,base-rule,🚀 基础代理',
+    'RULE-SET, parent-rule , ParentGroup',
+    'RULE-SET, base-rule, 🚀 基础代理',
     'GEOIP,CN,DIRECT'
   ];
   const ruleProviders = {
