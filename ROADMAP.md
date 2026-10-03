@@ -1,118 +1,114 @@
-# 🗺️ 功能恢复路线图（ROADMAP）
+# 🗺️ Mihomo-Toolkit 2.x 版本演进路线图 (ROADMAP)
 
-> 本文件**不是**设计文档。设计真相归 [`ARCHITECTURE.md`](ARCHITECTURE.md)，
-> 本文件只记录**旧版能力搬进 `mihomo-toolkit-next` 的进度与决策**，用于跨会话抗遗忘、防漏防重。
-
-## 定位与真相源
-
-| 项 | 说明 |
-| :--- | :--- |
-| 恢复目标 | 把旧版能力逐块搬进新版统一流水线 |
-| 真相源 | 旧版工程 `E:\CODE\mihomo-toolkit` 的 [`config.example.yaml`](../mihomo-toolkit/config.example.yaml)（主要）、`README.md` / `CHANGELOG.md`（补充） |
-| 对照口径 | 以**配置字段**为最小单位：旧版示例里出现的字段，在新版注册表 [`src/data/field-registry.js`](src/data/field-registry.js) 中是否存在、是否有代码读取 |
-
-### 四态定义（维护规则：只记状态 + 来源，不写设计细节）
-
-| 标记 | 含义 |
-| :--- | :--- |
-| ✅ **已恢复** | 字段已登记入注册表，且有代码真实读取 |
-| ⏳ **待恢复** | 旧版存在，新版尚未搬回，且**已确认要做** |
-| ⏸️ **暂缓** | 有意不做，需求出现再议 |
-| 🔁 **已替代 / 已废弃** | 经判断**不再恢复**：由新设计替代，或确认无价值 |
-
-> ⚠️ 维护纪律：本文件条目**只允许**在上述四态间迁移。
-> 不得在此写接口设计、合并语义、实现方案——那些一律进 `ARCHITECTURE.md`。
+本文档制定 **Mihomo-Toolkit 2.x 系列的版本发布里程碑、功能演进方向与技术债务治理规划**。
+系统底层架构与安全规范详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ---
 
-## 一、⏳ 待恢复
+## 🎯 一、 2.x 里程碑规划 (Milestones)
 
-**本轮（2026-10-02）已清零。** 原有 6 项缺口全部落定：1 项暂缓、2 项废弃、3 项已恢复/已处理（见 §三）。
-
----
-
-## 二、⏸️ 暂缓（有意不做，需求出现再议）
-
-| 能力 | 旧版来源 | 涉及字段 | 暂缓理由 |
-| :--- | :--- | :--- | :--- |
-| **IP 富化子系统**（ip-api.com 地理/ASN/运营商补全） | 旧版 ⑦ | `enableIpEnrich`、`ipEnrichMode`、`ipEnrichTimeout`、`ipEnrichThreshold`、`ipApiKey`、`ipApiEndpoint`、`ipApiBatchSize`、`ipApiBatchDelay`、`ipApiDnsConcurrency`、`ipApiDnsEndpoint`、`enableIpv6Tag`、`enableCellularTag`、`enableResidentialTag`（13 项） | ① 家宽/机房判定是 IP"用途分类"，**免费库（GeoLite2/ip2region/DB-IP Lite）均无此字段**，付费库才准，性价比低；② ip-api.com 限流、不稳定、且会把节点 IP 传给第三方；③ next 现行依赖全为轻量纯 JS，引入数据文件会破坏基调。**家宽分流已由节点名关键词识别覆盖**，无实际阻塞。 |
-| **nodes 模式下节点专属解析依赖丢失**（订阅把解析私货塞进 `dns.nameserver-policy` / 顶层 `hosts` / `dns.fake-ip-filter`，指定节点域名用什么解析） | 无（新发现，非旧版恢复项） | 无新增字段（属交付形态的结构性限制） | nodes 产物只有 `{ proxies }`，**结构上没有 `dns` 段**；`_assetHosts` / `_assetPolicies` / `_assetFakeIpFilters` 三桶仅由 [`src/strategy/dns.js`](src/strategy/dns.js)（config 模式）消费，nodes 模式下随早退截断被静默丢弃。若某源节点域名只能靠其私货解析，产物中的节点将无法连接。**本轮只加显式告警**（见 §三），不实现自动解析。 |
-
-> **决策留痕（IP 富化）**：若将来重新评估，优先考虑"本地库只做地理/城市/ASN（供 `{isp}/{asn}/{org}` 模板变量），家宽继续走关键词"的折中路线；
-> 不建议恢复 ip-api.com 在线方案。旧版**没有**残留代码需要清理——next 从未实现过 IP 富化。
-
-> **决策留痕（解析依赖）**：实测已证伪"含 `dns` 字段会导致解析期崩溃"——完整 `dns`、畸形 `dns` 均不抛错，
-> 问题只在 nodes 产物的**运行期**丢失解析依赖。候选改造方向（仅留痕，**暂不做**，真要做时方案细节进 `ARCHITECTURE.md`）：
-> 按源、在合并前用订阅顶层 `hosts` 映射改写节点 `server`，并**固定 `servername` / `sni` 回原域名**（否则会连 TLS 证书校验一起改坏）；
-> 多订阅必须逐源处理，不能合并后再改。真解析（DoH / 本地库）会引入网络与文件副作用，
-> 与 `src/core`、`src/strategy` 的纯函数约束冲突，风险更高。
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ Milestone 1: v2.0-GA 稳定性与安全收官 (Current / Finalizing) │
+│ • 核心 Bug 修复、测试网络解耦 (55s➔3s)、全链路 SSRF 与沙箱收口 │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+┌──────────────────────────────▼───────────────────────────────┐
+│ Milestone 2: v2.1 声明式策略组与模型革新 (Next Major)        │
+│ • 支持真正自定义新建策略组、服务单点激活、配置语义解耦         │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+┌──────────────────────────────▼───────────────────────────────┐
+│ Milestone 3: 节点深度能力与生态扩展 (Future)                 │
+│ • 本地离线 IP/ASN 标签富化、规则集自动容灾回退               │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 三、✅ 本轮改动与恢复（2026-10-02）
+### 🟢 Milestone 1: v2.0 正式版收官与可靠性加固 (v2.0.0-GA)
+> **目标**：彻底消除架构隐患与安全漏洞，使内核达到开箱即用的高可靠生产标准。
 
-| 项 | 处置 | 说明 |
-| :--- | :--- | :--- |
-| **节点黑名单** `blockKeywords` / `blockServers` | ✅ 新实现 | 清洗层拦截：节点名 / `server` 字段命中即拦截，**优先于白名单**（显式拒绝不应被白名单放行）。已登记注册表 + `index.d.ts` + 示例 + 回归用例。 |
-| **`biliPreferredRegions`** | ✅ 判已恢复 | next 已在 [`src/config/catalog.js`](src/config/catalog.js#L188) 内置 bilibili `preferredRegions: ['cn','tw','mo','hk']`，且 [`catalog.js`](src/config/catalog.js#L632) 允许 `customServices` 覆盖 → 能力已在，无需独立字段。 |
-| **`enableStandardRename`** | ✅ 已处理 | 在 [`src/pipeline/nodes.js`](src/pipeline/nodes.js#L83) 原是**死读取**（从未登记、恒为 `undefined`、零效果）。已删除，语义由 `enableNodeRename` 覆盖。 |
-| **`customPrefix`** | 🔁 已废弃 | 现有 tag 系统 + `indexPrefixMap` + 重命名模板已覆盖该需求，无需专门字段。 |
-| **`dnsMergeMode`** | 🔁 已废弃 | 旧版确有实现，但 next 的独立 DNS 安全面（`protectedDomains` / `assetClosure` / `fakeIpFilter` 等）已更强，不再恢复分级。 |
-| **nodes 模式解析依赖告警** | ✅ 新实现 | [`src/io/sub-processor.js::applySubscriptionGuards`](src/io/sub-processor.js#L150) 复用已提取的 `_asset*` 三桶，在 `deliveryMode === 'nodes'` 且资产非空时改为 `warn`（config 模式仍为 `info`），提示"内容不会随产物交付、相关节点可能无法连接"。`deliveryMode` 由 [`engine.js`](src/pipeline/engine.js#L201) 按归一化后的 `targetType` 注入。 |
-
----
-
-## 四、✅ 已恢复（对照确认，非本轮新增工作）
-
-| 旧版区块 | 状态 | 备注 |
-| :--- | :-: | :--- |
-| ① 订阅源与节点注入 | ✅ | 新增订阅级 `master`（当前仅记录于审计报告） |
-| ② 运行模式与输出 | 🔁 | 见 §五，三模式被 `outputMode` 取代 |
-| ③ 部署与安全 | ✅ | 新增 `maxConcurrentBuilds`、`security.maxSubscriptionBytes` |
-| ④ 简繁转换 | ✅ | — |
-| ⑤ 节点清洗 | ✅ | 新增 `removeInfoNodes`、`enableAirportTag`；黑名单本轮补齐 |
-| ⑥ 节点重命名 | ✅ | `customPrefix` 废弃、`enableStandardRename` 处理（§三）；`{isp}/{asn}/{org}` 随 IP 富化暂缓 |
-| ⑦ IP 补全检测 | ⏸️ | 暂缓（§二） |
-| ⑧ 节点裂变 | ✅ | — |
-| ⑨ 注入节点分组 | ✅ | `specialNodeRules`、`customNodeGroups` 均在 |
-| ⑩ 策略组与地区分组 | ✅ | 新增 `exemptGroups`、`isolateExperimental` |
-| ⑪ 核心分流开关 | ✅ | 全量（AI/流媒体/社交/游戏/系统/中国/TG/广告/反广告/GitHub/学术/WebRTC/加密货币/PayPal） |
-| ⑫ 服务注册表 | ✅ | 新增 `gameServices`、`devServices`、`customServices`、`include`、`servicesConfigFile`；bili 地区偏好已内置可覆盖 |
-| ⑬ 进程级分流名单 | ✅ | 六个平台名单齐备 |
-| ⑭ 测速与规则集 | ✅ | 新增 `geositeRepo`、`geoipRepo` 正式登记 |
-| ⑮ DNS | ✅ | 大幅增强：安全铁律组 `dnsAllowNonLoopback` / `protectedDomains` / `assetClosure` / `trustedPrivateCidrs` 等 |
-| ⑯ 安全防漏与内核覆写 | ✅ | `dnsMergeMode` 废弃（§三），其余齐备 |
-
-**小结：17 个区块中 16 个已恢复，1 个暂缓。**
+- [x] **简繁转换模式全链路一致性**：修复 `engine.js` 在 `chineseConvertMode: 's2t'` 时误调用 `toSimplified` 的硬编码缺陷，补全双向转换回归用例。
+- [x] **SSRF 协议白名单深度加固**：`validateUrlSsrf` 补齐协议校验，杜绝恶意 302 重定向通过 `file:`、`ftp:` 等协议穿透网络边界。
+- [x] **单元测试与真实网络彻底解耦**：
+  - 为 `test/fission.test.js` 引入 DNS 桩隔离，不再依赖公网 `dns.google`；
+  - `src/io/dns-resolver.js` 补齐原生 DNS 查询超时控制器，消除外部网络超时挂起；
+  - **全量 206 个测试总运行时间由 55 秒骤降至 3 秒以内**。
+- [x] **未决 Timer 句柄清理**：`dnsResolveWithTimeout` 在 `Promise.race` 完成后及时清理定时器，杜绝高并发下 Node.js 定时器句柄积压。
+- [x] **DAG 空组剪枝规则容错**：分流规则 target 增加 `.trim()` 处理，彻底避免带空格规则（如 `RULE-SET, x , y`）在级联清理时脱靶残留。
+- [x] **清洗层虚假与私网节点判定完备化**：`checkNodeBlockReason` 升级对 RFC 1918 (172.16-31)、CGNAT (100.64.x) 及 IPv6 私网/回环地址的识别拦截。
+- [x] **Server 配置热重载状态缓存**：引入基于 `fs.statSync` 的 `mtimeMs` 变动检查，平稳期直接复用已解析配置，避免每个 `/sub` 请求重复进行同步 YAML 密集反序列化。
+- [x] **分层单向流动架构纯净化**：彻底移除 `src/io/sub-processor.js` 对上层 `src/strategy/dashboard.js` 的 fallback 反向 `require`，严格遵从依赖注入。
 
 ---
 
-## 五、🔁 已替代 / 已废弃（不再恢复）
+### 🟡 Milestone 2: 声明式策略组模型与配置体验革新 (v2.1.0)
+> **目标**：打破预设拓扑限制，赋予用户自由编排任意策略组与规则链的能力。
 
-| 旧版能力 | 旧版来源 | 处置 | 理由 |
-| :--- | :--- | :--- | :--- |
-| `type: pure / toolkit / full` 三运行模式 | 旧版 ② | 由 `outputMode: config / nodes / report` 替代 | 新版流水线统一，双端概念取消；`type` 保留为 `outputMode` 兼容别名 |
-| `pureConfig` / `toolkitConfig` 双端差异化覆盖 | 旧版 ⑰ | 废弃 | 依赖"双端"概念，随统一流水线一并取消 |
-| `outputMode: array/object`、`outputGarbage`、`outputUnknown`（pure 专属） | 旧版 ⑰ | 废弃 | 同上 |
-| `meta`（清洗统计报告导出路径） | 旧版 ② | 由 `outputMode: report` 替代 | 报告成为独立交付形态，不再单设路径字段 |
-| `customPrefix` | 旧版 ⑥ | 废弃 | tag 系统 + 模板已覆盖（§三） |
-| `dnsMergeMode` | 旧版 ⑯ | 废弃 | 已被更强的 DNS 安全面取代（§三） |
-
----
-
-## 六、架构侧路线图（非旧版恢复项）
-
-来自 [`ARCHITECTURE.md` §七](ARCHITECTURE.md#L441)，与"旧版恢复"无关，属新能力建设：
-
-1. **声明式策略组模型** —— 目前 `customNodeGroups` 只能把节点塞进已有组，**无法新建自定义策略组**。属 2.x 路线图，工程量大，建议单独立项。
-2. **服务激活易踩坑** —— 服务需同时写进 `customServices` 与激活列表（`aiServices` 等）才生效，只写一处会静默不激活。可考虑收敛为单点声明。
-3. **`?config=` 能力剥夺为黑名单式** —— 未来内核新增的控制面字段不会自动被剥夺；公开部署应使用 `enableUrlParams: false` 或强制 `authToken`。
-4. **反隐形守卫存在盲区** —— [`test/config-surface.test.js`](test/config-surface.test.js#L69) 的扫描正则只匹配 `userConfig.` / `cfg.`，**不覆盖 `config.` 形式的读取**。本轮已删除唯一的此类死读取（`enableStandardRename`），但盲区仍在。是否收紧要权衡误报——`config.` 也可能指向非用户配置对象。
+1. **声明式自定义策略组 (Declarative Custom Groups)**：
+   - *当前现状*：`customNodeGroups` 仅支持将节点按特征塞入系统内置的大区或预设组，**无法新建全新的独立策略组**。
+   - *规划方案*：设计声明式策略组语法，允许用户在 `config.yaml` 中像原生 Mihomo 配置一样定义任意名称、类型 (`select` / `url-test` / `fallback` / `load-balance`)、测速 URL、容差值及子组嵌套结构，由 DAG 引擎自动接管其生命周期与剪枝。
+2. **服务目录单点激活 (Single-Point Service Activation)**：
+   - *当前现状*：用户在 `customServices` 添加服务后，还必须在 `aiServices` 或 `streamingServices` 中再次列出该 key 才能生效，容易产生漏配混淆。
+   - *规划方案*：支持“声明即激活”，或在自定义项中增加 `active: true` 选项，简化配置书写。
+3. **远程配置剥夺清单升级为白名单收敛**：
+   - 进一步加强 `?config=` 的防护能力，从基于字段黑名单的剥离转向基于字段注册表 `trust: 'any'` 的显式白名单放行（fail-closed），杜绝未来内核新字段可能带来的潜在越权。
 
 ---
 
-## 七、维护规则
+### 🔵 Milestone 3: 节点深度能力与生态扩展 (v2.2.0+)
+> **目标**：在不破坏轻量级纯 JS 架构的前提下，探索高价值增量功能。
 
-- 每完成一项：在 §三 记决策、在 §四 改状态；若属新增能力，同步更新 `ARCHITECTURE.md`。
-- 新增/恢复字段必须走注册表 → `index.d.ts` → `config.example.yaml` → 测试这条链（`test/config-surface.test.js` 会强制校验，漏一步即失败）。
-- 本文件与代码事实冲突时，**以代码为准**，并立即修正本文件。
+1. **本地离线 IP/ASN 标签补全**：
+   - 探索采用体积极小的离线 GeoIP/ASN 纯 JS 数据库，仅为节点重命名提供 `{isp}`、`{asn}`、`{org}` 变量；严格排除需要网络调用的第三方在线 API，保障隐私与离线纯度。
+2. **nodes 纯节点交付形态的解析依赖增强**：
+   - 针对部分机场通过 `nameserver-policy` 绑定私有 DoH 解析节点域名的场景，研究在 nodes 模式合并阶段直接改写节点 `server` 为物理 IP 并锁定 `sni`/`servername` 的无副作用保活机制。
+3. **分流规则集 (Rule-Providers) 健康探测与多 CDN 降级池**：
+   - 规则集订阅增加多源镜像切换逻辑（fastly.jsdelivr / cdn.jsdelivr / ghproxy），避免单点 CDN 异常导致内核规则拉取失败。
+
+---
+
+## 🛡️ 二、 技术债务与质量护栏
+
+1. **反隐形守卫扫描增强**：
+   - [`test/config-surface.test.js`](test/config-surface.test.js) 目前主要匹配 `userConfig.` 与 `cfg.` 读取，需权衡在不引起虚假误报的前提下，进一步覆盖解构变量形式的用户配置读取。
+2. **配置字段准入铁律**：
+   - 任何新增字段必须严格践行链路：`src/data/field-registry.js` (SSOT) ➔ `index.d.ts` ➔ `config.example.yaml` ➔ 单元测试覆盖。
+3. **保持纯计算层零副作用**：
+   - `src/core/` 与 `src/strategy/` 严禁引入任何磁盘与网络 I/O，所有测试套件执行耗时必须稳定保持在 5 秒以内。
+
+---
+
+## 📦 附录：v1 历史迁移与能力矩阵归档 (Archive)
+
+> 注：本节记录从旧版 `mihomo-toolkit` 迁移至 `mihomo-toolkit-next` 的历史清账与决策留痕。**旧版全部 17 个功能区块已在 2026-10 阶段全数落定。**
+
+### 1. 旧版区块迁移对照总表
+
+| 旧版区块 | 迁移状态 | 处置决策说明 |
+| :--- | :---: | :--- |
+| ① 订阅源与节点注入 | ✅ **已恢复** | 支持多订阅并发拉取、URI 节点注入、单订阅开关控制与 `master` 标记 |
+| ② 运行模式与输出 | 🔁 **已替代** | 原 `pure/toolkit/full` 三运行模式由全新标准 `outputMode: config / nodes / report` 统一替代 |
+| ③ 部署与安全 | ✅ **已恢复** | 新增 `maxConcurrentBuilds`、流式 `maxSubscriptionBytes`、Token 恒定时间比较 |
+| ④ 简繁转换 | ✅ **已恢复** | 依赖 `opencc-js`，全链路四路同步（节点名、策略组名、引用、分流规则） |
+| ⑤ 节点清洗 | ✅ **已恢复** | 广告词拦截、倍率与线路提取、信息节点过滤、节点黑白名单（`blockKeywords` / `blockServers`） |
+| ⑥ 节点重命名 | ✅ **已恢复** | 动态对齐补零序号、全量模板变量、悬空符号擦除；`customPrefix` 由 tag 系统替代 |
+| ⑦ IP 补全检测 | ⏸️ **已暂缓** | 免费离线库无可靠“家宽/机房用途”字段，第三方在线 API 存在隐私泄露与网络抖动风险，暂缓引入 |
+| ⑧ 节点裂变 | ✅ **已恢复** | 单域名多 IP 纯算法裂变、servername/sni 自动保活注入、黑名单关键词跳过 |
+| ⑨ 注入节点分组 | ✅ **已恢复** | `specialNodeRules`、`customNodeGroups` 特殊规则支持 |
+| ⑩ 策略组与地区分组 | ✅ **已恢复** | 六维大区折叠、动态测速组装配、高倍率/实验节点/家宽节点隔离、骨架组豁免 |
+| ⑪ 核心分流开关 | ✅ **已恢复** | AI / 流媒体 / 社交 / 游戏 / 系统 / 广告拦截 / 直连 / QUIC / WebRTC 等全量矩阵 |
+| ⑫ 服务注册表 | ✅ **已恢复** | 统一 Service Catalog SSOT，内置基准 + 用户 `customServices` 增量继承，支持外挂文件挂载 |
+| ⑬ 进程级分流名单 | ✅ **已恢复** | 六平台全量进程分流名单齐备 |
+| ⑭ 测速与规则集 | ✅ **已恢复** | 规则集镜像自定义、MRS/YAML 双格式支持，`geositeRepo` / `geoipRepo` 正式登记 |
+| ⑮ DNS 解决方案 | ✅ **已恢复** | 纯 IP 破死锁、Fake-IP 智能聚合防自环、DoH 危险修饰符剥离、DNS INV-1~9 不变式自检 |
+| ⑯ 内核防漏与覆写 | ✅ **已恢复** | TUN 虚拟网卡、Sniffer 嗅探器、内存级 TCP 并发调优与内核参数覆写 |
+| ⑰ 双端差异化配置 | 🔁 **已废弃** | 新架构取消双端代码分叉，统一为单流水线交付引擎，原差异化字段随之废弃 |
+
+### 2. 废弃字段明细记录
+- `pureConfig` / `toolkitConfig`：双端概念取消，配置全面归一；
+- `outputMode: array/object`、`outputGarbage`、`outputUnknown`：纯节点模式严格只输出标准的 `{ proxies: [...] }` 数组；
+- `meta`：清洗审计报告升级为一级交付物（`outputMode: 'report'` 或 `-r` 导出）；
+- `customPrefix`：由重命名模板变量 `{index}` + `indexPrefixMap` 统一覆盖；
+- `dnsMergeMode`：已被三层纵深安全沙箱与只读安全基线体系全面取代。

@@ -17,6 +17,16 @@ try {
 
 const { isPrivateIp, isPrivateIPv6 } = require('./ssrf');
 
+function withTimeout(promise, ms = 3000) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('DNS query timeout')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 function looksLikeDomain(server) {
   if (!server || typeof server !== 'string') return false;
   const s = server.trim().replace(/^\[|\]$/g, '');
@@ -67,10 +77,10 @@ async function resolveDomainIps(domain, stack = 'all') {
     const promises = [];
     if (dns) {
       if (stack === 'all' || stack === 'v4') {
-        promises.push(dns.resolve4(domain).catch(() => []));
+        promises.push(withTimeout(dns.resolve4(domain), 3000).catch(() => []));
       }
       if (stack === 'all' || stack === 'v6') {
-        promises.push(dns.resolve6(domain).catch(() => []));
+        promises.push(withTimeout(dns.resolve6(domain), 3000).catch(() => []));
       }
     }
     const resolved = await Promise.all(promises);

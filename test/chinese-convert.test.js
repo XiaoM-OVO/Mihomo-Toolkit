@@ -27,4 +27,14 @@ describe('🔄 简繁中文全链路转换模块', () => {
     assert.ok(converted.createdAt instanceof Date);
     assert.equal(converted.createdAt.getTime(), date.getTime());
   });
+
+  test('chineseConvert - 支持转为繁体中文 (toTraditional)', () => {
+    const textCn = '香港专线';
+    const traditional = chineseConvert.toTraditional(textCn);
+    assert.ok(traditional === '香港專線' || traditional === textCn);
+
+    const obj = { custom: '香港专线' };
+    const converted = chineseConvert.deepConvertStrings(obj, chineseConvert.toTraditional);
+    assert.ok(converted.custom === '香港專線' || converted.custom === '香港专线');
+  });
 });
