@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const yaml = require('yaml');
-const { buildProfile } = require('../pipeline/engine');
+const { buildProfile, normalizeOutputMode } = require('../pipeline/engine');
 const { createLogger } = require('../core/logger');
 const { safeFetchText } = require('../io/fetcher');
 const { isAllowedUrl, redactUrl } = require('../io/ssrf');
@@ -234,18 +234,17 @@ function startServer(options = {}) {
         }
 
         const debugMode = reqUrl.searchParams.get('debug') === '1';
-        const outputMode = reqUrl.searchParams.get('mode') || reqUrl.searchParams.get('type') || userConfig.outputMode;
-        const buildLogger = serverLogger.child('CLI');
+        const outputMode = normalizeOutputMode(reqUrl.searchParams.get('mode') || reqUrl.searchParams.get('type') || userConfig.outputMode);
+        const buildLogger = serverLogger.child('Server');
         const result = await buildProfile(userConfig, {
           production: true,
           debug: debugMode,
           mode: outputMode,
-          type: outputMode,
           logger: buildLogger
         });
         const { yamlStr, userInfo } = result;
 
-        const isReport = outputMode === 'report' || outputMode === 'audit' || outputMode === 'meta';
+        const isReport = outputMode === 'report';
         const headers = {
           'Content-Type': isReport ? 'application/json; charset=utf-8' : 'text/yaml; charset=utf-8',
           'Profile-Update-Interval': '24',

@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 const { program } = require('commander');
-const { buildProfile } = require('../pipeline/engine');
+const { buildProfile, normalizeOutputMode } = require('../pipeline/engine');
 const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
 const { createLogger } = require('../core/logger');
@@ -22,11 +22,10 @@ function run(argv = process.argv) {
     .version(pkg.version)
     .option('-u, --url <url>', 'Subscription URL or local config file path')
     .option('-o, --out <path>', 'Output file path (default: config.yaml / nodes.yaml / report.json)')
-    .option('-t, --type <mode>', 'Output mode: "config" (default), "nodes" (clean proxies only), or "report" (audit JSON)', 'config')
-    .option('-p, --passthrough', 'Preserve raw subscription rules/dns in config mode (only replace proxies)', false)
+    .option('-m, --mode <mode>', 'Output mode: "config" (default), "nodes" (clean proxies only), or "report" (audit JSON)', 'config')
+    .option('-t, --type <mode>', 'Alias for -m, --mode')
     .option('-c, --config <path>', 'User config JSON/YAML file path (optional)')
     .option('-r, --report <path>', 'Save extra audit report to a JSON file (optional)')
-    .option('-m, --meta <path>', 'Alias for -r, --report')
     .option('--prod', 'Simulate production environment (enables security locks)')
     .option('--debug', 'Enable debug output (verbose fetch logs, intermediate snapshots)')
     .option('-q, --quiet', 'Suppress logging output (same as --silent)')
@@ -37,10 +36,8 @@ function run(argv = process.argv) {
   const options = program.opts();
 
   // 模式归一化
-  let mode = (options.type || 'config').toLowerCase();
-  if (mode === 'full') mode = 'config';
-  if (mode === 'cleaner' || mode === 'pure') mode = 'nodes';
-  if (mode === 'meta' || mode === 'audit') mode = 'report';
+  const rawModeInput = options.mode !== 'config' ? options.mode : (options.type || options.mode || 'config');
+  const mode = normalizeOutputMode(rawModeInput);
 
   // 1. 预读取配置文件（探测 logLevel 并修正时序，避免在静默/告警级别下泄露启动标头）
   let userConfig = {};
@@ -106,15 +103,10 @@ function run(argv = process.argv) {
         logger.info(`📄 已加载配置文件: ${options.config}`);
       }
 
-      // 透传开关
-      if (options.passthrough) {
-        userConfig.passthrough = true;
-      }
-
-      logger.info(`🚀 开始执行配置流水线 (交付模式: ${mode}${userConfig.passthrough ? ' + passthrough' : ''})`);
+      logger.info(`🚀 开始执行配置流水线 (交付模式: ${mode})`);
       const buildOptions = {
         ...options,
-        type: mode,
+        mode,
         production: !!options.prod,
         logger
       };
@@ -141,8 +133,8 @@ function run(argv = process.argv) {
         return;
       }
 
-      // 2. 附加 -r / -m 选项导出审计 JSON
-      const reportTarget = options.report || options.meta;
+      // 2. 附加 -r 选项导出审计 JSON
+      const reportTarget = options.report;
       if (reportTarget && (result.report || meta)) {
         const reportPath = path.resolve(process.cwd(), reportTarget);
         const extraReport = result.report || meta;

@@ -141,7 +141,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
   // 3. 业务服务注册表 (AI, Streaming, Dev, System 等)
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
     ? registries
-    : (userConfig.catalog ? userConfig.catalog.toLegacyRegistries() : {});
+    : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});
 
   for (const catServices of Object.values(effectiveRegistries)) {
     if (catServices && typeof catServices === 'object') {

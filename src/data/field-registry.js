@@ -295,9 +295,7 @@ const FIELDS = [
 
   // ── 【12. 运行模式与缓存】 ───────────────────────────────────────────────
   { key: 'outputMode', type: 'string', merge: 'override', trust: 'any',
-    group: '运行模式与缓存', doc: '交付形态: config | nodes | report（等价于 CLI -t）' },
-  { key: 'type', type: 'string', merge: 'override', trust: 'any',
-    group: '运行模式与缓存', doc: 'outputMode 的兼容别名' },
+    group: '运行模式与缓存', doc: '交付形态: config | nodes | report（等价于 CLI --mode / -m）' },
   { key: 'output', type: 'string', merge: 'override', trust: 'any',
     group: '运行模式与缓存', doc: '产物输出路径（等价于 CLI -o）' },
   { key: 'enableCache', type: 'boolean', merge: 'override', trust: 'any',
@@ -310,10 +308,6 @@ const FIELDS = [
     group: '运行模式与缓存', doc: '简繁智能转换开关' },
   { key: 'chineseConvertMode', type: 'string', merge: 'override', trust: 'any',
     group: '运行模式与缓存', doc: '简繁转换方向: s2t | t2s' },
-  { key: 'passthrough', type: 'boolean', merge: 'override', trust: 'any',
-    group: '运行模式与缓存', doc: '已废弃（保留原订阅策略字段的旧开关，当前无效果）' },
-  { key: 'preserveRawConfig', type: 'boolean', merge: 'override', trust: 'any',
-    group: '运行模式与缓存', doc: '已废弃（同上，当前无效果）' },
 
   // ── 【13. 自定义规则入口】 ───────────────────────────────────────────────
   { key: 'customRules', type: 'string[]', merge: 'override', trust: 'any',
@@ -326,8 +320,6 @@ const FIELDS = [
     group: '安全与资源配额',
     doc: '资源配额上限（maxTotalNodes / perSubscriptionMaxNodes / maxSubscriptionBytes…）；' +
          '标记为 local 是因为流水线会直接读取它，若远程 ?config= 可写即可自我放宽配额、绕过 DoS 防御' },
-  { key: 'servicesConfig', type: 'string', merge: 'override', trust: 'local',
-    group: '安全与资源配额', doc: 'servicesConfigFile 的兼容别名（外挂服务定义文件路径）' },
   { key: 'hosts', type: 'object', merge: 'override', trust: 'local',
     group: '安全与资源配额', doc: '静态 hosts 映射（受保护域名与内网重定向默认被拒绝）' },
   { key: 'nameserverPolicy', type: 'object', merge: 'override', trust: 'local',

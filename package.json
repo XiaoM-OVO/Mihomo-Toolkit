@@ -12,9 +12,9 @@
   "scripts": {
     "start": "node src/targets/server.js",
     "test": "node --test --test-reporter=spec test/*.test.js",
-    "build": "node src/targets/cli.js -c config.yaml -t config",
-    "build:nodes": "node src/targets/cli.js -c config.yaml -t nodes",
-    "build:report": "node src/targets/cli.js -c config.yaml -t report",
+    "build": "node src/targets/cli.js -c config.yaml -m config",
+    "build:nodes": "node src/targets/cli.js -c config.yaml -m nodes",
+    "build:report": "node src/targets/cli.js -c config.yaml -m report",
     "dev": "node --watch src/targets/server.js"
   },
   "repository": {

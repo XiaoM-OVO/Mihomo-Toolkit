@@ -263,12 +263,6 @@ class Logger {
 }
 
 function createLogger(options = {}) {
-  if (typeof options === 'string') {
-    // 兼容历史调用 createLogger('[Builder]', 'info')
-    const tag = options.replace(/^\[|\]$/g, '');
-    const level = arguments[1] || 'info';
-    return new Logger({ tag, level });
-  }
   return new Logger(options);
 }
 

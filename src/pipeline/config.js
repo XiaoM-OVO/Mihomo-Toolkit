@@ -39,10 +39,6 @@ function runConfigPipeline({
   const expireAggregation = userConfig.expireAggregation || 'min';
   const agg = aggregateSubscriptions(collectedSubInfos, { expireAggregation, logger });
 
-  if ((userConfig.passthrough || userConfig.preserveRawConfig) && logger) {
-    logger.info('💡 提示: 全局裸透传已升级为「智能节点资产依赖保活沙箱」，节点专属 DNS/Hosts 自动挂载，宿主控制面保持洁净');
-  }
-
   // 1. 控制面重置：清空输入骨架中一切工具自有键，确保覆盖式生成不残留源配置取值。
   //    治本点：config 模式的输出骨架可能来自外部输入（订阅 / --url 指定的配置文件），
   //    绝不允许其携带 dns / tun / hosts / rules 等控制面字段进入产物。

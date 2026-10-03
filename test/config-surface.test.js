@@ -37,7 +37,7 @@ const SRC = path.join(ROOT, 'src');
 
 /** 非配置字段：内部变量、注册表自身、运行期上下文（不是用户可写配置项） */
 const NON_CONFIG_IDENTIFIERS = new Set([
-  'catalog', 'registries', 'toLegacyRegistries', 'logger', 'withClassified',
+  'catalog', 'registries', 'toRegistries', 'logger', 'withClassified',
   'subscriptions', // 在下面作为正式字段单独校验（此处避免与 io 层形参混淆）
   'security'       // 同上
 ]);

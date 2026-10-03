@@ -137,7 +137,7 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  *                  off      — 完全不继承（DNS 面 100% 由本工具重建）
  * @param {string[]} [options.assetDomainAllowlist=[]] strict 模式下的允许域名列表
  * @param {string[]} [options.protectedDomains=[]] 用户在受保护域名基线上追加的域名
- * @param {string}  [options.deliveryMode='config'] 交付形态 (config | nodes | report)；
+ * @param {string}  [options.outputMode='config'] 交付形态 (config | nodes | report)；
  *                  assets 仅在 config 模式由 src/strategy/dns.js 消费，nodes 模式下会被丢弃，
  *                  此时对已提取的资产改为告警而非静默继承
  * @returns {{ strippedCount: number, hosts: string[], policies: string[], fakeIpFilters: string[] }}
@@ -146,7 +146,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
   const {
     proxies = [], subUrl = '', tag = '', isMaster = false, logger,
     assetClosureMode = 'standard', assetDomainAllowlist = [], protectedDomains = [],
-    deliveryMode = 'config'
+    outputMode = 'config'
   } = options;
   const result = { strippedCount: 0, hosts: [], policies: [], fakeIpFilters: [] };
 
@@ -242,7 +242,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
     if (inherited.length > 0) {
       const preview = inherited.slice(0, 6).join(', ');
       const tail = inherited.length > 6 ? ', …' : '';
-      if (deliveryMode === 'nodes' && typeof logger.warn === 'function') {
+      if (outputMode === 'nodes' && typeof logger.warn === 'function') {
         logger.warn(
           `⚠️ 解析依赖: 订阅 [${tag}] 携带 ${inherited.length} 项节点专属 DNS 依赖 (${preview}${tail})，` +
           `但 nodes 产物不含 dns 段，这些依赖会被丢弃 —— 若相关节点域名需靠其解析，节点将无法连接`
@@ -262,7 +262,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
 /**
  * 处理所有订阅源或单 URL，并完成前置解析与看板合成
  */
-async function processSubscriptionSources({ subscriptions, url, userConfig = {}, options = {}, logger, dashboard, deliveryMode = 'config' }) {
+async function processSubscriptionSources({ subscriptions, url, userConfig = {}, options = {}, logger, dashboard, outputMode = 'config' }) {
   const dsh = getDashboard(dashboard);
   const extractResetText = dsh.extractResetText || (() => '');
   const filterRawInfoNodes = dsh.filterRawInfoNodes || ((p) => p);
@@ -496,7 +496,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           assetClosureMode: userConfig.assetClosure,
           assetDomainAllowlist: userConfig.assetDomainAllowlist,
           protectedDomains: userConfig.protectedDomains,
-          deliveryMode,
+          outputMode,
           logger
         });
 
@@ -632,7 +632,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       assetClosureMode: userConfig.assetClosure,
       assetDomainAllowlist: userConfig.assetDomainAllowlist,
       protectedDomains: userConfig.protectedDomains,
-      deliveryMode,
+      outputMode,
       logger
     });
     perSubCounts[String(url)] = singleProxies.length;

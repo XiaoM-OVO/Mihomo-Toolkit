@@ -75,7 +75,7 @@ function resolveConfig(userConfig = {}) {
   const merged = Object.assign({}, DEFAULT_CONFIG, expanded || {});
 
   // 1. 处理外部服务配置文件挂载
-  const externalFile = merged.servicesConfigFile || merged.servicesConfig;
+  const externalFile = merged.servicesConfigFile;
   if (externalFile) {
     const externalServices = loadExternalServicesConfig(externalFile);
     merged.customServices = deepMerge(merged.customServices || {}, externalServices);
@@ -100,7 +100,7 @@ function resolveConfig(userConfig = {}) {
 
   // 4. 构建单一事实来源 ServiceCatalog 实例
   merged.catalog = buildServiceCatalog(merged);
-  merged.registries = merged.catalog.toLegacyRegistries();
+  merged.registries = merged.catalog.toRegistries();
 
   return merged;
 }

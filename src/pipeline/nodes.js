@@ -201,7 +201,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     fissionCount
   };
 
-  if (config.outputMode === 'object' || userConfig.withClassified) {
+  if (userConfig.withClassified) {
     return {
       proxies: resultProxies,
       classifiedNodes: validItems,
