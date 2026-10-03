@@ -5,7 +5,7 @@
  * 覆盖历史缺陷：
  *   C-1  单 URL / 本地文件路径曾完全绕过控制面净化，订阅的控制面字段原样随产物下发
  *   H-2  受保护域名可经 nameserver-policy 通道被订阅劫持
- *   M-1  enableScript=false 曾等价于「零净化透传」
+ *   M-1  enablePipeline=false 曾等价于「零净化透传」
  */
 
 const { test, describe } = require('node:test');
@@ -135,13 +135,13 @@ describe('🔒 交付契约与控制面净化 (Delivery Contract)', () => {
     }
   });
 
-  test('M-1 enableScript=false 不再等价于零净化透传', async () => {
+  test('M-1 enablePipeline=false 不再等价于零净化透传', async () => {
     const { dir, file } = writeFixture(EVIL_SUBSCRIPTION);
     try {
-      const res = await buildProfile({ enableScript: false }, { type: 'config', url: file, production: true, noCache: true });
+      const res = await buildProfile({ enablePipeline: false }, { type: 'config', url: file, production: true, noCache: true });
       const d = res.outputData;
       const leaked = FORBIDDEN_TOP_LEVEL.filter(k => Object.prototype.hasOwnProperty.call(d, k));
-      assert.deepEqual(leaked, [], `enableScript=false 时控制面字段泄漏: ${leaked.join(', ')}`);
+      assert.deepEqual(leaked, [], `enablePipeline=false 时控制面字段泄漏: ${leaked.join(', ')}`);
       // 跳过策略编排时只应交付清洗后的节点
       assert.ok(Array.isArray(d.proxies));
       assert.equal(d['proxy-groups'], undefined);
@@ -187,7 +187,7 @@ describe('🔒 交付契约与控制面净化 (Delivery Contract)', () => {
         { name: '🇺🇸 美国 01', type: 'ss', server: 'us1.example.com', port: 443, cipher: 'aes-128-gcm', password: 'p' }
       ]
     };
-    const out = runStrategyPipeline(input, { enableScript: true });
+    const out = runStrategyPipeline(input, { enablePipeline: true });
     assert.equal(out.port, 7890, '用户自有 port 被误删');
     assert.equal(out.mode, 'rule', '用户自有 mode 被误删');
     assert.equal(out['log-level'], 'info', '用户自有 log-level 被误删');

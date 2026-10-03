@@ -237,4 +237,21 @@ describe('📦 策略组与分流拓扑构建模块 (strategy)', () => {
     assert.ok(tiktok, '应存在 TikTok 策略组');
     assert.ok(!tiktok.proxies.includes('香港节点') && !tiktok.proxies.includes('大陆节点'), 'TikTok 应准确排除香港与大陆节点');
   });
+
+  test('strategyMain - hideUnknownGroup 隐藏未知识别策略组', () => {
+    const rawConfig = {
+      proxies: [
+        { name: '火星节点 01', type: 'ss', server: 'mars.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword1' }
+      ]
+    };
+    const resDefault = strategyMain(rawConfig, { hideUnknownGroup: false });
+    const defaultUnknown = resDefault['proxy-groups'].find(g => g.name.includes('未知识别'));
+    assert.ok(defaultUnknown);
+    assert.equal(defaultUnknown.hidden, false);
+
+    const resHidden = strategyMain(rawConfig, { hideUnknownGroup: true });
+    const hiddenUnknown = resHidden['proxy-groups'].find(g => g.name.includes('未知识别'));
+    assert.ok(hiddenUnknown);
+    assert.equal(hiddenUnknown.hidden, true);
+  });
 });

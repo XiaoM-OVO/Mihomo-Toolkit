@@ -11,7 +11,7 @@ test('🧩 策略模块单元测试 - 配置解析器 (config)', () => {
   const resolved = resolveConfig({ logLevel: 'debug', enableIPv6: true });
   assert.equal(resolved.logLevel, 'debug');
   assert.equal(resolved.enableIPv6, true);
-  assert.equal(resolved.enableScript, true);
+  assert.equal(resolved.enablePipeline, true);
   assert.ok(Array.isArray(resolved.whitelistKeywords));
 });
 

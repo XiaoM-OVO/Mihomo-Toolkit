@@ -18,7 +18,7 @@ const { resetToolkitOutputKeys, enforceOutputContract } = require('../core/secur
 /**
  * 装配并序列化完整 Mihomo 配置文件
  * @param {object} params
- * @param {object} params.configData 原始输入的基础配置对象
+ * @param {object} [params.sourceSkeleton={ proxies: [] }] 原始输入的基础配置骨架
  * @param {Array<object>} params.cleanProxies 已清洗打标的标准节点列表
  * @param {Array<object>} [params.classifiedNodes] 节点分类信息（直接复用，避免二次打标）
  * @param {Array<object>} [params.collectedSubInfos] 订阅流量与到期信息列表
@@ -27,7 +27,7 @@ const { resetToolkitOutputKeys, enforceOutputContract } = require('../core/secur
  * @returns {object} { yamlStr, outputData, userInfo }
  */
 function runConfigPipeline({
-  configData = { proxies: [] },
+  sourceSkeleton = { proxies: [] },
   cleanProxies = [],
   classifiedNodes = null,
   collectedSubInfos = [],
@@ -46,14 +46,14 @@ function runConfigPipeline({
   // 1. 控制面重置：清空输入骨架中一切工具自有键，确保覆盖式生成不残留源配置取值。
   //    治本点：config 模式的输出骨架可能来自外部输入（订阅 / --url 指定的配置文件），
   //    绝不允许其携带 dns / tun / hosts / rules 等控制面字段进入产物。
-  const resetKeys = resetToolkitOutputKeys(configData);
+  const resetKeys = resetToolkitOutputKeys(sourceSkeleton);
   if (resetKeys.length > 0 && logger && logger.isLevelEnabled && logger.isLevelEnabled('debug')) {
     logger.debug(`🛡️ 控制面重置: 已清空输入骨架中的 ${resetKeys.length} 个工具自有键 (${resetKeys.join(', ')})`);
   }
 
   // 2. 全量组装模式：注入安全 DNS、TUN、策略组拓扑与分流规则
-  configData.proxies = cleanProxies;
-  outputData = configData;
+  sourceSkeleton.proxies = cleanProxies;
+  outputData = sourceSkeleton;
 
   outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes, logger });
 

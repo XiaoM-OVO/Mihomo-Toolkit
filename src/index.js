@@ -6,7 +6,7 @@
  * 保持对各类调用方式（CLI / Server / Worker / SDK）的统一调用契约。
  */
 
-const { buildProfile, runPipelineEngine } = require('./pipeline/engine');
+const { buildProfile, runPipelineEngine, normalizeOutputMode } = require('./pipeline/engine');
 const { runConfigPipeline } = require('./pipeline/config');
 const { safeFetchText } = require('./io/fetcher');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('./io/limits');
@@ -40,6 +40,7 @@ module.exports = {
   Logger,
   buildProfile,
   runPipelineEngine,
+  normalizeOutputMode,
   build: buildProfile,
   runConfigPipeline,
   runNodesPipeline,

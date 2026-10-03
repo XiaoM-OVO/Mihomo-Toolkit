@@ -38,8 +38,8 @@ const {
  */
 const FIELDS = [
   // ── 【1. 基础全局配置】 ───────────────────────────────────────────────────
-  { key: 'enableScript', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '基础全局配置', doc: '脚本总控：设为 false 则原样输出订阅内容' },
+  { key: 'enablePipeline', type: 'boolean', default: true, merge: 'override', trust: 'any',
+    group: '基础全局配置', doc: '流水线总控：设为 false 则跳过策略编排与拓扑构建，仅交付清洗后的节点' },
   { key: 'logLevel', type: 'string', default: 'info', merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '日志级别: silent | error | warn | info | debug' },
   { key: 'osType', type: 'string', default: 'windows', merge: 'override', trust: 'any',
@@ -112,8 +112,8 @@ const FIELDS = [
     group: '策略组建组与 UI 面板', doc: '地区组行为: url-test | select | fallback' },
   { key: 'enableRegionHashLB', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '地区组是否增加哈希负载均衡策略组' },
-  { key: 'hideGarbageGroup', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '策略组建组与 UI 面板', doc: '隐藏垃圾桶组' },
+  { key: 'hideUnknownGroup', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '策略组建组与 UI 面板', doc: '隐藏未知识别节点组' },
   { key: 'groupIconMode', type: 'string', default: 'emoji', merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '策略组图标: emoji | icon | both' },
   { key: 'iconRepoOrz', type: 'string', default: 'https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/',

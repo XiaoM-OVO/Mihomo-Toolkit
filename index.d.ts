@@ -151,8 +151,8 @@ export interface ToolkitConfig {
 
   // ── 以下字段与只读数据层的字段注册表（src/data/field-registry.js）一一对应 ──
   // 基础全局配置
-  /** 脚本总控：设为 false 则原样输出订阅内容 */
-  enableScript?: boolean;
+  /** 流水线总控：设为 false 则跳过策略编排与拓扑构建，仅交付清洗后的节点 */
+  enablePipeline?: boolean;
   /** 设备类型: windows | mac | linux | all */
   osType?: string;
   /** 路由偏好：true(海外代理优先) / false(国内直连优先) */
@@ -182,7 +182,7 @@ export interface ToolkitConfig {
   /** 地区组是否增加哈希负载均衡策略组 */
   enableRegionHashLB?: boolean;
   /** 是否在面板中隐藏「🗑️ 未知识别」组 */
-  hideGarbageGroup?: boolean;
+  hideUnknownGroup?: boolean;
   /** 策略组图标模式: emoji | icon | both */
   groupIconMode?: 'emoji' | 'icon' | 'both';
   /** 在线图标仓库前缀 (Orz-3) */
@@ -585,7 +585,7 @@ export function parseContent(content: string, defaultName?: string): { proxies: 
  * 完整配置装配流水线 (config pipeline)
  */
 export function runConfigPipeline(params: {
-  configData?: Record<string, any>;
+  sourceSkeleton?: Record<string, any>;
   cleanProxies?: ProxyNode[];
   classifiedNodes?: any[];
   collectedSubInfos?: any[];
@@ -623,9 +623,15 @@ export function buildAuditReport(
  * 策略组与分流拓扑流水线 (strategy pipeline)
  */
 export function runStrategyPipeline(
-  config: Record<string, any>,
-  userConfig?: ToolkitConfig
+  sourceSkeleton: Record<string, any>,
+  userConfig?: ToolkitConfig,
+  pipelineContext?: Record<string, any>
 ): Record<string, any>;
+
+/**
+ * 规范化交付形态 (config | nodes | report)
+ */
+export function normalizeOutputMode(rawMode?: string): 'config' | 'nodes' | 'report';
 
 /**
  * 解析 Vless 协议 URI

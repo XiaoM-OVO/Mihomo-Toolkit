@@ -1,5 +1,5 @@
 {
-  "enableScript": true,
+  "enablePipeline": true,
   "logLevel": "info",
   "osType": "windows",
   "proxyFirst": true,
@@ -52,7 +52,7 @@
   "minorNodeThreshold": 3,
   "regionGroupType": "url-test",
   "enableRegionHashLB": false,
-  "hideGarbageGroup": false,
+  "hideUnknownGroup": false,
   "groupIconMode": "emoji",
   "iconRepoOrz": "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/",
   "iconRepoKoolson": "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/",

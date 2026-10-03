@@ -3,7 +3,7 @@
  * 缓存键覆盖率回归 (M-2)
  * -----------------------------------------------------------------------------
  * 背景：构建产物缓存键曾手工摘取十余个字段，hosts / nameserver-policy / dnsServer /
- * dnsListen / enableScript / assetClosure 等未登记配置项变化时会命中旧产物。
+ * dnsListen / enablePipeline / assetClosure 等未登记配置项变化时会命中旧产物。
  * 本套件锁定「配置主体结构性参与缓存键」这一契约。
  */
 
@@ -37,7 +37,7 @@ test('🗝️ 缓存键 - 未登记配置项（hosts / DNS / 安全开关）变�
     assetClosure: 'strict',
     assetDomainAllowlist: ['example.com'],
     fakeIpFilterNodes: 'off',
-    enableScript: false,
+    enablePipeline: false,
     redactLevel: 'full',
     // 未来新增的开关也必须自动进入缓存键（无需再改 getCacheKey）
     someFutureSecurityKnob: { enabled: true }

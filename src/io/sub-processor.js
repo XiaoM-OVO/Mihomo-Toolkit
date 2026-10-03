@@ -123,7 +123,7 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  *
  * 本函数只做「审计与提取」，不负责删除目标配置的顶层键 —— 那是交付契约白名单的职责。
  *
- * @param {object} target 目标配置对象 (configData)，原地写入 _asset* 私有键
+ * @param {object} target 目标配置对象 (sourceSkeleton)，原地写入 _asset* 私有键
  * @param {object} subConfig 订阅源解析出的原始配置对象
  * @param {object} [options={}]
  * @param {Array}   [options.proxies=[]] 该订阅的节点列表（用于推导资产域）
@@ -279,7 +279,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     ? securityLimits.maxSubscriptionBytes
     : DEFAULT_REQUEST_LIMITS.maxSubscriptionBytes;
 
-  let configData = { proxies: [] };
+  let sourceSkeleton = { proxies: [] };
   let hasInjectedTag = false;
   let hasFailedSub = false;
   const collectedSubInfos = [];
@@ -488,7 +488,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         }
 
         // 统一安全网关：控制面净化审计 + 节点专属资产闭包提取（详见 applySubscriptionGuards）
-        const { strippedCount } = applySubscriptionGuards(configData, subConfig, {
+        const { strippedCount } = applySubscriptionGuards(sourceSkeleton, subConfig, {
           proxies: subProxies,
           subUrl: sub.url,
           tag: sub.tag || effectiveTag,
@@ -500,7 +500,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           logger
         });
 
-        configData.proxies = configData.proxies.concat(subProxies);
+        sourceSkeleton.proxies = sourceSkeleton.proxies.concat(subProxies);
 
         const nodeCount = subProxies.length;
         perSubCounts[sub.uri ? `uri:${sub.tag || effectiveTag}` : String(sub.url)] = nodeCount;
@@ -525,7 +525,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
         if (enableDashboard) {
           const failNode = createFetchErrorNode(effectiveTag, e.message);
-          configData.proxies.push(failNode);
+          sourceSkeleton.proxies.push(failNode);
         }
 
         let shortMsg = e.message || '抓取失败';
@@ -584,7 +584,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         });
         if (topNodes && topNodes.length > 0) {
           topNodes.forEach(n => logger.debug(`ℹ️ [全局看板] 「${n.name}」`));
-          configData.proxies.unshift(...topNodes);
+          sourceSkeleton.proxies.unshift(...topNodes);
         }
       }
     }
@@ -621,10 +621,10 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     if (userConfig.removeInfoNodes !== false) {
       singleProxies = filterRawInfoNodes(singleProxies, logger);
     }
-    configData = { proxies: singleProxies };
+    sourceSkeleton = { proxies: singleProxies };
 
     // 与多订阅路径共用同一套控制面净化审计 + 节点专属资产闭包（保持两条路径行为一致）
-    applySubscriptionGuards(configData, rawSubConfig, {
+    applySubscriptionGuards(sourceSkeleton, rawSubConfig, {
       proxies: singleProxies,
       subUrl: /^https?:\/\//i.test(url) ? url : '',
       tag: /^https?:\/\//i.test(url) ? redactUrl(url, showFullUrl) : String(url),
@@ -637,12 +637,12 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     });
     perSubCounts[String(url)] = singleProxies.length;
 
-    const nodeCount = configData.proxies.length;
+    const nodeCount = sourceSkeleton.proxies.length;
     logger.log(`📡 节点解析完成: ${nodeCount} 个节点`);
     if (enableDashboard) {
       const { nodes: synthNodes } = generateInfoNodes(rawResult.subInfo, '');
       if (synthNodes.length > 0) {
-        configData.proxies.unshift(...synthNodes);
+        sourceSkeleton.proxies.unshift(...synthNodes);
       }
     }
   } else {
@@ -650,7 +650,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   }
 
   return {
-    configData,
+    sourceSkeleton,
     collectedSubInfos,
     hasFailedSub,
     hasInjectedTag,
