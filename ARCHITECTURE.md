@@ -80,7 +80,7 @@
 ### 📎 外挂配置文件（通用 `include` 挂载）
 
 外挂入口现已泛化为通用的 `include: ["./a.yaml", "./b.yaml"]`：片段与主文件**共用同一份 schema**，
-任何配置项都能放进片段；`servicesConfigFile`（可写 `servicesConfig` 别名）作为单一文件入口继续保留。
+任何配置项都能放进片段；`servicesConfigFile` 作为单一文件入口继续保留。
 **展开时机是硬约束**：`include` 必须在配置装载现场（CLI / server 读盘后）先展开，早于任何字段读取——
 否则 `subscriptions` / `output` / `logLevel` 这类在订阅抓取前就被读取的字段，放进片段会「配了等于没配」；
 `runPipelineEngine` 入口另有一次幂等兜底，覆盖 SDK 直接传对象的调用方。
@@ -288,7 +288,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── dashboard.js          # 看板合成、多订阅流量与到期聚合中心
 │   │   ├── topology.js           # 六维服务大区折叠与动态测速策略组装配
 │   │   ├── rules.js              # 规则集 (Rule-Providers) 与分流路由组装
-│   │   ├── registries.js         # 六维服务注册表向前兼容委托适配器 (委托至 config/catalog)
+│   │   ├── registries.js         # 六维服务注册表管理模块 (委托至 config/catalog)
 │   │   ├── prune.js              # DAG 递归空组级联淘汰与殉葬规则清理
 │   │   ├── presentation.js       # 展示层终末装配器 (按 groupIconMode 统一挂载在线图标与赋予徽标)
 │   │   ├── dns.js                # Fake-IP / DoH 防泄漏 DNS 方案覆写注入

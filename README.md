@@ -37,7 +37,7 @@ mihomo-toolkit/
 │   │
 │   ├── pipeline/              # 🚀 交付流水线 (与交付形态 1:1 映射)
 │   │   ├── engine.js          # 全流程总调度引擎 (生命周期早退与 Checkpoint 截断)
-│   │   ├── config.js          # 完整配置装配流水线 (支持 passthrough 透传)
+│   │   ├── config.js          # 完整配置装配流水线
 │   │   ├── nodes.js           # 纯净节点清洗流水线 (去重/打标/重命名)
 │   │   ├── report.js          # 健康审计报告流水线 (生成结构化 JSON)
 │   │   └── strategy.js        # 策略拓扑与分流规则注入流水线
@@ -61,7 +61,7 @@ mihomo-toolkit/
 │   │   ├── dashboard.js       # 看板合成、多订阅流量与到期聚合中心
 │   │   ├── topology.js        # 六维服务大区折叠与动态测速策略组装配
 │   │   ├── rules.js           # 规则集 (Rule-Providers) 与分流路由组装
-│   │   ├── registries.js      # 六维服务注册表向前兼容委托适配器 (委托至 config/catalog)
+│   │   ├── registries.js      # 六维服务注册表管理模块 (委托至 config/catalog)
 │   │   ├── prune.js           # DAG 递归空组级联淘汰与殉葬规则清理
 │   │   ├── presentation.js    # 展示层终末装配器 (按 groupIconMode 统一挂载在线图标与赋予徽标)
 │   │   ├── dns.js             # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
@@ -157,13 +157,13 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 
 ---
 
-## 🎯 三大交付形态 (`-t, --type`)
+## 🎯 三大交付形态 (`-m, --mode`)
 
 系统彻底摆脱了复杂的两阶段胶水，聚焦三种纯粹的最终交付物：
 
-| 交付模式 (`-t`) | 输出交付物 | 核心契约与行为 | 典型场景 |
+| 交付模式 (`-m`) | 输出交付物 | 核心契约与行为 | 典型场景 |
 | :--- | :--- | :--- | :--- |
-| **`config`**<br>*(默认全量交付)* | **完整即用型 Mihomo YAML 配置** | 1. 默认全新组装：洗节点 ➔ 状态看板 ➔ 六维策略组 ➔ 分流规则 ➔ 内核优化一条龙。<br>2. **`--passthrough` 透传模式**：原汁原味保留原订阅顶层 `rules/dns/tun` 等，仅将 `proxies` 替换为洗白后的节点！ | 直接提供给内核、软路由或客户端使用。 |
+| **`config`**<br>*(默认全量交付)* | **完整即用型 Mihomo YAML 配置** | 默认全新组装：洗节点 ➔ 状态看板 ➔ 六维策略组 ➔ 分流规则 ➔ 内核优化一条龙。自动执行节点专属 DNS 资产依赖保活，宿主控制面保持纯净。 | 直接提供给内核、软路由或客户端使用。 |
 | **`nodes`** | **纯净清洗节点数组** | 契约绝对纯粹：**仅交付洗白后的 `{ proxies: [...] }` 列表**，绝不越界输出任何策略组或外围规则。 | 导入 Sub-Store、节点池二次加工。 |
 | **`report`** | **健康审计与统计报告 (JSON)** | 纯粹输出清洗统计（总数、有效保留、去重数、广告拦截数、未知地区数）与健康元数据。 | CI/CD 自动化质检、机场节点质量监控。 |
 
@@ -180,8 +180,8 @@ Options:
   -V, --version        输出版本号
   -u, --url <url>      订阅链接或本地配置文件路径 (若 config 中已有 subscriptions 则可省略)
   -o, --out <path>     输出文件路径 (默认: config.yaml / nodes.yaml / report.json)
-  -t, --type <mode>    交付输出模式: "config" (默认), "nodes" (纯节点), 或 "report" (审计报告)
-  -p, --passthrough    仅在 config 模式生效：保留原订阅顶层 rules/dns 等规则，仅替换 proxies
+  -m, --mode <mode>    交付输出模式: "config" (默认), "nodes" (纯节点), 或 "report" (审计报告)
+  -t, --type <mode>    模式别名 (等价于 -m)
   -c, --config <path>  指定自定义 YAML/JSON 配置文件
   -r, --report <path>  在生成配置的同时，顺手将审计报告另存为指定 JSON 文件
   --prod               生产环境模式 (开启严格安全锁，强制禁止敏感凭据明文打印)
@@ -195,16 +195,13 @@ Options:
 # 1. 常用：拉取订阅并生成完整分流配置
 mtk -u "https://airport.com/sub" -o config.yaml
 
-# 2. 透传：保留原订阅自带的规则，仅洗白节点名与去重
-mtk -u "https://airport.com/sub.yaml" -t config --passthrough -o config.yaml
+# 2. 提纯：只要干净的节点数组 (Sub-Store 专用)
+mtk -u "https://airport.com/sub" -m nodes -o nodes.yaml
 
-# 3. 提纯：只要干净的节点数组 (Sub-Store 专用)
-mtk -u "https://airport.com/sub" -t nodes -o nodes.yaml
+# 3. 质检：导出节点健康度审计报告
+mtk -u "https://airport.com/sub" -m report -o audit.json
 
-# 4. 质检：导出节点健康度审计报告
-mtk -u "https://airport.com/sub" -t report -o audit.json
-
-# 5. 生成配置的同时，顺便落一份审计报告
+# 4. 生成配置的同时，顺便落一份审计报告
 mtk -u "https://airport.com/sub" -r report.json
 ```
 
@@ -218,7 +215,6 @@ mtk -u "https://airport.com/sub" -r report.json
 # 1. 交付形态与输出
 outputMode: "config"            # config (完整配置) | nodes (纯节点) | report (审计报告)
 output: "./dist/config.yaml"    # 输出路径
-passthrough: false              # [config模式] true=透传原配置规则，仅替换节点
 
 # 2. 抓取与容灾
 fetchProxyPort: 7890            # 抓取代理端口（留空直连）

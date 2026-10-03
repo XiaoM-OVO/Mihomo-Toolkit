@@ -50,7 +50,7 @@ const GOLDEN = JSON.parse(fs.readFileSync(GOLDEN_PATH, 'utf8'), reviveGolden);
  * 派生实现必须**至少**覆盖这些字段，否则等于重构顺手削弱了防护。
  */
 const LEGACY_REMOTE_DENIED = [
-  'servicesConfigFile', 'servicesConfig', 'fetchProxyPort', 'fetchProxyStrategy',
+  'servicesConfigFile', 'fetchProxyPort', 'fetchProxyStrategy',
   'dnsListen', 'dnsAllowNonLoopback', 'dnsDefault', 'dnsDirect', 'dnsProxy', 'dnsServer',
   'nameserverPolicy', 'allowPrivateDns', 'trustedPrivateCidrs',
   'hosts', 'trustedHostDomains', 'allowInternalHosts', 'fakeIpFilter', 'fakeIpFilterNodes'

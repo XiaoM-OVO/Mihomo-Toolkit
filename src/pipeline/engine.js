@@ -66,17 +66,17 @@ function getCacheKey(userConfig = {}, options = {}) {
   try {
     userConfig = userConfig || {};
     options = options || {};
-    const rawType = options.type || userConfig.outputMode || userConfig.type || 'config';
+    const rawMode = options.mode || options.type || userConfig.outputMode || 'config';
+    const outputMode = normalizeOutputMode(rawMode);
 
     // 订阅清单：仅纳入生效订阅的完整描述（retry / proxy / master 等字段同样影响抓取与产物），
     // 已禁用订阅的变化不应破坏缓存
     const subs = (userConfig.subscriptions || []).filter(isSubEnabled);
 
-    // 配置主体：剔除 subscriptions（已单独归一化）与交付形态原始字面量（已归一化计入 type），
+    // 配置主体：剔除 subscriptions（已单独归一化）与交付形态原始字面量（已归一化计入 outputMode），
     // 其余全部纳入
     const configRest = { ...userConfig };
     delete configRest.subscriptions;
-    delete configRest.type;
     delete configRest.outputMode;
 
     const optionSubset = {};
@@ -91,7 +91,7 @@ function getCacheKey(userConfig = {}, options = {}) {
 
     const canonical = stableStringify({
       v: CACHE_KEY_VERSION,
-      type: normalizeOutputMode(rawType),
+      outputMode,
       options: optionSubset,
       subs,
       mounts,
@@ -139,7 +139,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   const stratLogger = typeof logger.child === 'function' ? logger.child('Strategy') : logger;
 
   // 1. 交付形态解析: config | nodes | report
-  const outputMode = normalizeOutputMode(options.mode || options.type || userConfig.outputMode || userConfig.type || 'config');
+  const outputMode = normalizeOutputMode(options.mode || options.type || userConfig.outputMode || 'config');
 
   // 2. 资源安全配额防御
   const securityLimits = userConfig.security || {};
@@ -201,7 +201,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     options,
     logger: ioLogger,
     dashboard,
-    deliveryMode: outputMode
+    outputMode
   });
 
   // 5.1 资源配额二次校验：节点总量与单订阅节点量

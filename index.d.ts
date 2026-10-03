@@ -7,8 +7,7 @@
 // 基础枚举与联合类型
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type OutputMode = 'config' | 'nodes' | 'report' | 'full' | 'cleaner' | 'meta';
-export type TargetType = OutputMode;
+export type OutputMode = 'config' | 'nodes' | 'report';
 export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug';
 export type RedactLevel = 'off' | 'partial' | 'full';
 export type ProxyStrategy = 'direct' | 'proxy' | 'auto';
@@ -269,8 +268,6 @@ export interface ToolkitConfig {
   customRuleProviders?: Record<string, any>;
 
   // 安全与资源配额
-  /** servicesConfigFile 的兼容别名（外挂服务定义文件路径） */
-  servicesConfig?: string;
   /**
    * 节点防环注入模式：smart(智能主域聚合，推荐) | exact(逐项保留) | off(不注入)。
    * 属于本机 DNS 安全面，`?config=` 远程配置无法写入。
@@ -283,8 +280,6 @@ export interface ToolkitConfig {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface UserConfig extends PureConfig, ToolkitConfig {
-  /** 构建运行模式：full (清洗+策略组), pure (仅清洗), toolkit (仅策略组) */
-  type?: TargetType;
   /** 订阅源列表 */
   subscriptions?: SubscriptionConfig[];
   /** 最终配置输出文件路径（CLI 模式使用） */
@@ -388,12 +383,6 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   assetClosure?: 'standard' | 'strict' | 'off';
   /** strict 模式下允许被继承的域名列表 */
   assetDomainAllowlist?: string[];
-
-  // ⚠️ 已废弃开关（智能节点资产保活沙箱已自动接管，宿主控制面保持纯净）
-  /** @deprecated 已废弃。系统已自动启用「智能节点资产依赖保活沙箱」，既保活节点专属 DNS/Hosts，又杜绝控制面夺权污染 */
-  passthrough?: boolean;
-  /** @deprecated 已废弃。 */
-  preserveRawConfig?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -433,8 +422,10 @@ export interface PureMeta {
 }
 
 export interface BuildOptions {
-  /** 构建运行模式覆盖 */
-  type?: TargetType;
+  /** 交付输出模式: "config" (默认) | "nodes" (纯节点) | "report" (审计报告) */
+  mode?: OutputMode;
+  /** 交付输出模式（mode 别名） */
+  type?: OutputMode;
   /** 是否开启调试模式（输出详尽日志） */
   debug?: boolean;
   /** 生产环境模式（严格禁止 redactLevel=off） */
@@ -442,6 +433,8 @@ export interface BuildOptions {
   /** 强制跳过内存缓存，实时抓取远端 */
   noCache?: boolean;
   /** 导出统计报告路径 */
+  report?: string;
+  /** 导出统计报告路径（report 别名） */
   meta?: string;
   /** 指定配置文件路径 */
   config?: string;
@@ -452,7 +445,7 @@ export interface BuildOptions {
 export interface BuildResult {
   /** 生成的 Clash / Mihomo YAML 配置文件文本 */
   yamlStr: string;
-  /** 数据清洗与分桶元数据报告（当 outputMode: "object" 或指定 options.meta 时包含） */
+  /** 数据清洗与分桶元数据报告（当 outputMode: "report" 或传递 meta 时包含） */
   meta?: PureMeta;
   /** 解析后的原生 JavaScript 配置对象 */
   config?: Record<string, any>;

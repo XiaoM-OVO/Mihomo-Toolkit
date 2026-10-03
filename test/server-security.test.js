@@ -141,7 +141,6 @@ describe('🔐 远程配置信任边界 (C-2 ?config= Hardening)', () => {
     const r = hardenRemoteConfig({
       subscriptions: [{ url: 'https://example.com/sub.yaml' }, { uri: 'vless://x@1.2.3.4:443' }],
       servicesConfigFile: './evil.js',
-      servicesConfig: { ai: {} },
       fetchProxyPort: 6379,
       fetchProxyStrategy: 'proxy',
       dnsListen: '0.0.0.0:53',
@@ -155,7 +154,7 @@ describe('🔐 远程配置信任边界 (C-2 ?config= Hardening)', () => {
     assert.deepEqual(
       r.strippedKeys.sort(),
       ['dnsAllowNonLoopback', 'dnsListen', 'dnsProxy', 'fetchProxyPort', 'fetchProxyStrategy',
-       'hosts', 'nameserverPolicy', 'servicesConfig', 'servicesConfigFile'].sort()
+       'hosts', 'nameserverPolicy', 'servicesConfigFile'].sort()
     );
     // 能力剥夺：DNS 控制面与本地资源字段全部消失
     for (const k of ['servicesConfigFile', 'fetchProxyPort', 'dnsListen', 'dnsProxy', 'nameserverPolicy', 'hosts']) {

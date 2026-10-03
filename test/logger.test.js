@@ -149,12 +149,6 @@ describe('🪵 统一分级终端 Logger 模块测试', () => {
     assert.ok(unredactedLogs[0].includes('supersecret999'));
   });
 
-  it('兼容性 - 兼容历史 createLogger("[Builder]", "info") 调用签名', () => {
-    const legacyLogger = createLogger('[Builder]', 'debug');
-    assert.equal(legacyLogger.tag, 'Builder');
-    assert.equal(legacyLogger.level, 4);
-  });
-
   it('流水线日志控制 - options.silent / quiet 彻底静默', async () => {
     const { runPipelineEngine } = require('../src/pipeline/engine');
     const logs = [];

@@ -41,7 +41,6 @@ module.exports = {
   buildProfile,
   runPipelineEngine,
   normalizeOutputMode,
-  build: buildProfile,
   runConfigPipeline,
   runNodesPipeline,
   runStrategyPipeline,

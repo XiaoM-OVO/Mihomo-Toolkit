@@ -38,7 +38,7 @@ function buildProxyTopology({
   // 确保 registries 优先从 catalog 获取单一事实来源
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
     ? registries
-    : (userConfig.catalog ? userConfig.catalog.toLegacyRegistries() : {});
+    : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});
 
   const regionDefs = getEnhancedRegionDefs();
   const mixedRegionIds = [...new Set(regionDefs.map(r => r.group).filter(Boolean)), 'other'];

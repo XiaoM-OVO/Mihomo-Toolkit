@@ -29,7 +29,7 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   const effectiveProxyTarget = options.proxyTarget || modeMap[userConfig.defaultProxyMode] || '自动选择';
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
     ? registries
-    : (userConfig.catalog ? userConfig.catalog.toLegacyRegistries() : {});
+    : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});
 
   const repo = `${userConfig.ruleProviderCDN || 'https://fastly.jsdelivr.net/gh'}/MetaCubeX/meta-rules-dat@meta`;
   const ruleFormat = userConfig.useMRS ? 'mrs' : 'yaml';

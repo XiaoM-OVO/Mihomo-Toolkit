@@ -92,7 +92,11 @@ test('🗝️ 缓存键 - 交付形态别名归一化', () => {
 
   // userConfig.outputMode 兜底同样参与归一化
   const viaOutputMode = buildProfileCacheKey({ ...cfg, outputMode: 'pure' }, {});
-  assert.equal(viaOutputMode, nodes, '未显式指定 type 时应按 outputMode 归一化');
+  assert.equal(viaOutputMode, nodes, '未显式指定 type/mode 时应按 outputMode 归一化');
+
+  // options.mode 显式入参测试（防止 options.mode 被漏读）
+  const viaOptionsMode = buildProfileCacheKey(cfg, { mode: 'nodes' });
+  assert.equal(viaOptionsMode, nodes, 'options.mode 应正确参与缓存键计算');
 });
 
 test('🗝️ 缓存键 - 仅生效订阅参与，订阅抓取参数变化必须改变键', () => {

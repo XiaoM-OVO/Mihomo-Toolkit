@@ -316,7 +316,6 @@ const BUILTIN_SERVICES = {
     },
     scholar: {
       name: '学术网站',
-      cleanName: 'Scholar',
       emoji: '🎓',
       preferredRegions: ['us', 'eu', 'jp', 'sg', 'tw', 'hk'],
       rules: [
@@ -567,13 +566,13 @@ class ServiceCatalog {
   }
 
   /**
-   * 导出与旧版 registries 100% 结构兼容的对象（确保历史插件与调用无损平滑过渡）
+   * 导出结构化服务注册表对象
    * @returns {object} { ai, streaming, social, game, dev, system }
    */
-  toLegacyRegistries() {
-    const legacy = {};
+  toRegistries() {
+    const registries = {};
     for (const [cat, catServices] of Object.entries(this.services)) {
-      legacy[cat] = {};
+      registries[cat] = {};
       for (const [key, s] of Object.entries(catServices)) {
         const cleanName = s.cleanName || s.name;
         const fullName = s.emoji ? `${s.emoji} ${cleanName}` : cleanName;
@@ -616,7 +615,7 @@ class ServiceCatalog {
           rulesArr = [`RULE-SET,${ruleSetName},${cleanName}`];
         }
 
-        legacy[cat][key] = {
+        registries[cat][key] = {
           tag: s.tag || key,
           name: cleanName,
           cleanName,
@@ -626,14 +625,18 @@ class ServiceCatalog {
           reg: compiledReg,
           provider: s.provider || providerPath,
           ruleSet: s.ruleSet || ruleSetName,
-          iconUrl,
           pool: s.pool || key,
           rules: rulesArr,
           preferredRegions: s.preferredRegions || CATEGORY_DEFAULTS[cat]?.preferredRegions || []
         };
       }
     }
-    return legacy;
+    return registries;
+  }
+
+  /** @deprecated 请直接使用 toRegistries() */
+  toLegacyRegistries() {
+    return this.toRegistries();
   }
 }
 
@@ -681,11 +684,6 @@ function buildServiceCatalog(userConfig = {}) {
       if (normalized.icon && typeof normalized.icon === 'string' && !normalized.icon.startsWith('http')) {
         normalized.icon = { repo: 'koolson', file: normalized.icon };
       }
-
-      // 如果有历史字段，做向前兼容映射
-      if (normalized.uiIcon && !normalized.emoji) normalized.emoji = normalized.uiIcon;
-      if (normalized.cleanName && !normalized.name) normalized.name = normalized.cleanName;
-      if (normalized.ruleSet && !normalized.rules) normalized.rules = normalized.ruleSet;
 
       if (mergedServices[cat][key]) {
         // 用户修改已有服务 -> 深度合并，保留官方未被修改的字段
