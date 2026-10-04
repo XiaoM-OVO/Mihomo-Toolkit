@@ -127,3 +127,62 @@ test('🧩 拓扑模块单元测试 - 自定义节点分组注入 (customNodeGro
   assert.ok(gptGroup);
   assert.ok(gptGroup.proxies.includes('我的自建香港专线'));
 });
+
+test('🧩 拓扑模块单元测试 - 地区哈希负载均衡 (enableRegionHashLB)', () => {
+  const registries = createServiceRegistries(DEFAULT_CONFIG);
+  const classifiedNodes = [
+    {
+      proxy: { name: '🇭🇰 香港 01' },
+      rawName: '🇭🇰 香港 01',
+      regionInfo: { id: 'hk', name: '香港' },
+      tags: [],
+      groupKey: 'hk'
+    },
+    {
+      proxy: { name: '🇭🇰 香港 02' },
+      rawName: '🇭🇰 香港 02',
+      regionInfo: { id: 'hk', name: '香港' },
+      tags: [],
+      groupKey: 'hk'
+    },
+    {
+      proxy: { name: '🇺🇸 美国 01' },
+      rawName: '🇺🇸 美国 01',
+      regionInfo: { id: 'us', name: '美国' },
+      tags: [],
+      groupKey: 'us'
+    }
+  ];
+
+  const { proxyGroups, buckets } = buildProxyTopology({
+    classifiedNodes,
+    userConfig: {
+      ...DEFAULT_CONFIG,
+      enableRegionHashLB: true
+    },
+    registries
+  });
+
+  // 1. 香港有 2 个节点，应生成专属哈希组
+  const hkHashGroup = proxyGroups.find(g => g.name === '⚖️ 负载均衡-哈希 (香港)');
+  assert.ok(hkHashGroup, '应生成香港哈希负载均衡组');
+  assert.equal(hkHashGroup.type, 'load-balance');
+  assert.equal(hkHashGroup.strategy, 'consistent-hashing');
+  assert.equal(hkHashGroup.hidden, true);
+  assert.deepEqual(hkHashGroup.proxies, ['🇭🇰 香港 01', '🇭🇰 香港 02']);
+
+  // 2. 香港地区组应将哈希组置顶注入首位
+  const hkGroup = proxyGroups.find(g => g.name === '香港节点');
+  assert.ok(hkGroup, '应包含香港地区组');
+  assert.equal(hkGroup.proxies[0], '⚖️ 负载均衡-哈希 (香港)');
+  assert.ok(hkGroup.proxies.includes('🇭🇰 香港 01'));
+  assert.ok(hkGroup.proxies.includes('🇭🇰 香港 02'));
+
+  // 3. 美国仅 1 个节点，不应生成哈希组
+  const usHashGroup = proxyGroups.find(g => g.name.includes('哈希 (美国)'));
+  assert.equal(usHashGroup, undefined, '单节点地区不应生成哈希负载组');
+
+  // 4. 底层 buckets 不被策略组名污染（纯函数无副作用）
+  assert.deepEqual(buckets.hk, ['🇭🇰 香港 01', '🇭🇰 香港 02']);
+});
+

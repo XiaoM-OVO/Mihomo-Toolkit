@@ -187,6 +187,15 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       }
     }
 
+    // 注入节点连接 IP 栈策略 (Mihomo 原生 ip-version 字段)
+    if (config.nodeIpVersion && typeof config.nodeIpVersion === 'string') {
+      const v = config.nodeIpVersion.trim().toLowerCase();
+      const VALID_IP_VERSIONS = ['dual', 'ipv4', 'ipv6', 'ipv4-prefer', 'ipv6-prefer'];
+      if (VALID_IP_VERSIONS.includes(v)) {
+        item.proxy['ip-version'] = v;
+      }
+    }
+
     item.proxy._cleaned = true;
     return item.proxy;
   });

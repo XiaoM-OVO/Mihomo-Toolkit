@@ -382,10 +382,27 @@ function buildProxyTopology({
   }
   finalGroups.push(buildSelect('漏网之鱼', dedupe(fallbackProxies)));
 
-  // 地区组
+  // 地区组与哈希负载均衡
   Object.entries(regionNames).forEach(([id, name]) => {
-    if (buckets[id] && buckets[id].length > 0) {
-      finalGroups.push(buildRegionGroup(id, name, buckets[id]));
+    const regionNodes = buckets[id];
+    if (regionNodes && regionNodes.length > 0) {
+      if (userConfig.enableRegionHashLB && regionNodes.length > 1) {
+        const cleanRegionName = name.replace(/节点$/, '');
+        const hashGroupName = `⚖️ 负载均衡-哈希 (${cleanRegionName})`;
+        finalGroups.push({
+          name: hashGroupName,
+          type: 'load-balance',
+          strategy: 'consistent-hashing',
+          url: testURL,
+          interval: testInterval,
+          lazy: true,
+          proxies: dedupe(regionNodes),
+          hidden: true
+        });
+        finalGroups.push(buildRegionGroup(id, name, [hashGroupName, ...regionNodes]));
+      } else {
+        finalGroups.push(buildRegionGroup(id, name, regionNodes));
+      }
     }
   });
 
