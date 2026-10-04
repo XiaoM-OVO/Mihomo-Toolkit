@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * -----------------------------------------------------------------------------
- * Target: CLI 命令行构建工具 (mihomo-tk / mtk / mihomo-toolkit)
+ * Target: CLI 命令行构建工具 (mihomo-toolkit)
  * -----------------------------------------------------------------------------
  */
 
@@ -17,7 +17,7 @@ const pkg = require('../../package.json');
 
 function run(argv = process.argv) {
   program
-    .name('mtk')
+    .name('mihomo-toolkit')
     .description(`Mihomo-Toolkit v${pkg.version} - 自动化节点清洗与策略组构建引擎`)
     .version(pkg.version)
     .option('-u, --url <url>', 'Subscription URL or local config file path')

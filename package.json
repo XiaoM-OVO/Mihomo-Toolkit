@@ -5,9 +5,7 @@
   "main": "src/index.js",
   "types": "index.d.ts",
   "bin": {
-    "mihomo-toolkit": "src/targets/cli.js",
-    "mihomo-tk": "src/targets/cli.js",
-    "mtk": "src/targets/cli.js"
+    "mihomo-toolkit": "src/targets/cli.js"
   },
   "scripts": {
     "start": "node src/targets/server.js",

@@ -33,7 +33,7 @@ proxies:
 `;
 
 function makeFixture(extraConfig = '') {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-srv-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-srv-'));
   const subFile = path.join(dir, 'nodes.yaml');
   fs.writeFileSync(subFile, NODE_SUB, 'utf-8');
   const configFile = path.join(dir, 'config.yaml');
@@ -245,7 +245,7 @@ describe('🌐 常驻服务安全姿态 (Server Security Posture)', () => {
   });
 
   test('服务端错误只回显通用提示，不泄漏内部实现细节', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-srv-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-srv-'));
     const configFile = path.join(dir, 'config.yaml');
     // subscriptions 被写成字符串 → 引擎内部抛 TypeError，用于验证 500 分支不回显细节
     fs.writeFileSync(configFile, 'logLevel: silent\nsubscriptions: "not-an-array"\n', 'utf-8');

@@ -131,7 +131,7 @@ test('🔍 注册表自洽 — 无默认值字段必须是「代码内有兜底�
 });
 
 test('📁 挂载回归 — 相对路径以配置文件所在目录为基准，而不是 cwd', () => {
-  const base = path.join(os.tmpdir(), 'mtk-mount-base');
+  const base = path.join(os.tmpdir(), 'mihomo-mount-base');
   const resolved = resolveMountPath('./svc.yaml', base);
   assert.equal(resolved, path.join(base, 'svc.yaml'));
   // 已经是绝对路径时保持原样
@@ -150,7 +150,7 @@ test('📁 挂载回归 — 相对路径以配置文件所在目录为基准，�
 });
 
 test('📁 挂载回归 — 文件缺失或格式不支持时报错，而不是静默返回空配置', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-mount-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-mount-'));
   const missing = path.join(dir, 'nope.yaml');
   assert.throws(() => readMountFile(missing), /Config mount not found/);
 
@@ -176,7 +176,7 @@ test('📁 挂载回归 — 文件缺失或格式不支持时报错，而不是�
 });
 
 test('📁 挂载回归 — 改动挂载文件内容会改变构建缓存键', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-digest-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-digest-'));
   const pack = path.join(dir, 'services.yaml');
   fs.writeFileSync(pack, 'ai:\n  deepseek:\n    name: DeepSeek\n');
   const userConfig = { servicesConfigFile: pack, enableAI: true };
@@ -201,7 +201,7 @@ test('📁 挂载回归 — 改动挂载文件内容会改变构建缓存键', (
 });
 
 test('📁 挂载回归 — .js 挂载文件改动后无需重启即可生效', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-js-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-js-'));
   const pack = path.join(dir, 'services.js');
   fs.writeFileSync(pack, 'module.exports = { ai: { deepseek: { name: "v1" } } };\n');
   const first = readMountFile(pack);
@@ -229,7 +229,7 @@ test('🛡️ 配额不可远程放宽 — ?config= 无法通过 security 字段
 });
 
 test('📁 挂载回归 — include 片段与主文件共用 schema，冲突时主文件优先', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-priority-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-priority-'));
   const frag = path.join(dir, 'base.yaml');
   fs.writeFileSync(frag, 'logLevel: debug\n');
 
@@ -245,7 +245,7 @@ test('📁 挂载回归 — include 片段与主文件共用 schema，冲突时�
 });
 
 test('📁 挂载回归 — include 数组合并为并集去重且保留先出现顺序', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-union-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-union-'));
   const frag = path.join(dir, 'base.yaml');
   fs.writeFileSync(frag, 'whitelistKeywords: ["x", "y"]\n');
 
@@ -255,7 +255,7 @@ test('📁 挂载回归 — include 数组合并为并集去重且保留先出�
 });
 
 test('📁 挂载回归 — include 支持递归，片段内相对路径以该片段目录为基准', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-rec-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-rec-'));
   const sub = path.join(dir, 'sub');
   fs.mkdirSync(sub);
   // 主文件（dir）include ./sub/outer.yaml；outer.yaml（在 sub/）再 include ./inner.yaml。
@@ -271,7 +271,7 @@ test('📁 挂载回归 — include 支持递归，片段内相对路径以该�
 });
 
 test('📁 挂载回归 — include 环路检测抛错且错误信息含环路链', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-cycle-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-cycle-'));
   const a = path.join(dir, 'a.yaml');
   const b = path.join(dir, 'b.yaml');
   fs.writeFileSync(a, 'include: ["./b.yaml"]\n');
@@ -287,7 +287,7 @@ test('📁 挂载回归 — include 环路检测抛错且错误信息含环路�
 });
 
 test('📁 挂载回归 — include 片段缺失时显式抛错（fail-closed）', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-miss-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-miss-'));
   const missing = path.join(dir, 'nope.yaml');
   assert.throws(() => expandIncludes({ include: [missing] }, dir), /Config mount not found/);
   assert.throws(() => resolveConfig({ include: [missing] }), /Config mount not found/);
@@ -295,7 +295,7 @@ test('📁 挂载回归 — include 片段缺失时显式抛错（fail-closed）
 });
 
 test('📁 挂载回归 — 被嵌套的 include 片段内容变化同样刷新构建缓存键', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-digest-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-digest-'));
   const outer = path.join(dir, 'outer.yaml');
   const inner = path.join(dir, 'inner.yaml');
   fs.writeFileSync(outer, 'include: ["./inner.yaml"]\n');
