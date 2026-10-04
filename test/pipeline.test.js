@@ -81,3 +81,28 @@ test('🚀 交付形态解析 - normalizeOutputMode 仅做小写归一化（不�
   assert.equal(normalizeOutputMode('NODES'), 'nodes');
   assert.equal(normalizeOutputMode(), 'config');
 });
+
+test('🚀 流水线单元测试 - nodeIpVersion 批量注入节点 IP 栈偏好策略', async () => {
+  const sampleProxies = () => [
+    { name: '🇭🇰 香港 01', server: 'hk.example.com', port: 443, type: 'vless', uuid: 'u1' },
+    { name: '🇺🇸 美国 01', server: 'us.example.com', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p1' }
+  ];
+
+  // 1. 默认配置（缺省/空串）不注入 ip-version
+  const defCleaned = await runNodesPipeline(sampleProxies(), {});
+  assert.equal(defCleaned[0]['ip-version'], undefined);
+  assert.equal(defCleaned[1]['ip-version'], undefined);
+
+  // 2. 注入 dual（双栈并发 Happy Eyeballs）
+  const dualCleaned = await runNodesPipeline(sampleProxies(), { nodeIpVersion: 'dual' });
+  assert.equal(dualCleaned[0]['ip-version'], 'dual');
+  assert.equal(dualCleaned[1]['ip-version'], 'dual');
+
+  // 3. 注入 ipv6-prefer，且支持大小写归一化
+  const v6Cleaned = await runNodesPipeline(sampleProxies(), { nodeIpVersion: 'IPv6-Prefer' });
+  assert.equal(v6Cleaned[0]['ip-version'], 'ipv6-prefer');
+
+  // 4. 非法值不注入
+  const invalidCleaned = await runNodesPipeline(sampleProxies(), { nodeIpVersion: 'invalid-stack' });
+  assert.equal(invalidCleaned[0]['ip-version'], undefined);
+});

@@ -102,12 +102,16 @@ const FIELDS = [
     group: '节点清洗与处理', doc: '高倍率节点是否独立成组' },
   { key: 'isolateExperimental', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '实验节点是否独立成组' },
+  { key: 'nodeIpVersion', type: 'string', default: '', merge: 'override', trust: 'any',
+    group: '节点清洗与处理', doc: '节点连接 IP 栈策略: "" (保持原样) | dual (双栈并发竞速) | ipv6-prefer | ipv4-prefer | ipv6 | ipv4' },
 
   // ── 【3. 策略组建组与 UI 面板】 ───────────────────────────────────────────
   { key: 'minorNodeThreshold', type: 'number', default: 3, merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '小众地区建组阈值' },
   { key: 'regionGroupType', type: 'string', default: 'url-test', merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '地区组行为: url-test | select | fallback' },
+  { key: 'enableRegionHashLB', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '策略组建组与 UI 面板', doc: '地区组是否增加哈希负载均衡策略组' },
   { key: 'hideUnknownGroup', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '隐藏未知识别节点组' },
   { key: 'groupIconMode', type: 'string', default: 'emoji', merge: 'override', trust: 'any',

@@ -76,6 +76,16 @@ export interface PureConfig {
   blockKeywords?: string[];
   /** 服务器字段黑名单列表（server 包含即拦截，优先于白名单） */
   blockServers?: string[];
+  /**
+   * 节点连接时的 IP 协议栈偏好策略 (Mihomo 原生 ip-version 字段)
+   * - "" (默认): 保持节点原有下发状态，不强行注入
+   * - "dual": 开启 Happy Eyeballs 双栈并发竞速（推荐）
+   * - "ipv6-prefer": 优先连接 IPv6
+   * - "ipv4-prefer": 优先连接 IPv4
+   * - "ipv6": 仅走 IPv6
+   * - "ipv4": 仅走 IPv4
+   */
+  nodeIpVersion?: '' | 'dual' | 'ipv6-prefer' | 'ipv4-prefer' | 'ipv6' | 'ipv4';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,10 +176,22 @@ export interface ToolkitConfig {
   adTextThreshold?: number;
   /** 低倍率分流阈值（倍率 <= 此值归入下载策略，设为 0 关闭） */
   lowMultiThreshold?: number;
+  /**
+   * 节点连接时的 IP 协议栈偏好策略 (Mihomo 原生 ip-version 字段)
+   * - "" (默认): 保持节点原有下发状态，不强行注入
+   * - "dual": 开启 Happy Eyeballs 双栈并发竞速（推荐）
+   * - "ipv6-prefer": 优先连接 IPv6
+   * - "ipv4-prefer": 优先连接 IPv4
+   * - "ipv6": 仅走 IPv6
+   * - "ipv4": 仅走 IPv4
+   */
+  nodeIpVersion?: '' | 'dual' | 'ipv6-prefer' | 'ipv4-prefer' | 'ipv6' | 'ipv4';
 
   // 策略组建组与 UI 面板
   /** 地区组行为: url-test | select | fallback */
   regionGroupType?: 'url-test' | 'select' | 'fallback';
+  /** 地区组是否增加哈希负载均衡策略组 */
+  enableRegionHashLB?: boolean;
   /** 是否在面板中隐藏「🗑️ 未知识别」组 */
   hideUnknownGroup?: boolean;
   /** 策略组图标模式: emoji | icon | both */

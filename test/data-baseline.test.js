@@ -59,7 +59,7 @@ const LEGACY_REMOTE_DENIED = [
 test('📊 字段注册表 — 默认值 golden 基线与注册表一一对应', () => {
   // 1. 旧字段的默认值必须逐项一字不差（默认值即安全姿态，改动必须显式体现在 git diff 里）
   //    刻意移除的字段单独列出：撤回一个无效字段同样是必须显式承认的改动
-  const REMOVED_BY_DESIGN = ['dnsMergeMode', 'airportTagReg', 'enableRegionHashLB'];
+  const REMOVED_BY_DESIGN = ['dnsMergeMode', 'airportTagReg'];
   for (const [key, expected] of Object.entries(GOLDEN)) {
     if (REMOVED_BY_DESIGN.includes(key)) {
       assert.ok(!(key in DEFAULT_CONFIG), `${key} 应已被移除（无效字段撤回）`);
@@ -82,7 +82,9 @@ test('📊 字段注册表 — 默认值 golden 基线与注册表一一对应',
       'processDirectLin', 'processDirectMac', 'processDirectWin',
       'processProxyLin', 'processProxyMac', 'processProxyWin',
       // 清洗层用户黑名单（自旧版恢复：节点名/服务器命中即拦截，优先于白名单）
-      'blockKeywords', 'blockServers'
+      'blockKeywords', 'blockServers',
+      // 节点连接 IP 栈策略 (ip-version: dual / ipv6-prefer / ...)
+      'nodeIpVersion'
     ].sort(),
     '出现了未登记的默认字段：新增字段必须先在 field-registry.js 声明'
   );

@@ -129,6 +129,7 @@ enableAirportTag: true             # 多订阅时自动为节点打上机场来�
 enableNodeRename: true             # 是否启用节点重命名（设为 false 可原样保留节点名称，且不影响地区识别）
 showFeatureIcon: true              # 是否在节点名后追加特征 Emoji 图标 (如 🚀 4K 等)
 # renameTemplate: "{icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
+# nodeIpVersion: "dual"            # 节点连接 IP 栈策略: dual (双栈并发竞速，推荐) | ipv6-prefer | ipv4-prefer | ipv6 | ipv4
 # 命名模板可用变量:
 #   {airport}   机场标签前缀 (如 [AirportA])
 #   {icon}      国家/地区国旗 Emoji (如 🇭🇰, 🇯🇵)
@@ -151,6 +152,7 @@ showFeatureIcon: true              # 是否在节点名后追加特征 Emoji 图
 proxyFirst: true                   # true=海外代理优先 / false=国内直连优先
 defaultProxyMode: "manual"         # auto (自动测速) | manual (手动选择) | fallback (故障转移) | direct | reject
 regionGroupType: "url-test"        # 地区策略组类型: url-test (测速优选) | select (手动选择) | fallback (故障转移)
+# enableRegionHashLB: false        # 为达到条件的地区组增加哈希负载均衡（建议配合 regionGroupType: "select"）
 # minorNodeThreshold: 3            # 小众地区独立建组最小节点数（低于此值自动折叠至大洲组）
 # hideUnknownGroup: false          # 是否在面板中隐藏「🗑️ 未知识别」组
 # exemptGroups:                    # 在只读骨架基线（手动选择 / 漏网之鱼）之外【追加】永不被空组剪枝斩首的组名
