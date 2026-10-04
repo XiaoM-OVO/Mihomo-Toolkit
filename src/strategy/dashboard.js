@@ -285,7 +285,6 @@ function createFetchErrorNode(effectiveTag, errorMsg = '') {
 }
 
 module.exports = {
-  REGEX_INFO_NODES,
   filterRawInfoNodes,
   extractResetText,
   aggregateSubscriptions,

@@ -36,7 +36,7 @@ describe('📁 include 全链路一致性', () => {
       );
 
       // 主配置对象只有 include，没有任何 subscriptions —— 修复前 engine 读不到订阅即抛错
-      const { yamlStr } = await buildProfile({ include: [frag] }, { type: 'nodes', noCache: true });
+      const { yamlStr } = await buildProfile({ include: [frag] }, { mode: 'nodes', noCache: true });
       assert.ok(yamlStr.includes('香港'), '片段中的 subscriptions 未被 engine 消费并产出节点');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -55,7 +55,7 @@ describe('📁 include 全链路一致性', () => {
       const main = path.join(dir, 'config.yaml');
       fs.writeFileSync(main, 'include: ["./fragment.yaml"]\n');
 
-      execFileSync(process.execPath, [CLI_PATH, '-c', main, '-t', 'nodes', '--silent'], {
+      execFileSync(process.execPath, [CLI_PATH, '-c', main, '-m', 'nodes', '--silent'], {
         cwd: dir,
         encoding: 'utf-8'
       });

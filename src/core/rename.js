@@ -8,7 +8,10 @@
  * 3. 悬空标点与非法连续分隔符安全擦除
  */
 
-const DEFAULT_SEPARATORS = ["|", "·", "-", "/", "\\", "_", "•", "—", ":", "："];
+const { FIELDS_BY_KEY } = require('../data');
+
+/** 悬空分隔符默认清单：取自字段注册表（单一真相源，避免与配置默认值漂移） */
+const DEFAULT_SEPARATORS = FIELDS_BY_KEY.renameSeparators.default;
 
 /**
  * 构建用于清理多余/连续分隔符的正则表达式
@@ -128,7 +131,6 @@ function renderTemplate(template, vars, proxy, cleaners) {
 }
 
 module.exports = {
-  DEFAULT_SEPARATORS,
   createSeparatorCleaners,
   computeNodeIndices,
   renderTemplate

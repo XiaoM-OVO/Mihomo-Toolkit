@@ -475,7 +475,6 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 
 module.exports = {
   sanitizeNodeName,
-  compressLineArr,
   extractNodeAttributes,
   checkNodeBlockReason,
   getFeatureRules,

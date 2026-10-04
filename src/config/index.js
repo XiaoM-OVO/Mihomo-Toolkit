@@ -107,6 +107,5 @@ function resolveConfig(userConfig = {}) {
 
 module.exports = {
   DEFAULT_CONFIG,
-  resolveConfig,
-  loadExternalServicesConfig
+  resolveConfig
 };

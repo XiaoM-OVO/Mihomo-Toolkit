@@ -67,6 +67,5 @@ class ProfileCache {
 const profileCache = new ProfileCache({ maxEntries: 100 });
 
 module.exports = {
-  ProfileCache,
   profileCache
 };

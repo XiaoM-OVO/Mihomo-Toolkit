@@ -21,7 +21,7 @@ describe('🔨 端到端构建流程集成测试模块', () => {
       enableGame: true
     };
 
-    const { yamlStr } = await buildProfile(userConfig, { type: 'config', production: true });
+    const { yamlStr } = await buildProfile(userConfig, { mode: 'config', production: true });
 
     // 1. 验证 YAML 可被解析
     const outputData = yaml.parse(yamlStr);
@@ -65,7 +65,7 @@ proxies:
       ]
     };
 
-    const { yamlStr } = await buildProfile(userConfig, { type: 'nodes' });
+    const { yamlStr } = await buildProfile(userConfig, { mode: 'nodes' });
     const outputData = yaml.parse(yamlStr);
 
     // 验证契约：只输出干净的 proxies，不越界输出原配置中的 rules / port
@@ -117,7 +117,7 @@ proxies:
       ]
     };
 
-    const { yamlStr } = await buildProfile(userConfig, { type: 'config' });
+    const { yamlStr } = await buildProfile(userConfig, { mode: 'config' });
     const outputData = yaml.parse(yamlStr);
 
     // 1. 验证安全隔离：原订阅的危险控制面字段被物理剥离，未泄漏至全局配置
@@ -163,7 +163,7 @@ ss://YWVzLTEyOC1nY206cGFzc0AxLjIuMy40OjQ0Mw==#🇯🇵 日本 01
       ]
     };
 
-    const result = await buildProfile(userConfig, { type: 'report' });
+    const result = await buildProfile(userConfig, { mode: 'report' });
     assert.ok(result.meta);
     assert.ok(result.meta.stats);
     assert.equal(result.meta.stats.total, 2);
@@ -182,7 +182,7 @@ ss://YWVzLTEyOC1nY206cGFzc0AxLjIuMy40OjQ0Mw==#🇯🇵 日本 01
       ]
     };
 
-    const { yamlStr } = await buildProfile(userConfig, { type: 'full', production: true });
+    const { yamlStr } = await buildProfile(userConfig, { mode: 'config', production: true });
     const outputData = yaml.parse(yamlStr);
     const resetNode = (outputData.proxies || []).find(p => /距离重置剩余：\d+ 天/.test(p.name));
     assert.ok(resetNode, '应生成"距离重置剩余 X 天"节点');
@@ -202,14 +202,14 @@ ss://YWVzLTEyOC1nY206cGFzc0AxLjIuMy40OjQ0Mw==#🇯🇵 日本 01
     };
 
     // 使用 options.url 模拟带 expired subInfo 的抓取结果（或直接测试 buildProfile 生成）
-    const { yamlStr, userInfo } = await buildProfile(userConfig, { type: 'full', production: true });
+    const { yamlStr, userInfo } = await buildProfile(userConfig, { mode: 'config', production: true });
 
     // 验证基本输出正常
     assert.ok(yamlStr.length > 0);
     assert.ok(userInfo !== undefined);
   });
 
-  test('buildProfile - 支持单订阅开关 (enabled: false / disabled: true)', async () => {
+  test('buildProfile - 支持单订阅开关 (enabled: true / enabled: false)', async () => {
     const userConfig = {
       subscriptions: [
         {
@@ -225,12 +225,12 @@ ss://YWVzLTEyOC1nY206cGFzc0AxLjIuMy40OjQ0Mw==#🇯🇵 日本 01
         {
           uri: 'vless://33333333-4444-5555-6666-777777777777@sg.domain.com:443?security=tls#🇸🇬 新加坡 01',
           tag: 'SubDisabled2',
-          disabled: true
+          enabled: false
         }
       ]
     };
 
-    const { yamlStr } = await buildProfile(userConfig, { type: 'pure' });
+    const { yamlStr } = await buildProfile(userConfig, { mode: 'nodes' });
     const outputData = yaml.parse(yamlStr);
     const proxyNames = (outputData.proxies || []).map(p => p.name);
 
@@ -257,12 +257,12 @@ ss://YWVzLTEyOC1nY206cGFzc0AxLjIuMy40OjQ0Mw==#🇯🇵 日本 01
         },
         {
           url: 'https://example.com/sub-disabled-2.yaml',
-          disabled: true
+          enabled: false
         }
       ]
     };
 
-    const res = await buildProfile(userConfig, { type: 'pure' });
+    const res = await buildProfile(userConfig, { mode: 'nodes' });
     assert.ok(res.yamlStr);
   });
 });

@@ -45,7 +45,7 @@ describe('🔄 订阅抓取容灾模块', () => {
     };
     try {
       const cfg = baseConfig('http://93.184.216.34/sub1', { retry: 2 });
-      const { yamlStr } = await buildProfile(cfg, { type: 'full', production: true, noCache: true });
+      const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.equal(fetchCount, 3);
       assert.ok(yamlStr.includes('香港'));
     } finally {
@@ -67,7 +67,7 @@ describe('🔄 订阅抓取容灾模块', () => {
         ],
         minorNodeThreshold: 1
       };
-      const { yamlStr } = await buildProfile(cfg, { type: 'full', production: true, noCache: true });
+      const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.equal(fetchCount, 1);
       assert.ok(yamlStr.includes('美国'));
     } finally {
@@ -86,7 +86,7 @@ describe('🔄 订阅抓取容灾模块', () => {
       const cfg = baseConfig('http://93.184.216.34/sub2', {
         global: { fetchRetry: 1, fetchTimeout: 15 }
       });
-      const { yamlStr } = await buildProfile(cfg, { type: 'full', production: true, noCache: true });
+      const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.equal(fetchCount, 2);
       assert.ok(yamlStr.includes('香港'));
     } finally {
@@ -100,12 +100,12 @@ describe('🔄 订阅抓取容灾模块', () => {
 
       // 第一次：成功拉取
       globalThis.fetch = async () => new Response(SUB_CONTENT, { status: 200 });
-      const r1 = await buildProfile(cfg, { type: 'full', production: true, noCache: true });
+      const r1 = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.ok(r1.yamlStr.includes('香港'));
 
       // 第二次：持续网络失败 → 降级复用上次成功内容
       globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
-      const r2 = await buildProfile(cfg, { type: 'full', production: true, noCache: true });
+      const r2 = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.ok(r2.yamlStr.includes('香港'), '降级后节点不应丢失');
       assert.ok(r2.yamlStr.includes('日本'));
     } finally {
@@ -126,12 +126,12 @@ describe('🔄 订阅抓取容灾模块', () => {
 
       // 第一次：成功拉取并缓存兜底数据
       globalThis.fetch = async () => new Response(SUB_CONTENT, { status: 200 });
-      const r1 = await buildProfile(cfg, { type: 'full', production: true, noCache: true });
+      const r1 = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.ok(r1.yamlStr.includes('香港'));
 
       // 第二次：失败但关闭降级 → 该订阅节点缺失
       globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
-      const r2 = await buildProfile(cfg, { type: 'full', production: true, noCache: true });
+      const r2 = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.ok(!r2.yamlStr.includes('香港'), '关闭降级后失败订阅不应复用旧数据');
     } finally {
       restoreFetch();
@@ -152,8 +152,8 @@ describe('🔄 订阅抓取容灾模块', () => {
         ],
         minorNodeThreshold: 1
       };
-      await buildProfile(cfg, { type: 'full', production: true });
-      await buildProfile(cfg, { type: 'full', production: true });
+      await buildProfile(cfg, { mode: 'config', production: true });
+      await buildProfile(cfg, { mode: 'config', production: true });
       assert.equal(fetchCount, 2, '构建不完整时不应写入缓存，第二次应重新拉取');
     } finally {
       restoreFetch();
@@ -167,7 +167,7 @@ describe('🔄 订阅抓取容灾模块', () => {
         subscriptions: [{ url: 'http://93.184.216.34/priv1', tag: 'A', retry: 0 }],
         minorNodeThreshold: 1
       };
-      const { yamlStr } = await buildProfile(cfg, { type: 'full', production: true, noCache: true });
+      const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.ok(!/_subTag|_rawName|_indexPrefix/.test(yamlStr), '内部私有字段不应泄漏到最终 YAML');
     } finally {
       restoreFetch();
@@ -203,12 +203,12 @@ describe('🔄 订阅抓取容灾模块', () => {
         ],
         expireAggregation: 'min'
       };
-      const resMin = await buildProfile(cfgMin, { type: 'full', production: true, noCache: true });
+      const resMin = await buildProfile(cfgMin, { mode: 'config', production: true, noCache: true });
       assert.equal(resMin.userInfo.expire, expireNear, 'min 模式应取距离现在最近的到期时间戳');
 
       // 2. 测试 max 模式取最晚到期时间
       const cfgMax = { ...cfgMin, expireAggregation: 'max' };
-      const resMax = await buildProfile(cfgMax, { type: 'full', production: true, noCache: true });
+      const resMax = await buildProfile(cfgMax, { mode: 'config', production: true, noCache: true });
       assert.equal(resMax.userInfo.expire, expireFar, 'max 模式应取最晚到期时间戳');
 
       // 3. 测试全部过期时防丢头：依然下发 expire 时间戳，并在 YAML 开头写入注释
@@ -219,7 +219,7 @@ describe('🔄 订阅抓取容灾模块', () => {
       const cfgExpired = {
         subscriptions: [{ url: 'http://93.184.216.34/expiredSub', tag: 'Old', retry: 0 }]
       };
-      const resExpired = await buildProfile(cfgExpired, { type: 'full', production: true, noCache: true });
+      const resExpired = await buildProfile(cfgExpired, { mode: 'config', production: true, noCache: true });
       assert.equal(resExpired.userInfo.expire, expirePast, '全过期时仍应忠实下发过期时间戳');
       assert.ok(resExpired.yamlStr.includes(`# subscription-userinfo:`), '全过期时依然要生成头部注释，避免丢头');
       assert.ok(resExpired.yamlStr.includes(`expire=${expirePast}`), '头部注释中应包含过期时间戳');

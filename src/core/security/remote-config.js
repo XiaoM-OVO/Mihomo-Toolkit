@@ -23,8 +23,7 @@ const { REMOTE_DENIED_FIELDS } = require('../../data');
  * 不可信配置中被禁止的字段（能力剥夺清单）。
  *
  * ⚠️ 本清单**由只读数据层派生**，不再手工维护：`src/data/field-registry.js` 中
- * 每个声明 `trust: 'local'` 的字段都会自动进入此处，别名输入字段则来自
- * `ALIAS_REMOTE_DENIED_FIELDS`。新增安全开关时只需在注册表里标注信任级，
+ * 每个声明 `trust: 'local'` 的字段都会自动进入此处。新增安全开关时只需在注册表里标注信任级，
  * 不存在「忘了同步清单 ⇒ 开关悄悄变成远程可写」的漂移空间。
  *
  * 部署方如需自定义 DNS 面，请写在服务端本地 config.yaml（可信来源）中，

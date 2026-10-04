@@ -269,6 +269,5 @@ function createLogger(options = {}) {
 module.exports = {
   Logger,
   createLogger,
-  LOG_LEVELS,
   redactText
 };

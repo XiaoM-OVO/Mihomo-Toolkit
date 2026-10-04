@@ -111,6 +111,5 @@ module.exports = {
   isPrivateIPv6,
   isAllowedUrl,
   validateUrlSsrf,
-  dnsResolveWithTimeout,
   redactUrl
 };

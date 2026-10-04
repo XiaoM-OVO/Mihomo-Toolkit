@@ -99,7 +99,7 @@ describe('🔒 交付契约与控制面净化 (Delivery Contract)', () => {
   test('C-1 单 URL/本地文件路径：控制面字段一律不得进入产物，且保留节点资产闭包', async () => {
     const { dir, file } = writeFixture(EVIL_SUBSCRIPTION);
     try {
-      const res = await buildProfile({}, { type: 'config', url: file, production: true, noCache: true });
+      const res = await buildProfile({}, { mode: 'config', url: file, production: true, noCache: true });
       const d = res.outputData;
 
       // 1. 控制面攻击载荷 0 残留
@@ -138,7 +138,7 @@ describe('🔒 交付契约与控制面净化 (Delivery Contract)', () => {
   test('M-1 enablePipeline=false 不再等价于零净化透传', async () => {
     const { dir, file } = writeFixture(EVIL_SUBSCRIPTION);
     try {
-      const res = await buildProfile({ enablePipeline: false }, { type: 'config', url: file, production: true, noCache: true });
+      const res = await buildProfile({ enablePipeline: false }, { mode: 'config', url: file, production: true, noCache: true });
       const d = res.outputData;
       const leaked = FORBIDDEN_TOP_LEVEL.filter(k => Object.prototype.hasOwnProperty.call(d, k));
       assert.deepEqual(leaked, [], `enablePipeline=false 时控制面字段泄漏: ${leaked.join(', ')}`);
@@ -227,7 +227,7 @@ describe('🔗 节点资产闭包强度 (Asset Closure)', () => {
     try {
       const res = await buildProfile(
         { assetClosure: mode, assetDomainAllowlist: allowlist || [] },
-        { type: 'config', url: file, production: true, noCache: true }
+        { mode: 'config', url: file, production: true, noCache: true }
       );
       return res.outputData;
     } finally {
@@ -270,7 +270,7 @@ describe('📊 资源配额 (Quota Enforcement)', () => {
   test('总节点数超限时拒绝构建', async () => {
     await assert.rejects(
       () => buildProfile({ security: { maxTotalNodes: 3 }, subscriptions: [{ uri: MANY_NODES }] },
-        { type: 'nodes', noCache: true }),
+        { mode: 'nodes', noCache: true }),
       /Too many total nodes/
     );
   });
@@ -278,14 +278,14 @@ describe('📊 资源配额 (Quota Enforcement)', () => {
   test('单订阅节点数超限时拒绝构建', async () => {
     await assert.rejects(
       () => buildProfile({ security: { perSubscriptionMaxNodes: 2 }, subscriptions: [{ uri: MANY_NODES }] },
-        { type: 'nodes', noCache: true }),
+        { mode: 'nodes', noCache: true }),
       /too many nodes/i
     );
   });
 
   test('配额充足时正常构建', async () => {
     const res = await buildProfile({ security: { maxTotalNodes: 50, perSubscriptionMaxNodes: 50 }, subscriptions: [{ uri: MANY_NODES }] },
-      { type: 'nodes', noCache: true });
+      { mode: 'nodes', noCache: true });
     assert.ok(res.yamlStr);
   });
 });

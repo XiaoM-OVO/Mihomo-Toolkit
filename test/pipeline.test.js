@@ -73,15 +73,11 @@ test('🚀 流水线单元测试 - runConfigPipeline 支持 sourceSkeleton 入�
   assert.ok(Array.isArray(outputData.proxies));
 });
 
-test('🚀 交付形态解析 - normalizeOutputMode 归一化各路别名', () => {
+test('🚀 交付形态解析 - normalizeOutputMode 仅做小写归一化（不接受别名）', () => {
   const { normalizeOutputMode } = require('../src/pipeline/engine');
   assert.equal(normalizeOutputMode('config'), 'config');
-  assert.equal(normalizeOutputMode('full'), 'config');
   assert.equal(normalizeOutputMode('nodes'), 'nodes');
-  assert.equal(normalizeOutputMode('cleaner'), 'nodes');
-  assert.equal(normalizeOutputMode('pure'), 'nodes');
   assert.equal(normalizeOutputMode('report'), 'report');
-  assert.equal(normalizeOutputMode('audit'), 'report');
-  assert.equal(normalizeOutputMode('meta'), 'report');
+  assert.equal(normalizeOutputMode('NODES'), 'nodes');
   assert.equal(normalizeOutputMode(), 'config');
 });

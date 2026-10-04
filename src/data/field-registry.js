@@ -54,8 +54,6 @@ const FIELDS = [
     group: '基础全局配置', doc: '标签提取：订阅合并时自动/手动捕捉标签内容' },
   { key: 'airportTag', type: 'string', default: '', merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '手动指定标签（逗号分隔），为空则自动正则检测' },
-  { key: 'airportTagReg', type: 'regex', default: /^\[([^\]]{1,8})\]/i, merge: 'override', trust: 'any',
-    group: '基础全局配置', doc: '自定义标签提取正则（默认提取首部方括号内容）' },
   { key: 'showFeatureIcon', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '特征图标：true(Emoji) / false(文字)' },
 
@@ -110,8 +108,6 @@ const FIELDS = [
     group: '策略组建组与 UI 面板', doc: '小众地区建组阈值' },
   { key: 'regionGroupType', type: 'string', default: 'url-test', merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '地区组行为: url-test | select | fallback' },
-  { key: 'enableRegionHashLB', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '策略组建组与 UI 面板', doc: '地区组是否增加哈希负载均衡策略组' },
   { key: 'hideUnknownGroup', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '隐藏未知识别节点组' },
   { key: 'groupIconMode', type: 'string', default: 'emoji', merge: 'override', trust: 'any',
@@ -243,7 +239,7 @@ const FIELDS = [
   { key: 'fissionStack', type: 'string', default: 'all', merge: 'override', trust: 'any',
     group: '节点裂变', doc: '裂变协议栈偏好: all(双栈) | v4 | v6' },
   { key: 'fissionMaxNodes', type: 'number', default: 5, merge: 'override', trust: 'any',
-    group: '节点裂变', doc: '单域名最大裂变节点数（代码实际兜底值为 5，历史文档误写为 4）' },
+    group: '节点裂变', doc: '单域名最大裂变节点数' },
   { key: 'fissionExcludeKeywords', type: 'string[]', default: [], merge: 'override', trust: 'any',
     group: '节点裂变', doc: '包含这些关键词的节点跳过裂变' },
 
@@ -258,7 +254,7 @@ const FIELDS = [
     merge: 'override', trust: 'any', group: '规则集与图标仓库来源',
     doc: 'dev 分类下启用的服务 key 列表（此前只能改代码，无法从配置控制）' },
 
-  // ── 【10. 进程分流名单】（此前代码读取但从未登记） ────────────────────────
+  // ── 【11. 进程分流名单】（此前代码读取但从未登记） ────────────────────────
   { key: 'processDirectWin', type: 'string[]',
     default: ['qBittorrent', 'Thunder', 'BitComet', 'uTorrent', 'aria2c'],
     merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Windows 强制直连进程名单' },
@@ -275,11 +271,11 @@ const FIELDS = [
   { key: 'processProxyLin', type: 'string[]', default: [],
     merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Linux 强制走下载策略的进程名单' },
 
-  // ── 【11. 订阅源与拉取设置】（无出厂默认值：由代码内兜底，此处仅登记契约） ──
+  // ── 【12. 订阅源与拉取设置】（无出厂默认值：由代码内兜底，此处仅登记契约） ──
   // 说明：`default: undefined` 的字段不会进入 DEFAULT_CONFIG（保持出厂配置面不变），
   // 但它们**被登记**了，因此会参与「代码读取 ⊆ 注册表」的一致性校验与远程信任级派生。
   { key: 'subscriptions', type: 'object[]', merge: 'override', trust: 'any',
-    group: '订阅源与拉取设置', doc: '订阅源列表（url/uri/tag/master/enabled/proxy/retry/resetDay…）' },
+    group: '订阅源与拉取设置', doc: '订阅源列表（url/uri/tag/enabled/proxy/retry/resetDay…）' },
   { key: 'fetchProxyPort', type: 'number', merge: 'override', trust: 'local',
     group: '订阅源与拉取设置', doc: '抓取代理端口（可把抓取指向本机任意端口，仅可信来源可写）' },
   { key: 'fetchProxyStrategy', type: 'string', merge: 'override', trust: 'local',
@@ -293,7 +289,7 @@ const FIELDS = [
   { key: 'expireAggregation', type: 'string', merge: 'override', trust: 'any',
     group: '订阅源与拉取设置', doc: '多订阅到期聚合策略: min | max | first' },
 
-  // ── 【12. 运行模式与缓存】 ───────────────────────────────────────────────
+  // ── 【13. 运行模式与缓存】 ───────────────────────────────────────────────
   { key: 'outputMode', type: 'string', merge: 'override', trust: 'any',
     group: '运行模式与缓存', doc: '交付形态: config | nodes | report（等价于 CLI --mode / -m）' },
   { key: 'output', type: 'string', merge: 'override', trust: 'any',
@@ -309,13 +305,13 @@ const FIELDS = [
   { key: 'chineseConvertMode', type: 'string', merge: 'override', trust: 'any',
     group: '运行模式与缓存', doc: '简繁转换方向: s2t | t2s' },
 
-  // ── 【13. 自定义规则入口】 ───────────────────────────────────────────────
+  // ── 【14. 自定义规则入口】 ───────────────────────────────────────────────
   { key: 'customRules', type: 'string[]', merge: 'override', trust: 'any',
     group: '自定义规则入口', doc: '注入到 MATCH 之前的自定义分流规则（优先级最高）' },
   { key: 'customRuleProviders', type: 'object', merge: 'override', trust: 'any',
     group: '自定义规则入口', doc: '自定义 Rule-Provider 定义（name → {type, behavior, url…}）' },
 
-  // ── 【14. 安全与资源配额】 ───────────────────────────────────────────────
+  // ── 【15. 安全与资源配额】 ───────────────────────────────────────────────
   { key: 'security', type: 'object', merge: 'override', trust: 'local',
     group: '安全与资源配额',
     doc: '资源配额上限（maxTotalNodes / perSubscriptionMaxNodes / maxSubscriptionBytes…）；' +
@@ -333,16 +329,6 @@ const FIELDS = [
   { key: 'fakeIpFilterNodes', type: 'string', merge: 'override', trust: 'local',
     group: '安全与资源配额', doc: '节点防环注入模式: smart | exact | off' }
 ];
-
-/**
- * 别名输入字段：历史上由流水线接受、但没有出厂默认值的字段名。
- *
- * ⚠️ 已清空：这些字段（`hosts` / `nameserverPolicy` / `fetchProxyPort` …）
- * 现已作为正式字段登记进 `FIELDS`（`default: undefined`），因此不再需要单独的别名清单。
- * 保留此常量是为了让「远程剥夺清单 = 注册表 trust:'local'」这一等式在结构上单一来源；
- * 如确有既无默认值、又无法用 `default: undefined` 表达的字段，再往这里追加。
- */
-const ALIAS_REMOTE_DENIED_FIELDS = [];
 
 /** 字段名 → 声明 索引 */
 const FIELDS_BY_KEY = Object.freeze(
@@ -378,17 +364,15 @@ const ADDITIVE_FIELDS = Object.freeze(FIELDS.filter(f => f.merge === 'additive')
 
 /**
  * 远程不可信配置（`?config=`）必须被剥夺的字段全集：
- * 注册表中 `trust: 'local'` 的字段 ∪ 别名输入字段。
+ * 注册表中 `trust: 'local'` 的字段。
  */
-const REMOTE_DENIED_FIELDS = Object.freeze([
-  ...FIELDS.filter(f => f.trust === 'local').map(f => f.key),
-  ...ALIAS_REMOTE_DENIED_FIELDS.map(f => f.key)
-]);
+const REMOTE_DENIED_FIELDS = Object.freeze(
+  FIELDS.filter(f => f.trust === 'local').map(f => f.key)
+);
 
 module.exports = {
   FIELDS,
   FIELDS_BY_KEY,
-  ALIAS_REMOTE_DENIED_FIELDS,
   ADDITIVE_FIELDS,
   DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,

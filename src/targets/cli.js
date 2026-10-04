@@ -23,7 +23,6 @@ function run(argv = process.argv) {
     .option('-u, --url <url>', 'Subscription URL or local config file path')
     .option('-o, --out <path>', 'Output file path (default: config.yaml / nodes.yaml / report.json)')
     .option('-m, --mode <mode>', 'Output mode: "config" (default), "nodes" (clean proxies only), or "report" (audit JSON)', 'config')
-    .option('-t, --type <mode>', 'Alias for -m, --mode')
     .option('-c, --config <path>', 'User config JSON/YAML file path (optional)')
     .option('-r, --report <path>', 'Save extra audit report to a JSON file (optional)')
     .option('--prod', 'Simulate production environment (enables security locks)')
@@ -36,8 +35,7 @@ function run(argv = process.argv) {
   const options = program.opts();
 
   // 模式归一化
-  const rawModeInput = options.mode !== 'config' ? options.mode : (options.type || options.mode || 'config');
-  const mode = normalizeOutputMode(rawModeInput);
+  const mode = normalizeOutputMode(options.mode);
 
   // 1. 预读取配置文件（探测 logLevel 并修正时序，避免在静默/告警级别下泄露启动标头）
   let userConfig = {};
@@ -88,7 +86,7 @@ function run(argv = process.argv) {
 
   const VALID_MODES = ['config', 'nodes', 'report'];
   if (!VALID_MODES.includes(mode)) {
-    logger.error(`Invalid mode "${options.type}". Must be one of: ${VALID_MODES.join(', ')}`);
+    logger.error(`Invalid mode "${options.mode}". Must be one of: ${VALID_MODES.join(', ')}`);
     process.exit(1);
   }
 
@@ -118,7 +116,7 @@ function run(argv = process.argv) {
       if (mode === 'report') {
         const targetOut = options.out || userConfig.output || 'report.json';
         const outPath = path.resolve(process.cwd(), targetOut);
-        const reportData = result.report || (typeof result.yamlStr === 'string' && result.yamlStr.startsWith('{') ? JSON.parse(result.yamlStr) : (meta || result));
+        const reportData = result.report;
         fs.writeFileSync(outPath, JSON.stringify(reportData, null, 2), 'utf-8');
         logger.success(`🎉 审计报告已输出至: ${outPath}`);
 

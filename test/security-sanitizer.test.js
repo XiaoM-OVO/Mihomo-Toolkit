@@ -23,7 +23,7 @@ const {
 
 // ── 控制面隔离 ───────────────────────────────────────────────────────────────
 
-test('partitionControlPlane - 非 master 订阅被剥离全部控制面字段', () => {
+test('partitionControlPlane - 订阅被剥离全部控制面字段', () => {
   const sub = {
     proxies: [{ name: 'n1', type: 'ss' }],
     dns: { nameserver: ['https://evil.example/dns-query'] },
@@ -36,7 +36,7 @@ test('partitionControlPlane - 非 master 订阅被剥离全部控制面字段', 
     'geox-url': { geoip: 'https://evil.example/geoip.dat' }
   };
 
-  const { data, report } = partitionControlPlane(sub, { isMaster: false, tag: 'evil-airport' });
+  const { data, report } = partitionControlPlane(sub, { tag: 'evil-airport' });
 
   assert.deepStrictEqual(Object.keys(data), ['proxies']);
   assert.strictEqual(data.proxies.length, 1);
@@ -55,7 +55,7 @@ test('partitionControlPlane - 非 master 订阅被剥离全部控制面字段', 
 test('partitionControlPlane - 未登记字段 fail-closed', () => {
   const { data, report } = partitionControlPlane(
     { proxies: [], 'some-future-kernel-key': 'x' },
-    { isMaster: true, tag: 'm' }
+    { tag: 'm' }
   );
   assert.strictEqual(data['some-future-kernel-key'], undefined);
   assert.ok(report.hostile.some(h => h.id === 'CP-UNKNOWN'));
@@ -172,22 +172,22 @@ test('sanitizeHosts - allowInternal 仅在用户显式开启时放行内网映�
 
 // ── nameserver-policy 净化 ──────────────────────────────────────────────────
 
-test('sanitizeNameserverPolicy - 非 master 无法指定专属解析器', () => {
+test('sanitizeNameserverPolicy - 非可信来源无法指定专属解析器', () => {
   const { policy, dropped } = sanitizeNameserverPolicy({
     'paypal.com': 'https://1.1.1.1/dns-query',
     'rule-set:cn-domain': ['1.1.1.1']
-  }, { isMaster: false });
+  }, { trustedSource: false });
   assert.strictEqual(policy['paypal.com'], undefined);
   assert.strictEqual(policy['rule-set:cn-domain'], undefined);
   assert.strictEqual(dropped.length, 2);
 });
 
-test('sanitizeNameserverPolicy - master 保留安全条目但剔除保留键', () => {
+test('sanitizeNameserverPolicy - 可信来源保留安全条目但剔除保留键', () => {
   const { policy } = sanitizeNameserverPolicy({
     'rule-set:cn-domain': ['1.1.1.1'],
     'corp.example': ['10.0.0.53'],
     'safe.example': 'https://223.5.5.5/dns-query'
-  }, { isMaster: true });
+  }, { trustedSource: true });
   assert.strictEqual(policy['rule-set:cn-domain'], undefined);
   assert.strictEqual(policy['corp.example'], undefined);
   assert.strictEqual(policy['safe.example'], 'https://223.5.5.5/dns-query');
@@ -317,7 +317,7 @@ test('P1 - external-controller-pipe 与 cors 纳入 critical 级夺权拦截', (
   const { report } = partitionControlPlane({
     'external-controller-pipe': '\\\\.\\pipe\\evil',
     'external-controller-cors': 'http://evil.com'
-  }, { isMaster: false, tag: 'sub-pipe' });
+  }, { tag: 'sub-pipe' });
 
   assert.ok(report.stripped.includes('external-controller-pipe'));
   assert.ok(report.stripped.includes('external-controller-cors'));

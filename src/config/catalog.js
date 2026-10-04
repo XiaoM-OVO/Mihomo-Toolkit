@@ -38,40 +38,22 @@ const DEFAULT_REPOS = {
 // ─────────────────────────────────────────────────────────────
 const CATEGORY_DEFAULTS = {
   ai: {
-    groupType: 'select',
-    preferredRegions: ['us', 'jp', 'tw', 'sg', 'kr', 'eu'],
-    includeStandard: false,
-    noDirect: false
+    preferredRegions: ['us', 'jp', 'tw', 'sg', 'kr', 'eu']
   },
   streaming: {
-    groupType: 'select',
-    preferredRegions: [],
-    includeStandard: true,
-    noDirect: false
+    preferredRegions: []
   },
   social: {
-    groupType: 'select',
-    preferredRegions: [],
-    includeStandard: true,
-    noDirect: false
+    preferredRegions: []
   },
   game: {
-    groupType: 'select',
-    preferredRegions: [],
-    includeStandard: true,
-    noDirect: false
+    preferredRegions: []
   },
   dev: {
-    groupType: 'select',
-    preferredRegions: [],
-    includeStandard: true,
-    noDirect: false
+    preferredRegions: []
   },
   system: {
-    groupType: 'select',
-    preferredRegions: [],
-    includeStandard: true,
-    noDirect: false
+    preferredRegions: []
   }
 };
 
@@ -391,17 +373,13 @@ function compileRegex(input) {
 function resolveIconUrl(iconDef, repoMap = DEFAULT_REPOS.icons) {
   if (!iconDef) return '';
   if (typeof iconDef === 'string') {
-    if (iconDef.startsWith('http://') || iconDef.startsWith('https://')) {
-      return iconDef;
-    }
-    // 兼容老版直接写全名的情况
-    return `${repoMap.koolson || ''}${iconDef}`;
+    return iconDef.startsWith('http://') || iconDef.startsWith('https://') ? iconDef : '';
   }
   if (typeof iconDef === 'object') {
     if (iconDef.url) return iconDef.url;
-    const repoBase = (iconDef.repo && repoMap[iconDef.repo]) || iconDef.repo || repoMap.koolson || '';
+    const repoBase = (iconDef.repo && repoMap[iconDef.repo]) || '';
     const file = iconDef.file || '';
-    return `${repoBase}${file}`;
+    return repoBase && file ? `${repoBase}${file}` : '';
   }
   return '';
 }
@@ -515,8 +493,8 @@ class ServiceCatalog {
               reg: compiledReg,
               tag: service.tag || key,
               pool: service.pool || key,
-              uiIcon: service.emoji || service.uiIcon || '',
-              uiText: service.cleanName || service.name || key
+              uiIcon: service.emoji || '',
+              uiText: service.name || key
             });
           }
         }
@@ -534,35 +512,13 @@ class ServiceCatalog {
    */
   getGroupName(service, mode) {
     const iconMode = mode || this.userConfig.groupIconMode || 'emoji';
-    const cleanName = service.cleanName || service.name;
+    const name = service.name;
     const emoji = service.emoji || '';
 
     if (iconMode === 'icon') {
-      return cleanName;
+      return name;
     }
-    return emoji ? `${emoji} ${cleanName}` : cleanName;
-  }
-
-  /**
-   * 获取策略组在线图标全息字典 (供 Strategy/icons 使用)
-   * @returns {Record<string, { icon: string, newName: string }>}
-   */
-  getGroupIconMap() {
-    const mapping = {};
-    for (const catServices of Object.values(this.services)) {
-      for (const service of Object.values(catServices)) {
-        if (service && service.name) {
-          const fullName = service.emoji ? `${service.emoji} ${service.name}` : service.name;
-          const cleanName = service.cleanName || service.name;
-          const iconUrl = resolveIconUrl(service.icon || service.iconUrl, this.repos.icons);
-          if (iconUrl) {
-            mapping[fullName] = { icon: iconUrl, newName: cleanName };
-            mapping[cleanName] = { icon: iconUrl, newName: cleanName };
-          }
-        }
-      }
-    }
-    return mapping;
+    return emoji ? `${emoji} ${name}` : name;
   }
 
   /**
@@ -574,9 +530,9 @@ class ServiceCatalog {
     for (const [cat, catServices] of Object.entries(this.services)) {
       registries[cat] = {};
       for (const [key, s] of Object.entries(catServices)) {
-        const cleanName = s.cleanName || s.name;
+        const cleanName = s.name;
         const fullName = s.emoji ? `${s.emoji} ${cleanName}` : cleanName;
-        const iconUrl = resolveIconUrl(s.icon || s.iconUrl, this.repos.icons);
+        const iconUrl = resolveIconUrl(s.icon, this.repos.icons);
         const compiledReg = compileRegex(s.reg);
 
         let providerPath = `geosite/${key}`;
@@ -621,7 +577,7 @@ class ServiceCatalog {
           cleanName,
           fullName,
           iconUrl,
-          uiIcon: s.emoji || s.uiIcon || '',
+          uiIcon: s.emoji || '',
           reg: compiledReg,
           provider: s.provider || providerPath,
           ruleSet: s.ruleSet || ruleSetName,
@@ -632,11 +588,6 @@ class ServiceCatalog {
       }
     }
     return registries;
-  }
-
-  /** @deprecated 请直接使用 toRegistries() */
-  toLegacyRegistries() {
-    return this.toRegistries();
   }
 }
 
@@ -699,9 +650,6 @@ function buildServiceCatalog(userConfig = {}) {
 }
 
 module.exports = {
-  DEFAULT_REPOS,
-  CATEGORY_DEFAULTS,
-  BUILTIN_SERVICES,
   compileRegex,
   resolveIconUrl,
   deepMerge,
