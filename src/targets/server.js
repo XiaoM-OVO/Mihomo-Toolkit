@@ -234,7 +234,7 @@ function startServer(options = {}) {
         }
 
         const debugMode = reqUrl.searchParams.get('debug') === '1';
-        const outputMode = normalizeOutputMode(reqUrl.searchParams.get('mode') || reqUrl.searchParams.get('type') || userConfig.outputMode);
+        const outputMode = normalizeOutputMode(reqUrl.searchParams.get('mode') || userConfig.outputMode);
         const buildLogger = serverLogger.child('Server');
         const result = await buildProfile(userConfig, {
           production: true,

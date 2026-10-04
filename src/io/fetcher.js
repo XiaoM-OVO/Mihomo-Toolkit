@@ -324,9 +324,7 @@ module.exports = {
   fetchNodes,
   checkPortReachable,
   detectTunInterface,
-  resolveFetchPlan,
   resolveProxyUrl,
   subStaleCache,
-  pruneSubStaleCache,
-  DEFAULT_SUB_STALE_MAX_AGE_MS
+  pruneSubStaleCache
 };

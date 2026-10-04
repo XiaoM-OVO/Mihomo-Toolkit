@@ -25,12 +25,8 @@ export interface SubscriptionConfig {
   url?: string;
   /** 单个或多个自建节点 URI（如 ss://, vmess://, vless://, trojan://） */
   uri?: string;
-  /** 是否启用该订阅项（默认为 true，支持 enable 或 enabled: false 禁用） */
-  enable?: boolean;
   /** 是否启用该订阅项（默认为 true，设为 false 临时停用） */
   enabled?: boolean;
-  /** 是否停用该订阅项（设为 true 临时停用） */
-  disabled?: boolean;
   /** 抓取代理开关：true 走代理，false 强制直连，省略则继承全局 fetchProxyStrategy */
   proxy?: boolean;
   /** 自定义请求头（如 User-Agent、Authorization 等） */
@@ -39,8 +35,6 @@ export interface SubscriptionConfig {
   retry?: number;
   /** 每月重置日（1-31），用于自动计算"距离重置剩余 X 天" */
   resetDay?: number;
-  /** 是否标记为主订阅源（用于主权仲裁与优先看板基准） */
-  master?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +44,7 @@ export interface SubscriptionConfig {
 export interface PureConfig {
   /** 是否启用「📊 订阅与状态看板」独立展示策略组（展示流量/到期/重置，不污染主力节点池） */
   enableDashboard?: boolean;
-  /** 是否开启物理参数去重（默认为 true） */
+  /** 是否开启物理参数去重（默认为 false） */
   enableDedupe?: boolean;
   /** 严格地区匹配模式：为 true 时仅匹配完全确信的地区名 */
   strictRegionMatch?: boolean;
@@ -127,7 +121,7 @@ export interface ToolkitConfig {
   // 🚀 高级分组特性
   /** 是否开启高倍率节点隔离独立分组 */
   isolateHighMulti?: boolean;
-  /** 高倍率判定阈值（倍率大于等于此值判定为高倍率，默认 1.5） */
+  /** 高倍率判定阈值（倍率大于等于此值判定为高倍率，默认 2.5） */
   highMultiThreshold?: number;
   /** 是否开启低倍率/下载专用节点隔离分组 */
   isolateDownload?: boolean;
@@ -135,7 +129,7 @@ export interface ToolkitConfig {
   isolateExperimental?: boolean;
   /** 是否开启家宽/住宅 IP 节点隔离分组 */
   enableResidential?: boolean;
-  /** 自定义地区分组阈值（节点数达到此值时独立建组，默认 2） */
+  /** 自定义地区分组阈值（节点数达到此值时独立建组，默认 3） */
   minorNodeThreshold?: number;
   /**
    * 在**只读骨架基线**（`手动选择` / `漏网之鱼` 及其 Emoji 变体）之外**追加**
@@ -164,8 +158,6 @@ export interface ToolkitConfig {
   enableAirportTag?: boolean;
   /** 手动指定标签（逗号分隔），为空则自动正则检测 */
   airportTag?: string;
-  /** 自定义标签提取正则（默认提取首部方括号内容） */
-  airportTagReg?: RegExp;
 
   // 节点清洗
   /** 过滤机场自带的原生说明/流量提示伪节点 */
@@ -178,8 +170,6 @@ export interface ToolkitConfig {
   // 策略组建组与 UI 面板
   /** 地区组行为: url-test | select | fallback */
   regionGroupType?: 'url-test' | 'select' | 'fallback';
-  /** 地区组是否增加哈希负载均衡策略组 */
-  enableRegionHashLB?: boolean;
   /** 是否在面板中隐藏「🗑️ 未知识别」组 */
   hideUnknownGroup?: boolean;
   /** 策略组图标模式: emoji | icon | both */
@@ -424,8 +414,6 @@ export interface PureMeta {
 export interface BuildOptions {
   /** 交付输出模式: "config" (默认) | "nodes" (纯节点) | "report" (审计报告) */
   mode?: OutputMode;
-  /** 交付输出模式（mode 别名） */
-  type?: OutputMode;
   /** 是否开启调试模式（输出详尽日志） */
   debug?: boolean;
   /** 生产环境模式（严格禁止 redactLevel=off） */
@@ -434,8 +422,6 @@ export interface BuildOptions {
   noCache?: boolean;
   /** 导出统计报告路径 */
   report?: string;
-  /** 导出统计报告路径（report 别名） */
-  meta?: string;
   /** 指定配置文件路径 */
   config?: string;
   /** 指定输出文件路径 */
@@ -445,8 +431,10 @@ export interface BuildOptions {
 export interface BuildResult {
   /** 生成的 Clash / Mihomo YAML 配置文件文本 */
   yamlStr: string;
-  /** 数据清洗与分桶元数据报告（当 outputMode: "report" 或传递 meta 时包含） */
+  /** 数据清洗与分桶元数据报告（当 outputMode: "report" 时包含） */
   meta?: PureMeta;
+  /** 结构化审计与健康报告（当 outputMode: "report" 时包含） */
+  report?: Record<string, any>;
   /** 解析后的原生 JavaScript 配置对象 */
   config?: Record<string, any>;
   /**
@@ -622,9 +610,10 @@ export function runStrategyPipeline(
 ): Record<string, any>;
 
 /**
- * 规范化交付形态 (config | nodes | report)
+ * 交付形态字面量小写归一化（缺省为 "config"）。
+ * 仅做小写与缺省兜底，不做别名映射；调用方需自行校验是否为 config | nodes | report。
  */
-export function normalizeOutputMode(rawMode?: string): 'config' | 'nodes' | 'report';
+export function normalizeOutputMode(rawMode?: string): string;
 
 /**
  * 解析 Vless 协议 URI

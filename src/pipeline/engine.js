@@ -31,11 +31,7 @@ try {
 } catch (e) {}
 
 function normalizeOutputMode(rawMode) {
-  let mode = String(rawMode || 'config').toLowerCase();
-  if (mode === 'full') mode = 'config';
-  if (mode === 'cleaner' || mode === 'pure') mode = 'nodes';
-  if (mode === 'meta' || mode === 'audit') mode = 'report';
-  return mode;
+  return String(rawMode || 'config').toLowerCase();
 }
 
 /**
@@ -45,7 +41,7 @@ const CACHE_KEY_VERSION = 'v2';
 
 /**
  * 除 userConfig 之外，仅这些 CLI / 运行时选项会影响产物内容
- * （options.debug / silent / logger / colors 等只影响日志；options.type / options.mode 经 normalizeOutputMode
+ * （options.debug / silent / logger / colors 等只影响日志；options.mode 经 normalizeOutputMode
  * 归一化后单独纳入，故此处不重复计入原始字面量）
  */
 const CACHE_KEY_OPTION_KEYS = ['url'];
@@ -66,10 +62,10 @@ function getCacheKey(userConfig = {}, options = {}) {
   try {
     userConfig = userConfig || {};
     options = options || {};
-    const rawMode = options.mode || options.type || userConfig.outputMode || 'config';
+    const rawMode = options.mode || userConfig.outputMode || 'config';
     const outputMode = normalizeOutputMode(rawMode);
 
-    // 订阅清单：仅纳入生效订阅的完整描述（retry / proxy / master 等字段同样影响抓取与产物），
+    // 订阅清单：仅纳入生效订阅的完整描述（retry / proxy 等字段同样影响抓取与产物），
     // 已禁用订阅的变化不应破坏缓存
     const subs = (userConfig.subscriptions || []).filter(isSubEnabled);
 
@@ -139,7 +135,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   const stratLogger = typeof logger.child === 'function' ? logger.child('Strategy') : logger;
 
   // 1. 交付形态解析: config | nodes | report
-  const outputMode = normalizeOutputMode(options.mode || options.type || userConfig.outputMode || 'config');
+  const outputMode = normalizeOutputMode(options.mode || userConfig.outputMode || 'config');
 
   // 2. 资源安全配额防御
   const securityLimits = userConfig.security || {};

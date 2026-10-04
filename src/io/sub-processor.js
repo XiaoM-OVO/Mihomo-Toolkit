@@ -26,7 +26,7 @@ function getDashboard(injected) {
 
 function isSubEnabled(s) {
   if (!s || typeof s !== 'object') return false;
-  return s.enable !== false && s.enabled !== false && s.disabled !== true;
+  return s.enabled !== false;
 }
 
 /** 格式化控制面沙箱告警，去除内部枚举 ID 并以分级树形分支展示 */
@@ -129,7 +129,6 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  * @param {Array}   [options.proxies=[]] 该订阅的节点列表（用于推导资产域）
  * @param {string}  [options.subUrl=''] 订阅源地址（其 hostname 亦计入资产域）
  * @param {string}  [options.tag=''] 订阅标识（审计用）
- * @param {boolean} [options.isMaster=false] 是否为受信 master 订阅
  * @param {object}  [options.logger] 日志器
  * @param {string}  [options.assetClosureMode='standard'] 资产闭包强度：
  *                  standard — 允许订阅为其自称的节点域名下发 hosts/policy（依赖受保护域名清单兜底）
@@ -144,7 +143,7 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  */
 function applySubscriptionGuards(target, subConfig, options = {}) {
   const {
-    proxies = [], subUrl = '', tag = '', isMaster = false, logger,
+    proxies = [], subUrl = '', tag = '', logger,
     assetClosureMode = 'standard', assetDomainAllowlist = [], protectedDomains = [],
     outputMode = 'config'
   } = options;
@@ -154,7 +153,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
   if (!target || typeof target !== 'object') return result;
 
   // 1. 控制面净化审计（记录越权字段，供日志与审计统计使用）
-  const { report } = partitionControlPlane(subConfig, { isMaster, tag });
+  const { report } = partitionControlPlane(subConfig, { tag });
   result.strippedCount = (report.hostile && report.hostile.length) || 0;
   if (result.strippedCount > 0 && logger) {
     const warnMsg = formatControlPlaneWarning(report);
@@ -208,7 +207,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
         scopedPolicy[polKey] = polVal;
       }
     }
-    const { policy: cleanPolicy } = sanitizeNameserverPolicy(scopedPolicy, { isMaster: true });
+    const { policy: cleanPolicy } = sanitizeNameserverPolicy(scopedPolicy, { trustedSource: true });
     if (cleanPolicy && Object.keys(cleanPolicy).length > 0) {
       target._assetPolicies = { ...(target._assetPolicies || {}), ...cleanPolicy };
       result.policies = Object.keys(cleanPolicy);
@@ -492,7 +491,6 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           proxies: subProxies,
           subUrl: sub.url,
           tag: sub.tag || effectiveTag,
-          isMaster: !!sub.master,
           assetClosureMode: userConfig.assetClosure,
           assetDomainAllowlist: userConfig.assetDomainAllowlist,
           protectedDomains: userConfig.protectedDomains,
@@ -628,7 +626,6 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       proxies: singleProxies,
       subUrl: /^https?:\/\//i.test(url) ? url : '',
       tag: /^https?:\/\//i.test(url) ? redactUrl(url, showFullUrl) : String(url),
-      isMaster: false,
       assetClosureMode: userConfig.assetClosure,
       assetDomainAllowlist: userConfig.assetDomainAllowlist,
       protectedDomains: userConfig.protectedDomains,
@@ -661,7 +658,5 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 module.exports = {
   isSubEnabled,
   processSubscriptionSources,
-  applySubscriptionGuards,
-  extractAssetDomains,
-  matchesAssetDomain
+  applySubscriptionGuards
 };

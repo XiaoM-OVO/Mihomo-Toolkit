@@ -111,6 +111,5 @@ function pruneEmptyGroups({
 }
 
 module.exports = {
-  DEFAULT_EXEMPT_GROUPS,
   pruneEmptyGroups
 };

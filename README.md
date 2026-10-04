@@ -181,7 +181,6 @@ Options:
   -u, --url <url>      订阅链接或本地配置文件路径 (若 config 中已有 subscriptions 则可省略)
   -o, --out <path>     输出文件路径 (默认: config.yaml / nodes.yaml / report.json)
   -m, --mode <mode>    交付输出模式: "config" (默认), "nodes" (纯节点), 或 "report" (审计报告)
-  -t, --type <mode>    模式别名 (等价于 -m)
   -c, --config <path>  指定自定义 YAML/JSON 配置文件
   -r, --report <path>  在生成配置的同时，顺手将审计报告另存为指定 JSON 文件
   --prod               生产环境模式 (开启严格安全锁，强制禁止敏感凭据明文打印)

@@ -224,8 +224,8 @@
 
   1. **不可信配置能力剥夺（`remote-config.js`，纯函数）**
      服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（杜绝借本地路径读取服务器任意文件），并剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`include`、`fetchProxyPort`）类字段。
-     *剥夺清单**由只读数据层派生**：`src/data/field-registry.js` 中声明 `trust: 'local'` 的字段自动进入清单，
-     别名输入字段来自 `ALIAS_REMOTE_DENIED_FIELDS`。新增安全开关只需标注信任级，不存在「忘了同步清单」的漂移空间。*
+     *剥夺清单**由只读数据层派生**：`src/data/field-registry.js` 中声明 `trust: 'local'` 的字段自动进入清单。
+     新增安全开关只需标注信任级，不存在「忘了同步清单」的漂移空间。*
      *库契约：`buildProfile(userConfig)` 的 `userConfig` 视为可信输入；处理不可信配置的调用方必须先经 `hardenRemoteConfig()` 降级。*
 
   2. **控制面净化审计 + 节点资产闭包（`control-plane.js::partitionControlPlane` + `io/sub-processor.js::applySubscriptionGuards`）**
@@ -306,7 +306,6 @@ E:\CODE\mihomo-toolkit-next\
 │   │       ├── registry.js       # 协议解析器注册表 (Registry Pattern)
 │   │       ├── index.js          # 统一调度入口 (Base64 / 多协议 URI / YAML)
 │   │       ├── base64.js         # 跨运行时 Base64 / URI 编解码与主机名规整
-│   │       ├── sub-info.js       # 订阅 Subscription-Userinfo 标头解析 (re-export core/shared/sub-info)
 │   │       └── *.js              # 各协议解析器 (vless, vmess, trojan, ss, hy2, tuic, socks, http)
 │   │
 │   ├── config/                   # ⚙️ 配置策略层 (操作者改什么)

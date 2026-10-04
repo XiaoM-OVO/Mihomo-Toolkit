@@ -117,23 +117,22 @@ test('🚀 模板渲染 - 验证 nodes 流水线正确注入 {index}、{features
   assert.ok(result[1].name.includes('🦀'), `节点 2 应包含 🦀: ${result[1].name}`);
 });
 
-test('⚡ 缓存归一化 - getCacheKey 对 deliveryMode 别名规范化一致', async () => {
-  // pure 与 nodes 属于同一检查点形态，必须命中同一份缓存
+test('⚡ 缓存归一化 - options.mode 与 config.outputMode 命中同一份缓存', async () => {
   const dummySub = [{
     uri: 'vless://11111111-2222-3333-4444-555555555555@example.com:443?security=tls#🇭🇰 香港 01'
   }];
 
-  const resNodes = await runPipelineEngine(
-    { subscriptions: dummySub, outputMode: 'nodes', enableCache: true },
-    { type: 'nodes' }
+  const resByMode = await runPipelineEngine(
+    { subscriptions: dummySub, enableCache: true },
+    { mode: 'nodes' }
   );
 
-  const resPure = await runPipelineEngine(
+  const resByOutputMode = await runPipelineEngine(
     { subscriptions: dummySub, outputMode: 'nodes', enableCache: true },
-    { type: 'pure' }
+    {}
   );
 
-  assert.deepEqual(resNodes, resPure);
+  assert.deepEqual(resByMode, resByOutputMode);
 });
 
 test('🔄 简繁转换 - deepConvertStrings 键名碰撞安全合并', () => {

@@ -152,7 +152,5 @@ async function resolveProxiesDomains(proxies = [], options = {}) {
 
 module.exports = {
   looksLikeDomain,
-  queryDoh,
-  resolveDomainIps,
   resolveProxiesDomains
 };

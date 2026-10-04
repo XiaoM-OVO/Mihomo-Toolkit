@@ -23,7 +23,7 @@ const DATA_PLANE_KEYS = new Set([
   'proxy-providers'
 ]);
 
-/** 控制面：绝对禁止从非 master 订阅透传的字段 */
+/** 控制面：绝对禁止从外部订阅透传的字段 */
 const CONTROL_PLANE_KEYS = new Set([
   // DNS 与解析
   'dns',
@@ -116,15 +116,13 @@ const HOSTILE_SIGNATURES = [
  * 对单个订阅顶层配置做控制面剥离。
  * @param {object} subConfig 解析后的订阅原始配置对象
  * @param {object} [options]
- * @param {boolean} [options.isMaster=false] 是否为受信 master 订阅
  * @param {string}  [options.tag=''] 订阅标识（用于审计）
  * @returns {{ data: object, report: object }}
  */
 function partitionControlPlane(subConfig, options = {}) {
-  const { isMaster = false, tag = '' } = options;
+  const { tag = '' } = options;
   const report = {
     tag,
-    isMaster,
     stripped: [],   // 被剥离的字段
     hostile: [],    // 命中攻击特征的字段
     kept: []        // 被允许合并的字段
@@ -253,9 +251,6 @@ function enforceOutputContract(config, options = {}) {
 }
 
 module.exports = {
-  DATA_PLANE_KEYS,
-  CONTROL_PLANE_KEYS,
-  HOSTILE_SIGNATURES,
   TOOLKIT_OUTPUT_KEYS,
   partitionControlPlane,
   resetToolkitOutputKeys,

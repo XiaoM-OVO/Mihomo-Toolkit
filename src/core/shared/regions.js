@@ -131,10 +131,7 @@ function validateMapping() {
 }
 
 module.exports = {
-  IN_PREFIX,
-  REGION_DEFS_RAW,
   CONTINENT_DEFS,
-  enhanceRegionDefs,
   getEnhancedRegionDefs,
   validateMapping
 };

@@ -138,8 +138,5 @@ function expandIncludes(userConfig, baseDir, _stack, _depth) {
 }
 
 module.exports = {
-  MAX_INCLUDE_DEPTH,
-  mergeValues,
-  mergeConfig,
   expandIncludes
 };

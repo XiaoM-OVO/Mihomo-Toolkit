@@ -3,8 +3,7 @@
  * Core Layer: 订阅元信息解析 (Subscription Userinfo Parser)
  * -----------------------------------------------------------------------------
  * 纯函数、无副作用。位于 Core 层以满足架构红线：
- * strategy 层（dashboard.js）需要该能力，但不得反向依赖 io 层。
- * io/parsers/sub-info.js 继续 re-export 本模块，保持既有调用方路径不变。
+ * strategy 层（dashboard.js）与 io 层（parsers/index.js）均直接引用本模块。
  */
 
 'use strict';

@@ -517,11 +517,11 @@ function sanitizeHosts(hostsMap, options = {}) {
  * @param {object} policy
  * @param {object} options
  * @param {Set<string>} [options.reservedKeys] 禁止被订阅覆盖的策略键
- * @param {boolean} [options.isMaster=false] master 订阅或用户本地声明
+ * @param {boolean} [options.trustedSource=false] 用户本地可信声明（允许通配/正则形式的策略键）
  * @returns {{ policy: object, findings: Array<object>, dropped: Array<object> }}
  */
 function sanitizeNameserverPolicy(policy, options = {}) {
-  const { reservedKeys = new Set(['rule-set:cn-domain', 'rule-set:non-cn']), isMaster = false, ...rest } = options;
+  const { reservedKeys = new Set(['rule-set:cn-domain', 'rule-set:non-cn']), trustedSource = false, ...rest } = options;
   const out = {};
   const findings = [];
   const dropped = [];
@@ -540,11 +540,11 @@ function sanitizeNameserverPolicy(policy, options = {}) {
       continue;
     }
 
-    // 通配/正则形式的键无法可靠审计，仅允许 master/用户声明
-    if (!isMaster) {
+    // 通配/正则形式的键无法可靠审计，仅允许用户本地可信声明
+    if (!trustedSource) {
       findings.push({
         id: 'NSPOLICY-UNTRUSTED-KEY', severity: 'high',
-        note: `非 master 订阅试图为 ${key} 指定专属解析器（定向劫持面）`
+        note: `非可信来源试图为 ${key} 指定专属解析器（定向劫持面）`
       });
       dropped.push({ key, reason: 'untrusted-source' });
       continue;
@@ -569,15 +569,8 @@ function sanitizeNameserverPolicy(policy, options = {}) {
 
 module.exports = {
   ROLES,
-  DEFAULT_FAKEIP_GUARD_RANGES,
-  DEFAULT_PROTECTED_DOMAINS,
-  DANGEROUS_DNS_MODIFIERS,
-  MODIFIER_SEVERITY_RANK,
-  shouldStripModifier,
   ipv4InCidrs,
-  isReservedV4,
   parseDnsServer,
-  analyzeModifiers,
   sanitizeDnsServer,
   sanitizeDnsServerList,
   sanitizeHosts,

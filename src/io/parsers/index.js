@@ -27,8 +27,8 @@ const { parseTuicUri } = require('./tuic');
 const { parseSocksUri } = require('./socks');
 const { parseHttpUri } = require('./http');
 
-// 订阅元信息解析
-const { parseSubscriptionInfo, isExpiredNow } = require('./sub-info');
+// 订阅元信息解析（纯工具下沉至 Core 层，io 层直接引用）
+const { parseSubscriptionInfo, isExpiredNow } = require('../../core/shared/sub-info');
 
 // 注册所有内置协议解析器
 registerParser('vless', parseVlessUri);

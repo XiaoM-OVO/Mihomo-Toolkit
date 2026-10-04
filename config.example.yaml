@@ -33,7 +33,6 @@ fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "机场A"
-    # master: true              # 保留字段：标记主订阅（当前仅记录在审计报告中；多 master 仲裁尚未接线）
     # enabled: true             # 是否启用该订阅（设为 false 可临时停用）
     # indexPrefix: "A"          # 节点序号前缀（如 A01/B01），不填按地区统一编号
     # proxy: false              # 单独指定是否走本地代理

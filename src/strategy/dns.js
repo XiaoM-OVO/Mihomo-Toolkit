@@ -162,7 +162,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   const assetPolicy = config._assetPolicies || {};
   const { policy: safeUserPolicy, findings: userPolicyFindings } = sanitizeNameserverPolicy(
     userConfig.nameserverPolicy || {},
-    { isMaster: true, ...privateOpts }
+    { trustedSource: true, ...privateOpts }
   );
   if (userPolicyFindings.length > 0) findings.push(...userPolicyFindings);
   const mergedPolicy = { ...scriptPolicy, ...assetPolicy, ...safeUserPolicy };
@@ -221,6 +221,5 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
 
 module.exports = {
   applyDnsOverlay,
-  isLoopbackListenHost,
-  normalizeLoopbackHost
+  isLoopbackListenHost
 };

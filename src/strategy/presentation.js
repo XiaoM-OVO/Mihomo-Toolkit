@@ -10,6 +10,7 @@
  */
 
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
+const { FIELDS_BY_KEY } = require('../data');
 
 const REGION_ICON_FILES = {
   cn: 'CN.png',
@@ -76,10 +77,11 @@ const SKELETON_GROUPS = {
   '社交平台':       { emoji: '💬', icon: 'Discord.png', repo: 'koolson' }
 };
 
+/** 图标仓库前缀默认值取自字段注册表（单一真相源，避免与配置默认值漂移） */
 function resolveIconUrl(iconFile, repo, userConfig = {}) {
-  const iconOrz = userConfig.iconRepoOrz || 'https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/';
-  const iconKoolson = userConfig.iconRepoKoolson || 'https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/';
-  const iconLige47 = userConfig.iconRepoLige47 || 'https://fastly.jsdelivr.net/gh/lige47/lige_icon@main/icon/';
+  const iconOrz = userConfig.iconRepoOrz || FIELDS_BY_KEY.iconRepoOrz.default;
+  const iconKoolson = userConfig.iconRepoKoolson || FIELDS_BY_KEY.iconRepoKoolson.default;
+  const iconLige47 = userConfig.iconRepoLige47 || FIELDS_BY_KEY.iconRepoLige47.default;
   if (repo === 'orz') return `${iconOrz}${iconFile}`;
   if (repo === 'lige47') return `${iconLige47}${iconFile}`;
   return `${iconKoolson}${iconFile}`;
@@ -220,7 +222,5 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
 }
 
 module.exports = {
-  SKELETON_GROUPS,
-  buildPresentationMaps,
   applyPresentation
 };

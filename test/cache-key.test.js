@@ -18,7 +18,7 @@ const BASE_SUB = [{ url: 'https://sub.example.com/link?token=SUPER-SECRET-TOKEN'
 const baseConfig = () => ({ subscriptions: JSON.parse(JSON.stringify(BASE_SUB)) });
 
 test('🗝️ 缓存键 - 未登记配置项（hosts / DNS / 安全开关）变化必须改变键', () => {
-  const baseline = buildProfileCacheKey(baseConfig(), { type: 'config' });
+  const baseline = buildProfileCacheKey(baseConfig(), { mode: 'config' });
   assert.ok(baseline, '基准缓存键应可计算');
 
   const mutations = {
@@ -45,7 +45,7 @@ test('🗝️ 缓存键 - 未登记配置项（hosts / DNS / 安全开关）变�
 
   for (const [key, value] of Object.entries(mutations)) {
     const mutated = { ...baseConfig(), [key]: value };
-    const mutatedKey = buildProfileCacheKey(mutated, { type: 'config' });
+    const mutatedKey = buildProfileCacheKey(mutated, { mode: 'config' });
     assert.notEqual(mutatedKey, baseline, `配置项 ${key} 变化后缓存键必须改变`);
   }
 
@@ -55,8 +55,8 @@ test('🗝️ 缓存键 - 未登记配置项（hosts / DNS / 安全开关）变�
   const nested2 = baseConfig();
   nested2.security = { maxTotalNodes: 20 };
   assert.notEqual(
-    buildProfileCacheKey(nested, { type: 'config' }),
-    buildProfileCacheKey(nested2, { type: 'config' })
+    buildProfileCacheKey(nested, { mode: 'config' }),
+    buildProfileCacheKey(nested2, { mode: 'config' })
   );
 });
 
@@ -64,8 +64,8 @@ test('🗝️ 缓存键 - 确定性、定长与敏感信息不留痕', () => {
   const ordered = { subscriptions: BASE_SUB, hosts: { a: 1, b: 2 }, dnsListen: '127.0.0.1:1053' };
   const shuffled = { dnsListen: '127.0.0.1:1053', hosts: { b: 2, a: 1 }, subscriptions: BASE_SUB };
 
-  const k1 = buildProfileCacheKey(ordered, { type: 'config' });
-  const k2 = buildProfileCacheKey(shuffled, { type: 'config' });
+  const k1 = buildProfileCacheKey(ordered, { mode: 'config' });
+  const k2 = buildProfileCacheKey(shuffled, { mode: 'config' });
 
   // 键序无关 + 定长哈希
   assert.equal(k1, k2, '键序不同但语义相同的配置必须得到同一缓存键');
@@ -76,23 +76,17 @@ test('🗝️ 缓存键 - 确定性、定长与敏感信息不留痕', () => {
   assert.ok(!k1.includes('sub.example.com'), '缓存键不得包含订阅地址明文');
 });
 
-test('🗝️ 缓存键 - 交付形态别名归一化', () => {
+test('🗝️ 缓存键 - 交付形态区分', () => {
   const cfg = baseConfig();
 
-  const nodes = buildProfileCacheKey(cfg, { type: 'nodes' });
-  const pure = buildProfileCacheKey(cfg, { type: 'pure' });
-  const cleaner = buildProfileCacheKey(cfg, { type: 'cleaner' });
-  const config = buildProfileCacheKey(cfg, { type: 'config' });
-  const full = buildProfileCacheKey(cfg, { type: 'full' });
+  const nodes = buildProfileCacheKey(cfg, { mode: 'nodes' });
+  const config = buildProfileCacheKey(cfg, { mode: 'config' });
 
-  assert.equal(nodes, pure, 'nodes 与 pure 属同一交付形态，必须共用缓存');
-  assert.equal(nodes, cleaner, 'nodes 与 cleaner 属同一交付形态，必须共用缓存');
-  assert.equal(config, full, 'config 与 full 属同一交付形态，必须共用缓存');
   assert.notEqual(nodes, config, '不同交付形态不得共用缓存');
 
   // userConfig.outputMode 兜底同样参与归一化
-  const viaOutputMode = buildProfileCacheKey({ ...cfg, outputMode: 'pure' }, {});
-  assert.equal(viaOutputMode, nodes, '未显式指定 type/mode 时应按 outputMode 归一化');
+  const viaOutputMode = buildProfileCacheKey({ ...cfg, outputMode: 'nodes' }, {});
+  assert.equal(viaOutputMode, nodes, '未显式指定 mode 时应按 outputMode 归一化');
 
   // options.mode 显式入参测试（防止 options.mode 被漏读）
   const viaOptionsMode = buildProfileCacheKey(cfg, { mode: 'nodes' });
@@ -104,20 +98,20 @@ test('🗝️ 缓存键 - 仅生效订阅参与，订阅抓取参数变化必须
   const retryChanged = { subscriptions: [{ url: 'https://sub.example.com/a', retry: 3 }] };
   const proxyChanged = { subscriptions: [{ url: 'https://sub.example.com/a', retry: 1, proxy: 'http://127.0.0.1:7890' }] };
 
-  const k = buildProfileCacheKey(enabled, { type: 'config' });
-  assert.notEqual(buildProfileCacheKey(retryChanged, { type: 'config' }), k, 'retry 变化必须改变键');
-  assert.notEqual(buildProfileCacheKey(proxyChanged, { type: 'config' }), k, 'proxy 变化必须改变键');
+  const k = buildProfileCacheKey(enabled, { mode: 'config' });
+  assert.notEqual(buildProfileCacheKey(retryChanged, { mode: 'config' }), k, 'retry 变化必须改变键');
+  assert.notEqual(buildProfileCacheKey(proxyChanged, { mode: 'config' }), k, 'proxy 变化必须改变键');
 
   // 已禁用订阅的字段变动不影响产物，不应破坏缓存
   const disabledA = {
-    subscriptions: [{ url: 'https://sub.example.com/a', retry: 1 }, { url: 'https://off.example.com', enable: false }]
+    subscriptions: [{ url: 'https://sub.example.com/a', retry: 1 }, { url: 'https://off.example.com', enabled: false }]
   };
   const disabledB = {
-    subscriptions: [{ url: 'https://sub.example.com/a', retry: 1 }, { url: 'https://off.example.com/changed', enable: false }]
+    subscriptions: [{ url: 'https://sub.example.com/a', retry: 1 }, { url: 'https://off.example.com/changed', enabled: false }]
   };
   assert.equal(
-    buildProfileCacheKey(disabledA, { type: 'config' }),
-    buildProfileCacheKey(disabledB, { type: 'config' }),
+    buildProfileCacheKey(disabledA, { mode: 'config' }),
+    buildProfileCacheKey(disabledB, { mode: 'config' }),
     '已禁用订阅的变化不应破坏缓存'
   );
 });
@@ -125,7 +119,7 @@ test('🗝️ 缓存键 - 仅生效订阅参与，订阅抓取参数变化必须
 test('🗝️ 缓存键 - 无法确定性序列化时放弃缓存（宁可不缓存也不脏读）', () => {
   const cyclic = baseConfig();
   cyclic.self = cyclic;
-  assert.equal(buildProfileCacheKey(cyclic, { type: 'config' }), null, '循环引用必须返回 null 以禁用缓存');
+  assert.equal(buildProfileCacheKey(cyclic, { mode: 'config' }), null, '循环引用必须返回 null 以禁用缓存');
 
   // null / 异常输入不得抛错
   assert.equal(typeof buildProfileCacheKey(null, {}), 'string');
@@ -144,7 +138,7 @@ test('🗝️ 缓存键 - 端到端：安全相关配置变化不得命中旧产
 
   const r1 = await buildProfile(
     { subscriptions: sub, enableCache: true, hosts: { 'my-dns.example.com': '9.9.9.9' } },
-    { type: 'config', logger }
+    { mode: 'config', logger }
   );
   assert.equal(hits(), 0, '首次构建不应命中缓存');
   assert.ok(r1.yamlStr.includes('my-dns.example.com: 9.9.9.9'), '产物应包含用户声明的 hosts');
@@ -152,14 +146,14 @@ test('🗝️ 缓存键 - 端到端：安全相关配置变化不得命中旧产
   // 同一份配置重复构建：缓存必须仍然生效（保证修复没有把缓存彻底打废）
   await buildProfile(
     { subscriptions: sub, enableCache: true, hosts: { 'my-dns.example.com': '9.9.9.9' } },
-    { type: 'config', logger }
+    { mode: 'config', logger }
   );
   assert.equal(hits(), 1, '配置完全一致时必须命中缓存');
 
   // 仅 hosts 变化（旧缓存键完全未覆盖该字段）：必须重新构建并交付新产物
   const r3 = await buildProfile(
     { subscriptions: sub, enableCache: true, hosts: { 'my-dns.example.com': '8.8.4.4' } },
-    { type: 'config', logger }
+    { mode: 'config', logger }
   );
   assert.equal(hits(), 1, 'hosts 变化不得命中旧缓存');
   assert.ok(r3.yamlStr.includes('my-dns.example.com: 8.8.4.4'), '产物必须反映新的 hosts 值');

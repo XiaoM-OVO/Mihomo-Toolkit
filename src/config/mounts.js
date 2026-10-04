@@ -192,9 +192,6 @@ function computeMountDigest(userConfig, baseDir) {
 }
 
 module.exports = {
-  MOUNT_PATH_KEYS,
-  MOUNT_LIST_KEYS,
-  SUPPORTED_EXTS,
   resolveMountPath,
   absolutizeMountPaths,
   readMountFile,
