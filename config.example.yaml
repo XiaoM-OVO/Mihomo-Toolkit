@@ -1,5 +1,5 @@
 # =====================================================================
-# 📦 Mihomo-Toolkit (MTK) 统一配置文件模板
+# 📦 Mihomo-Toolkit 统一配置文件模板
 # =====================================================================
 # 📖 三分钟概念速览
 # ─────────────────────────────────────────────────────────────────────
@@ -32,14 +32,14 @@ fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失
 # 订阅清单（支持多订阅并行抓取；url 为远程链接或本地 YAML 路径）
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
-    tag: "机场A"
+    tag: "订阅A"
     # enabled: true             # 是否启用该订阅（设为 false 可临时停用）
     # indexPrefix: "A"          # 节点序号前缀（如 A01/B01），不填按地区统一编号
     # proxy: false              # 单独指定是否走本地代理
     # retry: 3                  # 单独指定重试次数
     # resetDay: 19              # 每月固定重置日（自动计算"距离重置剩余 X 天"）
   - url: "https://example.com/api/v1/sub2"
-    tag: "机场B"
+    tag: "订阅B"
 
   # 本地文件示例
   # - url: "./my-local-nodes.yaml"
@@ -99,8 +99,8 @@ output: "./dist/config.yaml"    # 默认输出路径
 # ─────────────────────────────────────────────────────────────────────
 enableDedupe: true                 # 开启底层物理特征指纹去重
 enableDashboard: true              # 生成高颜值订阅状态虚拟看板节点（流量剩余、套餐到期等）
-removeInfoNodes: true              # 自动过滤机场原生说明伪节点（避免与合成看板冲突）
-enableAirportTag: true             # 多订阅时自动为节点打上机场来源标签
+removeInfoNodes: true              # 自动过滤订阅原生说明伪节点（避免与合成看板冲突）
+enableAirportTag: true             # 多订阅时自动为节点打上订阅来源标签
 # strictRegionMatch: false         # 严格地区匹配模式
 # adTextThreshold: 6               # 纯文本广告判定阈值（无数字/线路特征且长度超过此值判定为广告）
 # whitelistKeywords:               # 白名单豁免关键词（包含即放行并保留原名）
@@ -131,7 +131,7 @@ showFeatureIcon: true              # 是否在节点名后追加特征 Emoji 图
 # renameTemplate: "{icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
 # nodeIpVersion: "dual"            # 节点连接 IP 栈策略: dual (双栈并发竞速，推荐) | ipv6-prefer | ipv4-prefer | ipv6 | ipv4
 # 命名模板可用变量:
-#   {airport}   机场标签前缀 (如 [AirportA])
+#   {airport}   订阅标签前缀 (如 [AirportA])
 #   {icon}      国家/地区国旗 Emoji (如 🇭🇰, 🇯🇵)
 #   {region}    国家/地区中文名称 (如 香港, 日本)
 #   {index}     按大区与订阅前缀自动补零序号 (如 01, L01)

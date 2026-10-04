@@ -1,15 +1,17 @@
 <div align="center">
 
-# 🛠️ Mihomo-Toolkit (MTK)
+# 🛠️ Mihomo-Toolkit
 
 **一套为 Mihomo 内核生态设计的高性能自动化节点清洗与动态策略组构建引擎**
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
 [![Version](https://img.shields.io/badge/Version-v2.0.0--dev-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-203%20Passed-brightgreen)](test/)
+[![Tests](https://img.shields.io/badge/Tests-211%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底 · 零维护** 」
+
+> ⚠️ **开发中版本 · `v2.0.0-dev`**：本项目尚未发布正式版，接口与配置可能随时调整，暂不建议用于生产环境。
 
 </div>
 
@@ -43,7 +45,7 @@ mihomo-toolkit/
 │   │   └── strategy.js        # 策略拓扑与分流规则注入流水线
 │   │
 │   ├── targets/               # 🔌 宿主环境终端适配器 (轻量适配层)
-│   │   ├── cli.js             # 命令行工具 (mtk / mihomo-tk / mihomo-toolkit)
+│   │   ├── cli.js             # 命令行工具 (mihomo-toolkit)
 │   │   └── server.js          # 常驻 HTTP 订阅服务 (/sub, /healthz, 鉴权)
 │   │
 │   ├── core/                  # 🧮 节点清洗核心算法层 (Pure & Deterministic)
@@ -86,7 +88,7 @@ mihomo-toolkit/
 │       ├── field-registry.js  # 字段注册表 SSOT：有哪些字段 / 默认值 / 合并语义 / 信任级
 │       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │
-├── test/                      # 🧪 自动化测试套件 (203 个全绿用例)
+├── test/                      # 🧪 自动化测试套件 (211 个全绿用例)
 ├── config.example.yaml        # 极简扁平化配置模板
 ├── index.d.ts                 # 完整 TypeScript 类型契约声明
 ├── package.json               # 项目依赖与多命令配置
@@ -111,14 +113,14 @@ mihomo-toolkit/
 
 ### 方式一：终端命令行（推荐本地与 CI/CD 自动化）
 
-无需复杂依赖，直接使用短命令 `mtk`（或 `mihomo-tk`）：
+无需全局安装，克隆后直接用项目入口运行：
 
 ```bash
-git clone https://github.com/XiaoM-OVO/mihomo-toolkit.git && cd mihomo-toolkit
+git clone https://github.com/XiaoM-OVO/Mihomo-Toolkit.git && cd Mihomo-Toolkit
 npm install
 
 # 1. 直接拉取订阅，生成完整 Mihomo 配置文件
-npx mtk -u "https://example.com/sub.yaml" -o config.yaml
+node src/targets/cli.js -u "https://example.com/sub.yaml" -o config.yaml
 
 # 2. 或者使用 config.yaml 统一管理多订阅与高级规则
 npm run build
@@ -153,7 +155,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 
 建议采用以下两种稳定方式之一，避免客户端沙箱编译超大单体脚本：
 1. **本地订阅方式（推荐）**：启动 `npm start` 常驻服务，在 Clash Verge Rev 中添加新订阅为 `http://127.0.0.1:3000/sub`，完全当做普通远程订阅使用。
-2. **计划任务直写配置**：在 `config.yaml` 中配置 `output` 路径指向 Verge 的 profiles 目录，通过系统计划任务（Windows Task Scheduler / Cron）定时执行 `mtk -c config.yaml` 自动写入。
+2. **计划任务直写配置**：在 `config.yaml` 中配置 `output` 路径指向 Verge 的 profiles 目录，通过系统计划任务（Windows Task Scheduler / Cron）定时执行 `node src/targets/cli.js -c config.yaml` 自动写入。
 
 ---
 
@@ -165,16 +167,16 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 | :--- | :--- | :--- | :--- |
 | **`config`**<br>*(默认全量交付)* | **完整即用型 Mihomo YAML 配置** | 默认全新组装：洗节点 ➔ 状态看板 ➔ 六维策略组 ➔ 分流规则 ➔ 内核优化一条龙。自动执行节点专属 DNS 资产依赖保活，宿主控制面保持纯净。 | 直接提供给内核、软路由或客户端使用。 |
 | **`nodes`** | **纯净清洗节点数组** | 契约绝对纯粹：**仅交付洗白后的 `{ proxies: [...] }` 列表**，绝不越界输出任何策略组或外围规则。 | 导入 Sub-Store、节点池二次加工。 |
-| **`report`** | **健康审计与统计报告 (JSON)** | 纯粹输出清洗统计（总数、有效保留、去重数、广告拦截数、未知地区数）与健康元数据。 | CI/CD 自动化质检、机场节点质量监控。 |
+| **`report`** | **健康审计与统计报告 (JSON)** | 纯粹输出清洗统计（总数、有效保留、去重数、广告拦截数、未知地区数）与健康元数据。 | CI/CD 自动化质检、订阅节点质量监控。 |
 
 ---
 
 ## 🖥️ 详细命令行用法
 
 ```text
-Usage: mtk [options]
+Usage: mihomo-toolkit [options]
 
-Mihomo-Toolkit (MTK) - 自动化节点清洗与策略组构建引擎
+Mihomo-Toolkit - 自动化节点清洗与策略组构建引擎
 
 Options:
   -V, --version        输出版本号
@@ -192,16 +194,16 @@ Options:
 
 ```bash
 # 1. 常用：拉取订阅并生成完整分流配置
-mtk -u "https://airport.com/sub" -o config.yaml
+node src/targets/cli.js -u "https://airport.com/sub" -o config.yaml
 
 # 2. 提纯：只要干净的节点数组 (Sub-Store 专用)
-mtk -u "https://airport.com/sub" -m nodes -o nodes.yaml
+node src/targets/cli.js -u "https://airport.com/sub" -m nodes -o nodes.yaml
 
 # 3. 质检：导出节点健康度审计报告
-mtk -u "https://airport.com/sub" -m report -o audit.json
+node src/targets/cli.js -u "https://airport.com/sub" -m report -o audit.json
 
 # 4. 生成配置的同时，顺便落一份审计报告
-mtk -u "https://airport.com/sub" -r report.json
+node src/targets/cli.js -u "https://airport.com/sub" -r report.json
 ```
 
 ---
@@ -224,17 +226,17 @@ fetchStaleTtl: 24               # 网络故障时复用旧缓存兜底时长 (�
 # 3. 订阅清单 (支持多订阅并发聚合)
 subscriptions:
   - url: "https://example.com/sub1"
-    tag: "机场A"
+    tag: "订阅A"
     # indexPrefix: "A"          # 编号前缀 (如 A01/B01)
     # resetDay: 19              # 每月固定重置流量日期
   - url: "https://example.com/sub2"
-    tag: "机场B"
+    tag: "订阅B"
 
 # 4. 节点清洗与重命名
 enableDedupe: true               # 开启底层物理指纹去重
 enableNodeRename: true           # 节点重命名开关 (设为 false 原样保留节点名，不影响地区识别)
 showFeatureIcon: true            # 是否追加 🚀/4K 等特征 Emoji
-removeInfoNodes: true            # 自动剔除机场原生流量假节点 (避免与合成看板冲突)
+removeInfoNodes: true            # 自动剔除订阅原生流量假节点 (避免与合成看板冲突)
 
 # 5. 策略组与分流
 enableAI: true                   # 独立 ChatGPT / Claude / Gemini 策略组
@@ -253,7 +255,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 
 ## 🔐 安全模型与信任边界
 
-本工具的核心前提是：**机场订阅是不可信的第三方输入**。因此所有外部输入都按「能力最小化」处理。
+本工具的核心前提是：**订阅是不可信的第三方输入**。因此所有外部输入都按「能力最小化」处理。
 
 ### 信任分级
 
@@ -261,7 +263,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 | :--- | :--- | :--- |
 | `config.yaml` / `-c` 指定的本地配置 | **可信** | 可声明 DNS 控制面、本机资源路径、策略编排偏好 |
 | CLI `-u <本地文件>` | **可信**（本机操作者显式指定） | 同上 |
-| 机场订阅（远程 URL / 内联 `uri`） | **不可信** | 只能提供节点数据面；控制面字段一律剥离 |
+| 订阅源（远程 URL / 内联 `uri`） | **不可信** | 只能提供节点数据面；控制面字段一律剥离 |
 | 服务端 `?config=<远程URL>` | **不可信** | 只能提供订阅源与策略编排偏好；DNS 控制面、本机资源、本地代理类字段被剥夺 |
 
 ### 不可信输入的处置机制
@@ -303,7 +305,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 ## ❓ 常见问题
 
 <details>
-<summary><b>Q: 我只想保留机场原本给我的节点名字，不想被脚本改名，但又想用策略组分流，怎么配？</b></summary>
+<summary><b>Q: 我只想保留订阅原本给我的节点名字，不想被脚本改名，但又想用策略组分流，怎么配？</b></summary>
 
 只需在 `config.yaml` 中配置 `enableNodeRename: false` 即可！
 底层的地区识别、倍率提取、线路特征分析依然会照常运行并精准把节点送入对应的策略组，绝不破坏节点原名。
@@ -312,7 +314,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 <details>
 <summary><b>Q: 为什么我拉取订阅时偶尔报错 403 / 502，但节点没有消失？</b></summary>
 
-这是本系统的 **Stale 容灾兜底机制**在生效。当远程机场网络抖动或超时时，系统会自动重试；若依然失败，会自动激活最近一次成功抓取的本地缓存快照（默认保留 24h），并在控制台打印告警，保障你设备上的节点永远可用。
+这是本系统的 **Stale 容灾兜底机制**在生效。当远程订阅网络抖动或超时时，系统会自动重试；若依然失败，会自动激活最近一次成功抓取的本地缓存快照（默认保留 24h），并在控制台打印告警，保障你设备上的节点永远可用。
 </details>
 
 <details>
@@ -335,10 +337,25 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 <details>
 <summary><b>Q: 如何在 Clash Verge Rev 中使用？</b></summary>
 
-推荐直接在后台常驻服务中运行 `npm start`，然后在 Clash Verge Rev 中将订阅链接设置为 `http://127.0.0.1:3000/sub`；或者通过计划任务定时执行 `mtk -c config.yaml` 直接生成写入 Verge 的配置 profile 路径，客户端零计算负担。
+推荐直接在后台常驻服务中运行 `npm start`，然后在 Clash Verge Rev 中将订阅链接设置为 `http://127.0.0.1:3000/sub`；或者通过计划任务定时执行 `node src/targets/cli.js -c config.yaml` 直接生成写入 Verge 的配置 profile 路径，客户端零计算负担。
 </details>
 
 ---
+
+## 🙏 鸣谢
+
+- 基础内核：[Mihomo](https://github.com/MetaCubeX/mihomo)
+- 规则集：[meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) & [anti-AD](https://github.com/privacy-protection-tools/anti-AD)
+- 图标库：[Orz-3/mini](https://github.com/Orz-3/mini) & [Koolson/Qure](https://github.com/Koolson/Qure) & [lige47/lige_icon](https://github.com/lige47/lige_icon)
+- 简繁转换：[opencc-js](https://github.com/nk2028/opencc-js)
+- **AI 协同**：由本人架构与拍板，Gemini 负责主体编码，DeepSeek 参与代码审查与重构建议，多轮迭代打磨而成。
+
+## ⚠️ 免责声明
+
+1. 本项目提供的代码、脚本与配置仅供**个人进行计算机网络调试、路由规则学习与研究网络连通性架构**使用。
+2. 请严格遵守您所在国家及地区的法律法规，**严禁将本项目用于任何非法或违反当地法律的用途**。
+3. 因使用本项目所产生的任何直接或间接后果，**均由使用者本人自行承担**。作者及贡献者不承担任何技术或法律连带责任。
+4. 本项目仅为代码工具，**不提供任何形式的代理服务**，也不涉及任何网络节点的售卖、分发与推广。
 
 ## 📜 开源协议
 

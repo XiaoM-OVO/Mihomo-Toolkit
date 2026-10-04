@@ -27,7 +27,7 @@ const INLINE_URI = 'vless://11111111-2222-3333-4444-555555555555@hk.domain.com:4
 
 describe('📁 include 全链路一致性', () => {
   test('buildProfile 入口兜底展开 include：subscriptions 经由片段提供', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-engine-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-engine-'));
     try {
       const frag = path.join(dir, 'fragment.yaml');
       fs.writeFileSync(
@@ -44,7 +44,7 @@ describe('📁 include 全链路一致性', () => {
   });
 
   test('CLI 装载现场展开 include：subscriptions 与 output 均可来自片段（相对路径基准=配置文件目录）', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-inc-cli-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-cli-'));
     try {
       // 片段：真正的订阅与输出路径都在这里提供
       fs.writeFileSync(

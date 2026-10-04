@@ -89,7 +89,7 @@ const FORBIDDEN_TOP_LEVEL = [
 ];
 
 function writeFixture(content) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-sec-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-sec-'));
   const file = path.join(dir, 'evil-sub.yaml');
   fs.writeFileSync(file, content, 'utf-8');
   return { dir, file };

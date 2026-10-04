@@ -11,7 +11,7 @@
 ```text
 ┌────────────────────────────────────────────────────────────────┐
 │ 1. Targets (多端宿主适配层)                                    │
-│    CLI (mtk) │ Server (HTTP 订阅中继服务)                      │
+│    CLI (mihomo-toolkit) │ Server (HTTP 订阅中继服务)           │
 └──────────────────────────────┬─────────────────────────────────┘
                                │ 驱动调用 (无业务逻辑，仅做参数映射)
 ┌──────────────────────────────▼─────────────────────────────────┐
@@ -125,7 +125,7 @@
 系统采用**以目标交付物（Output Delivery）驱动的工作流模型**。调度引擎根据请求的交付形态（`outputMode`），在流水线的对应检查点（Checkpoint）截断并产出目标规格数据：
 
 ```text
-                      外部输入 (CLI mtk / Server / SDK)
+                      外部输入 (CLI mihomo-toolkit / Server / SDK)
                                      │
                                      ▼
                      ┌───────────────────────────────┐
@@ -263,7 +263,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   └── strategy.js           # runStrategyPipeline: 纯策略组与分流拓扑组装流水线
 │   │
 │   ├── targets/                  # 🔌 宿主环境终端适配器 (仅做参数与调用封装)
-│   │   ├── cli.js                # CLI 入口 (支持 mtk / mihomo-tk / mihomo-toolkit)
+│   │   ├── cli.js                # CLI 入口 (mihomo-toolkit 命令行工具)
 │   │   └── server.js             # 常驻 HTTP 订阅服务 (/sub, /healthz, Token 鉴权, 默认回环监听, 并发上限)
 │   │
 │   ├── core/                     # 🧮 节点清洗核心算法层 (Pure & Deterministic)
