@@ -38,6 +38,22 @@ function safeTokenEqual(a, b) {
   }
 }
 
+/** 提取客户端真实 IP（优先读取反向代理投递的 X-Forwarded-For / X-Real-IP） */
+function getClientIp(req) {
+  const xff = req.headers && req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.trim()) {
+    const first = xff.split(',')[0].trim();
+    if (first) return first;
+  }
+  const realIp = req.headers && req.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.trim()) {
+    return realIp.trim();
+  }
+  const raw = req.socket?.remoteAddress || '';
+  if (raw.startsWith('::ffff:')) return raw.slice(7);
+  return raw || '127.0.0.1';
+}
+
 function startServer(options = {}) {
   const PORT = options.port || process.env.PORT || 3000;
   // 默认仅监听回环：常驻服务承载「可发起外部请求 + 可读取本地订阅文件」的能力，
@@ -133,22 +149,8 @@ function startServer(options = {}) {
           }
         }
 
-        const authToken = process.env.AUTH_TOKEN || localConfig.authToken;
-        if (authToken) {
-          const urlToken = reqUrl.searchParams.get('token');
-          const headerAuth = req.headers['authorization'] || '';
-          const bearerToken = headerAuth.startsWith('Bearer ') ? headerAuth.slice(7) : '';
-          const providedToken = urlToken || bearerToken;
-          if (!safeTokenEqual(providedToken, authToken)) {
-            res.writeHead(401, { 'Content-Type': 'text/plain' });
-            res.end('Unauthorized: Invalid or missing token. Provide ?token=xxx or Authorization: Bearer xxx');
-            return;
-          }
-        }
-
-        // 参数化请求属于「外部可控输入」入口：非回环监听且未配置 authToken 时一律 fail-closed
-        const enableUrlParams = localConfig.enableUrlParams !== false;
-        const paramsAllowed = enableUrlParams && (BOUND_LOOPBACK || !!authToken);
+        const clientIp = getClientIp(req);
+        const userAgent = (req.headers && req.headers['user-agent']) || 'unknown';
 
         let safeUrl = reqUrl.pathname;
         const safeParams = [];
@@ -158,7 +160,29 @@ function startServer(options = {}) {
         if (reqUrl.searchParams.has('token')) safeParams.push('token=***');
         if (reqUrl.searchParams.has('debug')) safeParams.push(`debug=${reqUrl.searchParams.get('debug')}`);
         if (safeParams.length > 0) safeUrl += `?${safeParams.join('&')}`;
-        serverLogger.info(`Received request for ${safeUrl}`);
+
+        serverLogger.info(`Received request for ${safeUrl} from ${clientIp}`);
+        if (localConfig.logLevel === 'debug' || reqUrl.searchParams.has('debug')) {
+          serverLogger.debug(`Client: ${clientIp} | User-Agent: ${userAgent}`);
+        }
+
+        const authToken = process.env.AUTH_TOKEN || localConfig.authToken;
+        if (authToken) {
+          const urlToken = reqUrl.searchParams.get('token');
+          const headerAuth = req.headers['authorization'] || '';
+          const bearerToken = headerAuth.startsWith('Bearer ') ? headerAuth.slice(7) : '';
+          const providedToken = urlToken || bearerToken;
+          if (!safeTokenEqual(providedToken, authToken)) {
+            serverLogger.warn(`🛑 拒绝未授权访问: ${safeUrl} 来自 ${clientIp}`);
+            res.writeHead(401, { 'Content-Type': 'text/plain' });
+            res.end('Unauthorized: Invalid or missing token. Provide ?token=xxx or Authorization: Bearer xxx');
+            return;
+          }
+        }
+
+        // 参数化请求属于「外部可控输入」入口：非回环监听且未配置 authToken 时一律 fail-closed
+        const enableUrlParams = localConfig.enableUrlParams !== false;
+        const paramsAllowed = enableUrlParams && (BOUND_LOOPBACK || !!authToken);
 
         let userConfig = { subscriptions: [] };
         const configUrl = reqUrl.searchParams.get('config');
@@ -296,4 +320,4 @@ if (require.main === module) {
   startServer();
 }
 
-module.exports = { startServer, hardenRemoteConfig, isLoopbackHost, safeTokenEqual };
+module.exports = { startServer, hardenRemoteConfig, isLoopbackHost, safeTokenEqual, getClientIp };
