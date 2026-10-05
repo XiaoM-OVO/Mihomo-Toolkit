@@ -78,6 +78,13 @@ function buildProxyTopology({
       return;
     }
 
+    const customGroups = item.customGroups || item.proxy?._customGroups;
+    const hasCustomGroups = Array.isArray(customGroups) && customGroups.length > 0;
+    if (hasCustomGroups) {
+      // 拥有专属目标策略组声明，不随大流进入常规地区桶与主力标准池
+      return;
+    }
+
     if (item.isUnknownRegion) {
       buckets.unknown.push(finalName);
       return;
@@ -427,6 +434,33 @@ function buildProxyTopology({
       }
     }
   }
+
+  // 节点专属策略组注入 (来自 subscriptions 中的 groups 声明)
+  classifiedNodes.forEach(item => {
+    if (item.skip || item.isInfo) return;
+    const customGroups = item.customGroups || item.proxy?._customGroups;
+    if (!Array.isArray(customGroups) || customGroups.length === 0) return;
+    const nodeName = item.proxy?.name || item.rawName;
+
+    for (const rawTarget of customGroups) {
+      if (!rawTarget || typeof rawTarget !== 'string') continue;
+      const tName = rawTarget.trim();
+      const group = finalGroups.find(g =>
+        g.name === tName ||
+        (g.name && g.name.toLowerCase() === tName.toLowerCase()) ||
+        (g.name && g.name.toLowerCase().includes(tName.toLowerCase())) ||
+        (tName && tName.toLowerCase().includes(g.name.toLowerCase()))
+      );
+      if (group && Array.isArray(group.proxies)) {
+        if (!group.proxies.includes(nodeName)) {
+          group.proxies.unshift(nodeName);
+        }
+      } else if (!group) {
+        // 若目标组不存在，动态自动创建新策略组
+        finalGroups.push(buildSelect(tName, [nodeName, 'DIRECT']));
+      }
+    }
+  });
 
   // 🏠 家宽节点注入：将指定地区的家宽节点追加到目标应用组
   if (userConfig.enableResidential && userConfig.residentialNodeGroups && buckets.residential.length > 0) {
