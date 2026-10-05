@@ -110,7 +110,7 @@ function startServer(options = {}) {
       return;
     }
 
-    if (reqUrl.pathname === '/sub') {
+    if (reqUrl.pathname === '/sub' || reqUrl.pathname === '/') {
       // 并发上限：单次构建会触发多个外部抓取与全量拓扑计算，不设限可被轻易打满
       if (activeBuilds >= MAX_CONCURRENT_BUILDS) {
         res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' });
