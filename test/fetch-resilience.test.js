@@ -227,4 +227,29 @@ describe('🔄 订阅抓取容灾模块', () => {
       restoreFetch();
     }
   });
+
+  test('纯 URI 节点或 proxy: false 时不触发抓取代理探测与警告', async () => {
+    const logs = [];
+    const mockLogger = {
+      debug: (msg) => logs.push({ level: 'debug', msg }),
+      info: (msg) => logs.push({ level: 'info', msg }),
+      warn: (msg) => logs.push({ level: 'warn', msg }),
+      error: (msg) => logs.push({ level: 'error', msg }),
+      isLevelEnabled: () => true,
+      child: () => mockLogger
+    };
+
+    // 配置了一个无效/关闭的代理端口 61234，但只有 URI 节点
+    const cfg = {
+      fetchProxyPort: 61234,
+      fetchProxyStrategy: 'auto',
+      subscriptions: [
+        { uri: 'ss://YWVzLTEyOC1nY206c2VjcmV0X3NhZmVfa2V5Xzg4OTk=@hk01.example.com:443#%F0%9F%87%AD%F0%9F%87%B0%20%E9%A6%99%E6%B8%AF%2001', tag: 'DirectURI' }
+      ]
+    };
+
+    await buildProfile(cfg, { mode: 'config', production: true, noCache: true, logger: mockLogger });
+    const hasProxyWarn = logs.some(l => l.msg.includes('抓取代理') || l.msg.includes('61234'));
+    assert.equal(hasProxyWarn, false, '纯 URI 节点不应执行代理连通性探测');
+  });
 });
