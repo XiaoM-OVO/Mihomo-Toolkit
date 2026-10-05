@@ -450,14 +450,6 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           });
         }
 
-        if (sub.uri && sub.tag) {
-          const whitelist = userConfig.whitelistKeywords || [];
-          const tagLower = sub.tag.toLowerCase();
-          if (!whitelist.some(k => k.toLowerCase() === tagLower)) {
-            if (!userConfig.whitelistKeywords) userConfig.whitelistKeywords = [];
-            userConfig.whitelistKeywords.push(sub.tag);
-          }
-        }
 
         if (effectiveIndexPrefix) {
           subProxies.forEach(p => { p._indexPrefix = effectiveIndexPrefix; });
