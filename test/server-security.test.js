@@ -13,7 +13,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { startServer, isLoopbackHost, safeTokenEqual } = require('../src/targets/server');
+const { startServer, isLoopbackHost, safeTokenEqual, getClientIp } = require('../src/targets/server');
 const { hardenRemoteConfig } = require('../src/core/security/remote-config');
 const { readBodyWithLimit } = require('../src/io/fetcher');
 
@@ -260,5 +260,12 @@ describe('🌐 常驻服务安全姿态 (Server Security Posture)', () => {
       if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test('getClientIp 正确提取反代头与 IPv4 映射', () => {
+    assert.equal(getClientIp({ headers: { 'x-forwarded-for': '203.0.113.195, 10.0.0.1' } }), '203.0.113.195');
+    assert.equal(getClientIp({ headers: { 'x-real-ip': '198.51.100.2' } }), '198.51.100.2');
+    assert.equal(getClientIp({ headers: {}, socket: { remoteAddress: '::ffff:192.0.2.1' } }), '192.0.2.1');
+    assert.equal(getClientIp({ headers: {}, socket: { remoteAddress: '127.0.0.1' } }), '127.0.0.1');
   });
 });
