@@ -1,0 +1,19 @@
+services:
+  mihomo-toolkit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mihomo-toolkit:latest
+    container_name: mihomo-toolkit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=3000
+      - CONFIG_PATH=/app/config.yaml
+      # - AUTH_TOKEN=your-secure-token # 可选：若对外网暴露或启用动态 ?url= 参数时推荐配置
+    volumes:
+      # 挂载本地配置文件（若不存在可先 cp config.example.yaml config.yaml）
+      - ./config.yaml:/app/config.yaml:ro

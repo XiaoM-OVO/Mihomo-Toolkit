@@ -130,6 +130,20 @@ npm run build
 
 将 Mihomo-Toolkit 部署为私有订阅转换 API：
 
+#### 1. Docker 容器化部署（VPS 推荐）
+
+仓库已内置开箱即用的轻量 Alpine Dockerfile 与 `docker-compose.yml`：
+
+```bash
+# 准备配置文件
+cp config.example.yaml config.yaml
+
+# 启动容器（映射本地 3000 端口，含自动健康检查）
+docker compose up -d
+```
+
+#### 2. Node.js 本地直接启动
+
 ```bash
 # 启动本地服务（默认 127.0.0.1:3000，自动读取根目录 config.yaml）
 npm start
