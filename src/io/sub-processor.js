@@ -295,12 +295,16 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   }
 
   let isProxyAvailable = true;
-  const hasProxyTask = proxyPort && (
-    proxyStrategy !== 'direct' ||
-    (subscriptions && subscriptions.some(s => isSubEnabled(s) && s.proxy === true))
-  );
+  const enabledSubs = Array.isArray(subscriptions) ? subscriptions.filter(isSubEnabled) : [];
+  const needsProxyCheck = Boolean(proxyPort && enabledSubs.some(s => {
+    const isRemoteUrl = s.url && /^https?:\/\//i.test(s.url);
+    if (!isRemoteUrl) return false;
+    if (s.proxy === true) return true;
+    if (s.proxy === false) return false;
+    return proxyStrategy !== 'direct';
+  }));
 
-  if (hasProxyTask) {
+  if (needsProxyCheck) {
     const isReachable = await checkPortReachable(proxyPort);
     if (isReachable) {
       isProxyAvailable = true;
