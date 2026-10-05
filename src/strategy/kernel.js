@@ -18,6 +18,7 @@ function applyTunOverlay(config, userConfig) {
     'auto-route': true,
     'strict-route': true,
     'auto-detect-interface': true,
+    'dns-hijack': ['any:53', 'tcp://any:53'],
     'route-exclude-address': ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12']
   };
 }

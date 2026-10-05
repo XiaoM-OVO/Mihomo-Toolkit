@@ -45,6 +45,7 @@ test('🧩 策略模块单元测试 - 内核调优与 TUN/Sniffer (kernel)', () 
   assert.equal(config.tun.enable, undefined);
   assert.equal(config.tun.stack, 'system');
   assert.equal(config.tun.device, 'Mihomo');
+  assert.deepEqual(config.tun['dns-hijack'], ['any:53', 'tcp://any:53']);
 
   applySnifferOverlay(config, DEFAULT_CONFIG);
   assert.equal(config.sniffer.enable, true);
