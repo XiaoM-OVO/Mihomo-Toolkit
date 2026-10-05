@@ -106,3 +106,40 @@ test('🚀 流水线单元测试 - nodeIpVersion 批量注入节点 IP 栈偏好
   const invalidCleaned = await runNodesPipeline(sampleProxies(), { nodeIpVersion: 'invalid-stack' });
   assert.equal(invalidCleaned[0]['ip-version'], undefined);
 });
+
+test('🚀 端到端构建测试 - 订阅项 keepName 豁免假密码拦截并保留指定原名与 groups 注入', async () => {
+  const { buildProfile } = require('../src/pipeline/engine');
+  const dummyUri = 'ss://YWVzLTEyOC1nY206cGFzc3dvcmQ=@my-host.com:443#Dummy'; // 原本因 "password" 假密码会被阻断
+  const cfg = {
+    enableAI: true,
+    subscriptions: [
+      {
+        uri: dummyUri,
+        name: '🇯🇵 专线·我的直连节点',
+        keepName: true,
+        groups: ['🤖 ChatGPT', '我的独享专线']
+      }
+    ],
+    minorNodeThreshold: 1
+  };
+
+  const res = await buildProfile(cfg, { mode: 'config', noCache: true });
+  const proxies = res.outputData.proxies || [];
+  const groups = res.outputData['proxy-groups'] || [];
+
+  // 1. 节点未被 "假密码" 规则丢弃，且名字被精确保留为指定 name
+  assert.equal(proxies.length, 1);
+  assert.equal(proxies[0].name, '🇯🇵 专线·我的直连节点');
+  assert.equal(proxies[0]._keepName, undefined, '内部私有属性必须被清理');
+
+  // 2. 目标策略组 ChatGPT 包含该节点
+  const gptGroup = groups.find(g => g.name.includes('ChatGPT'));
+  assert.ok(gptGroup);
+  assert.ok(gptGroup.proxies.includes('🇯🇵 专线·我的直连节点'));
+
+  // 3. 动态新建的目标策略组包含该节点
+  const customGroup = groups.find(g => g.name.includes('我的独享专线'));
+  assert.ok(customGroup);
+  assert.ok(customGroup.proxies.includes('🇯🇵 专线·我的直连节点'));
+});
+

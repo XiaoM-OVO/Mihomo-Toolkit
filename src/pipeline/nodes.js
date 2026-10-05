@@ -97,7 +97,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   const effectiveFeatureTexts = { ...FEATURE_TEXT_MAP, ...catalogTexts };
 
   const resultProxies = validItems.map(item => {
-    if (item.isSpecial || item.isInfo) return item.proxy;
+    if (item.isSpecial || item.isInfo || item.keepName) return item.proxy;
     if (!item.regionInfo) return item.proxy;
 
     const buildDestinationLine = () => {

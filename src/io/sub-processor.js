@@ -402,13 +402,21 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         const subConfig = parseContent(rawResult.content);
         let subProxies = subConfig.proxies || [];
 
-        if (sub.uri && sub.name && subProxies.length > 0) {
+        if (sub.name && subProxies.length === 1) {
           subProxies[0].name = sub.name;
         }
 
         if (sub.uri) {
           const nameHint = subProxies[0] ? subProxies[0].name : '未知';
           logger.debug(`URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
+        }
+
+        // 注入 keepName 与 customGroups 特殊属性
+        if (sub.keepName) {
+          subProxies.forEach(p => { p._keepName = true; });
+        }
+        if (Array.isArray(sub.groups) && sub.groups.length > 0) {
+          subProxies.forEach(p => { p._customGroups = [...sub.groups]; });
         }
 
         let effectiveTag = sub.tag;

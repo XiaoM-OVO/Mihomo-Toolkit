@@ -68,7 +68,7 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
       const effectiveFeatureTexts = { ...FEATURE_TEXT_MAP, ...catalogTexts };
 
       classifiedNodes.forEach(item => {
-        if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
+        if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo || item.keepName) return;
 
         let featureStr = '';
         (item.tags || []).forEach(t => {

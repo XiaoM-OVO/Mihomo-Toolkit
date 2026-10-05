@@ -186,3 +186,49 @@ test('🧩 拓扑模块单元测试 - 地区哈希负载均衡 (enableRegionHash
   assert.deepEqual(buckets.hk, ['🇭🇰 香港 01', '🇭🇰 香港 02']);
 });
 
+test('🧩 拓扑模块单元测试 - 节点专属策略组注入 (customGroups)', () => {
+  const registries = createServiceRegistries(DEFAULT_CONFIG);
+  const classifiedNodes = [
+    {
+      proxy: { name: '🇺🇸 专线·我的自建节点' },
+      rawName: '🇺🇸 专线·我的自建节点',
+      regionInfo: { id: 'us', name: '美国' },
+      groupKey: 'us',
+      keepName: true,
+      customGroups: ['🤖 ChatGPT', '我的独享专线'],
+      tags: []
+    },
+    {
+      proxy: { name: '🇭🇰 香港 01' },
+      rawName: '🇭🇰 香港 01',
+      regionInfo: { id: 'hk', name: '香港' },
+      groupKey: 'hk',
+      tags: []
+    }
+  ];
+
+  const { proxyGroups, buckets } = buildProxyTopology({
+    classifiedNodes,
+    userConfig: {
+      ...DEFAULT_CONFIG,
+      minorNodeThreshold: 1
+    },
+    registries
+  });
+
+  // 1. 验证目标已有组 (ChatGPT) 成功注入自建节点
+  const gptGroup = proxyGroups.find(g => g.name === 'ChatGPT');
+  assert.ok(gptGroup, '应存在 ChatGPT 组');
+  assert.ok(gptGroup.proxies.includes('🇺🇸 专线·我的自建节点'), 'ChatGPT 组应包含专线节点');
+
+  // 2. 验证目标不存在的组 (我的独享专线) 自动创建并包含该节点
+  const customGroup = proxyGroups.find(g => g.name === '我的独享专线');
+  assert.ok(customGroup, '应动态自动创建新组');
+  assert.ok(customGroup.proxies.includes('🇺🇸 专线·我的自建节点'));
+
+  // 3. 验证专属节点未随大流进入美国常规地区桶
+  assert.ok(!buckets.us.includes('🇺🇸 专线·我的自建节点'), '专属节点不应随大流进入常规地区桶');
+  assert.ok(buckets.hk.includes('🇭🇰 香港 01'), '普通节点正常入桶');
+});
+
+
