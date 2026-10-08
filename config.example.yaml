@@ -84,6 +84,9 @@ output: "./dist/config.yaml"    # 默认输出路径
 #    历史模板里的 serverHost 从未被读取，已移除；等价做法：HOST=0.0.0.0 node src/targets/server.js
 # enableCache: true                # 启用本地内存缓存（键含配置整体结构摘要 + 外挂文件内容摘要）
 # cacheTtl: 300                    # 缓存有效时间（秒）；订阅远端内容更新仅在 TTL 到期后生效
+# refreshCooldown: 15              # 强制刷新冷却防爆盾（秒，默认 15，0 为禁用）；?refresh=1 在此窗口内重复请求时直接返回最新缓存
+# autoRefreshInterval: 3600        # 后台自动拉取与缓存预热周期（秒，默认 0 关闭；建议 3600-7200）；静默拉取失败时保留旧缓存
+# enableWarmup: true               # 服务启动时是否在后台自动预热初始订阅缓存（默认根据 autoRefreshInterval 自动判定）
 # authToken: "your-secret-token"   # 服务端访问鉴权 Token (?token=xxx 或 Authorization 头)
 # enableUrlParams: true            # 是否允许前端通过 ?url= / ?config= 动态传参
 # maxConcurrentBuilds: 8           # 并发构建上限，超出返回 503

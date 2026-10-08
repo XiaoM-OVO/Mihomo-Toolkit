@@ -151,10 +151,14 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   const cacheKey = getCacheKey(userConfig, options);
 
   if (enableCache && cacheKey) {
-    const cached = profileCache.get(cacheKey, cacheTtlMs);
-    if (cached) {
-      logger.info(`⚡ 命中本地内存缓存 (${cached.remainingSec}s 后过期)，直接响应缓存数据`);
-      return cached.result;
+    if (options.forceRefresh) {
+      logger.info('🔄 触发强制刷新 (forceRefresh=true)，绕过本地缓存直接抓取并构建');
+    } else {
+      const cached = profileCache.get(cacheKey, cacheTtlMs);
+      if (cached) {
+        logger.info(`⚡ 命中本地内存缓存 (${cached.remainingSec}s 后过期)，直接响应缓存数据`);
+        return cached.result;
+      }
     }
   }
 
