@@ -27,19 +27,19 @@
 ---
 
 ### 🟢 Milestone 1: v2.0 正式版收官与可靠性加固 (v2.0.0-GA)
-> **目标**：彻底消除架构隐患与安全漏洞，使内核达到开箱即用的高可靠生产标准。
+> **目标**：持续加固系统安全性与稳定性，使内核达到高可靠生产标准。
 
 - [x] **简繁转换模式全链路一致性**：修复 `engine.js` 在 `chineseConvertMode: 's2t'` 时误调用 `toSimplified` 的硬编码缺陷，补全双向转换回归用例。
-- [x] **SSRF 协议白名单深度加固**：`validateUrlSsrf` 补齐协议校验，杜绝恶意 302 重定向通过 `file:`、`ftp:` 等协议穿透网络边界。
-- [x] **单元测试与真实网络彻底解耦**：
+- [x] **SSRF 协议白名单深度加固**：`validateUrlSsrf` 补齐协议校验，阻断恶意 302 重定向通过 `file:`、`ftp:` 等协议穿透网络边界。
+- [x] **单元测试与外部网络环境解耦**：
   - 为 `test/fission.test.js` 引入 DNS 桩隔离，不再依赖公网 `dns.google`；
   - `src/io/dns-resolver.js` 补齐原生 DNS 查询超时控制器，消除外部网络超时挂起；
-  - **全量 206 个测试总运行时间由 55 秒骤降至 3 秒以内**。
-- [x] **未决 Timer 句柄清理**：`dnsResolveWithTimeout` 在 `Promise.race` 完成后及时清理定时器，杜绝高并发下 Node.js 定时器句柄积压。
-- [x] **DAG 空组剪枝规则容错**：分流规则 target 增加 `.trim()` 处理，彻底避免带空格规则（如 `RULE-SET, x , y`）在级联清理时脱靶残留。
+  - **全量测试总运行时间缩短至 3 秒以内**。
+- [x] **未决 Timer 句柄清理**：`dnsResolveWithTimeout` 在 `Promise.race` 完成后及时清理定时器，避免高并发下 Node.js 定时器句柄积压。
+- [x] **DAG 空组剪枝规则容错**：分流规则 target 增加 `.trim()` 处理，避免带空格规则（如 `RULE-SET, x , y`）在级联清理时脱靶残留。
 - [x] **清洗层虚假与私网节点判定完备化**：`checkNodeBlockReason` 升级对 RFC 1918 (172.16-31)、CGNAT (100.64.x) 及 IPv6 私网/回环地址的识别拦截。
 - [x] **Server 配置热重载状态缓存**：引入基于 `fs.statSync` 的 `mtimeMs` 变动检查，平稳期直接复用已解析配置，避免每个 `/sub` 请求重复进行同步 YAML 密集反序列化。
-- [x] **分层单向流动架构纯净化**：彻底移除 `src/io/sub-processor.js` 对上层 `src/strategy/dashboard.js` 的 fallback 反向 `require`，严格遵从依赖注入。
+- [x] **分层单向流动架构纯净化**：移除 `src/io/sub-processor.js` 对上层 `src/strategy/dashboard.js` 的 fallback 反向 `require`，严格遵从依赖注入。
 
 ---
 
@@ -47,7 +47,7 @@
 > **目标**：打破预设拓扑限制，赋予用户自由编排任意策略组与规则链的能力。
 
 - [x] **远程配置剥夺清单升级为白名单收敛 (Fail-Closed)**：
-   - 从基于黑名单剥离全面升级为基于字段注册表 `trust: 'any'` 的显式白名单放行（fail-closed），杜绝未来内核新字段可能带来的潜在越权；
+   - 从基于黑名单剥离全面升级为基于字段注册表 `trust: 'any'` 的显式白名单放行（fail-closed），有效收敛未来内核新字段可能带来的潜在越权风险；
    - 纠正 `output` 字段为 `trust: 'local'`，阻止远程配置操纵本地写盘目标路径；
    - 修复 DNS 不变式 (INV-8) 上下游上下文传递脱节与审计消费断层。
 - [ ] **服务目录单点激活 (Single-Point Service Activation)**：
