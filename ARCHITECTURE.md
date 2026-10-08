@@ -157,7 +157,7 @@
 | 交付模式 (`outputMode`) | 核心契约 (Contract) | 关键行为与边界 | 典型场景 |
 | :--- | :--- | :--- | :--- |
 | **`config`**<br>*(默认全量交付)* | 交付完整可直接交付内核运行的 Mihomo YAML 配置。产物顶层键**只能由本工具生成**（交付契约白名单，fail-closed）。 | 1. 采用「智能节点资产依赖保活沙箱」，自动继承节点专属的 Hosts（CDN 优选）与 Nameserver-Policy（私有 DoH），动态将节点域名注入 fake-ip-filter 防环路；闭包强度可用 `assetClosure` 调为 `strict` / `off`。<br>2. **交付契约双重保证**：生成前重置工具自有键 + 交付前白名单收口，因此订阅携带的 `port` / `allow-lan` / `tunnels` / `external-controller` / `secret` / `script` / `geox-url` 等字段以及任何未登记字段都不可能进入产物（即使对应的覆写开关被关闭也不会残留）。<br>3. 全自动执行节点清洗、看板合成、六维策略组装配、分流规则集与内核优化调优。<br>4. 交付前执行 DNS INV-1~INV-9 不变式自检，违规项写入 `result.invariantViolations` 并打印告警。 | 软路由、Clash Verge、Mihomo 服务端部署。 |
-| **`nodes`**<br>*(纯净节点交付)* | 契约绝对纯粹：**仅输出干净的 `{ proxies: [...] }` 列表**。 | 执行物理去重、广告与垃圾拦截、属性提取、地区识别与重命名。**严禁输出任何策略组或外围规则**（即使输入自带 rules 也坚决剥离）。 | Sub-Store 节点管理、自建节点池维护。 |
+| **`nodes`**<br>*(纯净节点交付)* | 契约明确规范：**仅输出清洗后的 `{ proxies: [...] }` 列表**。 | 执行物理去重、广告与说明过滤、属性提取、地区识别与重命名。**不输出任何策略组或外围规则**（即使输入自带 rules 也予以剥离）。 | Sub-Store 节点管理、自建节点池维护。 |
 | **`report`**<br>*(健康审计交付)* | 交付标准格式的清洗与质量审计报告 (JSON)。 | 统计输入总数、有效保留数、去重剔除数、广告拦截数、未知地区数、裂变产生数，输出结构化健康评估指标。 | CI/CD 自动化质检、机场节点质量监控。 |
 
 ---
@@ -215,15 +215,15 @@
   * HTTP 4xx（如 401 Unauthorized、404 Not Found）➔ 确定性错误，**立即放弃，绝不无效重试**；
   * HTTP 5xx、网络中断、DNS 超时 ➔ 自动执行指数退避重试（Backoff Retry）。
 * **Stale 兜底容灾缓存**：
-  为每个订阅维护最近一次成功拉取的内存快照。若某次远程拉取彻底失败且容灾周期未过期（`fetchStaleTtl`，默认 24h），自动降级复用上一轮有效内容，并打印黄色告警。**确保下游用户设备上的节点绝不因为机场暂时抽风而全军覆没**。
+  为每个订阅维护最近一次成功拉取的内存快照。若某次远程拉取失败且容灾周期未过期（`fetchStaleTtl`，默认 24h），自动降级复用上一轮有效内容，并打印黄色告警。**尽量降低上游服务偶发故障对下游节点可用性的影响**。
 
 ### 5. 三层纵深安全网关 (`src/core/security/`)
 * **设计考量**：
-  外部机场订阅本质上属于不可信第三方输入。传统“全盘透传”存在致命隐患：订阅可借由 `external-controller` 和 `secret` 窃取内核 API 控制权、利用 `allow-lan` 将客户端暴露为公网开放代理、通过 `geox-url` 投毒反转全量 GEOIP 分流。同时，直接一刀切剥离全部私有字段又会导致依赖私有 DoH 或 CDN 优选 Hosts 的节点无法连通。
+  外部机场订阅本质上属于不可信第三方输入。传统“全盘透传”存在潜在隐患：订阅可借由 `external-controller` 和 `secret` 获得内核 API 控制权、利用 `allow-lan` 将客户端暴露为局域网开放代理、通过 `geox-url` 篡改全量 GEOIP 分流。同时，直接一刀切剥离全部私有字段又会导致依赖私有 DoH 或 CDN 优选 Hosts 的节点无法连通。
 * **三层机制（按数据流顺序）**：
 
   1. **不可信配置能力剥夺（`remote-config.js`，纯函数）**
-     服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（杜绝借本地路径读取服务器任意文件），并基于**白名单收敛 (Fail-Closed)** 机制剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`include`、`output`、`fetchProxyPort`）类字段。
+     服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（防范借本地路径读取服务器文件），并基于**白名单收敛 (Fail-Closed)** 机制剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`include`、`output`、`fetchProxyPort`）类字段。
      *放行白名单**由只读数据层派生**：仅放行 `src/data/field-registry.js` 中声明 `trust: 'any'` 的字段，其余字段（未登记的未知字段或声明 `trust: 'local'` 的特权字段）一律物理剥离。*
      *库契约：`buildProfile(userConfig)` 的 `userConfig` 视为可信输入；处理不可信配置的调用方必须先经 `hardenRemoteConfig()` 降级。*
 
@@ -240,7 +240,7 @@
      *注：`proxy-providers` 刻意不在白名单内 —— 它会让内核在运行时从外部 URL 拉取节点，属于不可审计的运行时数据面来源。*
 
 * **Bootstrap 破死锁与 Fake-IP 避环智能聚合 (`dns-sanitizer.js` + `strategy/dns.js`)**：
-  强制规范 `default-nameserver` 与 `proxy-server-nameserver` 100% 纯 IP 引导；从节点池动态推导节点服务器域名并进行**智能主域泛化聚合（如折叠为 `+.lxyun.xyz`）**注入 `fake-ip-filter`，彻底杜绝 Fake-IP 虚拟自环，同时规避海量子域名膨胀与伪装 SNI 污染。
+  规范 `default-nameserver` 与 `proxy-server-nameserver` 为纯 IP 引导；从节点池动态推导节点服务器域名并进行**智能主域泛化聚合（如折叠为 `+.lxyun.xyz`）**注入 `fake-ip-filter`，防范 Fake-IP 虚拟自环，同时规避海量子域名膨胀与伪装 SNI 污染。
   解析链与 `nameserver-policy` 同样过净化沙箱（剥离 `#skip-cert-verify` 等危险修饰符、拦截私网与 fake-ip 自环地址、保留键不可被覆盖），`dns.listen` 非回环一律回退（需 `dnsAllowNonLoopback: true` 显式放行）。
 * **INV 不变式自检（`resolver-plan.js::checkInvariants`）**：
   INV-1~INV-9 在 `config` 交付路径中实际执行，违规项写入 `result.invariantViolations` 并打印告警。
@@ -399,7 +399,7 @@ E:\CODE\mihomo-toolkit-next\
 ## 🛡️ 六、 开发质量守则
 
 任何针对本工程的 PR 或重构，必须满足以下五项硬性准则：
-1. **测试不破**：改动后执行 `npm test`，全量 203 个测试必须 100% 通过；
+1. **测试不破**：改动后执行 `npm test`，全量测试用例必须全部通过；
 2. **类型对齐**：若改动了公共接口、配置项或参数，必须同步修正 [`index.d.ts`](index.d.ts)，并通过 `npx --yes typescript --noEmit index.d.ts` 检查；
 3. **架构不劣化**：绝不允许在 `src/core/` 或 `src/strategy/` 中引入带有网络/文件副作用的调用；
 4. **交付契约不破**：`config` 交付形态的产物顶层键必须全部落在 `TOOLKIT_OUTPUT_KEYS` 白名单内。任何新增顶层字段都必须先登记进白名单，并补一条 `test/security-delivery-contract.test.js` 断言；
@@ -428,8 +428,8 @@ E:\CODE\mihomo-toolkit-next\
 1. **受保护域名清单为枚举式**（`src/data/security-baselines.js::PROTECTED_DOMAINS`）：无法穷尽长尾域名。非清单域名只要被订阅声明为节点 `server`，即可为其下发 hosts 映射。
    处置：用 `protectedDomains` **追加**自己的关键域名（只增不减，`?config=` 无法写入），或 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
 2. **SSRF 存在 TOCTOU 窗口**：校验与建连各做一次 DNS 解析，未做 IP pinning；对抗恶意 DNS 服务器时理论上可利用。
-3. **`?config=` 能力剥夺已全面升级为白名单收敛 (Fail-Closed)**：从历史的黑名单剔除全面升级为基于字段注册表 `trust: 'any'` 的显式白名单机制，仅允许明确放行的安全字段通过，任何未知字段或本地资源/特权字段（包括 `output`、`include`、`hosts`、DNS 控制面等）一律物理剥离，彻底消灭了未来内核新特权字段可能带来的潜在越权窗口。
-4. **构建缓存与静默预热体系**（`enableCache` / `cacheTtl` / `autoRefreshInterval` / `refreshCooldown`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。同时全面支持客户端通过 `?refresh=1`（或 `options.forceRefresh`）显式强制穿透拉取最新远端节点并同步覆写缓存；配置 `refreshCooldown` 冷却防爆盾杜绝高频刷新导致上游封禁；常驻服务支持 `autoRefreshInterval` 后台定时静默轮询与冷启动预热（`enableWarmup`），实现 0 延迟秒开与上游容灾保活。
+3. **`?config=` 能力剥夺已全面升级为白名单收敛 (Fail-Closed)**：从历史的黑名单剔除升级为基于字段注册表 `trust: 'any'` 的显式白名单机制，仅允许明确放行的安全字段通过，任何未知字段或本地资源/特权字段（包括 `output`、`include`、`hosts`、DNS 控制面等）一律物理剥离，有效收敛了未来内核新特权字段可能带来的潜在越权风险。
+4. **构建缓存与静默预热体系**（`enableCache` / `cacheTtl` / `autoRefreshInterval` / `refreshCooldown`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。同时全面支持客户端通过 `?refresh=1`（或 `options.forceRefresh`）显式强制穿透拉取最新远端节点并同步覆写缓存；配置 `refreshCooldown` 冷却防爆盾缓解高频刷新导致上游封禁的风险；常驻服务支持 `autoRefreshInterval` 后台定时静默轮询与冷启动预热（`enableWarmup`），实现低延迟响应与上游容灾保活。
 5. **配置面已完成一轮「字段清账」**：
    * 原 7 个**隐形字段**（`geositeRepo` / `geoipRepo` / `devServices` / `processDirectMac|Lin` / `processProxyMac|Lin`）
      与 4 个节点裂变字段已登记进注册表，并补齐 `index.d.ts` 类型与示例说明；
