@@ -144,6 +144,7 @@ test('🛡️ 远程剥夺清单 — 由信任级派生且不弱于历史清单'
   // 3. 本次新增的两个安全开关同样远程不可写
   assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('protectedDomains'));
   assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('exemptGroups'));
+  assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('output'), 'output 必须是远程剥夺字段');
 });
 
 test('🛡️ 远程配置 — 无法通过 ?config= 摘掉受保护域名或注入豁免组', () => {
@@ -159,6 +160,21 @@ test('🛡️ 远程配置 — 无法通过 ?config= 摘掉受保护域名或注
   assert.equal(r.config.dnsServer, undefined);
   assert.ok(r.strippedKeys.includes('protectedDomains'));
   assert.ok(r.strippedKeys.includes('exemptGroups'));
+});
+
+test('🛡️ 远程配置 — 白名单收敛拦截未知字段与本地资源 (Fail-Closed)', () => {
+  const r = hardenRemoteConfig({
+    subscriptions: [{ url: 'https://example.com/sub.yaml' }],
+    enableAI: true,
+    output: '/etc/cron.d/evil',
+    unknownAttackerField: 'danger-payload'
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.config.enableAI, true);
+  assert.equal(r.config.output, undefined);
+  assert.equal(r.config.unknownAttackerField, undefined);
+  assert.ok(r.strippedKeys.includes('output'));
+  assert.ok(r.strippedKeys.includes('unknownAttackerField'));
 });
 
 test('🔒 只读基线 — 受保护域名只能追加，不能被配置清空或替换', () => {

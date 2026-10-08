@@ -82,7 +82,8 @@ function runConfigPipeline({
   const fakeIpFilterMode = userConfig.fakeIpFilterNodes !== undefined ? userConfig.fakeIpFilterNodes : 'smart';
   const invariantViolations = checkInvariants(outputData.dns || {}, {
     proxies: outputData.proxies || [],
-    fakeIpFilterNodes: fakeIpFilterMode
+    fakeIpFilterNodes: fakeIpFilterMode,
+    dnsAllowNonLoopback: userConfig.dnsAllowNonLoopback === true
   });
   if (invariantViolations.length > 0 && logger) {
     logger.warn(

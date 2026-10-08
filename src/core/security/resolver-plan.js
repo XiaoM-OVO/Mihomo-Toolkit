@@ -95,8 +95,9 @@ function checkInvariants(dns = {}, options = {}) {
 
   // INV-8 监听面
   const listen = String(dns.listen || '');
-  if (listen && !/^(127\.0\.0\.1|\[::1\]|localhost):/.test(listen)) {
-    v.push({ id: 'INV-8', detail: `dns.listen 未绑定回环，可能成为开放解析器: ${listen}` });
+  const allowNonLoopback = options.dnsAllowNonLoopback === true || options.allowNonLoopback === true;
+  if (listen && !/^(127\.0\.0\.1|\[::1\]|localhost):/.test(listen) && !allowNonLoopback) {
+    v.push({ id: 'INV-8', detail: `dns.listen 未绑定回环且未显式开启 dnsAllowNonLoopback，可能成为开放解析器: ${listen}` });
   }
 
   // INV-9 prefer-h3 与 respect-rules 冲突

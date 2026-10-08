@@ -147,4 +147,10 @@ describe('✅ INV 不变式自检 (生产配置)', () => {
     assert.ok(ids.includes('INV-7'), 'INV-7 未检出');
     assert.ok(ids.includes('INV-8'), 'INV-8 未检出');
   });
+
+  test('INV-8 - 显式开启 dnsAllowNonLoopback 时不产生违规告警', () => {
+    const dns = { enable: true, listen: '0.0.0.0:1053' };
+    const violations = checkInvariants(dns, { dnsAllowNonLoopback: true });
+    assert.ok(!violations.some(v => v.id === 'INV-8'), '显式开启时不应报警 INV-8');
+  });
 });

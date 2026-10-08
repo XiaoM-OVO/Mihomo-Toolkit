@@ -140,6 +140,9 @@ function run(argv = process.argv) {
       if (reportTarget && (result.report || meta)) {
         const reportPath = path.resolve(process.cwd(), reportTarget);
         const extraReport = result.report || meta;
+        if (result.invariantViolations && typeof extraReport === 'object') {
+          extraReport.invariantViolations = result.invariantViolations;
+        }
         fs.writeFileSync(reportPath, JSON.stringify(extraReport, null, 2), 'utf-8');
         logger.info(`💾 审计报告已另存至: ${reportPath}`);
 
@@ -165,6 +168,15 @@ function run(argv = process.argv) {
       const isZeroNode = mode === 'config' && (!result.proxies || result.proxies.filter(p => !p.isSyntheticInfo).length === 0);
       const modeSuffix = isZeroNode ? ' (纯分流拦截模式)' : '';
       logger.success(`🎉 配置文件构建成功${modeSuffix} ➔ ${outPath}`);
+
+      if (result.invariantViolations && result.invariantViolations.length > 0 && logger.isLevelEnabled('warn')) {
+        const lines = [`⚠️ DNS 不变式自检发现 ${result.invariantViolations.length} 项违规:`];
+        result.invariantViolations.forEach((v, idx) => {
+          const isLast = idx === result.invariantViolations.length - 1;
+          lines.push(`${isLast ? '└──' : '├──'} [${v.id}] ${v.detail}`);
+        });
+        logger.warn(lines.join('\n'));
+      }
     } catch (err) {
       logger.error(`❌ 构建异常: ${err.message}`);
       process.exit(1);

@@ -31,6 +31,8 @@ function buildAuditReport(meta = {}, proxies = [], options = {}) {
     fissionCount: 0
   };
 
+  const invariantViolations = options.invariantViolations || meta?.invariantViolations || [];
+
   return {
     service: 'mihomo-toolkit',
     version: VERSION,
@@ -41,8 +43,10 @@ function buildAuditReport(meta = {}, proxies = [], options = {}) {
       cleanOutput: stats.outputCount,
       intercepted: stats.discardedCount,
       deduped: stats.dedupeCount,
-      fissionCreated: stats.fissionCount
+      fissionCreated: stats.fissionCount,
+      invariantViolations: invariantViolations.length
     },
+    invariantViolations,
     meta: meta || null
   };
 }

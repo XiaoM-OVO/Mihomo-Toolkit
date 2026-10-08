@@ -559,7 +559,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         } else {
           const icon = s.type === 'uri' ? '📌' : '🌐';
           const details = [];
-          if (s.filtered > 0) details.push(`过滤 ${s.filtered} 垃圾说明`);
+          if (s.filtered > 0) details.push(`过滤 ${s.filtered} 说明节点`);
           if (s.synth > 0) details.push(`合成 ${s.synth} 看板`);
           if (s.stripped > 0) details.push(`🛡️ 剥离 ${s.stripped} 越权`);
           const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
