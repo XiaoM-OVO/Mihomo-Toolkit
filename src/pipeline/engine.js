@@ -152,7 +152,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
 
   if (enableCache && cacheKey) {
     if (options.forceRefresh) {
-      logger.info('🔄 触发强制刷新 (forceRefresh=true)，绕过本地缓存直接抓取并构建');
+      logger.info('🔄 触发强制刷新 (forceRefresh=true)，绕过本地缓存直接拉取并构建');
     } else {
       const cached = profileCache.get(cacheKey, cacheTtlMs);
       if (cached) {
@@ -231,7 +231,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   if (stats) {
     const details = [];
     if (stats.dedupeCount > 0) details.push(`去重: ${stats.dedupeCount}`);
-    if (stats.discardedCount > 0) details.push(`丢弃: ${stats.discardedCount}`);
+    if (stats.discardedCount > 0) details.push(`过滤: ${stats.discardedCount}`);
     if (stats.fissionCount > 0) details.push(`裂变: ${stats.fissionCount}`);
     const detailStr = details.length > 0 ? ` (${details.join(' | ')})` : '';
     cleanLogger.info(`🧹 节点清洗完成: ${stats.total} 输入 ➔ ${cleanProxies.length} 有效${detailStr}`);

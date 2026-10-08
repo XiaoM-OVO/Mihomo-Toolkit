@@ -130,7 +130,7 @@ function filterRawInfoNodes(proxies = [], logger) {
   return proxies.filter(p => {
     if (!p || !p.name) return false;
     if (REGEX_INFO_NODES.test(p.name)) {
-      if (logger) logger.debug(`🗑️ [过滤信息] 「${p.name}」`);
+      if (logger) logger.debug(`🗑️ [说明过滤] 「${p.name}」`);
       return false;
     }
     return true;

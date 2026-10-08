@@ -86,7 +86,7 @@ function run(argv = process.argv) {
 
   const VALID_MODES = ['config', 'nodes', 'report'];
   if (!VALID_MODES.includes(mode)) {
-    logger.error(`Invalid mode "${options.mode}". Must be one of: ${VALID_MODES.join(', ')}`);
+    logger.error(`❌ 非法交付模式「${options.mode}」，可选模式: ${VALID_MODES.join(', ')}`);
     process.exit(1);
   }
 
@@ -121,12 +121,16 @@ function run(argv = process.argv) {
         logger.success(`🎉 审计报告已输出至: ${outPath}`);
 
         if (meta?.stats && logger.isLevelEnabled('info')) {
-          console.log(`\n=== 📊 节点清洗与健康审计 ===`);
-          console.log(`总节点数: ${meta.stats.total} | 有效输出: ${meta.stats.outputCount}`);
-          console.log(`去重剔除: ${meta.stats.dedupeCount} | 广告/无效: ${meta.stats.discardedCount}`);
-          console.log(`未知地区: ${meta.stats.unknownCount} | 信息节点: ${meta.stats.infoCount}`);
-          if (meta.stats.fissionCount > 0) console.log(`🧬 裂变增殖: 产生了 ${meta.stats.fissionCount} 个 IP 节点`);
-          console.log(`=============================\n`);
+          const lines = [
+            '📊 节点清洗与健康审计概览:',
+            `├── 节点规模: 总计 ${meta.stats.total} ➔ 有效交付 ${meta.stats.outputCount}`,
+            `├── 过滤剔除: 去重 ${meta.stats.dedupeCount} | 广告/无效 ${meta.stats.discardedCount}`,
+            `└── 属性标记: 未知地区 ${meta.stats.unknownCount} | 说明节点 ${meta.stats.infoCount}`
+          ];
+          if (meta.stats.fissionCount > 0) {
+            lines.splice(lines.length - 1, 0, `├── 🧬 裂变增殖: 产生 ${meta.stats.fissionCount} 个 IP 节点`);
+          }
+          logger.info(lines.join('\n'));
         }
         return;
       }
@@ -140,12 +144,16 @@ function run(argv = process.argv) {
         logger.info(`💾 审计报告已另存至: ${reportPath}`);
 
         if (meta?.stats && logger.isLevelEnabled('info')) {
-          console.log(`\n=== 📊 数据清洗统计 ===`);
-          console.log(`总节点数: ${meta.stats.total} | 最终输出: ${meta.stats.outputCount}`);
-          console.log(`去重剔除: ${meta.stats.dedupeCount} | 广告/无效: ${meta.stats.discardedCount}`);
-          console.log(`未知地区: ${meta.stats.unknownCount} | 信息节点: ${meta.stats.infoCount}`);
-          if (meta.stats.fissionCount > 0) console.log(`🧬 裂变增殖: 产生了 ${meta.stats.fissionCount} 个 IP 克隆节点`);
-          console.log(`=======================\n`);
+          const lines = [
+            '📊 数据清洗统计概览:',
+            `├── 节点规模: 总计 ${meta.stats.total} ➔ 最终输出 ${meta.stats.outputCount}`,
+            `├── 过滤剔除: 去重 ${meta.stats.dedupeCount} | 广告/无效 ${meta.stats.discardedCount}`,
+            `└── 属性标记: 未知地区 ${meta.stats.unknownCount} | 说明节点 ${meta.stats.infoCount}`
+          ];
+          if (meta.stats.fissionCount > 0) {
+            lines.splice(lines.length - 1, 0, `├── 🧬 裂变增殖: 产生 ${meta.stats.fissionCount} 个 IP 克隆节点`);
+          }
+          logger.info(lines.join('\n'));
         }
       }
 
@@ -158,7 +166,7 @@ function run(argv = process.argv) {
       const modeSuffix = isZeroNode ? ' (纯分流拦截模式)' : '';
       logger.success(`🎉 配置文件构建成功${modeSuffix} ➔ ${outPath}`);
     } catch (err) {
-      logger.error(`构建异常:`, err.message);
+      logger.error(`❌ 构建异常: ${err.message}`);
       process.exit(1);
     }
   })();

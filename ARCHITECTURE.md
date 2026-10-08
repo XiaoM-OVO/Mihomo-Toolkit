@@ -411,7 +411,7 @@ E:\CODE\mihomo-toolkit-next\
 
 ---
 
-## 📌 七、 信任边界与残余风险（如实声明）
+## 📌 七、 信任边界与残余风险
 
 ### 信任分级
 
@@ -424,14 +424,14 @@ E:\CODE\mihomo-toolkit-next\
 
 `buildProfile(userConfig, options)` 的 `userConfig` 按契约视为**可信**输入；SDK 调用方若需处理来自网络或他人分享的配置，必须先调用 `hardenRemoteConfig()`。
 
-### 残余风险清单（设计上已知，不做过度承诺）
+### 残余风险清单
 
 1. **受保护域名清单为枚举式**（`src/data/security-baselines.js::PROTECTED_DOMAINS`）：无法穷尽长尾域名。非清单域名只要被订阅声明为节点 `server`，即可为其下发 hosts 映射。
    处置：用 `protectedDomains` **追加**自己的关键域名（只增不减，`?config=` 无法写入），或 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
 2. **SSRF 存在 TOCTOU 窗口**：校验与建连各做一次 DNS 解析，未做 IP pinning；对抗恶意 DNS 服务器时理论上可利用。
 3. **`?config=` 能力剥夺为黑名单式**：未来内核新增的控制面字段不会自动被剥夺；公开部署应使用 `enableUrlParams: false` 或强制 `authToken`。
 4. **构建缓存与静默预热体系**（`enableCache` / `cacheTtl` / `autoRefreshInterval` / `refreshCooldown`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。同时全面支持客户端通过 `?refresh=1`（或 `options.forceRefresh`）显式强制穿透拉取最新远端节点并同步覆写缓存；配置 `refreshCooldown` 冷却防爆盾杜绝高频刷新导致上游封禁；常驻服务支持 `autoRefreshInterval` 后台定时静默轮询与冷启动预热（`enableWarmup`），实现 0 延迟秒开与上游容灾保活。
-5. **配置面已完成一轮「字段清账」**（本轮）：
+5. **配置面已完成一轮「字段清账」**：
    * 原 7 个**隐形字段**（`geositeRepo` / `geoipRepo` / `devServices` / `processDirectMac|Lin` / `processProxyMac|Lin`）
      与 4 个节点裂变字段已登记进注册表，并补齐 `index.d.ts` 类型与示例说明；
    * 原 20 个**空承诺**中的大部分（`serverHost` / `enableIpEnrich` 等 7 个 ipEnrich 字段 /

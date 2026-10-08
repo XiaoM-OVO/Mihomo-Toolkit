@@ -29,7 +29,7 @@ function syncChineseConvert(outputData, userConfig = {}, logger) {
   if (!canConvert || !outputData) return outputData;
 
   const modeLabel = userConfig.chineseConvertMode === 's2t' ? '繁体' : '简体';
-  if (logger) logger.log(`🔤 简繁转换: 输出 ${modeLabel}`);
+  if (logger) logger.info(`🔤 简繁转换: 输出 ${modeLabel}`);
 
   const convertFn = userConfig.chineseConvertMode === 's2t'
     ? chineseConvert.toTraditional

@@ -298,7 +298,7 @@ async function fetchNodes(url, options = {}) {
         if (err && err.retryable === false) throw err;
         if (i < attempts - 1) {
           const via = (p && proxyUrl) ? ` (经代理 ${proxyUrl.replace('http://', '')})` : '';
-          if (logger) logger.warn(`订阅抓取失败，第 ${i + 1}/${attempts - 1} 次重试${via}: ${err.message}`);
+          if (logger) logger.warn(`🔄 订阅拉取失败，第 ${i + 1}/${attempts - 1} 次重试${via}: ${err.message}`);
           await new Promise(r => setTimeout(r, 500 * (i + 1)));
         }
       }
