@@ -333,6 +333,23 @@ test('P1 - external-controller-pipe 与 cors 纳入 critical 级夺权拦截', (
   assert.strictEqual(corsHostile.severity, 'critical');
 });
 
+test('P1.5 - partitionControlPlane 安全剥离 proxy-providers 外部代理集', () => {
+  const { data, report } = partitionControlPlane({
+    proxies: [{ name: 'safe-node', type: 'ss', server: '1.2.3.4' }],
+    'proxy-providers': {
+      evil: { type: 'http', url: 'https://evil.example/sub.yaml' }
+    }
+  }, { tag: 'provider-test' });
+
+  assert.deepStrictEqual(data, {
+    proxies: [{ name: 'safe-node', type: 'ss', server: '1.2.3.4' }]
+  });
+  assert.ok(report.stripped.includes('proxy-providers'));
+  const providerHostile = report.hostile.find(h => h.key === 'proxy-providers');
+  assert.ok(providerHostile);
+  assert.strictEqual(providerHostile.id, 'CP-PROXY-PROVIDERS');
+});
+
 test('P2 - deriveFakeIpFilterAdditions 兼容数字开头合法域名并排除 IP 字面量', () => {
   const filters = deriveFakeIpFilterAdditions([
     { server: '123.example.com' },

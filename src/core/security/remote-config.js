@@ -44,10 +44,10 @@ const ALLOWED_SET = new Set(REMOTE_CONFIG_ALLOWED_KEYS);
  *          ok=false 表示该配置引用了不被允许的资源（如本地文件路径），调用方应整体拒绝
  */
 function hardenRemoteConfig(rawConfig) {
-  const config = (rawConfig && typeof rawConfig === 'object') ? rawConfig : {};
+  const input = (rawConfig && typeof rawConfig === 'object') ? rawConfig : {};
 
   // 订阅源只允许 http(s)：否则可把服务器上的任意本地文件当作订阅读取并回显（任意文件读取）
-  const subs = Array.isArray(config.subscriptions) ? config.subscriptions : [];
+  const subs = Array.isArray(input.subscriptions) ? input.subscriptions : [];
   const illegal = subs.find(
     s => s && typeof s === 'object' && s.url && !/^https?:\/\//i.test(String(s.url))
   );
@@ -55,20 +55,22 @@ function hardenRemoteConfig(rawConfig) {
     return {
       ok: false,
       reason: 'remote config may only reference http(s) subscription URLs',
-      config,
+      config: {},
       strippedKeys: []
     };
   }
 
+  const cleanConfig = {};
   const strippedKeys = [];
-  for (const key of Object.keys(config)) {
-    if (!ALLOWED_SET.has(key)) {
-      delete config[key];
+  for (const [key, value] of Object.entries(input)) {
+    if (ALLOWED_SET.has(key)) {
+      cleanConfig[key] = value;
+    } else {
       strippedKeys.push(key);
     }
   }
 
-  return { ok: true, config, strippedKeys };
+  return { ok: true, config: cleanConfig, strippedKeys };
 }
 
 module.exports = {

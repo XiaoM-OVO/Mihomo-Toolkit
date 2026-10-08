@@ -228,7 +228,7 @@
      *库契约：`buildProfile(userConfig)` 的 `userConfig` 视为可信输入；处理不可信配置的调用方必须先经 `hardenRemoteConfig()` 降级。*
 
   2. **控制面净化审计 + 节点资产闭包（`control-plane.js::partitionControlPlane` + `io/sub-processor.js::applySubscriptionGuards`）**
-     字段按「数据面（`proxies` / `proxy-providers`）｜控制面｜攻击特征签名｜未登记字段（fail-closed）」分类并审计；
+     字段按「数据面（仅静态 `proxies`）｜控制面与外部动态源（如 `proxy-providers` 剥离）｜攻击特征签名｜未登记字段（fail-closed）」分类并审计，阻断未受控动态节点源进入流水线中间态；
      多订阅与单 URL/本地文件**两条输入路径共用同一网关**，避免净化逻辑分叉。
      同时执行 **Dependency Tracing**：只收编指向自身节点资产域的 Hosts / Nameserver-Policy / Fake-IP-Filter，
      严格排除 `sni`/`servername` 伪装域名，并拒绝受保护公网域名与内网重定向。
@@ -237,7 +237,7 @@
   3. **交付契约白名单收口（`control-plane.js::resetToolkitOutputKeys` / `enforceOutputContract`）**
      产物顶层键只允许工具自有的 15 个键（`proxies`/`proxy-groups`/`rules`/`rule-providers`/`dns`/`hosts`/`ipv6`/`tun`/`sniffer`/`profile` 及 4 个内核性能键）。
      生成前重置 + 交付前收口，任何路径遗漏净化都会被这一层兜住（fail-closed）。
-     *注：`proxy-providers` 刻意不在白名单内 —— 它会让内核在运行时从外部 URL 拉取节点，属于不可审计的运行时数据面来源。*
+     *注：`proxy-providers` 会让内核在运行时从外部 URL 拉取节点，属于不可审计的运行时动态数据面，已在控制面网关处安全剥离且不参与交付。*
 
 * **Bootstrap 破死锁与 Fake-IP 避环智能聚合 (`dns-sanitizer.js` + `strategy/dns.js`)**：
   规范 `default-nameserver` 与 `proxy-server-nameserver` 为纯 IP 引导；从节点池动态推导节点服务器域名并进行**智能主域泛化聚合（如折叠为 `+.lxyun.xyz`）**注入 `fake-ip-filter`，防范 Fake-IP 虚拟自环，同时规避海量子域名膨胀与伪装 SNI 污染。

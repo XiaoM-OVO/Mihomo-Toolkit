@@ -19,8 +19,7 @@
 
 /** 数据面：允许从订阅合并的字段（仅限节点集合语义） */
 const DATA_PLANE_KEYS = new Set([
-  'proxies',
-  'proxy-providers'
+  'proxies'
 ]);
 
 /** 控制面：绝对禁止从外部订阅透传的字段 */
@@ -34,6 +33,7 @@ const CONTROL_PLANE_KEYS = new Set([
   'sub-rules',
   'rule-providers',
   'proxy-groups',
+  'proxy-providers',
   'tunnels',
   'listeners',
   'interface-name',
@@ -108,6 +108,7 @@ const HOSTILE_SIGNATURES = [
   { re: /^hosts$/i, id: 'CP-HOSTS', severity: 'high', note: '订阅试图写入 hosts 静态映射' },
   { re: /^tun$/i, id: 'CP-TUN', severity: 'high', note: '订阅试图改写 TUN 接管参数' },
   { re: /^(rules|sub-rules|rule-providers)$/i, id: 'CP-RULES', severity: 'high', note: '订阅试图改写路由规则' },
+  { re: /^proxy-providers$/i, id: 'CP-PROXY-PROVIDERS', severity: 'high', note: '订阅试图注入外部代理集（导致运行时从外部 URL 拉取动态节点，逃逸静态沙箱）' },
   { re: /^(proxy-groups)$/i, id: 'CP-GROUPS', severity: 'high', note: '订阅试图改写策略组（影响出口选择）' },
   { re: /^script$/i, id: 'CP-SCRIPT', severity: 'critical', note: '订阅试图注入脚本执行' }
 ];
@@ -200,11 +201,14 @@ const TOOLKIT_OUTPUT_KEYS = new Set([
 ]);
 
 /**
- * 生成前重置：删除输入骨架里全部工具自有键（`proxies` 除外，它由清洗流水线重建）。
+ * 生成前重置：删除输入骨架里全部工具自有键（`proxies` 除外）。
  *
  * 目的：某些内核层覆写是可开关的（如 overwriteTun=false、overwriteDns=false），
  * 若只做「生成后白名单」，被关闭的覆写会放任输入骨架里的同名键原样存活。
  * 先在生成前清空，即可保证「工具自有键要么由本工具生成，要么不存在」。
+ *
+ * 注：`proxies` 作为数据面载体在此处跳过删除，是因为它在流水线下一步紧接着会被
+ * `cleanProxies` 显式重新装配与赋值；若流水线由于异常中断，产物交付前契约亦会阻断。
  *
  * @param {object} config 待清理的配置骨架（原地修改）
  * @returns {string[]} 被清除的键
