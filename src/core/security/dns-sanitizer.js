@@ -16,7 +16,7 @@
 
 const ipaddr = require('ipaddr.js');
 const { isPrivateIp, isPrivateIPv6 } = require('../shared/ip');
-const { PROTECTED_DOMAINS, normalizeDomainList } = require('../../data');
+const { PROTECTED_DOMAINS, normalizeDomainList, effectiveProtectedDomains } = require('../../data');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 基础地址工具
@@ -231,9 +231,9 @@ function analyzeModifiers(modifiers = []) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ROLES = {
-  DEFAULT: 'default',   // default-nameserver：仅纯 IP
+  DEFAULT: 'default',   // default-nameserver：仅纯 IP (或纯 IP:port)
   BOOTSTRAP: 'bootstrap', // 同 default 语义（别名）
-  PROXY_SERVER: 'proxy-server', // 节点解析：允许加密 DNS，但必须 IP 字面量或受信域名
+  PROXY_SERVER: 'proxy-server', // 节点解析：允许加密 DNS（DoH/DoT/DoQ），但必须为 IP 字面量（防循环依赖与死锁）
   DIRECT: 'direct',     // 直连解析：允许域名 DoH
   NAMESERVER: 'nameserver' // 主解析：允许域名 DoH
 };
@@ -404,8 +404,7 @@ function sanitizeDnsServerList(list, options = {}) {
  * @param {object} hostsMap 形如 { 'github.com': ['1.1.1.1'], '+.example.com': '1.2.3.4' }
  * @param {object} options
  * @param {Set<string>|string[]} [options.protectedDomains] 禁止被 hosts 覆盖的高危域名后缀。
- *        本函数是纯原语：**传什么就用什么**（默认取只读基线），不与基线做并集；
- *        「基线 ∪ 用户追加」的合并属于编排层职责，见 `effectiveProtectedDomains()`。
+ *        本函数具备自持基线能力（始终与只读基线并集），即使传入空数组也不会 fail-open。
  * @param {string[]} [options.internalCidrs] 视为内网的网段
  * @param {boolean} [options.allowInternal=false] 是否允许内网映射（仅用户本地声明）
  * @returns {{ hosts: object, findings: Array<object>, dropped: Array<object> }}
@@ -425,9 +424,9 @@ function sanitizeHosts(hostsMap, options = {}) {
 
   if (!hostsMap || typeof hostsMap !== 'object') return { hosts, findings, dropped };
   const trustedSet = new Set((Array.isArray(userTrustedDomains) ? userTrustedDomains : []).map(d => String(d).toLowerCase().trim()));
-  // 规范化受保护域名：既支持只读基线的 Set，也支持配置侧传来的原始数组（含 `+.`、大小写、尾随点等写法）
+  // 规范化受保护域名：安全原语自持基线（始终与只读基线取并集，防止空数组导致 fail-open）
   const protectedSet = new Set(
-    normalizeDomainList(Array.isArray(protectedDomains) ? protectedDomains : [...(protectedDomains || [])])
+    effectiveProtectedDomains(protectedDomains)
   );
 
   for (const [rawKey, rawValue] of Object.entries(hostsMap)) {

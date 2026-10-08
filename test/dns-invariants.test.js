@@ -153,4 +153,10 @@ describe('✅ INV 不变式自检 (生产配置)', () => {
     const violations = checkInvariants(dns, { dnsAllowNonLoopback: true });
     assert.ok(!violations.some(v => v.id === 'INV-8'), '显式开启时不应报警 INV-8');
   });
+
+  test('INV-1 - 引导层严格纯 IP，包含 system 关键字应触发违规', () => {
+    const dns = { enable: true, 'default-nameserver': ['system', '223.5.5.5'] };
+    const violations = checkInvariants(dns);
+    assert.ok(violations.some(v => v.id === 'INV-1'), 'INV-1 必须拦截 system 关键字');
+  });
 });

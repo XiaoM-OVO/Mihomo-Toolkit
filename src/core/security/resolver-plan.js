@@ -38,10 +38,10 @@ function checkInvariants(dns = {}, options = {}) {
   const v = [];
   const fakeRanges = [dns['fake-ip-range'] || '198.18.0.1/16'];
 
-  // INV-1 引导层纯 IP
+  // INV-1 引导层纯 IP (严格纯 IP 字面量，禁止域名或系统特殊解析器以防死锁/未定义行为)
   for (const s of asArray(dns['default-nameserver'])) {
     const p = parseDnsServer(s);
-    if ((p.kind !== 'ip' && !(p.kind === 'special' && s === 'system')) || (p.scheme && p.scheme !== 'plain')) {
+    if (p.kind !== 'ip' || (p.scheme && p.scheme !== 'plain')) {
       v.push({ id: 'INV-1', detail: `default-nameserver 必须为纯 IP 字面量，发现非纯 IP: ${s}` });
     }
   }

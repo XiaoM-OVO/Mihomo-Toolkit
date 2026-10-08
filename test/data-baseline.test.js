@@ -177,6 +177,21 @@ test('🛡️ 远程配置 — 白名单收敛拦截未知字段与本地资源 
   assert.ok(r.strippedKeys.includes('unknownAttackerField'));
 });
 
+test('🛡️ 远程配置 — hardenRemoteConfig 严格纯函数，不得原地修改入参对象', () => {
+  const raw = {
+    subscriptions: [{ url: 'https://example.com/sub.yaml' }],
+    enableAI: true,
+    output: '/etc/cron.d/evil',
+    unknownKey: 123
+  };
+  const originalKeys = Object.keys(raw).sort();
+  const r = hardenRemoteConfig(raw);
+  assert.equal(r.ok, true);
+  assert.deepStrictEqual(Object.keys(raw).sort(), originalKeys, '入参对象键被原地修改');
+  assert.equal(raw.output, '/etc/cron.d/evil', '入参对象属性被删除');
+  assert.notStrictEqual(r.config, raw, '返回值应为新构建对象');
+});
+
 test('🔒 只读基线 — 受保护域名只能追加，不能被配置清空或替换', () => {
   // 空数组：不得退化成「无受保护域名」
   const cleared = resolveConfig({ protectedDomains: [] });
@@ -253,6 +268,15 @@ test('🔒 判定点自持基线 — 传入空受保护域名清单也不会 fai
     protectedDomains: ['evil.example']
   });
   assert.deepStrictEqual(control._assetHosts, { 'good.example': '6.6.6.6' });
+
+  // 原语层直接调用测试：即便直接调用 sanitizeHosts 且显式传入 protectedDomains: []，原语层自持基线也能阻断
+  const directSanitize = sanitizeHosts(
+    { 'github.com': '6.6.6.6', 'paypal.com': '7.7.7.7', 'safe.org': '1.2.3.4' },
+    { protectedDomains: [] }
+  );
+  assert.equal(directSanitize.hosts['github.com'], undefined, '原语层显式传空数组不得绕过 github.com 保护');
+  assert.equal(directSanitize.hosts['paypal.com'], undefined, '原语层显式传空数组不得绕过 paypal.com 保护');
+  assert.equal(directSanitize.hosts['safe.org'], '1.2.3.4', '正常域名仍应被放行');
 });
 
 test('🔒 受保护域名 — 用户追加后立即生效（含子域后缀匹配）', () => {
