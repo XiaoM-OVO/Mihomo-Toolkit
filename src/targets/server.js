@@ -111,6 +111,7 @@ function startServer(options = {}) {
     ? Number(localConfig.maxConcurrentBuilds)
     : 8;
   let activeBuilds = 0;
+  const lastRefreshTimes = new Map();
 
   const server = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
@@ -159,6 +160,8 @@ function startServer(options = {}) {
         if (reqUrl.searchParams.get('config')) safeParams.push(`config=${redactUrl(reqUrl.searchParams.get('config'))}`);
         if (reqUrl.searchParams.has('token')) safeParams.push('token=***');
         if (reqUrl.searchParams.has('debug')) safeParams.push(`debug=${reqUrl.searchParams.get('debug')}`);
+        if (reqUrl.searchParams.has('refresh')) safeParams.push(`refresh=${reqUrl.searchParams.get('refresh')}`);
+        else if (reqUrl.searchParams.has('force')) safeParams.push(`force=${reqUrl.searchParams.get('force')}`);
         if (safeParams.length > 0) safeUrl += `?${safeParams.join('&')}`;
 
         serverLogger.info(`Received request for ${safeUrl} from ${clientIp}`);
@@ -258,12 +261,40 @@ function startServer(options = {}) {
         }
 
         const debugMode = reqUrl.searchParams.get('debug') === '1';
+        const isRefreshParam = reqUrl.searchParams.get('refresh') === '1' || reqUrl.searchParams.get('force') === '1';
+        const refreshCooldownSec = typeof localConfig.refreshCooldown === 'number'
+          ? Math.max(0, localConfig.refreshCooldown)
+          : 15;
+
+        let forceRefresh = false;
+        if (isRefreshParam) {
+          const refreshKey = configUrl || (subUrls.length > 0 ? subUrls.join(',') : 'local');
+          const now = Date.now();
+          const lastTime = lastRefreshTimes.get(refreshKey) || 0;
+          const elapsedSec = (now - lastTime) / 1000;
+
+          if (refreshCooldownSec > 0 && elapsedSec < refreshCooldownSec) {
+            const remainingSec = Math.ceil(refreshCooldownSec - elapsedSec);
+            serverLogger.info(`⏳ 频繁刷新拦截: 处于防爆盾冷却期中 (剩余 ${remainingSec}s)，直接响应最新缓存 <- ${clientIp}`);
+            forceRefresh = false;
+          } else {
+            lastRefreshTimes.set(refreshKey, now);
+            if (lastRefreshTimes.size > 200) {
+              lastRefreshTimes.clear();
+              lastRefreshTimes.set(refreshKey, now);
+            }
+            forceRefresh = true;
+            serverLogger.info(`🔄 收到强制刷新请求 (?refresh=1)，绕过本地缓存向远端重新拉取 <- ${clientIp}`);
+          }
+        }
+
         const outputMode = normalizeOutputMode(reqUrl.searchParams.get('mode') || userConfig.outputMode);
         const buildLogger = serverLogger.child('Server');
         const result = await buildProfile(userConfig, {
           production: true,
           debug: debugMode,
           mode: outputMode,
+          forceRefresh,
           logger: buildLogger
         });
         const { yamlStr, userInfo } = result;
@@ -310,6 +341,46 @@ function startServer(options = {}) {
           `   如需开放参数化订阅转换，请设置 AUTH_TOKEN 环境变量或 config.yaml 的 authToken。`
         );
       }
+    }
+
+    const hasLocalSubs = Array.isArray(localConfig.subscriptions) && localConfig.subscriptions.length > 0;
+    const enableWarmup = options.enableWarmup ?? (localConfig.enableWarmup === true || (Number(localConfig.autoRefreshInterval) > 0 && localConfig.enableWarmup !== false));
+    if (enableWarmup && hasLocalSubs) {
+      setImmediate(async () => {
+        try {
+          serverLogger.info('🔥 服务已启动，正在后台静默预热初始订阅缓存...');
+          const warmLogger = serverLogger.child('Warmup');
+          await buildProfile(localConfig, {
+            production: true,
+            forceRefresh: true,
+            logger: warmLogger
+          });
+          serverLogger.info('✨ 初始缓存预热完成');
+        } catch (err) {
+          serverLogger.warn(`⚠️ 初始缓存预热失败 (不影响服务运行): ${err.message}`);
+        }
+      });
+    }
+
+    const autoRefreshIntervalSec = Number(options.autoRefreshInterval ?? localConfig.autoRefreshInterval) || 0;
+    if (autoRefreshIntervalSec > 0 && hasLocalSubs) {
+      serverLogger.info(`⏰ 已启用后台自动轮询更新 (每 ${autoRefreshIntervalSec}s 静默拉取一次)`);
+      const intervalId = setInterval(async () => {
+        try {
+          serverLogger.info(`⏰ 触发后台定时静默更新 (每 ${autoRefreshIntervalSec}s)...`);
+          const cronLogger = serverLogger.child('Cron');
+          await buildProfile(localConfig, {
+            production: true,
+            forceRefresh: true,
+            logger: cronLogger
+          });
+          serverLogger.info('💾 后台定时更新完成，新缓存已就绪');
+        } catch (err) {
+          serverLogger.warn(`⚠️ 后台定时更新异常 (保留当前有效缓存): ${err.message}`);
+        }
+      }, autoRefreshIntervalSec * 1000);
+      intervalId.unref?.();
+      server.on('close', () => clearInterval(intervalId));
     }
   });
 

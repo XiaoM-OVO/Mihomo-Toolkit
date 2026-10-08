@@ -268,4 +268,69 @@ describe('🌐 常驻服务安全姿态 (Server Security Posture)', () => {
     assert.equal(getClientIp({ headers: {}, socket: { remoteAddress: '::ffff:192.0.2.1' } }), '192.0.2.1');
     assert.equal(getClientIp({ headers: {}, socket: { remoteAddress: '127.0.0.1' } }), '127.0.0.1');
   });
+
+  test('?refresh=1 绕过缓存并同步更新，防爆盾在冷却期内拦截频繁请求', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-srv-'));
+    const subFile = path.join(dir, 'nodes.yaml');
+    fs.writeFileSync(subFile, NODE_SUB, 'utf-8');
+    const configFile = path.join(dir, 'config.yaml');
+    fs.writeFileSync(configFile, `logLevel: silent\nenableNodeRename: false\nrefreshCooldown: 1\nenableWarmup: false\nsubscriptions:\n  - url: ${JSON.stringify(subFile)}\n    tag: LOCAL\n`, 'utf-8');
+
+    const { server, port } = await startTestServer({ host: '127.0.0.1', configPath: configFile });
+    try {
+      // 1. 首次请求：生成并写入缓存
+      const res1 = await get(port, '/sub');
+      assert.equal(res1.status, 200);
+      assert.match(res1.body, /香港 01/);
+
+      // 2. 修改底层节点文件
+      const UPDATED_SUB = NODE_SUB.replace('香港 01', '香港 02 (Updated)');
+      fs.writeFileSync(subFile, UPDATED_SUB, 'utf-8');
+
+      // 3. 常规请求（未带 ?refresh=1）：命中内存缓存，仍返回旧版本香港 01
+      const res2 = await get(port, '/sub');
+      assert.equal(res2.status, 200);
+      assert.match(res2.body, /香港 01/);
+      assert.ok(!res2.body.includes('香港 02'));
+
+      // 4. 显式传入 ?refresh=1：绕过缓存并构建最新数据
+      const res3 = await get(port, '/sub?refresh=1');
+      assert.equal(res3.status, 200);
+      assert.match(res3.body, /香港 02/);
+
+      // 5. 立即再次传入 ?refresh=1（触发 1s 防爆盾冷却）：直接返回刚才刷新的最新缓存
+      fs.writeFileSync(subFile, NODE_SUB.replace('香港 01', '香港 03 (Spam)'), 'utf-8');
+      const res4 = await get(port, '/sub?refresh=1');
+      assert.equal(res4.status, 200);
+      assert.match(res4.body, /香港 02/);
+      assert.ok(!res4.body.includes('香港 03'));
+
+      // 6. 等待冷却期过去 (>1.1s)
+      await new Promise(r => setTimeout(r, 1100));
+      const res5 = await get(port, '/sub?refresh=1');
+      assert.equal(res5.status, 200);
+      assert.match(res5.body, /香港 03/);
+    } finally {
+      server.close();
+      if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('后台定时静默预热 (autoRefreshInterval) 正确挂载与安全关闭', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-srv-'));
+    const subFile = path.join(dir, 'nodes.yaml');
+    fs.writeFileSync(subFile, NODE_SUB, 'utf-8');
+    const configFile = path.join(dir, 'config.yaml');
+    fs.writeFileSync(configFile, `logLevel: silent\nenableWarmup: false\nautoRefreshInterval: 3600\nsubscriptions:\n  - url: ${JSON.stringify(subFile)}\n    tag: LOCAL\n`, 'utf-8');
+
+    const { server } = await startTestServer({ host: '127.0.0.1', configPath: configFile });
+    try {
+      assert.equal(server.listening, true);
+    } finally {
+      server.close();
+      if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
