@@ -1,7 +1,7 @@
 /**
  * 节点清洗流水线 (nodes pipeline)
  *
- * 专注节点过滤、去重、属性提取、重命名与垃圾节点拦截，适用于 Sub-Store Operator 及轻量清洗场景。
+ * 专注节点过滤、去重、属性提取、重命名与无效/说明节点拦截，适用于 Sub-Store Operator 及轻量清洗场景。
  */
 
 const { resolveConfig } = require('../config');
@@ -50,7 +50,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   const regionDefs = getEnhancedRegionDefs();
   const classified = currentProxies.map(p => classifyNode(p, config, { regionDefs }));
 
-  // 4. 过滤被阻断或垃圾节点
+  // 4. 过滤被阻断或无效/说明节点
   let discardedCount = 0;
   let infoCount = 0;
   let unknownCount = 0;

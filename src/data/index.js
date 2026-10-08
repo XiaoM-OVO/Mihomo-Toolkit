@@ -35,6 +35,7 @@ const {
   ADDITIVE_FIELDS,
   DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,
+  REMOTE_ALLOWED_FIELDS,
   buildDefaultConfig
 } = require('./field-registry');
 
@@ -45,6 +46,7 @@ module.exports = {
   ADDITIVE_FIELDS,
   DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,
+  REMOTE_ALLOWED_FIELDS,
   buildDefaultConfig,
   // 只读安全基线
   PROTECTED_DOMAINS,

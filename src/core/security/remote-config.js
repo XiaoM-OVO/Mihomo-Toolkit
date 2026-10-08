@@ -17,22 +17,27 @@
 
 'use strict';
 
-const { REMOTE_DENIED_FIELDS } = require('../../data');
+const { REMOTE_DENIED_FIELDS, REMOTE_ALLOWED_FIELDS } = require('../../data');
 
 /**
  * 不可信配置中被禁止的字段（能力剥夺清单）。
  *
  * ⚠️ 本清单**由只读数据层派生**，不再手工维护：`src/data/field-registry.js` 中
- * 每个声明 `trust: 'local'` 的字段都会自动进入此处。新增安全开关时只需在注册表里标注信任级，
- * 不存在「忘了同步清单 ⇒ 开关悄悄变成远程可写」的漂移空间。
- *
- * 部署方如需自定义 DNS 面，请写在服务端本地 config.yaml（可信来源）中，
- * 或通过本工具提供的显式配置项声明。
+ * 每个声明 `trust: 'local'` 的字段都会自动进入此处。
  */
 const REMOTE_CONFIG_FORBIDDEN_KEYS = [...REMOTE_DENIED_FIELDS];
 
 /**
- * 对不可信远程配置执行能力剥夺。
+ * 不可信配置中允许保留的字段（白名单放行清单）。
+ *
+ * ⚠️ 基于 Fail-Closed 原则：仅允许注册表中声明 `trust: 'any'` 的字段通过。
+ * 任何声明为 `trust: 'local'` 的字段或未登记的未知字段一律安全剥离。
+ */
+const REMOTE_CONFIG_ALLOWED_KEYS = [...REMOTE_ALLOWED_FIELDS];
+const ALLOWED_SET = new Set(REMOTE_CONFIG_ALLOWED_KEYS);
+
+/**
+ * 对不可信远程配置执行能力剥夺（基于白名单收敛 fail-closed）。
  *
  * @param {object} rawConfig 解析后的远程配置对象
  * @returns {{ ok: boolean, reason?: string, config: object, strippedKeys: string[] }}
@@ -56,8 +61,8 @@ function hardenRemoteConfig(rawConfig) {
   }
 
   const strippedKeys = [];
-  for (const key of REMOTE_CONFIG_FORBIDDEN_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(config, key)) {
+  for (const key of Object.keys(config)) {
+    if (!ALLOWED_SET.has(key)) {
       delete config[key];
       strippedKeys.push(key);
     }
@@ -68,5 +73,6 @@ function hardenRemoteConfig(rawConfig) {
 
 module.exports = {
   REMOTE_CONFIG_FORBIDDEN_KEYS,
+  REMOTE_CONFIG_ALLOWED_KEYS,
   hardenRemoteConfig
 };

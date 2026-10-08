@@ -46,14 +46,16 @@
 ### 🟡 Milestone 2: 声明式策略组模型与配置体验革新 (v2.1.0)
 > **目标**：打破预设拓扑限制，赋予用户自由编排任意策略组与规则链的能力。
 
-1. **声明式自定义策略组 (Declarative Custom Groups)**：
-   - *当前现状*：`customNodeGroups` 仅支持将节点按特征塞入系统内置的大区或预设组，**无法新建全新的独立策略组**。
-   - *规划方案*：设计声明式策略组语法，允许用户在 `config.yaml` 中像原生 Mihomo 配置一样定义任意名称、类型 (`select` / `url-test` / `fallback` / `load-balance`)、测速 URL、容差值及子组嵌套结构，由 DAG 引擎自动接管其生命周期与剪枝。
-2. **服务目录单点激活 (Single-Point Service Activation)**：
+- [x] **远程配置剥夺清单升级为白名单收敛 (Fail-Closed)**：
+   - 从基于黑名单剥离全面升级为基于字段注册表 `trust: 'any'` 的显式白名单放行（fail-closed），杜绝未来内核新字段可能带来的潜在越权；
+   - 纠正 `output` 字段为 `trust: 'local'`，阻止远程配置操纵本地写盘目标路径；
+   - 修复 DNS 不变式 (INV-8) 上下游上下文传递脱节与审计消费断层。
+- [ ] **服务目录单点激活 (Single-Point Service Activation)**：
    - *当前现状*：用户在 `customServices` 添加服务后，还必须在 `aiServices` 或 `streamingServices` 中再次列出该 key 才能生效，容易产生漏配混淆。
    - *规划方案*：支持“声明即激活”，或在自定义项中增加 `active: true` 选项，简化配置书写。
-3. **远程配置剥夺清单升级为白名单收敛**：
-   - 进一步加强 `?config=` 的防护能力，从基于字段黑名单的剥离转向基于字段注册表 `trust: 'any'` 的显式白名单放行（fail-closed），杜绝未来内核新字段可能带来的潜在越权。
+- [ ] **声明式自定义策略组 (Declarative Custom Groups)**：
+   - *当前现状*：`customNodeGroups` 仅支持将节点按特征塞入系统内置的大区或预设组，**无法新建全新的独立策略组**。
+   - *规划方案*：设计声明式策略组语法，允许用户在 `config.yaml` 中像原生 Mihomo 配置一样定义任意名称、类型 (`select` / `url-test` / `fallback` / `load-balance`)、测速 URL、容差值及子组嵌套结构，由 DAG 引擎自动接管其生命周期与剪枝。
 
 ---
 

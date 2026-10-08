@@ -296,8 +296,8 @@ const FIELDS = [
   // ── 【13. 运行模式与缓存】 ───────────────────────────────────────────────
   { key: 'outputMode', type: 'string', merge: 'override', trust: 'any',
     group: '运行模式与缓存', doc: '交付形态: config | nodes | report（等价于 CLI --mode / -m）' },
-  { key: 'output', type: 'string', merge: 'override', trust: 'any',
-    group: '运行模式与缓存', doc: '产物输出路径（等价于 CLI -o）' },
+  { key: 'output', type: 'string', merge: 'override', trust: 'local',
+    group: '运行模式与缓存', doc: '产物输出路径（等价于 CLI -o，涉及本地磁盘写入，仅可信来源可写）' },
   { key: 'enableCache', type: 'boolean', merge: 'override', trust: 'any',
     group: '运行模式与缓存', doc: '是否启用内存构建缓存（默认 true）' },
   { key: 'cacheTtl', type: 'number', merge: 'override', trust: 'any',
@@ -374,11 +374,20 @@ const REMOTE_DENIED_FIELDS = Object.freeze(
   FIELDS.filter(f => f.trust === 'local').map(f => f.key)
 );
 
+/**
+ * 远程不可信配置（`?config=`）允许放行的字段全集（白名单）：
+ * 注册表中 `trust: 'any'` 的字段。
+ */
+const REMOTE_ALLOWED_FIELDS = Object.freeze(
+  FIELDS.filter(f => f.trust === 'any').map(f => f.key)
+);
+
 module.exports = {
   FIELDS,
   FIELDS_BY_KEY,
   ADDITIVE_FIELDS,
   DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,
+  REMOTE_ALLOWED_FIELDS,
   buildDefaultConfig
 };

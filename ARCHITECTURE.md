@@ -223,9 +223,8 @@
 * **三层机制（按数据流顺序）**：
 
   1. **不可信配置能力剥夺（`remote-config.js`，纯函数）**
-     服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（杜绝借本地路径读取服务器任意文件），并剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`include`、`fetchProxyPort`）类字段。
-     *剥夺清单**由只读数据层派生**：`src/data/field-registry.js` 中声明 `trust: 'local'` 的字段自动进入清单。
-     新增安全开关只需标注信任级，不存在「忘了同步清单」的漂移空间。*
+     服务端 `?config=` 拉取的远程配置属于不可信输入：仅允许引用 http(s) 订阅源（杜绝借本地路径读取服务器任意文件），并基于**白名单收敛 (Fail-Closed)** 机制剥夺 DNS 控制面（`dnsListen`/`dnsDirect`/`dnsProxy`/`nameserverPolicy`/`hosts`/`fakeIpFilter`…）与本地资源（`servicesConfigFile`、`include`、`output`、`fetchProxyPort`）类字段。
+     *放行白名单**由只读数据层派生**：仅放行 `src/data/field-registry.js` 中声明 `trust: 'any'` 的字段，其余字段（未登记的未知字段或声明 `trust: 'local'` 的特权字段）一律物理剥离。*
      *库契约：`buildProfile(userConfig)` 的 `userConfig` 视为可信输入；处理不可信配置的调用方必须先经 `hardenRemoteConfig()` 降级。*
 
   2. **控制面净化审计 + 节点资产闭包（`control-plane.js::partitionControlPlane` + `io/sub-processor.js::applySubscriptionGuards`）**
@@ -429,7 +428,7 @@ E:\CODE\mihomo-toolkit-next\
 1. **受保护域名清单为枚举式**（`src/data/security-baselines.js::PROTECTED_DOMAINS`）：无法穷尽长尾域名。非清单域名只要被订阅声明为节点 `server`，即可为其下发 hosts 映射。
    处置：用 `protectedDomains` **追加**自己的关键域名（只增不减，`?config=` 无法写入），或 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
 2. **SSRF 存在 TOCTOU 窗口**：校验与建连各做一次 DNS 解析，未做 IP pinning；对抗恶意 DNS 服务器时理论上可利用。
-3. **`?config=` 能力剥夺为黑名单式**：未来内核新增的控制面字段不会自动被剥夺；公开部署应使用 `enableUrlParams: false` 或强制 `authToken`。
+3. **`?config=` 能力剥夺已全面升级为白名单收敛 (Fail-Closed)**：从历史的黑名单剔除全面升级为基于字段注册表 `trust: 'any'` 的显式白名单机制，仅允许明确放行的安全字段通过，任何未知字段或本地资源/特权字段（包括 `output`、`include`、`hosts`、DNS 控制面等）一律物理剥离，彻底消灭了未来内核新特权字段可能带来的潜在越权窗口。
 4. **构建缓存与静默预热体系**（`enableCache` / `cacheTtl` / `autoRefreshInterval` / `refreshCooldown`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。同时全面支持客户端通过 `?refresh=1`（或 `options.forceRefresh`）显式强制穿透拉取最新远端节点并同步覆写缓存；配置 `refreshCooldown` 冷却防爆盾杜绝高频刷新导致上游封禁；常驻服务支持 `autoRefreshInterval` 后台定时静默轮询与冷启动预热（`enableWarmup`），实现 0 延迟秒开与上游容灾保活。
 5. **配置面已完成一轮「字段清账」**：
    * 原 7 个**隐形字段**（`geositeRepo` / `geoipRepo` / `devServices` / `processDirectMac|Lin` / `processProxyMac|Lin`）

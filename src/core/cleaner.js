@@ -221,7 +221,7 @@ function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
   const effectiveThreshold = hasValidRegion ? Math.max(adThreshold, 18) : adThreshold;
 
   if (isFakeServer) return '假IP';
-  if (proxy?._keepName) return ''; // 豁免非致命垃圾/假密码/广告拦截，保留原名与自建节点
+  if (proxy?._keepName) return ''; // 豁免非致命无效/假密码/广告拦截，保留原名与自建节点
   if (isDummyAuth) return '假密码';
   if (isAdTypo) return '广告词';
   if (cleanLength > effectiveThreshold && !hasDigit && !hasTechLine && !hasFluff && !hasFeature) {
@@ -404,7 +404,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     };
   }
 
-  // 4. 垃圾与广告拦截判定
+  // 4. 无效节点与广告拦截判定
   const blockReason = checkNodeBlockReason(proxy, rawName, userConfig, { regionDefs: defs, featureRules: options.featureRules });
   if (blockReason) {
     return { skip: true, rawName, blockReason };

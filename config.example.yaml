@@ -52,7 +52,7 @@ subscriptions:
   # 方式 2：开小灶（保持指定名称 + 精准投放到指定策略组，不随大流进其他组）
   # - uri: "vless://uuid@us01.example.com:443?security=tls#My-VPS"
   #   name: "🇺🇸 专线·我的自建节点" # 手动指定节点名
-  #   keepName: true              # 保持指定原名：不执行模板重命名，豁免垃圾节点清洗
+  #   keepName: true              # 保持指定原名：不执行模板重命名，豁免无效/广告节点拦截
   #   groups:                     # 定向投放到哪些策略组（支持现有组如 ChatGPT，也支持自定义新组名）
   #     - "🤖 ChatGPT"
   #     - "📍 手动选择"
