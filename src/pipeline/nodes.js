@@ -31,7 +31,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     const beforeDedupe = currentProxies.length;
     currentProxies = dedupeNodes(currentProxies, {
       onDuplicate: (dup, exist) => {
-        if (logger) logger.debug(`🧽 [去重] 「${dup.name}」与「${exist.name}」重复，已移除`);
+        if (logger) logger.debug(`🧽 [去重] 「${dup.name}」与「${exist.name}」重复，已剔除`);
       }
     });
     dedupeCount = beforeDedupe - currentProxies.length;
@@ -58,13 +58,13 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   const validItems = classified.filter(item => {
     if (item.skip) {
       discardedCount++;
-      if (logger) logger.debug(`🗑️ [阻断/垃圾] 「${item.rawName}」 原因: ${item.blockReason}`);
+      if (logger) logger.debug(`🗑️ [阻断] 「${item.rawName}」 原因: ${item.blockReason}`);
       return false;
     }
     if (item.isInfo) {
       infoCount++;
       if (config.removeInfoNodes && !item.isSyntheticInfo) {
-        if (logger) logger.debug(`🗑️ [信息说明] 「${item.rawName}」`);
+        if (logger) logger.debug(`🗑️ [说明过滤] 「${item.rawName}」`);
         return false;
       }
     }

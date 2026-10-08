@@ -44,7 +44,9 @@ const TAG_ABBR = {
   CLI: 'CLI',
   Fetcher: 'Fetch',
   Builder: 'Build',
-  Config: 'Config'
+  Config: 'Config',
+  Warmup: 'Warm',
+  Cron: 'Cron'
 };
 
 const TAG_COLORS = {
@@ -58,6 +60,9 @@ const TAG_COLORS = {
   Strategy: ANSI.blue,
   Strat: ANSI.blue,
   Config: ANSI.cyan,
+  Warmup: ANSI.yellow,
+  Warm: ANSI.yellow,
+  Cron: ANSI.blue,
   Success: ANSI.boldGreen,
   Error: ANSI.boldRed,
   Warn: ANSI.boldYellow

@@ -92,7 +92,11 @@ function startServer(options = {}) {
       lastConfigMtime = stat.mtimeMs;
     } catch (e) {
       // 启动阶段配置即损坏：fail-closed，直接拒绝带病启动
-      console.error(`[Server] 配置文件无法解析 ${CONFIG_PATH}: ${e.message}`);
+      if (options.logger && typeof options.logger.error === 'function') {
+        options.logger.error(`❌ 配置文件无法解析 ${CONFIG_PATH}: ${e.message}`);
+      } else {
+        console.error(`❌ [Server] 配置文件无法解析 ${CONFIG_PATH}: ${e.message}`);
+      }
       throw e;
     }
   }
@@ -146,7 +150,7 @@ function startServer(options = {}) {
               lastConfigMtime = stat.mtimeMs;
             }
           } catch (e) {
-            serverLogger.error(`配置文件热重载失败，继续使用上一份有效配置: ${e.message}`);
+            serverLogger.error(`❌ 配置文件热重载失败，继续使用上一份有效配置: ${e.message}`);
           }
         }
 
@@ -164,9 +168,9 @@ function startServer(options = {}) {
         else if (reqUrl.searchParams.has('force')) safeParams.push(`force=${reqUrl.searchParams.get('force')}`);
         if (safeParams.length > 0) safeUrl += `?${safeParams.join('&')}`;
 
-        serverLogger.info(`Received request for ${safeUrl} from ${clientIp}`);
+        serverLogger.info(`🌐 收到订阅请求: ${safeUrl} 来自 ${clientIp}`);
         if (localConfig.logLevel === 'debug' || reqUrl.searchParams.has('debug')) {
-          serverLogger.debug(`Client: ${clientIp} | User-Agent: ${userAgent}`);
+          serverLogger.debug(`🔍 客户端信息: ${clientIp} | User-Agent: ${userAgent}`);
         }
 
         const authToken = process.env.AUTH_TOKEN || localConfig.authToken;
@@ -317,7 +321,7 @@ function startServer(options = {}) {
         res.end(isReport && result.report ? JSON.stringify(result.report, null, 2) : yamlStr);
       } catch (err) {
         // 仅记录日志，不回显内部错误细节（避免泄漏本地路径、上游状态等实现信息）
-        serverLogger.error('Build Error:', err.message);
+        serverLogger.error(`❌ 配置构建异常: ${err.message}`);
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Server Internal Error: profile build failed. See server logs for details.');
       } finally {
@@ -331,7 +335,7 @@ function startServer(options = {}) {
   });
 
   server.listen(PORT, HOST, () => {
-    serverLogger.info(`🛠️ Mihomo-Toolkit v${pkg.version} Server listening on ${HOST}:${PORT}`);
+    serverLogger.info(`🛠️ Mihomo-Toolkit v${pkg.version} 服务已就绪，监听于 http://${HOST}:${PORT}`);
     if (!BOUND_LOOPBACK) {
       if (authTokenAtStartup) {
         serverLogger.warn(`⚠️ 服务监听在非回环地址 ${HOST}，已启用 authToken 鉴权；请确认该端口不面向不可信网络开放。`);
@@ -374,7 +378,7 @@ function startServer(options = {}) {
             forceRefresh: true,
             logger: cronLogger
           });
-          serverLogger.info('💾 后台定时更新完成，新缓存已就绪');
+          serverLogger.info('✅ 后台定时更新完成，新缓存已就绪');
         } catch (err) {
           serverLogger.warn(`⚠️ 后台定时更新异常 (保留当前有效缓存): ${err.message}`);
         }

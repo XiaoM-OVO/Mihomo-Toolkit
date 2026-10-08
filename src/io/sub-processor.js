@@ -352,7 +352,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           const subKey = sub.url;
           const localSubPath = path.resolve(process.cwd(), sub.url);
           if (!/^https?:\/\//i.test(sub.url) && fs.existsSync(localSubPath) && fs.statSync(localSubPath).isFile()) {
-            logger.debug(`读取本地订阅文件: ${sub.url}`);
+            logger.debug(`📄 读取本地订阅文件: ${sub.url}`);
             rawResult = { content: fs.readFileSync(localSubPath, 'utf-8'), subInfo: null };
           } else {
             try {
@@ -412,7 +412,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
         if (sub.uri) {
           const nameHint = subProxies[0] ? subProxies[0].name : '未知';
-          logger.debug(`URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
+          logger.debug(`📌 解析 URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
         }
 
         // 注入 keepName 与 customGroups 特殊属性
@@ -482,7 +482,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         }
 
         if (synthNodes.length > 0) {
-          synthNodes.forEach(n => logger.debug(`ℹ️ [合成信息] 「${n.name}」`));
+          synthNodes.forEach(n => logger.debug(`📊 [合成看板] 「${n.name}」`));
           subProxies.unshift(...synthNodes);
         }
 
@@ -517,7 +517,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         });
       } catch (e) {
         const subId = sub.uri ? 'direct-uri' : redactUrl(sub.url, showFullUrl);
-        logger.error(`Error processing subscription ${subId}: ${e.message}`);
+        logger.error(`❌ 订阅解析异常 [${subId}]: ${e.message}`);
 
         let effectiveTag = sub.tag;
         if (!effectiveTag && sub.url && sub.url.startsWith('http')) {
@@ -585,7 +585,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           expireAggregation: userConfig.expireAggregation
         });
         if (topNodes && topNodes.length > 0) {
-          topNodes.forEach(n => logger.debug(`ℹ️ [全局看板] 「${n.name}」`));
+          topNodes.forEach(n => logger.debug(`📊 [全局看板] 「${n.name}」`));
           sourceSkeleton.proxies.unshift(...topNodes);
         }
       }
@@ -596,13 +596,13 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     const localFilePath = path.resolve(process.cwd(), url);
     if (!/^https?:\/\//i.test(url) && !/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
       if (fs.existsSync(localFilePath) && fs.statSync(localFilePath).isFile()) {
-        logger.log(`📄 读取本地配置/节点文件: ${url}`);
+        logger.info(`📄 读取本地配置/节点文件: ${url}`);
         rawResult = { content: fs.readFileSync(localFilePath, 'utf-8'), subInfo: null };
       } else {
         throw new Error(`Subscription file not found or invalid URL: ${url}`);
       }
     } else if (/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
-      logger.debug(`URI 节点: ${url.split('#').pop() || '未知'}`);
+      logger.debug(`📌 解析 URI 节点: ${url.split('#').pop() || '未知'}`);
       rawResult = { content: url, subInfo: null };
     } else {
       rawResult = await fetchNodes(url, {
@@ -639,7 +639,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     perSubCounts[String(url)] = singleProxies.length;
 
     const nodeCount = sourceSkeleton.proxies.length;
-    logger.log(`📡 节点解析完成: ${nodeCount} 个节点`);
+    logger.info(`📡 节点解析完成: ${nodeCount} 个节点`);
     if (enableDashboard) {
       const { nodes: synthNodes } = generateInfoNodes(rawResult.subInfo, '');
       if (synthNodes.length > 0) {

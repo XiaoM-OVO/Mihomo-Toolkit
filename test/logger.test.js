@@ -85,6 +85,14 @@ describe('🪵 统一分级终端 Logger 模块测试', () => {
     const strat = root.child('Strategy');
     strat.debug('strategy debug');
     assert.ok(logs[4].startsWith('[Strat:DBG]  strategy debug'));
+
+    const warm = root.child('Warmup');
+    warm.info('warmup info');
+    assert.ok(logs[5].startsWith('[Warmup]     warmup info'));
+
+    const cron = root.child('Cron');
+    cron.warn('cron warn');
+    assert.ok(logs[6].startsWith('[Cron:WARN]  cron warn'));
   });
 
   it('多行树形分支换行自动对齐缩进', () => {
