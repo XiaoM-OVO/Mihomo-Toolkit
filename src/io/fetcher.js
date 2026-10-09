@@ -13,12 +13,11 @@ const net = require('net');
 const os = require('os');
 const { safeDecodeURIComponent } = require('./parsers/base64');
 const { validateUrlSsrf, redactUrl } = require('./ssrf');
-const { parseContent } = require('./parsers');
 
 let undici = { ProxyAgent: null };
 try {
   undici = require('./fetch-proxy');
-} catch (e) {}
+} catch {}
 const { ProxyAgent } = undici;
 
 const proxyAgentCache = new Map();
@@ -76,7 +75,7 @@ async function readBodyWithLimit(res, maxBytes = 0) {
   // 快路径：Content-Length 已声明超限则直接拒绝，不读 body
   const declared = Number(res.headers.get('content-length') || 0);
   if (declared && declared > maxBytes) {
-    try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
+    try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch {}
     const err = new Error(`Response too large: ${declared} > ${maxBytes} bytes`);
     err.retryable = false;
     throw err;
@@ -94,7 +93,7 @@ async function readBodyWithLimit(res, maxBytes = 0) {
       if (!value) continue;
       total += value.byteLength;
       if (total > maxBytes) {
-        try { await reader.cancel(); } catch (e) {}
+        try { await reader.cancel(); } catch {}
         const err = new Error(`Response too large: exceeded ${maxBytes} bytes`);
         err.retryable = false;
         throw err;
@@ -102,7 +101,7 @@ async function readBodyWithLimit(res, maxBytes = 0) {
       chunks.push(Buffer.from(value));
     }
   } finally {
-    try { reader.releaseLock(); } catch (e) {}
+    try { reader.releaseLock(); } catch {}
   }
   return Buffer.concat(chunks).toString('utf-8');
 }
@@ -139,27 +138,27 @@ async function safeFetchText(url, options = {}) {
       if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
         redirects++;
         if (redirects > maxRedirects) {
-          try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
+          try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch {}
           const err = new Error(`Too many redirects (>${maxRedirects})`);
           err.retryable = false;
           throw err;
         }
         const location = res.headers.get('location');
         if (!location) {
-          try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
+          try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch {}
           const err = new Error(`Redirect with no Location header (status ${res.status})`);
           err.retryable = false;
           throw err;
         }
         // 重定向响应体一律丢弃，避免连接池泄漏
-        try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
+        try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch {}
         const nextUrl = new URL(location, currentUrl).toString();
         currentUrl = nextUrl;
         continue;
       }
 
       if (!res.ok) {
-        try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch (e) {}
+        try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch {}
         const err = new Error(`HTTP Error: ${res.status}`);
         err.retryable = res.status >= 500; // 5xx 可重试，4xx 等确定性错误不重试
         throw err;
@@ -250,7 +249,7 @@ function detectTunInterface() {
         return name;
       }
     }
-  } catch (e) {}
+  } catch {}
   return null;
 }
 
@@ -271,7 +270,7 @@ function formatBytes(bytes = 0) {
  * 节点抓取主调度（带重试与自动降级）
  */
 async function fetchNodes(url, options = {}) {
-  const { showFullUrl = false, debug = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, retry = 2, timeoutMs = 15000, maxBytes = 0 } = options;
+  const { showFullUrl = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, retry = 2, timeoutMs = 15000, maxBytes = 0 } = options;
   const { mode } = resolveFetchPlan({ strategy, perSubProxy });
   const useProxy = mode === 'proxy';
 
@@ -311,8 +310,7 @@ async function fetchNodes(url, options = {}) {
       return await attemptFetch(false);
     } catch (err) {
       if (!proxyUrl || err?.retryable === false) throw err;
-      try { return await attemptFetch(true); }
-      catch (e2) { throw e2; }
+      return await attemptFetch(true);
     }
   }
   return attemptFetch(useProxy);

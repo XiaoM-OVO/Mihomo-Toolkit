@@ -6,7 +6,6 @@
 
 const { escapeRegex, matchNodeRegion, extractCity } = require('./geo');
 const { getEnhancedRegionDefs } = require('./shared/regions');
-const { FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
 const { looksLikeDomain } = require('./fission');
 const { getTransportType } = require('./transport');
 const { buildServiceCatalog } = require('../config/catalog');
@@ -205,7 +204,7 @@ function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
   const adThreshold = userConfig.adTextThreshold ?? 6;
   const tempName = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, '')
     .replace(REGEX_ALL_FLAGS, '')
-    .replace(/[\[\]{}()<>【】]/g, '')
+    .replace(/[[\]{}()<>【】]/g, '')
     .trim();
 
   const defs = options.regionDefs || getEnhancedRegionDefs();

@@ -24,12 +24,6 @@ const dashboard = require('../strategy/dashboard');
 
 const { createLogger } = require('../core/logger');
 
-let TOOLKIT_VERSION = 'v2.0.0-dev';
-try {
-  const pkg = require('../../package.json');
-  if (pkg && pkg.version) TOOLKIT_VERSION = `v${pkg.version}`;
-} catch (e) {}
-
 function normalizeOutputMode(rawMode) {
   return String(rawMode || 'config').toLowerCase();
 }
@@ -98,7 +92,7 @@ function getCacheKey(userConfig = {}, options = {}) {
     // 哈希后作为键：既保证定长，也避免订阅 URL / Token 等敏感信息以明文形式驻留内存键
     const digest = crypto.createHash('sha256').update(canonical).digest('hex');
     return `profile:${CACHE_KEY_VERSION}:${digest}`;
-  } catch (e) {
+  } catch {
     // 无法确定性序列化（如循环引用）时放弃缓存
     return null;
   }

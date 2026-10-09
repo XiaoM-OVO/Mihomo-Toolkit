@@ -14,7 +14,7 @@ function ensureLoaded() {
     _t2s = OpenCC.Converter({ from: 'tw', to: 'cn' });
     _s2t = OpenCC.Converter({ from: 'cn', to: 'tw' });
     _loaded = true;
-  } catch (e) {
+  } catch {
     // opencc-js 未安装或加载失败，保持 null
   }
 }

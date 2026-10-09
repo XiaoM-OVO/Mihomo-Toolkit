@@ -15,8 +15,8 @@
 'use strict';
 
 const ipaddr = require('ipaddr.js');
-const { isPrivateIp, isPrivateIPv6 } = require('../shared/ip');
-const { PROTECTED_DOMAINS, normalizeDomainList, effectiveProtectedDomains } = require('../../data');
+const { isPrivateIPv6 } = require('../shared/ip');
+const { PROTECTED_DOMAINS, effectiveProtectedDomains } = require('../../data');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 基础地址工具
@@ -50,7 +50,7 @@ function ipv4InCidrs(ip, cidrs = []) {
     for (const cidr of cidrs) {
       try {
         if (addr.match(ipaddr.parseCIDR(cidr))) return true;
-      } catch (e) {}
+      } catch {}
     }
     return false;
   } catch {
@@ -68,7 +68,7 @@ function ipv6InCidrs(ip, cidrs = []) {
     for (const cidr of cidrs) {
       try {
         if (addr.match(ipaddr.parseCIDR(cidr))) return true;
-      } catch (e) {}
+      } catch {}
     }
     return false;
   } catch {
@@ -461,7 +461,6 @@ function sanitizeHosts(hostsMap, options = {}) {
       }
       const addr = ipaddr.parse(v);
       const isV4 = addr.kind() === 'ipv4';
-      const isV6 = addr.kind() === 'ipv6';
 
       // 非路由保留段（TEST-NET / 文档示例段）优先归类：这些地址不可能指向真实主机，
       // 语义上比「内网重定向」更精确，也避免误报为内网探测。

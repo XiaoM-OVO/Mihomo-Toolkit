@@ -12,7 +12,7 @@
 function applyTunOverlay(config, userConfig) {
   config.ipv6 = userConfig.enableIPv6;
   config.tun = {
-    ...(config.tun || {}),
+    ...config.tun,
     stack: 'system',
     device: 'Mihomo',
     'auto-route': true,
@@ -50,7 +50,7 @@ function applySnifferOverlay(config, _userConfig) {
 function applyCoreOptimize(config, _userConfig) {
   // 1. Profile 记忆模块
   config.profile = {
-    ...(config.profile || {}),
+    ...config.profile,
     'store-selected': true,
     'store-fake-ip': true
   };

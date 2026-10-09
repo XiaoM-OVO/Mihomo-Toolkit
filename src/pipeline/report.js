@@ -11,7 +11,7 @@ let VERSION = '2.0.0-dev';
 try {
   const pkg = require('../../package.json');
   if (pkg && pkg.version) VERSION = pkg.version;
-} catch (e) {}
+} catch {}
 
 /**
  * 组装标准化审计与质检报告

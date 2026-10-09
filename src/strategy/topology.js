@@ -5,7 +5,6 @@
  */
 
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
-const { REGEX_UNKNOWN_FLAG } = require('../core/geo');
 
 const HIGH_MULTI_GROUP = '高倍率优选';
 const EXPERIMENTAL_GROUP = '实验节点';
@@ -385,7 +384,11 @@ function buildProxyTopology({
 
   let fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', '下载策略'];
   if (proxyTarget !== 'DIRECT') {
-    userConfig.proxyFirst ? fallbackProxies.push('DIRECT') : fallbackProxies.unshift('DIRECT');
+    if (userConfig.proxyFirst) {
+      fallbackProxies.push('DIRECT');
+    } else {
+      fallbackProxies.unshift('DIRECT');
+    }
   }
   finalGroups.push(buildSelect('漏网之鱼', dedupe(fallbackProxies)));
 
@@ -465,7 +468,6 @@ function buildProxyTopology({
   // 🏠 家宽节点注入：将指定地区的家宽节点追加到目标应用组
   if (userConfig.enableResidential && userConfig.residentialNodeGroups && buckets.residential.length > 0) {
     const resiGroups = userConfig.residentialNodeGroups;
-    const existingGroupNames = new Set(finalGroups.map(g => g.name));
     const allResiNodes = buckets.residential;
     const resiRegionMap = buckets.resiRegionMap || {};
     for (const [regionKey, targetGroups] of Object.entries(resiGroups)) {

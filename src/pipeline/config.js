@@ -11,7 +11,7 @@
 
 const yaml = require('yaml');
 const { runStrategyPipeline } = require('./strategy');
-const { aggregateSubscriptions, buildGlobalDashboardNodes } = require('../strategy/dashboard');
+const { aggregateSubscriptions } = require('../strategy/dashboard');
 const { syncChineseConvert } = require('../core/chinese-sync');
 const { resetToolkitOutputKeys, enforceOutputContract } = require('../core/security/control-plane');
 
@@ -126,7 +126,7 @@ function runConfigPipeline({
   try {
     const pkg = require('../../package.json');
     if (pkg && pkg.version) pkgVersion = pkg.version;
-  } catch (e) {}
+  } catch {}
 
   let banner = `# =====================================================================\n` +
                `# Mihomo-Toolkit v${pkgVersion}\n` +

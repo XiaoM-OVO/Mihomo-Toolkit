@@ -22,7 +22,7 @@ const pkg = require('../../package.json');
 /** 回环地址判定（仅这些地址可视为「本机可信接入」） */
 function isLoopbackHost(host) {
   const h = String(host || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
-  return h === 'localhost' || h === '::1' || h === '0:0:0:0:0:0:0:1' || /^127\./.test(h);
+  return h === 'localhost' || h === '::1' || h === '0:0:0:0:0:0:0:1' || h.startsWith('127.');
 }
 
 /** 恒定时间字符串比较，避免 Token 被逐字节时序探测 */
@@ -33,7 +33,7 @@ function safeTokenEqual(a, b) {
   if (ab.length !== bb.length) return false;
   try {
     return crypto.timingSafeEqual(ab, bb);
-  } catch (e) {
+  } catch {
     return false;
   }
 }

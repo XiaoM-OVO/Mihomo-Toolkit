@@ -27,7 +27,7 @@ function validateRequestLimits({ subscriptionUrls, remoteConfigSize, totalNodes,
     return new Error(`Too many total nodes: ${totalNodes} > ${merged.maxTotalNodes}`);
   }
   if (perSubCounts) {
-    for (const [url, count] of Object.entries(perSubCounts)) {
+    for (const count of Object.values(perSubCounts)) {
       if (count > merged.perSubscriptionMaxNodes) {
         return new Error(`Subscription returned too many nodes: ${count} > ${merged.perSubscriptionMaxNodes}`);
       }
