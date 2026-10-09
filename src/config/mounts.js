@@ -115,7 +115,7 @@ function readMountFile(fullPath) {
       // 清理 require 缓存：长驻服务下 .js 挂载文件的改动必须能被读到
       try {
         delete require.cache[require.resolve(fullPath)];
-      } catch (e) { /* 未解析过则无需清理 */ }
+      } catch { /* 未解析过则无需清理 */ }
       const loaded = require(fullPath);
       return typeof loaded === 'function' ? (loaded() || {}) : (loaded || {});
     }
@@ -178,7 +178,7 @@ function computeMountDigest(userConfig, baseDir) {
         let fragment;
         try {
           fragment = readMountFile(fullPath);
-        } catch (err) {
+        } catch {
           continue; // 指纹阶段容错：真正的装载阶段会显式报错
         }
         collectLists(fragment, path.dirname(fullPath));

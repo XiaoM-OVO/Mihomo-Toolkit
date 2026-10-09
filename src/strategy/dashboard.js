@@ -149,7 +149,7 @@ function extractResetText(sub = {}, subProxies = []) {
   if (resetNode) {
     const cleanName = resetNode.name.replace(/^\[.*?\]\s*/, '').trim();
     const daysMatch = cleanName.match(/(\d+)\s*(?:天|Days?)/i);
-    const dateMatch = cleanName.match(/\d{4}[-\/]\d{2}[-\/]\d{2}/);
+    const dateMatch = cleanName.match(/\d{4}[-/]\d{2}[-/]\d{2}/);
     if (daysMatch) {
       return `距离重置剩余：${daysMatch[1]} 天`;
     }

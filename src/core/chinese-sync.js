@@ -14,7 +14,7 @@ let chineseConvert = {
 };
 try {
   chineseConvert = require('./chinese-convert');
-} catch (e) {}
+} catch {}
 
 /**
  * 执行全链路四路同步转换

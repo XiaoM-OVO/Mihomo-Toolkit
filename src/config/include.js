@@ -37,7 +37,7 @@ function itemToken(item) {
   if (item && typeof item === 'object') {
     try {
       return JSON.stringify(item);
-    } catch (err) {
+    } catch {
       return String(item);
     }
   }

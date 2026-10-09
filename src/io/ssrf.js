@@ -4,7 +4,6 @@
  * 校验并拦截 IPv4/IPv6 私网、回环、CGNAT 及云元数据地址，防范服务端请求伪造。
  */
 
-const ipaddr = require('ipaddr.js');
 // 私网判定下沉到 Core 层纯工具（满足「core/strategy 不得反向依赖 io」的架构红线），
 // 此处 re-export 保持既有调用方路径不变。
 const { isPrivateIp, isPrivateIPv6 } = require('../core/shared/ip');
@@ -102,7 +101,7 @@ function redactUrl(url, showFull = false) {
   try {
     const parsed = new URL(url);
     return `${parsed.protocol}//${parsed.hostname}/***`;
-  } catch (e) {}
+  } catch {}
   return url;
 }
 

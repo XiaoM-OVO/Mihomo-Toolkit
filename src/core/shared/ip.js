@@ -55,7 +55,7 @@ function isPrivateIPv6(ip) {
       try {
         const v4 = addr.toIPv4Address();
         if (v4 && v4.range() !== 'unicast') return true;
-      } catch (e) {}
+      } catch {}
     }
 
     // NAT64 (64:ff9b::/96)

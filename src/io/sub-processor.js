@@ -82,7 +82,7 @@ function extractAssetDomains(proxies = [], subUrl = '') {
     try {
       const u = new URL(subUrl);
       if (u.hostname) domains.add(u.hostname.toLowerCase());
-    } catch (e) {}
+    } catch {}
   }
   for (const p of proxies) {
     if (!p || typeof p !== 'object') continue;
@@ -193,7 +193,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
       protectedDomains: effectiveProtectedDomains(protectedDomains)
     });
     if (cleanHosts && Object.keys(cleanHosts).length > 0) {
-      target._assetHosts = { ...(target._assetHosts || {}), ...cleanHosts };
+      target._assetHosts = { ...target._assetHosts, ...cleanHosts };
       result.hosts = Object.keys(cleanHosts);
     }
   }
@@ -209,7 +209,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
     }
     const { policy: cleanPolicy } = sanitizeNameserverPolicy(scopedPolicy, { trustedSource: true });
     if (cleanPolicy && Object.keys(cleanPolicy).length > 0) {
-      target._assetPolicies = { ...(target._assetPolicies || {}), ...cleanPolicy };
+      target._assetPolicies = { ...target._assetPolicies, ...cleanPolicy };
       result.policies = Object.keys(cleanPolicy);
     }
   }
@@ -444,7 +444,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           }
           effectiveTag = bestTag;
           if (!effectiveTag && sub.url && sub.url.startsWith('http')) {
-            try { effectiveTag = new URL(sub.url).hostname; } catch (e) {}
+            try { effectiveTag = new URL(sub.url).hostname; } catch {}
           }
           if (!effectiveTag) effectiveTag = '订阅';
         }
@@ -521,7 +521,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
         let effectiveTag = sub.tag;
         if (!effectiveTag && sub.url && sub.url.startsWith('http')) {
-          try { effectiveTag = new URL(sub.url).hostname; } catch (err) {}
+          try { effectiveTag = new URL(sub.url).hostname; } catch {}
         }
         if (!effectiveTag) effectiveTag = '订阅';
 
