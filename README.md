@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
 [![Version](https://img.shields.io/badge/Version-v2.0.0--dev-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-211%20Passed-brightgreen)](test/)
+[![Tests](https://img.shields.io/badge/Tests-256%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底 · 零维护** 」
 
@@ -19,81 +19,17 @@
 
 ## 📌 快速导航
 
-- [📂 项目结构](#-项目结构)
 - [✨ 核心特性](#-核心特性)
-- [🚀 快速开始](#-快速开始)
 - [🎯 三大交付形态](#-三大交付形态)
-- [🖥️ 详细部署指南](#️-详细部署指南)
-- [⚙️ 配置详解](#️-配置详解)
-- [🏗️ 系统架构白皮书](ARCHITECTURE.md)
-- [❓ 常见问题](#-常见问题)
-
----
-
-## 📂 项目结构
-
-```text
-mihomo-toolkit/
-├── 🧠 src/                     # 核心引擎源码
-│   ├── index.js               # 🌟 全库唯一顶层门面 (Facade)，导出完整公共 API
-│   │
-│   ├── pipeline/              # 🚀 交付流水线 (与交付形态 1:1 映射)
-│   │   ├── engine.js          # 全流程总调度引擎 (生命周期早退与 Checkpoint 截断)
-│   │   ├── config.js          # 完整配置装配流水线
-│   │   ├── nodes.js           # 纯净节点清洗流水线 (去重/打标/重命名)
-│   │   ├── report.js          # 健康审计报告流水线 (生成结构化 JSON)
-│   │   └── strategy.js        # 策略拓扑与分流规则注入流水线
-│   │
-│   ├── targets/               # 🔌 宿主环境终端适配器 (轻量适配层)
-│   │   ├── cli.js             # 命令行工具 (mihomo-toolkit)
-│   │   └── server.js          # 常驻 HTTP 订阅服务 (/sub, /healthz, 鉴权)
-│   │
-│   ├── core/                  # 🧮 节点清洗核心算法层 (Pure & Deterministic)
-│   │   ├── cleaner.js         # 垃圾拦截、倍率线路提取、属性智能分类打标
-│   │   ├── dedupe.js          # 底层物理网络指纹提取与特征去重
-│   │   ├── transport.js       # 统一传输层门面 (Host/SNI/Path提取、Host注入与协议识别)
-│   │   ├── geo.js             # 地区智能正则匹配与落地城市精准提取
-│   │   ├── rename.js          # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
-│   │   ├── fission.js         # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
-│   │   ├── chinese-convert.js # 简繁中文递归转换与无依赖回退降级
-│   │   ├── chinese-sync.js    # 节点名/策略组名/成员引用/分流规则四路简繁同步
-│   │   └── shared/            # 地区大区字典表 (regions.js) 与 图标字典 (icons.js)
-│   │
-│   ├── strategy/              # 🌐 策略组拓扑与内核优化层
-│   │   ├── dashboard.js       # 看板合成、多订阅流量与到期聚合中心
-│   │   ├── topology.js        # 六维服务大区折叠与动态测速策略组装配
-│   │   ├── rules.js           # 规则集 (Rule-Providers) 与分流路由组装
-│   │   ├── registries.js      # 六维服务注册表管理模块 (委托至 config/catalog)
-│   │   ├── prune.js           # DAG 递归空组级联淘汰与殉葬规则清理
-│   │   ├── presentation.js    # 展示层终末装配器 (按 groupIconMode 统一挂载在线图标与赋予徽标)
-│   │   ├── dns.js             # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
-│   │   └── kernel.js          # TUN 网卡、Sniffer 嗅探器及内核性能调优
-│   │
-│   ├── io/                    # 📡 外部世界通信层 (唯一允许副作用的底层)
-│   │   ├── fetcher.js         # 安全 HTTP 抓取调度与 Stale 容灾兜底缓存
-│   │   ├── sub-processor.js   # 多订阅并发抓取、URI 分流、单订阅说明过滤与树状日志
-│   │   ├── cache.js           # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
-│   │   ├── ssrf.js            # SSRF 深度校验、私网拦截与 Token 脱敏
-│   │   ├── limits.js          # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
-│   │   ├── fetch-proxy.js     # 本地代理调度封装 (undici ProxyAgent)
-│   │   └── parsers/           # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
-│   │
-│   ├── config/                # ⚙️ 配置策略层 (操作者改什么)
-│   │   ├── defaults.js        # 出厂默认配置（由只读数据层的字段注册表派生）
-│   │   ├── catalog.js         # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
-│   │   ├── include.js         # 通用配置片段挂载 include（主文件优先 / 递归 / 环路防护）
-│   │   └── index.js           # resolveConfig 合并器（注册表驱动的只增不减基线合并）
-│   │
-│   └── data/                  # 📦 只读运行基础层 (程序所有 / 用户只读，最底层)
-│       ├── field-registry.js  # 字段注册表 SSOT：有哪些字段 / 默认值 / 合并语义 / 信任级
-│       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
-│
-├── test/                      # 🧪 自动化测试套件 (211 个全绿用例)
-├── config.example.yaml        # 极简扁平化配置模板
-├── index.d.ts                 # 完整 TypeScript 类型契约声明
-├── package.json               # 项目依赖与多命令配置
-└── ARCHITECTURE.md            # 系统架构设计白皮书
-```
+- [🚀 快速开始与使用指南](#-快速开始与使用指南)
+  - [1. 终端命令行 (CLI)](#1-终端命令行-cli)
+  - [2. 常驻 HTTP 订阅服务](#2-常驻-http-订阅服务)
+  - [3. 客户端无缝集成](#3-客户端无缝集成)
+- [⚙️ 配置详解 (`config.yaml`)](#️-配置详解-configyaml)
+- [🔐 安全模型与信任边界](#-安全模型与信任边界)
+- [📂 项目工程结构](#-项目工程结构)
+- [❓ 常见问题 (FAQ)](#-常见问题-faq)
+- [📜 鸣谢与声明](#-鸣谢与声明)
 
 ---
 
@@ -101,108 +37,41 @@ mihomo-toolkit/
 
 - 🧹 **节点深度清洗**：基于底层物理网络特征指纹（Fingerprint）精准去重，自动剔除引流广告，提取倍率、线路与落地城市，多订阅来源智能打标。
 - 🌍 **动态大区折叠**：热门地区自动独立建组测速，小众冷门节点动态折叠归入大洲组，避免数十个单节点策略组刷屏。
-- 🔀 **开箱即用分流**：内置 AI 助手 (ChatGPT/Claude/Gemini)、流媒体 (YouTube/Netflix/Disney+)、游戏平台 (Steam/Epic)、社交与学术等分流体系。
+- 🔀 **开箱即用分流**：内置 AI 助手 (ChatGPT/Claude/Gemini)、流媒体 (YouTube/Netflix/Disney+)、游戏平台 (Steam/Epic)、社交与学术等丰富分流规则。
 - 🗡️ **DAG 级联空组剪枝**：基于有向无环图深度遍历，节点为空的策略组自动级联淘汰，关联分流规则自动殉葬注销，防范内核空策略组报错与黑洞路由风险。
 - 📊 **彩色状态看板**：提取订阅头流量与到期时间，合成双列网格虚拟信息节点，面板内直观展示剩余流量、到期预警与重置倒计时。
-- 🛡️ **生产级安全与容灾**：SSRF 纵深拦截（含逐跳重定向校验与响应限长）、交付契约白名单（订阅控制面字段不进入产物）、DNS 净化沙箱与 INV 不变式自检，自带 Stale 容灾兜底缓存（网络抖动时平滑复用上次成功数据，保障节点平稳可用）。
+- 🛡️ **生产级安全与容灾**：SSRF 纵深拦截、交付契约白名单（订阅控制面字段不进入产物）、DNS 净化沙箱与 INV 不变式自检；内置 Stale 容灾兜底缓存（网络抖动时平滑复用上次成功数据，保障节点平稳可用）。
 - 🔤 **简繁中文四路同步**：繁体节点名全链路自动识别，节点名、策略组名、组内引用、路由规则四路简繁严格统一。
 
 ---
 
-## 🚀 快速开始
+## 🎯 三大交付形态
 
-### 方式一：终端命令行（推荐本地与 CI/CD 自动化）
+系统聚焦三种标准的最终交付物，通过 `-m, --mode` 参数或配置项 `outputMode` 自由切换：
 
-无需全局安装，克隆后直接用项目入口运行：
+| 交付模式 (`-m`) | 输出交付物 | 核心契约与行为 | 典型场景 |
+| :--- | :--- | :--- | :--- |
+| **`config`**<br>*(默认全量交付)* | **完整即用型 Mihomo 配置** | 全链路流水线：洗节点 ➔ 状态看板 ➔ 六维策略组 ➔ 分流规则 ➔ 内核优化。自动执行节点专属 DNS 资产依赖保活，宿主控制面保持纯净。 | 直接提供给内核、软路由或客户端使用。 |
+| **`nodes`** | **纯净清洗节点列表** | 契约明确规范：**仅交付清洗后的 `{ proxies: [...] }` 列表**，不输出任何策略组或外围规则。 | 导入 Sub-Store、节点池二次加工。 |
+| **`report`** | **健康审计与统计报告 (JSON)** | 输出结构化审计统计（总数、有效保留数、去重数、广告拦截数、未知地区数）与健康元数据。 | CI/CD 自动化质检、订阅节点健康度监控。 |
+
+---
+
+## 🚀 快速开始与使用指南
+
+### 1. 终端命令行 (CLI)
+
+适合本地快速转换、计划任务或 CI/CD 自动化流水线。克隆仓库后即可直接运行：
 
 ```bash
 git clone https://github.com/XiaoM-OVO/Mihomo-Toolkit.git && cd Mihomo-Toolkit
 npm install
-
-# 1. 直接拉取订阅，生成完整 Mihomo 配置文件
-node src/targets/cli.js -u "https://example.com/sub.yaml" -o config.yaml
-
-# 2. 或者使用 config.yaml 统一管理多订阅与高级规则
-npm run build
 ```
 
-### 方式二：常驻 HTTP 订阅服务（适合自建 VPS 或局域网）
-
-将 Mihomo-Toolkit 部署为私有订阅转换 API：
-
-#### 1. Docker 容器化部署（VPS 推荐）
-
-仓库已内置开箱即用的轻量 Alpine Dockerfile 与 `docker-compose.yml`：
-
-```bash
-# 准备配置文件
-cp config.example.yaml config.yaml
-
-# 启动容器（映射本地 3000 端口，含自动健康检查）
-docker compose up -d
-```
-
-#### 2. Node.js 本地直接启动
-
-```bash
-# 启动本地服务（默认 127.0.0.1:3000，自动读取根目录 config.yaml）
-npm start
-
-# 或自定义监听与配置文件
-HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token npm start
-```
-
-启动后即可在客户端直接订阅：`http://127.0.0.1:3000/sub`。
-
-**⚠️ 服务端安全姿态（务必阅读）**
-
-| 场景 | 行为 |
-| :--- | :--- |
-| 默认监听 `127.0.0.1` | 仅本机可访问，`?url=` / `?config=` 参数可用 |
-| 监听非回环地址（如 `HOST=0.0.0.0`）**且未配置 `authToken`** | **fail-closed**：自动拒绝 `?url=` / `?config=` 参数请求（返回 403），无参数的 `/sub`（走本地 config.yaml 订阅清单）仍可用 |
-| 监听非回环地址且已配置 `authToken` | 参数入口放行，但所有 `/sub` 请求必须携带 `?token=xxx` 或 `Authorization: Bearer xxx` |
-| `?config=` 拉取的远程配置 | 视为**不可信输入**：仅允许引用 http(s) 订阅源，且 DNS 控制面与本地资源类字段会被剥夺（见下文安全模型） |
-
-其余硬性限制：单次最多 20 个订阅 URL、远程配置 ≤ 1MB、单订阅响应体 ≤ 8MB（流式截断）、单次构建节点总量 ≤ 5000、单订阅 ≤ 3000 节点、并发构建上限 8（超出返回 503）。
-
-#### 3. 内存缓存、后台静默预热与强制刷新
-
-常驻服务模式内置高性能 LRU-TTL 内存缓存，带来零延迟响应与上游容灾保活：
-
-- ⚡ **极速响应**：日常客户端拉取直接命中内存缓存，平均响应时间 < 20ms。
-- 🔥 **后台自动预热 (Warm-up & Cron)**：
-  - `enableWarmup: true`：服务启动即在后台异步执行首份配置抓取与洗白，首位请求用户无需等待。
-  - `autoRefreshInterval: 3600`：设置后台定时轮询周期（秒），静默更新内存缓存；若抓取失败自动降级保留上一份有效缓存，客户端永不断流。
-- 🔄 **强制穿透刷新 (`?refresh=1`)**：
-  - 请求附带 `?refresh=1`（或 `?force=1`）可跳过读缓存，实时向远端拉取最新节点并同步覆写内存缓存。
-  - **防爆盾冷却 (`refreshCooldown: 15`)**：在冷却期（默认 15 秒）内重复发起强制刷新将被安全拦截，直接秒回刚才生成的最新缓存，缓解高频连击导致机场封禁 IP 的风险。
-
-### 方式三：与 Clash Verge Rev 搭配使用
-
-建议采用以下两种稳定方式之一，避免客户端沙箱编译超大单体脚本：
-1. **本地订阅方式（推荐）**：启动 `npm start` 常驻服务，在 Clash Verge Rev 中添加新订阅为 `http://127.0.0.1:3000/sub`，完全当做普通远程订阅使用。
-2. **计划任务直写配置**：在 `config.yaml` 中配置 `output` 路径指向 Verge 的 profiles 目录，通过系统计划任务（Windows Task Scheduler / Cron）定时执行 `node src/targets/cli.js -c config.yaml` 自动写入。
-
----
-
-## 🎯 三大交付形态 (`-m, --mode`)
-
-系统聚焦三种标准的最终交付物：
-
-| 交付模式 (`-m`) | 输出交付物 | 核心契约与行为 | 典型场景 |
-| :--- | :--- | :--- | :--- |
-| **`config`**<br>*(默认全量交付)* | **完整即用型 Mihomo YAML 配置** | 默认全新组装：洗节点 ➔ 状态看板 ➔ 六维策略组 ➔ 分流规则 ➔ 内核优化一条龙。自动执行节点专属 DNS 资产依赖保活，宿主控制面保持纯净。 | 直接提供给内核、软路由或客户端使用。 |
-| **`nodes`** | **纯净清洗节点数组** | 契约明确规范：**仅交付清洗后的 `{ proxies: [...] }` 列表**，不输出任何策略组或外围规则。 | 导入 Sub-Store、节点池二次加工。 |
-| **`report`** | **健康审计与统计报告 (JSON)** | 纯粹输出清洗统计（总数、有效保留、去重数、广告拦截数、未知地区数）与健康元数据。 | CI/CD 自动化质检、订阅节点质量监控。 |
-
----
-
-## 🖥️ 详细命令行用法
+#### 命令行参数速查
 
 ```text
 Usage: mihomo-toolkit [options]
-
-Mihomo-Toolkit - 自动化节点清洗与策略组构建引擎
 
 Options:
   -V, --version        输出版本号
@@ -216,27 +85,107 @@ Options:
   -h, --help           显示帮助信息
 ```
 
-### 常用命令范例：
+#### 常用命令范例
 
 ```bash
-# 1. 常用：拉取订阅并生成完整分流配置
+# 场景 1：拉取订阅并生成完整分流配置
 node src/targets/cli.js -u "https://airport.com/sub" -o config.yaml
 
-# 2. 提纯：只要干净的节点数组 (Sub-Store 专用)
+# 场景 2：根据本地 config.yaml 统一配置多订阅并编译
+npm run build
+
+# 场景 3：纯节点提纯模式（Sub-Store 等二次加工专用）
 node src/targets/cli.js -u "https://airport.com/sub" -m nodes -o nodes.yaml
 
-# 3. 质检：导出节点健康度审计报告
-node src/targets/cli.js -u "https://airport.com/sub" -m report -o audit.json
-
-# 4. 生成配置的同时，顺便落一份审计报告
+# 场景 4：生成分流配置的同时，顺手导出一份健康质检报告
 node src/targets/cli.js -u "https://airport.com/sub" -r report.json
 ```
 
 ---
 
+### 2. 常驻 HTTP 订阅服务
+
+将 Mihomo-Toolkit 部署为私有订阅转换 API 服务，支持实时拉取、自动缓存与鉴权。
+
+#### 部署方式 A：Docker 容器化部署（推荐）
+
+仓库内置了轻量基于 Alpine 的 Dockerfile 与 `docker-compose.yml`：
+
+```bash
+# 1. 准备本地配置文件
+cp config.example.yaml config.yaml
+
+# 2. 一键启动容器（映射 3000 端口，包含自动健康检查）
+docker compose up -d
+```
+
+#### 部署方式 B：Node.js 本地/服务器直接启动
+
+```bash
+# 启动本地服务（默认监听 127.0.0.1:3000，自动读取根目录 config.yaml）
+npm start
+
+# 或通过环境变量自定义监听与配置
+HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token npm start
+```
+
+启动后即可在客户端直接订阅：`http://127.0.0.1:3000/sub`。
+
+#### 服务端安全姿态与配额
+
+| 监听场景 | 安全行为与访问控制 |
+| :--- | :--- |
+| **监听 `127.0.0.1`（默认）** | 仅本机可访问，动态参数 `?url=` 与 `?config=` 入口开放可用 |
+| **监听非回环地址（如 `0.0.0.0`）且未配置 `authToken`** | **fail-closed**：自动拒绝 `?url=` / `?config=` 参数请求（返回 403）；无参数的 `/sub`（走本地 `config.yaml` 订阅清单）仍可访问 |
+| **监听非回环地址且配置了 `authToken`** | 参数入口放行，但所有 `/sub` 请求必须携带 `?token=xxx` 或 `Authorization: Bearer xxx` |
+| **`?config=` 传入的远程配置** | 视为**不可信输入**：仅允许引用 http(s) 订阅源，且 DNS 控制面与本地资源类字段会被强制剥夺 |
+
+> **硬性资源配额**：单次最多 20 个订阅 URL、远程配置 ≤ 1MB、单订阅响应体 ≤ 8MB（流式截断）、单次构建节点总量 ≤ 5000、单订阅 ≤ 3000 节点、并发构建上限 8（超限返回 503）。
+
+<details>
+<summary><b>🔍 进阶机制：内存缓存 (SWR)、后台静默预热与防穿透</b></summary>
+
+常驻服务提供基于 LRU 的 Profile 内存缓存，采用参考 [RFC 5861](https://www.rfc-editor.org/rfc/rfc5861.html) 的 `stale-while-revalidate` (SWR) 机制：
+
+1. **三态缓存模型**：
+   - **Fresh (`HIT`)**：缓存年龄 `age <= cacheTtl`（默认 300s），直接返回缓存，零构建开销。
+   - **Stale (`STALE`)**：超出 `cacheTtl` 但未超过 `cacheStaleMaxAge`（默认 24h），优先返回已有快照，同时异步触发后台 Revalidate。
+   - **Miss (`MISS`)**：无缓存或超过最大可用年龄，执行完整构建。
+   - **Bypass (`BYPASS`)**：禁用缓存或有效强制刷新时旁路直通。
+2. **并发合并 (Single-Flight) 与代际保护**：
+   - 合并同一缓存键下的并发构建请求，避免重复抓取与计算。
+   - 单调递增 Generation 代际检查，防止较早启动的慢任务覆盖新代际的成功缓存。
+   - 后台刷新遇到异常时保留原有快照，并采用指数退避（10s ~ 60s）限制重试频率。
+3. **后台自动预热与定时刷新**：
+   - `enableWarmup: true`：服务启动后异步构建本地配置，提前就绪缓存。
+   - `autoRefreshInterval: 3600`：每隔 1 小时自动触发后台定时刷新（带防重叠锁）。
+4. **强制穿透与冷却防护**：
+   - 请求携带 `?refresh=1` 或 `?force=1` 时可强制回源刷新。
+   - `refreshCooldown: 15`：默认 15 秒冷却时间，防范恶意频繁回源击穿源站。
+
+*注：该缓存仅保存在进程内存中，服务重启不持久化。*
+</details>
+
+---
+
+### 3. 客户端无缝集成
+
+#### 与 Clash Verge Rev 搭配使用
+
+建议采用以下两种稳定方式之一，避免客户端内部沙箱编译超大单体脚本：
+
+1. **本地订阅方式（推荐）**：启动 `npm start` 常驻服务，在 Clash Verge Rev 中添加新订阅为 `http://127.0.0.1:3000/sub`，完全当做普通远程订阅使用。
+2. **计划任务直写配置**：在 `config.yaml` 中将 `output` 路径指向 Verge 的 profiles 目录，通过系统计划任务（Windows Task Scheduler / Cron）定时执行 `node src/targets/cli.js -c config.yaml` 自动写入。
+
+#### 与 Sub-Store 搭配使用
+
+使用纯节点模式：`node src/targets/cli.js -u "订阅地址" -m nodes -o nodes.yaml`，生成的纯净代理数组可直接作为 Sub-Store 的本地/远程节点源进行聚合。
+
+---
+
 ## ⚙️ 配置详解 (`config.yaml`)
 
-整个系统采用**完全扁平化设计**，没有复杂的嵌套作用域，所有开关直接在根级配置。完整配置模板请参考 [`config.example.yaml`](config.example.yaml)：
+系统采用**完全扁平化设计**，无需理解复杂的嵌套结构，所有核心参数均在根级声明。完整配置请参阅 [`config.example.yaml`](config.example.yaml)：
 
 ```yaml
 # 1. 交付形态与输出
@@ -304,7 +253,74 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 
 ---
 
-## ❓ 常见问题
+## 📂 项目工程结构
+
+```text
+mihomo-toolkit/
+├── 🧠 src/                     # 核心引擎源码
+│   ├── index.js               # 🌟 全库唯一顶层门面 (Facade)，导出完整公共 API
+│   │
+│   ├── pipeline/              # 🚀 交付流水线 (与交付形态 1:1 映射)
+│   │   ├── engine.js          # 全流程总调度引擎 (生命周期早退与 Checkpoint 截断)
+│   │   ├── config.js          # 完整配置装配流水线
+│   │   ├── nodes.js           # 纯净节点清洗流水线 (去重/打标/重命名)
+│   │   ├── report.js          # 健康审计报告流水线 (生成结构化 JSON)
+│   │   └── strategy.js        # 策略拓扑与分流规则注入流水线
+│   │
+│   ├── targets/               # 🔌 宿主环境终端适配器 (轻量适配层)
+│   │   ├── cli.js             # 命令行工具 (mihomo-toolkit)
+│   │   └── server.js          # 常驻 HTTP 订阅服务 (/sub, /healthz, 鉴权)
+│   │
+│   ├── core/                  # 🧮 节点清洗核心算法层 (Pure & Deterministic)
+│   │   ├── cleaner.js         # 垃圾拦截、倍率线路提取、属性智能分类打标
+│   │   ├── dedupe.js          # 底层物理网络指纹提取与特征去重
+│   │   ├── transport.js       # 统一传输层门面 (Host/SNI/Path提取、Host注入与协议识别)
+│   │   ├── geo.js             # 地区智能正则匹配与落地城市精准提取
+│   │   ├── rename.js          # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
+│   │   ├── fission.js         # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
+│   │   ├── chinese-convert.js # 简繁中文递归转换与无依赖回退降级
+│   │   ├── chinese-sync.js    # 节点名/策略组名/成员引用/分流规则四路简繁同步
+│   │   └── shared/            # 地区大区字典表 (regions.js) 与 图标字典 (icons.js)
+│   │
+│   ├── strategy/              # 🌐 策略组拓扑与内核优化层
+│   │   ├── dashboard.js       # 看板合成、多订阅流量与到期聚合中心
+│   │   ├── topology.js        # 六维服务大区折叠与动态测速策略组装配
+│   │   ├── rules.js           # 规则集 (Rule-Providers) 与分流路由组装
+│   │   ├── registries.js      # 六维服务注册表管理模块 (委托至 config/catalog)
+│   │   ├── prune.js           # DAG 递归空组级联淘汰与殉葬规则清理
+│   │   ├── presentation.js    # 展示层终末装配器 (按 groupIconMode 统一挂载在线图标与赋予徽标)
+│   │   ├── dns.js             # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
+│   │   └── kernel.js          # TUN 网卡、Sniffer 嗅探器及内核性能调优
+│   │
+│   ├── io/                    # 📡 外部世界通信层 (唯一允许副作用的底层)
+│   │   ├── fetcher.js         # 安全 HTTP 抓取调度与 Stale 容灾兜底缓存
+│   │   ├── sub-processor.js   # 多订阅并发抓取、URI 分流、单订阅说明过滤与树状日志
+│   │   ├── cache.js           # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
+│   │   ├── ssrf.js            # SSRF 深度校验、私网拦截与 Token 脱敏
+│   │   ├── limits.js          # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
+│   │   ├── fetch-proxy.js     # 本地代理调度封装 (undici ProxyAgent)
+│   │   └── parsers/           # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
+│   │
+│   ├── config/                # ⚙️ 配置策略层 (操作者改什么)
+│   │   ├── defaults.js        # 出厂默认配置（由只读数据层的字段注册表派生）
+│   │   ├── catalog.js         # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
+│   │   ├── include.js         # 通用配置片段挂载 include（主文件优先 / 递归 / 环路防护）
+│   │   └── index.js           # resolveConfig 合并器（注册表驱动的只增不减基线合并）
+│   │
+│   └── data/                  # 📦 只读运行基础层 (程序所有 / 用户只读，最底层)
+│       ├── field-registry.js  # 字段注册表 SSOT：有哪些字段 / 默认值 / 合并语义 / 信任级
+│       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
+│
+├── test/                      # 🧪 自动化测试套件 (256 个全绿用例)
+├── config.example.yaml        # 极简扁平化配置模板
+├── index.d.ts                 # 完整 TypeScript 类型契约声明
+├── package.json               # 项目依赖与多命令配置
+└── ARCHITECTURE.md            # 系统架构设计白皮书
+```
+
+---
+
+## ❓ 常见问题 (FAQ)
 
 <details>
 <summary><b>Q: 我只想保留订阅原本给我的节点名字，不想被脚本改名，但又想用策略组分流，怎么配？</b></summary>
@@ -333,7 +349,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 
 这是**默认安全（fail-closed）**行为：常驻服务具备「发起外部请求 + 读取本地订阅文件」的能力，
 暴露到非回环地址且没有鉴权时，任何人都会得到一个开放订阅中继。此时必须配置 `authToken`
-（`AUTH_TOKEN` 环境变量或 config.yaml 中的 `authToken`）才会放行参数化请求。
+（`AUTH_TOKEN` 环境变量或 `config.yaml` 中的 `authToken`）才会放行参数化请求。
 </details>
 
 <details>
@@ -344,7 +360,9 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 
 ---
 
-## 🙏 鸣谢
+## 📜 鸣谢与声明
+
+### 🙏 鸣谢
 
 - 基础内核：[Mihomo](https://github.com/MetaCubeX/mihomo)
 - 规则集：[meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) & [anti-AD](https://github.com/privacy-protection-tools/anti-AD)
@@ -352,13 +370,13 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 - 简繁转换：[opencc-js](https://github.com/nk2028/opencc-js)
 - **AI 协同**：由本人架构与拍板，Gemini 负责主体编码，DeepSeek 参与代码审查与重构建议，多轮迭代打磨而成。
 
-## ⚠️ 免责声明
+### ⚠️ 免责声明
 
 1. 本项目提供的代码、脚本与配置仅供**个人进行计算机网络调试、路由规则学习与研究网络连通性架构**使用。
 2. 请严格遵守您所在国家及地区的法律法规，**严禁将本项目用于任何非法或违反当地法律的用途**。
 3. 因使用本项目所产生的任何直接或间接后果，**均由使用者本人自行承担**。作者及贡献者不承担任何技术或法律连带责任。
 4. 本项目仅为代码工具，**不提供任何形式的代理服务**，也不涉及任何网络节点的售卖、分发与推广。
 
-## 📜 开源协议
+### 📄 开源协议
 
 本项目基于 [MIT License](LICENSE) 许可协议开源。

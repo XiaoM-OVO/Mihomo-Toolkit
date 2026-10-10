@@ -308,8 +308,10 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   // ⚡ 缓存与代理
   /** 是否启用本地内存缓存（默认 true；缓存键按配置整体结构化摘要，不同配置不会互相命中） */
   enableCache?: boolean;
-  /** 本地缓存过期时间（秒，默认 300）；订阅远端内容的更新仅在 TTL 到期后生效 */
+  /** 新鲜缓存有效时间（秒，默认 300）；此窗口内请求秒级命中 Fresh 缓存 */
   cacheTtl?: number;
+  /** SWR 陈旧缓存最大容忍时间（秒，默认 86400 即 24 小时）；超过 freshTtl 但未超此窗口时返回旧快照并异步重构，超期则同步重构 */
+  cacheStaleMaxAge?: number;
   /** 本地订阅抓取代理端口（如 7890） */
   fetchProxyPort?: number;
   /** 本地订阅抓取代理策略：direct (直连) | proxy (代理) | auto (自动重试) */
