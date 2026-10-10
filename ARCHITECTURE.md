@@ -245,6 +245,20 @@
 * **INV 不变式自检（`resolver-plan.js::checkInvariants`）**：
   INV-1~INV-9 在 `config` 交付路径中实际执行，违规项写入 `result.invariantViolations` 并打印告警。
 
+### 6. RFC 5861 SWR 缓存状态机与并发防击穿引擎 (`src/pipeline/engine.js` & `src/io/cache.js`)
+* **RFC 5861 SWR 状态机**：
+  `profileCache` 实现 Fresh / Stale / Miss 三态精准流转。
+  * **Fresh (`HIT`)**：在 `cacheTtl`（新鲜期，默认 300s）内直接秒级返回内存缓存，响应时间 < 10ms；
+  * **Stale (`STALE`)**：在 `cacheStaleMaxAge`（默认 24h）内立即下发陈旧快照保证客户端零等待，同时后台异步非阻塞触发 Revalidate 重构任务；
+  * **Miss (`MISS`)**：无缓存或超出陈旧容忍期，同步执行流水线构建；
+  * **Bypass (`BYPASS`)**：客户端请求携带 `?refresh=1` 或 `options.forceRefresh: true` 强制穿透，响应头回显 `X-Cache: BYPASS`。
+* **Single-Flight 双轨单飞任务合并**：
+  并发普通请求合并入 `normalFlights`，避免冷启动瞬时流量穿透上游；并发强制请求独立进入 `forceFlights`；普通请求与后台 Revalidate 允许复用同键正在运行的强制任务，而强制请求绝不复用普通任务以保障真正的穿透新鲜度。任务解包向所有复用方分发真实发布状态（`onBuildOutcome`），业务返回严格纯净。
+* **单调代际保护与指数退避**：
+  每次构建启动前分配单调递增 Generation ID，晚完成的较老代际任务绝对无法覆盖新代际的最新成果；后台异步 Revalidate 若遇部分订阅故障（`hasFailedSub`）拒绝污染现有缓存，并以 10s ➔ 20s ➔ 40s ➔ 60s 执行指数退避重试，保护现有有效配置不被冲垮。
+* **Guarded Refresh 预热防重叠互斥锁**：
+  常驻服务启动预热（`Warmup`）与定时轮询（`Cron`）共享 `isBackgroundRefreshing` 互斥锁，上一轮尚未完成时安全跳过并记录警告，杜绝多重后台任务积压引发雪崩。
+
 ---
 
 ## 📂 四、 目录职责与代码地图
@@ -428,18 +442,6 @@ E:\CODE\mihomo-toolkit-next\
 1. **受保护域名清单为枚举式**（`src/data/security-baselines.js::PROTECTED_DOMAINS`）：无法穷尽长尾域名。非清单域名只要被订阅声明为节点 `server`，即可为其下发 hosts 映射。
    处置：用 `protectedDomains` **追加**自己的关键域名（只增不减，`?config=` 无法写入），或 `assetClosure: strict` + `assetDomainAllowlist`，或 `assetClosure: off`。
 2. **SSRF 存在 TOCTOU 窗口**：校验与建连各做一次 DNS 解析，未做 IP pinning；对抗恶意 DNS 服务器时理论上可利用。
-3. **`?config=` 能力剥夺已全面升级为白名单收敛 (Fail-Closed)**：从历史的黑名单剔除升级为基于字段注册表 `trust: 'any'` 的显式白名单机制，仅允许明确放行的安全字段通过，任何未知字段或本地资源/特权字段（包括 `output`、`include`、`hosts`、DNS 控制面等）一律物理剥离，有效收敛了未来内核新特权字段可能带来的潜在越权风险。
-4. **构建缓存与静默预热体系**（`enableCache` / `cacheTtl` / `autoRefreshInterval` / `refreshCooldown`）：`profileCache` 的键已**结构化覆盖**全部配置字段（含 `hosts` / `dns*` / `nameserverPolicy` / 以及未来新增的任何开关）与生效订阅描述，键序无关且以 SHA-256 定长摘要存储（订阅 URL / Token 不以明文驻留内存键）；无法确定性序列化（如循环引用）时返回 `null` 直接放弃缓存。同时全面支持客户端通过 `?refresh=1`（或 `options.forceRefresh`）显式强制穿透拉取最新远端节点并同步覆写缓存；配置 `refreshCooldown` 冷却防爆盾缓解高频刷新导致上游封禁的风险；常驻服务支持 `autoRefreshInterval` 后台定时静默轮询与冷启动预热（`enableWarmup`），实现低延迟响应与上游容灾保活。
-5. **配置面已完成一轮「字段清账」**：
-   * 原 7 个**隐形字段**（`geositeRepo` / `geoipRepo` / `devServices` / `processDirectMac|Lin` / `processProxyMac|Lin`）
-     与 4 个节点裂变字段已登记进注册表，并补齐 `index.d.ts` 类型与示例说明；
-   * 原 20 个**空承诺**中的大部分（`serverHost` / `enableIpEnrich` 等 7 个 ipEnrich 字段 /
-     `enableTlsOptimizations` / `customProxyGroups` / `dnsMergeMode` / `humanReport` …）已从文档与类型中**撤回**，
-     不再存在于任何契约中（将来若要实现，按新字段重新登记）；
-   * 其中 `blockKeywords` / `blockServers` 经评估确有价值，已于后续轮次**按新字段重新实现**
-     （清洗层用户黑名单：节点名 / server 字段命中即拦截，优先于白名单）；
-   * 注册表从 83 个字段扩到 127 个，`index.d.ts` 覆盖率达到 100%；
-   * 三道防线已自动化：反隐形 / 反空承诺 / 反漂移（见 `test/config-surface.test.js`）。
-   * **仍然存在的能力缺口（非缺陷，属路线图）**：
-     * 服务需同时写进 `customServices` 与激活列表（`aiServices` 等）才生效，只写一处会静默不激活；
-     * **无法新建自定义策略组**——`customNodeGroups` 只能把节点塞进已有组，自建组需等声明式组模型（2.x 路线图）。
+3. **能力缺口与演进行动项（路线图）**：
+   * 服务需同时写进 `customServices` 与激活列表（`aiServices` 等）才生效，只写一处会静默不激活；
+   * **暂无法自建全新自定义策略组**：`customNodeGroups` 当前只能把节点注入到已有策略组中，声明式自建组需待 2.x 策略编排路线图演进。

@@ -38,6 +38,23 @@ function safeTokenEqual(a, b) {
   }
 }
 
+/**
+ * 将引擎通知的缓存状态归一化为标准的 HTTP X-Cache 响应头值
+ * @param {string} status 引擎通知的状态 (fresh | stale | miss | force | bypass)
+ * @returns {string} HTTP X-Cache 响应头取值
+ */
+function mapCacheStatusToHeader(status) {
+  switch (status) {
+    case 'fresh': return 'HIT';
+    case 'stale': return 'STALE';
+    case 'miss':  return 'MISS';
+    case 'force':
+    case 'bypass':
+    default:
+      return 'BYPASS';
+  }
+}
+
 /** 提取客户端真实 IP（优先读取反向代理投递的 X-Forwarded-For / X-Real-IP） */
 function getClientIp(req) {
   const xff = req.headers && req.headers['x-forwarded-for'];
@@ -55,7 +72,7 @@ function getClientIp(req) {
 }
 
 function startServer(options = {}) {
-  const PORT = options.port || process.env.PORT || 3000;
+  const PORT = options.port !== undefined ? options.port : (process.env.PORT || 3000);
   // 默认仅监听回环：常驻服务承载「可发起外部请求 + 可读取本地订阅文件」的能力，
   // 默认暴露到全网卡会让局域网/公网直接获得一个开放订阅中继。
   const HOST = options.host || process.env.HOST || '127.0.0.1';
@@ -116,6 +133,64 @@ function startServer(options = {}) {
     : 8;
   let activeBuilds = 0;
   const lastRefreshTimes = new Map();
+
+  // 共享刷新锁：防止后台预热与后台定时轮询任务重叠或相互踩踏
+  let isBackgroundRefreshing = false;
+
+  /**
+   * 共享后台执行器：为启动预热与定时轮询提供统一的防重叠互斥保护
+   * @param {string} triggerName 触发源标识 (Warmup | Cron)
+   * @param {string} logMessage 启动日志说明
+   */
+  async function runGuardedBackgroundRefresh(triggerName, logMessage) {
+    if (isBackgroundRefreshing) {
+      serverLogger.warn(`⏳ [${triggerName}] 发现上一轮后台刷新任务尚未结束，跳过本轮执行以避免重复开工`);
+      return false;
+    }
+
+    isBackgroundRefreshing = true;
+    const taskLogger = serverLogger.child(triggerName);
+
+    try {
+      if (logMessage) serverLogger.info(logMessage);
+      let published = false;
+      let hasFailedSub = false;
+
+      await buildProfile(localConfig, {
+        production: true,
+        forceRefresh: true,
+        logger: taskLogger,
+        onBuildOutcome: (outcome) => {
+          published = !!outcome?.published;
+          hasFailedSub = !!outcome?.hasFailedSub;
+        }
+      });
+
+      if (triggerName === 'Warmup') {
+        if (published && !hasFailedSub) {
+          serverLogger.info('✨ 初始缓存预热完成');
+        } else {
+          serverLogger.warn('⚠️ 初始缓存预热结束，但因部分订阅不可用或写入被拦截，未发布新缓存');
+        }
+      } else {
+        if (published && !hasFailedSub) {
+          serverLogger.info('✅ 后台定时更新完成，新缓存已就绪');
+        } else {
+          serverLogger.warn('⚠️ 后台定时更新结束，但因部分订阅不可用或写入被拦截，未发布新缓存 (保留旧缓存)');
+        }
+      }
+      return true;
+    } catch (err) {
+      if (triggerName === 'Warmup') {
+        serverLogger.warn(`⚠️ 初始缓存预热失败 (不影响服务运行): ${err.message}`);
+      } else {
+        serverLogger.warn(`⚠️ 后台定时更新异常 (保留当前有效缓存): ${err.message}`);
+      }
+      return false;
+    } finally {
+      isBackgroundRefreshing = false;
+    }
+  }
 
   const server = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
@@ -294,12 +369,18 @@ function startServer(options = {}) {
 
         const outputMode = normalizeOutputMode(reqUrl.searchParams.get('mode') || userConfig.outputMode);
         const buildLogger = serverLogger.child('Server');
+
+        // 捕获引擎本次实际采用的缓存状态
+        let actualCacheStatus = 'bypass';
         const result = await buildProfile(userConfig, {
           production: true,
           debug: debugMode,
           mode: outputMode,
           forceRefresh,
-          logger: buildLogger
+          logger: buildLogger,
+          onCacheStatus: (status) => {
+            actualCacheStatus = status;
+          }
         });
         const { yamlStr, userInfo } = result;
 
@@ -307,10 +388,9 @@ function startServer(options = {}) {
         const headers = {
           'Content-Type': isReport ? 'application/json; charset=utf-8' : 'text/yaml; charset=utf-8',
           'Profile-Update-Interval': '24',
-          // 订阅卡片「主页」按钮：Clash Verge Rev 等客户端只读响应头、不读文件体注释，
-          // 缺了它远程订阅模式下按钮永不出现（文件体里的同名注释对这些客户端无效）。
           'Profile-Web-Page-Url': 'https://github.com/XiaoM-OVO/Mihomo-Toolkit',
-          'Server': `Mihomo-Toolkit/v${pkg.version}`
+          'Server': `Mihomo-Toolkit/v${pkg.version}`,
+          'X-Cache': mapCacheStatusToHeader(actualCacheStatus)
         };
 
         if (userInfo && (userInfo.total > 0 || userInfo.expire > 0)) {
@@ -351,18 +431,7 @@ function startServer(options = {}) {
     const enableWarmup = options.enableWarmup ?? (localConfig.enableWarmup === true || (Number(localConfig.autoRefreshInterval) > 0 && localConfig.enableWarmup !== false));
     if (enableWarmup && hasLocalSubs) {
       setImmediate(async () => {
-        try {
-          serverLogger.info('🔥 服务已启动，正在后台静默预热初始订阅缓存...');
-          const warmLogger = serverLogger.child('Warmup');
-          await buildProfile(localConfig, {
-            production: true,
-            forceRefresh: true,
-            logger: warmLogger
-          });
-          serverLogger.info('✨ 初始缓存预热完成');
-        } catch (err) {
-          serverLogger.warn(`⚠️ 初始缓存预热失败 (不影响服务运行): ${err.message}`);
-        }
+        await runGuardedBackgroundRefresh('Warmup', '🔥 服务已启动，正在后台静默预热初始订阅缓存...');
       });
     }
 
@@ -370,18 +439,7 @@ function startServer(options = {}) {
     if (autoRefreshIntervalSec > 0 && hasLocalSubs) {
       serverLogger.info(`⏰ 已启用后台自动轮询更新 (每 ${autoRefreshIntervalSec}s 静默拉取一次)`);
       const intervalId = setInterval(async () => {
-        try {
-          serverLogger.info(`⏰ 触发后台定时静默更新 (每 ${autoRefreshIntervalSec}s)...`);
-          const cronLogger = serverLogger.child('Cron');
-          await buildProfile(localConfig, {
-            production: true,
-            forceRefresh: true,
-            logger: cronLogger
-          });
-          serverLogger.info('✅ 后台定时更新完成，新缓存已就绪');
-        } catch (err) {
-          serverLogger.warn(`⚠️ 后台定时更新异常 (保留当前有效缓存): ${err.message}`);
-        }
+        await runGuardedBackgroundRefresh('Cron', `⏰ 触发后台定时静默更新 (每 ${autoRefreshIntervalSec}s)...`);
       }, autoRefreshIntervalSec * 1000);
       intervalId.unref?.();
       server.on('close', () => clearInterval(intervalId));
@@ -395,4 +453,11 @@ if (require.main === module) {
   startServer();
 }
 
-module.exports = { startServer, hardenRemoteConfig, isLoopbackHost, safeTokenEqual, getClientIp };
+module.exports = {
+  startServer,
+  hardenRemoteConfig,
+  isLoopbackHost,
+  safeTokenEqual,
+  getClientIp,
+  mapCacheStatusToHeader
+};

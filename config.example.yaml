@@ -83,7 +83,8 @@ output: "./dist/config.yaml"    # 默认输出路径
 # ⚠️ 监听地址不在本文件配置：由环境变量 HOST（或 startServer({host})）控制。
 #    历史模板里的 serverHost 从未被读取，已移除；等价做法：HOST=0.0.0.0 node src/targets/server.js
 # enableCache: true                # 启用本地内存缓存（键含配置整体结构摘要 + 外挂文件内容摘要）
-# cacheTtl: 300                    # 缓存有效时间（秒）；订阅远端内容更新仅在 TTL 到期后生效
+# cacheTtl: 300                    # 新鲜缓存有效时间（秒，默认 300）；此窗口内请求秒级命中 Fresh 缓存
+# cacheStaleMaxAge: 86400          # SWR 陈旧缓存最大容忍秒数（默认 86400 即 24 小时）；超过 cacheTtl 但未超此窗口时返回旧快照并异步重构
 # refreshCooldown: 15              # 强制刷新冷却防爆盾（秒，默认 15，0 为禁用）；?refresh=1 在此窗口内重复请求时直接返回最新缓存
 # autoRefreshInterval: 3600        # 后台自动拉取与缓存预热周期（秒，默认 0 关闭；建议 3600-7200）；静默拉取失败时保留旧缓存
 # enableWarmup: true               # 服务启动时是否在后台自动预热初始订阅缓存（默认根据 autoRefreshInterval 自动判定）
