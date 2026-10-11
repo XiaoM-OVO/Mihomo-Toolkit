@@ -60,6 +60,8 @@ const FIELDS = [
   // ── 【2. 节点清洗与处理】 ─────────────────────────────────────────────────
   { key: 'enableDedupe', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '节点去重：剔除底层物理特征完全重复的注水节点' },
+  { key: 'enableNodeSort', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '节点清洗与处理', doc: '节点智能排序：按大区、线路质量、倍率有序排布' },
   { key: 'assetClosure', type: 'string', default: 'standard', merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '节点专属 DNS 依赖继承强度: standard / strict / off' },
   { key: 'assetDomainAllowlist', type: 'string[]', default: [], merge: 'override', trust: 'any',

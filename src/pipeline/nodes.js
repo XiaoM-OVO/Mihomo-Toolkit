@@ -8,6 +8,7 @@ const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode } = require('../core/cleaner');
 const { buildRenamePlan, resolveNameCollisions } = require('../core/rename');
+const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 // Name rendering and feature variables are owned by core/rename.
 const { FEATURE_TEXT_MAP } = require('../core/shared/icons');
@@ -78,9 +79,14 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     return true;
   });
 
+  // 4.5 多维智能排序 (Core 纯函数)
+  const effectiveItems = config.enableNodeSort
+    ? sortNodes(validItems, config)
+    : validItems;
+
   // 5. 统一计算动态序号与重命名
   const isRenameEnabled = config.enableNodeRename !== false;
-  const renamePlan = isRenameEnabled ? buildRenamePlan(validItems, config) : new Map();
+  const renamePlan = isRenameEnabled ? buildRenamePlan(effectiveItems, config) : new Map();
 
   const catalogTexts = {};
   if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
@@ -129,7 +135,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     return `└─ ${parts.join(' | ')}`;
   };
 
-  const resultProxies = validItems.map(item => {
+  const resultProxies = effectiveItems.map(item => {
     if (item.isSpecial || item.isInfo || item.keepName) return item.proxy;
     if (!item.regionInfo) return item.proxy;
 
@@ -182,7 +188,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   if (userConfig.withClassified) {
     return {
       proxies: resultProxies,
-      classifiedNodes: validItems,
+      classifiedNodes: effectiveItems,
       meta: { stats }
     };
   }

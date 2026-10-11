@@ -337,6 +337,33 @@ function getFeatureRules(userConfig = {}) {
  * @param {object} userConfig
  * @param {object} [options={}]
  */
+/**
+ * 判定节点在当前配置下归属的隔离分类（家宽、高倍率、下载、实验）
+ * @param {object} item 或包含 tags 与 attrs 的对象
+ * @param {object} [userConfig={}]
+ * @returns {string} 'residential' | 'highMulti' | 'download' | 'experimental' | ''
+ */
+function getIsolationBucket(item, userConfig = {}) {
+  if (!item) return '';
+  const tags = item.tags || [];
+  const multi = item.attrs?.multiNum ?? 1;
+  const highMultiThreshold = userConfig.highMultiThreshold ?? 2.5;
+
+  if (userConfig.enableResidential && tags.includes('residential')) {
+    return 'residential';
+  }
+  if (userConfig.isolateHighMulti && multi > highMultiThreshold) {
+    return 'highMulti';
+  }
+  if (userConfig.isolateDownload && (tags.includes('download') || item.attrs?.isLowMulti)) {
+    return 'download';
+  }
+  if (userConfig.isolateExperimental && tags.includes('experimental')) {
+    return 'experimental';
+  }
+  return '';
+}
+
 function classifyNode(proxy, userConfig = {}, options = {}) {
   const rawName = proxy._rawName || proxy.name || '';
   const defs = options.regionDefs || getEnhancedRegionDefs();
@@ -452,18 +479,21 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 
   const isUnknownRegion = !regionInfo;
   const groupKey = regionInfo ? (regionInfo.id || regionInfo.name) : 'unknown';
+  const tagList = Array.from(tags);
+  const isolateBucket = getIsolationBucket({ tags: tagList, attrs }, userConfig);
 
   return {
     proxy,
     rawName,
     regionInfo,
     destCity,
-    tags: Array.from(tags),
+    tags: tagList,
     featurePools,
     protocol,
     transportTag,
     attrs,
     groupKey,
+    isolateBucket,
     isUnknownRegion,
     keepName: !!proxy?._keepName,
     customGroups: Array.isArray(proxy?._customGroups) ? proxy._customGroups : [],
@@ -507,6 +537,7 @@ module.exports = {
   checkNodeBlockReason,
   getFeatureRules,
   classifyNode,
+  getIsolationBucket,
   isNoticePlaceholderNode,
   hasOnlyPlaceholderNodes
 };
