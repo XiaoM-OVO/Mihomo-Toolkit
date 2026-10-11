@@ -210,6 +210,7 @@ async function executeBuildPipeline({
     sourceSkeleton,
     collectedSubInfos,
     hasFailedSub,
+    hasTerminalFailure,
     hasInjectedTag,
     perSubCounts
   } = await processSubscriptionSources({
@@ -266,7 +267,7 @@ async function executeBuildPipeline({
     if (enableCache && cacheKey && !hasFailedSub) {
       published = profileCache.set(cacheKey, nodesResult, { generation }) === true;
     }
-    return { result: nodesResult, hasFailedSub, published };
+    return { result: nodesResult, hasFailedSub, hasTerminalFailure, published };
   }
 
   // ─── 🛑 Checkpoint 2: 交付审计报告 (report 模式早退截断) ───
@@ -282,7 +283,7 @@ async function executeBuildPipeline({
     if (enableCache && cacheKey && !hasFailedSub) {
       published = profileCache.set(cacheKey, reportResult, { generation }) === true;
     }
-    return { result: reportResult, hasFailedSub, published };
+    return { result: reportResult, hasFailedSub, hasTerminalFailure, published };
   }
 
   // ─── 🛑 Checkpoint 3: 交付完整配置 (config 模式跑完全程) ───
@@ -310,7 +311,7 @@ async function executeBuildPipeline({
     published = profileCache.set(cacheKey, configResult, { generation }) === true;
   }
 
-  return { result: configResult, hasFailedSub, published };
+  return { result: configResult, hasFailedSub, hasTerminalFailure, published };
 }
 
 /**
@@ -322,16 +323,29 @@ async function launchSingleFlightBuild(ctx) {
   const { cacheKey, isForce, enableCache, options = {} } = ctx;
   const isRevalidating = !!options.isRevalidating;
 
+  // 统一的构建执行器：分配 generation，处理终态失效淘汰（单一职责点并带代次保护）
+  const runBuildTask = async (taskGeneration) => {
+    const outcome = await executeBuildPipeline({ ...ctx, generation: taskGeneration });
+    // 终态失效保护（单一职责点）：若本次构建发生终态失效（401、已到期、流量耗尽），
+    // 原 Profile 快照已被污染失效，必须物理淘汰 profileCache 中的条目。
+    // 代际保护：若较新的构建已经成功发布了更高代际的缓存，禁止较旧的失败任务误删新缓存。
+    if (outcome.hasTerminalFailure && cacheKey) {
+      profileCache.delete(cacheKey, taskGeneration);
+    }
+    return outcome;
+  };
+
   // 不可缓存或未生成有效 key 时不进 Single-Flight 任务表，独立执行
   if (!enableCache || !cacheKey) {
     const generation = profileCache.nextGeneration();
-    return executeBuildPipeline({ ...ctx, generation })
+    return runBuildTask(generation)
       .then((outcome) => {
         if (typeof options.onBuildOutcome === 'function') {
           try {
             options.onBuildOutcome({
               published: outcome.published === true,
-              hasFailedSub: outcome.hasFailedSub === true
+              hasFailedSub: outcome.hasFailedSub === true,
+              hasTerminalFailure: outcome.hasTerminalFailure === true
             });
           } catch (_) {}
         }
@@ -344,7 +358,7 @@ async function launchSingleFlightBuild(ctx) {
 
   const flightPromise = (async () => {
     try {
-      const outcome = await executeBuildPipeline({ ...ctx, generation });
+      const outcome = await runBuildTask(generation);
       // 成功发布新缓存后清除退避状态（仅由成功写入缓存触发）
       if (outcome.published && !outcome.hasFailedSub) {
         clearRevalidateFailure(cacheKey);
@@ -375,14 +389,16 @@ async function launchSingleFlightBuild(ctx) {
     normalFlights.set(cacheKey, flightPromise);
   }
 
-  // 统一解包：向当前调用方安全分发 outcome 元数据（仅 published 与 hasFailedSub），
+  // 统一解包：向当前调用方安全分发 outcome 元数据（仅 published、hasFailedSub 与 hasTerminalFailure），
   // 并严格只返回纯净的 result 业务产物，杜绝内部元数据泄漏到客户端交付结果
   const finalOutcome = await flightPromise;
+
   if (typeof options.onBuildOutcome === 'function') {
     try {
       options.onBuildOutcome({
         published: finalOutcome.published,
-        hasFailedSub: finalOutcome.hasFailedSub
+        hasFailedSub: finalOutcome.hasFailedSub,
+        hasTerminalFailure: finalOutcome.hasTerminalFailure === true
       });
     } catch (_) {}
   }

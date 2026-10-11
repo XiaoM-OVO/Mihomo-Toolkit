@@ -209,7 +209,23 @@ class ProfileCache {
     return this.cacheMap.has(key);
   }
 
-  delete(key) {
+  /**
+   * 安全淘汰指定键：支持代际守护
+   * - 若未提供有效 maxGeneration，执行无条件物理删除；
+   * - 若提供 maxGeneration，仅允许删除代际号 <= maxGeneration 的条目（包括代次相等的边界）；
+   * - 若现有条目代际号严格大于 maxGeneration (existing.generation > maxGeneration)，说明已被更新的任务覆写，拒绝误删并返回 false。
+   * @param {string} key
+   * @param {number} [maxGeneration] 允许删除的最大代际号（闭区间上限）。若缓存中条目 generation > maxGeneration，则拒绝删除并保留
+   * @returns {boolean} 是否实际执行了删除
+   */
+  delete(key, maxGeneration) {
+    if (!key || !this.cacheMap.has(key)) return false;
+    if (typeof maxGeneration === 'number' && maxGeneration > 0) {
+      const existing = this.cacheMap.get(key);
+      if (existing && existing.generation && existing.generation > maxGeneration) {
+        return false;
+      }
+    }
     return this.cacheMap.delete(key);
   }
 

@@ -27,12 +27,20 @@ function parseSubscriptionInfo(subInfo) {
   return { upload, download, total, expire };
 }
 
-/** 判定订阅是否已过期：expire>0 且到期时间戳已过（expire=0 未知，不做判定） */
+/** 判定订阅是否已过期：expire>0 且到期时间戳已过（expire=0 或负数未知，不做判定） */
 function isExpiredNow(expireEpochSec) {
-  return expireEpochSec > 0 && Date.now() >= expireEpochSec * 1000;
+  return typeof expireEpochSec === 'number' && expireEpochSec > 0 && Date.now() >= expireEpochSec * 1000;
+}
+
+/** 判定流量是否已耗尽：total>0 且已用流量 >= total */
+function isQuotaExhausted(subInfo) {
+  if (!subInfo || typeof subInfo !== 'object') return false;
+  const { total = 0, upload = 0, download = 0 } = subInfo;
+  return typeof total === 'number' && total > 0 && (upload + download) >= total;
 }
 
 module.exports = {
   parseSubscriptionInfo,
-  isExpiredNow
+  isExpiredNow,
+  isQuotaExhausted
 };

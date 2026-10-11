@@ -23,7 +23,75 @@ const { ProxyAgent } = undici;
 const proxyAgentCache = new Map();
 
 // 订阅抓取容灾：保留每个订阅最近一次成功抓取的内容，抓取失败时降级复用
-const subStaleCache = new Map(); // url -> { content, subInfo, timestamp }
+/**
+ * 订阅容灾缓存增强类：支持单调递增版本号、版本快照与基于快照的安全淘汰
+ */
+class SubStaleCacheMap extends Map {
+  constructor() {
+    super();
+    this._versionCounter = 0;
+    this._versions = new Map();
+  }
+
+  set(key, value) {
+    if (this._versionCounter >= Number.MAX_SAFE_INTEGER) {
+      this._versionCounter = 0;
+    }
+    this._versionCounter += 1;
+    this._versions.set(key, this._versionCounter);
+    if (value && typeof value === 'object') {
+      value.version = this._versionCounter;
+    }
+    return super.set(key, value);
+  }
+
+  delete(key) {
+    this._versions.delete(key);
+    return super.delete(key);
+  }
+
+  clear() {
+    this._versions.clear();
+    return super.clear();
+  }
+
+  /**
+   * 获取当前缓存条目的不可变快照（包含对象引用与当时的独立版本号）
+   * @param {string} key
+   * @returns {{ entry: any, version: number } | null}
+   */
+  getSnapshot(key) {
+    if (!key || !this.has(key)) return null;
+    const entry = this.get(key);
+    const version = this._versions.get(key) || 0;
+    return { entry, version };
+  }
+
+  /**
+   * 安全淘汰：严格要求传入 getSnapshot(key) 捕获的有效快照对象 { entry, version }，
+   * 仅当当前条目对象引用与版本号均严格一致时才执行淘汰，杜绝非快照或落后版本误删
+   * @param {string} key
+   * @param {object} snapshot getSnapshot 捕获的快照对象 { entry, version }
+   * @returns {boolean} 是否实际执行了删除
+   */
+  deleteIfMatch(key, snapshot) {
+    if (!key || !this.has(key)) return false;
+    // 强制契约：必须是具备 entry 且 version 为有效数字的快照对象，拒绝裸条目
+    if (!snapshot || typeof snapshot !== 'object' || !('entry' in snapshot) || typeof snapshot.version !== 'number') {
+      return false;
+    }
+
+    const currentEntry = this.get(key);
+    const currentVersion = this._versions.get(key) || 0;
+
+    if (currentEntry !== snapshot.entry) return false;
+    if (currentVersion !== snapshot.version) return false;
+
+    return this.delete(key);
+  }
+}
+
+const subStaleCache = new SubStaleCacheMap(); // url -> { content, subInfo, timestamp, version }
 const DEFAULT_SUB_STALE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 兜底数据默认最长保留 24h
 const SUB_STALE_MAX_ENTRIES = 200;
 
@@ -160,6 +228,8 @@ async function safeFetchText(url, options = {}) {
       if (!res.ok) {
         try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch {}
         const err = new Error(`HTTP Error: ${res.status}`);
+        err.status = res.status;
+        err.statusCode = res.status;
         err.retryable = res.status >= 500; // 5xx 可重试，4xx 等确定性错误不重试
         throw err;
       }
@@ -324,5 +394,6 @@ module.exports = {
   detectTunInterface,
   resolveProxyUrl,
   subStaleCache,
+  SubStaleCacheMap,
   pruneSubStaleCache
 };

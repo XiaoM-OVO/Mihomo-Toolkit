@@ -475,10 +475,42 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   };
 }
 
+/**
+ * 判定单个节点是否为显而易见的无服务能力占位/提示节点
+ * 仅用于订阅有效性前置拦截（防止“续费/到期/公告”占位节点把失效订阅误判为成功）
+ * 必须结合“假IP/假端口/无真实代理特征”与“提示性名称”双重特征，绝不误杀真实节点
+ */
+function isNoticePlaceholderNode(proxy) {
+  if (!proxy || typeof proxy !== 'object') return false;
+  const rawName = proxy._rawName || proxy.name || '';
+  const server = (proxy.server || '').trim();
+  const isFakeServer = proxy.port === 0
+    || server === 'localhost'
+    || REGEX_FAKE_IPV4.test(server)
+    || REGEX_FAKE_IPV6.test(server);
+
+  const isNoticeName = REGEX_INFO_NODE.test(rawName)
+    || /(?:续费|充值|到期|过期|用尽|耗尽|欠费|公告|说明|官网|防失联|通知|联系)/i.test(rawName);
+
+  return isFakeServer && isNoticeName;
+}
+
+/**
+ * 判定订阅返回的节点列表是否全部为占位/提示节点（即无任何有效可用节点）
+ * @param {Array<object>} proxies
+ * @returns {boolean}
+ */
+function hasOnlyPlaceholderNodes(proxies) {
+  if (!Array.isArray(proxies) || proxies.length === 0) return true;
+  return proxies.every(p => isNoticePlaceholderNode(p));
+}
+
 module.exports = {
   sanitizeNodeName,
   extractNodeAttributes,
   checkNodeBlockReason,
   getFeatureRules,
-  classifyNode
+  classifyNode,
+  isNoticePlaceholderNode,
+  hasOnlyPlaceholderNodes
 };
