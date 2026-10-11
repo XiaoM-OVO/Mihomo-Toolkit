@@ -9,6 +9,7 @@
  */
 
 const { FIELDS_BY_KEY } = require('../data');
+const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
 
 /** 悬空分隔符默认清单：取自字段注册表（单一真相源，避免与配置默认值漂移） */
 const DEFAULT_SEPARATORS = FIELDS_BY_KEY.renameSeparators.default;
@@ -114,24 +115,105 @@ function renderTemplate(template, vars, proxy, cleaners) {
     (match, key) => vars[key] || ''
   );
 
+  // 清理空括号后再处理边缘分隔符，避免留下悬空符号。
+  finalName = finalName.replace(/\[\s*(?:[|/·,，、:：-]\s*)*\]|\(\s*(?:[|/·,，、:：-]\s*)*\)|【\s*(?:[|/·,，、:：-]\s*)*】|（\s*(?:[|/·,，、:：-]\s*)*）/g, '');
   const { regAdjacent, regEdge } = cleaners || createSeparatorCleaners();
-
-  if (regAdjacent) {
-    finalName = finalName.replace(regAdjacent, '');
-  }
-  if (regEdge) {
-    finalName = finalName.replace(regEdge, '');
-  }
-
-  // 清除空方括号、空圆括号与多余连续空格
-  finalName = finalName.replace(/\[\s*\]|\(\s*\)/g, '');
+  if (regAdjacent) finalName = finalName.replace(regAdjacent, '');
+  if (regEdge) finalName = finalName.replace(regEdge, '');
+  finalName = finalName.replace(/^[\s|/·,，、:：-]+|[\s|/·,，、:：-]+$/g, '');
   finalName = finalName.replace(/\s{2,}/g, ' ').trim();
 
-  return finalName;
+  return finalName || (proxy?.name || '');
+}
+
+/**
+ * 末端名称碰撞守护 (Collision Guard)
+ * 纯函数：检查节点列表并消除同名冲突，为同名节点安全追加序号 (#2, #3...)
+ * 确保提交给 Mihomo/Clash 内核的节点名称 100% 互斥唯一
+ * @param {Array<object>} proxies 节点对象数组
+ * @returns {Array<object>} 原数组 (名称碰撞已就地修正)
+ */
+function resolveNameCollisions(proxies = []) {
+  if (!Array.isArray(proxies) || proxies.length <= 1) return proxies;
+  const seen = new Set();
+  const taken = new Set();
+  for (const p of proxies) {
+    if (p?.name) taken.add(p.name);
+  }
+
+  for (const p of proxies) {
+    if (!p) continue;
+    const originalName = p.name || '';
+    if (!seen.has(originalName)) {
+      seen.add(originalName);
+      continue;
+    }
+
+    let idx = 2;
+    let candidate = `${originalName} #${idx}`;
+    while (taken.has(candidate)) {
+      idx++;
+      candidate = `${originalName} #${idx}`;
+    }
+    p.name = candidate;
+    taken.add(candidate);
+    seen.add(candidate);
+  }
+
+  return proxies;
+}
+
+/**
+ * 为已分类节点统一计算目标名称；保持计算阶段纯净，由调用方提交名称。
+ */
+function buildRenamePlan(items = [], config = {}) {
+  const plan = new Map();
+  if (!Array.isArray(items) || !config.renameTemplate || config.enableNodeRename === false) return plan;
+  const indexMap = computeNodeIndices(items, config);
+  const catalogIcons = {};
+  const catalogTexts = {};
+  if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
+    config.catalog.getCoreMatchers().forEach(m => {
+      if (m.uiIcon) catalogIcons[m.tag] = m.uiIcon;
+      if (m.uiText) catalogTexts[m.tag] = m.uiText;
+    });
+  }
+  const icons = { ...FEATURE_ICONS, ...catalogIcons };
+  const texts = { ...FEATURE_TEXT_MAP, ...catalogTexts };
+  const cleaners = createSeparatorCleaners(config.renameSeparators);
+
+  for (const item of items) {
+    if (!item || item.skip || item.isSpecial || item.isInfo || item.keepName || !item.regionInfo) continue;
+    let features = '';
+    for (const tag of item.tags || []) {
+      if (tag === 'ipv6' || tag === 'dualstack') continue;
+      if (config.showFeatureIcon !== false) features += icons[tag] || '';
+      else if (texts[tag]) features += (features ? '/' : '') + texts[tag];
+    }
+    const vars = {
+      airport: item.airportTag || '',
+      icon: item.regionInfo.icon || '',
+      region: item.regionInfo.name || '',
+      index: indexMap.get(item) || '',
+      features,
+      protocol: PROTOCOL_ICONS[item.protocol] || '',
+      multi: item.attrs?.multiStr || '',
+      in: item.attrs?.entryStr || '',
+      city: item.destCity || '',
+      line: item.attrs?.cleanLines || '',
+      ip_stack: item.tags?.includes('dualstack') ? '双栈' : (item.tags?.includes('ipv6') ? 'IPv6' : ''),
+      transport: item.transportTag || ''
+    };
+    const name = renderTemplate(config.renameTemplate, vars, item.proxy, cleaners);
+    if (name) plan.set(item, name);
+  }
+  return plan;
 }
 
 module.exports = {
   createSeparatorCleaners,
   computeNodeIndices,
-  renderTemplate
+  renderTemplate,
+  buildRenamePlan,
+  resolveNameCollisions
 };

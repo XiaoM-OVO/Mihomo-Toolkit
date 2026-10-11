@@ -7,9 +7,10 @@
 const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode } = require('../core/cleaner');
-const { renderTemplate, createSeparatorCleaners, computeNodeIndices } = require('../core/rename');
+const { buildRenamePlan, resolveNameCollisions } = require('../core/rename');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
-const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../core/shared/icons');
+// Name rendering and feature variables are owned by core/rename.
+const { FEATURE_TEXT_MAP } = require('../core/shared/icons');
 const { resolveProxiesDomains } = require('../io/dns-resolver');
 const { fissionNodes } = require('../core/fission');
 
@@ -78,100 +79,65 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   });
 
   // 5. 统一计算动态序号与重命名
-  const templateCleaners = createSeparatorCleaners(config.renameSeparators);
-  const renameTemplate = config.renameTemplate;
   const isRenameEnabled = config.enableNodeRename !== false;
+  const renamePlan = isRenameEnabled ? buildRenamePlan(validItems, config) : new Map();
 
-  const indexMap = computeNodeIndices(validItems, config);
-
-  // 动态合并来自 catalog 的特征图标与文本
-  const catalogIcons = {};
   const catalogTexts = {};
   if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
     config.catalog.getCoreMatchers().forEach(m => {
-      if (m.uiIcon) catalogIcons[m.tag] = m.uiIcon;
       if (m.uiText) catalogTexts[m.tag] = m.uiText;
     });
   }
-  const effectiveFeatureIcons = { ...FEATURE_ICONS, ...catalogIcons };
   const effectiveFeatureTexts = { ...FEATURE_TEXT_MAP, ...catalogTexts };
+
+  const buildDestinationLine = (item) => {
+    const tags = item.tags || [];
+    const multi = item.attrs?.multiNum ?? 1;
+    const highMultiThreshold = config.highMultiThreshold ?? 2.5;
+
+    let groupName = '';
+    let isolateReason = '';
+
+    if (config.enableResidential && tags.includes('residential')) {
+      groupName = '🏠 家宽优选';
+      isolateReason = '家宽隔离';
+    } else if (config.isolateHighMulti && multi > highMultiThreshold) {
+      groupName = '🛑 高倍率节点';
+      isolateReason = '高倍率隔离';
+    } else if (config.isolateDownload && (tags.includes('download') || item.attrs?.isLowMulti)) {
+      groupName = '⏬ 下载策略';
+      isolateReason = '低倍率隔离';
+    } else if (config.isolateExperimental && tags.includes('experimental')) {
+      groupName = '🧪 实验节点';
+      isolateReason = '实验节点隔离';
+    } else if (item.regionInfo) {
+      const icon = item.regionInfo.icon ? `${item.regionInfo.icon} ` : '';
+      groupName = `${icon}${item.regionInfo.name}节点`;
+    } else {
+      groupName = '🌐 其他节点';
+    }
+
+    const parts = [`[归组]: ${groupName}${isolateReason ? ` (${isolateReason})` : ''}`];
+
+    // 仅展示命中并影响策略分流的业务池 (如 AI, 流媒体, 游戏, 家宽)，绝不重复已在节点名中呈现的协议与线路
+    const activePools = (item.featurePools || []).filter(p => p !== 'unknown');
+    const poolLabels = activePools.map(p => effectiveFeatureTexts[p] || p);
+    if (poolLabels.length > 0) {
+      parts.push(`业务: ${poolLabels.join(' · ')}`);
+    }
+
+    return `└─ ${parts.join(' | ')}`;
+  };
 
   const resultProxies = validItems.map(item => {
     if (item.isSpecial || item.isInfo || item.keepName) return item.proxy;
     if (!item.regionInfo) return item.proxy;
 
-    const buildDestinationLine = () => {
-      const tags = item.tags || [];
-      const multi = item.attrs?.multiNum ?? 1;
-      const highMultiThreshold = config.highMultiThreshold ?? 2.5;
-
-      let groupName = '';
-      let isolateReason = '';
-
-      if (config.enableResidential && tags.includes('residential')) {
-        groupName = '🏠 家宽优选';
-        isolateReason = '家宽隔离';
-      } else if (config.isolateHighMulti && multi > highMultiThreshold) {
-        groupName = '🛑 高倍率节点';
-        isolateReason = '高倍率隔离';
-      } else if (config.isolateDownload && (tags.includes('download') || item.attrs?.isLowMulti)) {
-        groupName = '⏬ 下载策略';
-        isolateReason = '低倍率隔离';
-      } else if (config.isolateExperimental && tags.includes('experimental')) {
-        groupName = '🧪 实验节点';
-        isolateReason = '实验节点隔离';
-      } else if (item.regionInfo) {
-        const icon = item.regionInfo.icon ? `${item.regionInfo.icon} ` : '';
-        groupName = `${icon}${item.regionInfo.name}节点`;
-      } else {
-        groupName = '🌐 其他节点';
-      }
-
-      const parts = [`[归组]: ${groupName}${isolateReason ? ` (${isolateReason})` : ''}`];
-
-      // 仅展示命中并影响策略分流的业务池 (如 AI, 流媒体, 游戏, 家宽)，绝不重复已在节点名中呈现的协议与线路
-      const activePools = (item.featurePools || []).filter(p => p !== 'unknown');
-      const poolLabels = activePools.map(p => effectiveFeatureTexts[p] || p);
-      if (poolLabels.length > 0) {
-        parts.push(`业务: ${poolLabels.join(' · ')}`);
-      }
-
-      return `└─ ${parts.join(' | ')}`;
-    };
-
-    if (isRenameEnabled && renameTemplate) {
-      let featureStr = '';
-      (item.tags || []).forEach(t => {
-        if (t === 'ipv6' || t === 'dualstack') return;
-        if (config.showFeatureIcon !== false) {
-          if (effectiveFeatureIcons[t]) featureStr += effectiveFeatureIcons[t];
-        } else {
-          if (effectiveFeatureTexts[t]) featureStr += (featureStr ? '/' : '') + effectiveFeatureTexts[t];
-        }
-      });
-
-      const protocolIcon = PROTOCOL_ICONS[item.protocol] || '';
-      const numStr = indexMap.get(item) || '';
-
-      const vars = {
-        airport: item.airportTag || '',
-        icon: item.regionInfo.icon || '',
-        region: item.regionInfo.name || '',
-        index: numStr,
-        features: featureStr,
-        protocol: protocolIcon,
-        multi: item.attrs?.multiStr || '',
-        in: item.attrs?.entryStr || '',
-        city: item.destCity || '',
-        line: item.attrs?.cleanLines || '',
-        ip_stack: item.tags?.includes('dualstack') ? '双栈' : (item.tags?.includes('ipv6') ? 'IPv6' : ''),
-        transport: item.transportTag || ''
-      };
-
-      const newName = renderTemplate(renameTemplate, vars, item.proxy, templateCleaners);
+    if (isRenameEnabled && config.renameTemplate) {
+      const newName = renamePlan.get(item) || '';
       if (newName) {
         if (logger) {
-          const detailLine = buildDestinationLine();
+          const detailLine = buildDestinationLine(item);
           if (newName !== item.rawName) {
             logger.debug(`✅ [清洗] 「${item.rawName}」 → 「${newName}」\n${detailLine}`);
           } else {
@@ -182,7 +148,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       }
     } else {
       if (logger) {
-        const detailLine = buildDestinationLine();
+        const detailLine = buildDestinationLine(item);
         logger.debug(`📌 [识别] 「${item.proxy.name || item.rawName}」\n${detailLine}`);
       }
     }
@@ -199,6 +165,9 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     item.proxy._cleaned = true;
     return item.proxy;
   });
+
+  // 末端名称碰撞守护 (Collision Guard): 确保输出给内核的节点名称 100% 互斥唯一
+  resolveNameCollisions(resultProxies);
 
   const stats = {
     total: totalCount,

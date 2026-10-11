@@ -20,19 +20,31 @@ const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, 'i');
 const REGEX_FAKE_IPV4 = /^(?:0\.|127\.|10\.|192\.168\.|169\.254\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.|(?:1\.1\.1\.1|8\.8\.8\.8)(?:$|:))/;
 const REGEX_FAKE_IPV6 = /^(?:\[?(?:::1|0*(?::0*)*:0*1)\]?(?:$|:)|\[?f[cd][0-9a-f]{2}:|\[?fe80:)/i;
 
-// 入口城市关键词
-const ENTRY_CITIES = ['深','深圳','广','广州','上海','沪','京','北京','杭','杭州','四川','川','渝','重庆','辽','莞','东莞','苏','江苏','无锡','鲁','徐','湘','宁','南京','汉','武汉','穗','港','香港','台','台湾','日本','日','新加坡','英国','英','韩国','韩','美国','美','Ingress'];
-const EXIT_REGIONS = ['港','台','美','日','韩','新','英','德','法','俄','印','澳','狮城','多伦多','芝加哥','中','台湾','日本','新加坡','上海','沪','广','深','Exit','Destination'];
+// 入口城市关键词（按长度降序排布，长词优先贪婪匹配）
+const ENTRY_CITIES = [
+  '新加坡', '深圳', '广州', '上海', '北京', '杭州', '四川', '重庆', '东莞',
+  '江苏', '南京', '武汉', '成都', '无锡', '香港', '台湾', '日本', '韩国',
+  '英国', '美国', 'Ingress', 'SZX', 'CAN', 'PVG', 'SHA', 'PEK', 'PKX', 'HGH',
+  '深', '广', '沪', '京', '杭', '川', '渝', '莞', '苏', '鲁', '徐', '湘',
+  '宁', '汉', '穗', '蓉', '港', '台', '日', '新', '韩', '英', '美', '辽'
+];
+const EXIT_REGIONS = [
+  'Destination', '多伦多', '芝加哥', '新加坡', '澳大利亚', '俄罗斯', '香港',
+  '台湾', '日本', '韩国', '美国', '英国', '德国', '法国', '印度', '狮城',
+  '上海', '广州', '深圳', 'Exit', 'HKG', 'TYO', 'SIN', 'LAX', 'HK', 'TW',
+  'JP', 'SG', 'US', 'KR', 'UK', 'DE', 'FR', '港', '台', '美', '日', '韩',
+  '新', '英', '德', '法', '俄', '印', '澳', '中', '沪', '广', '深'
+];
 
 const entryPattern = ENTRY_CITIES.map(escapeRegex).join('|');
 const exitPattern = EXIT_REGIONS.map(escapeRegex).join('|');
-const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:-|->|—|=|>)\\s*(?=${exitPattern})|(?=${exitPattern}))`, 'i');
+const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:->|=>|~>|→|⇒|-|—|=|>|至)\\s*|\\s+)?(?=${exitPattern})`, 'i');
 
 // 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
-const REGEX_MULTI = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍率)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍率)(?!\s*\d))/i;
+const REGEX_MULTI = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍(?:率)?)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍(?:率)?)(?!\s*\d))/i;
 
-// 识别线路类型与营销标识
-const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMI|CMIN2|CUG|PCCW|9929|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|专线)/gi;
+// 识别线路类型与营销标识 (CMIN2 优先于 CMI，AS9929 优先于 9929)
+const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMIN2|CMI|CUG|PCCW|AS9929|9929|AS4837|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|专线|中转|隧道)/gi;
 const REGEX_TECH_LINE_TEST = new RegExp(REGEX_TECH_LINE.source, 'i');
 const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
 const REGEX_FLUFF_LINE_TEST = new RegExp(REGEX_FLUFF_LINE.source, 'i');
@@ -41,11 +53,11 @@ const LINE_MAP = { CTCUCM: '三网', CTCUM: '三网', CTCU: '电联', CUCT: '电
 const CN_MAP = { 移动: '移', 联通: '联', 电信: '电' };
 
 const TAG_MAP = {
-  深: '深', 深圳: '深', SZX: '深', 广: '广', 广州: '广', CAN: '广',
+  深: '深', 深圳: '深', SZX: '深', 广: '广', 广州: '广', 穗: '广', CAN: '广',
   上海: '沪', 沪: '沪', PVG: '沪', SHA: '沪', 京: '京', 北京: '京',
   PEK: '京', PKX: '京', 杭: '杭', 杭州: '杭', HGH: '杭',
   四川: '川', 川: '川', 渝: '渝', 重庆: '渝', 东莞: '莞', 莞: '莞',
-  南京: '宁', 宁: '宁', 成都: '蓉', 武汉: '汉', 汉: '汉', 鲁: '鲁', 苏: '苏', 江苏: '苏',
+  南京: '宁', 宁: '宁', 成都: '蓉', 蓉: '蓉', 武汉: '汉', 汉: '汉', 鲁: '鲁', 苏: '苏', 江苏: '苏',
   港: '港', 香港: '港', 台: '台', 台湾: '台', 日: '日', 日本: '日', 新加坡: '新',
   韩: '韩', 韩国: '韩', 英: '英', 英国: '英', 美: '美', 美国: '美'
 };
@@ -127,27 +139,34 @@ function extractNodeAttributes(name, userConfig = {}) {
 
   // 2. 提取倍率
   cleanName = cleanName.replace(REGEX_MULTI, (m, m1, m2, m3) => {
+    // 排除系统架构与指令集关键词 (如 x64, x86, x32)
+    if (!m1 && !m.includes('倍') && (m2 === '64' || m2 === '86' || m2 === '32' || m3 === '64' || m3 === '86' || m3 === '32')) {
+      return m;
+    }
     const num = parseFloat(m1 || m2 || m3);
-    if (!isNaN(num)) {
+    if (!isNaN(num) && num > 0 && num <= 50) {
       attrs.multiNum = num;
       if (num !== 1) attrs.multiStr = `x${num}`;
       if (userConfig.lowMultiThreshold > 0 && num <= userConfig.lowMultiThreshold) {
         attrs.isLowMulti = true;
       }
+      return '';
     }
-    return '';
+    return m;
   });
 
   // 3. 提取线路类型
   cleanName = cleanName.replace(REGEX_TECH_LINE, match => {
-    const key = match.toUpperCase();
+    let key = match.toUpperCase();
+    if (key === 'AS9929') key = '9929';
+    else if (key === 'AS4837') key = '4837';
     let short = LINE_MAP[key];
     if (!short) {
       const cnKey = Object.keys(CN_MAP).find(k => match.includes(k));
       if (cnKey) short = cnKey;
     }
     if (short) attrs.lineArr.push(short);
-    else if (match.length >= 2) attrs.lineArr.push(key);
+    else if (key.length >= 2) attrs.lineArr.push(key);
     return '';
   });
 
@@ -201,34 +220,10 @@ function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
       /(?:元|块|折|¥|售\s*\d+(?:\.\d+)?|价\s*\d+(?:\.\d+)?|\d+G)/i.test(rawName)
     );
 
-  const adThreshold = userConfig.adTextThreshold ?? 6;
-  const tempName = rawName.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\t\r\n]/g, '')
-    .replace(REGEX_ALL_FLAGS, '')
-    .replace(/[[\]{}()<>【】]/g, '')
-    .trim();
-
-  const defs = options.regionDefs || getEnhancedRegionDefs();
-  const hasValidRegion = defs.some(r => r._matchReg && r._matchReg.test(tempName));
-  const featureRules = options.featureRules || getFeatureRules(userConfig);
-  const hasFeature = featureRules.some(r => r.reg && r.reg.test(tempName));
-  const hasDigit = /\d/.test(tempName);
-  const hasTechLine = REGEX_TECH_LINE_TEST.test(tempName);
-  const hasFluff = REGEX_FLUFF_LINE_TEST.test(tempName);
-
-  const cleanText = tempName.replace(/\p{Extended_Pictographic}/gu, '').trim();
-  const cleanLength = cleanText.length;
-  const effectiveThreshold = hasValidRegion ? Math.max(adThreshold, 18) : adThreshold;
-
   if (isFakeServer) return '假IP';
   if (proxy?._keepName) return ''; // 豁免非致命无效/假密码/广告拦截，保留原名与自建节点
   if (isDummyAuth) return '假密码';
   if (isAdTypo) return '广告词';
-  if (cleanLength > effectiveThreshold && !hasDigit && !hasTechLine && !hasFluff && !hasFeature) {
-    return `超长广告文本(>${effectiveThreshold})`;
-  }
-  if (!hasValidRegion && !hasFluff && cleanLength > 10 && !hasDigit && !hasTechLine && !hasFeature) {
-    return '孤儿广告';
-  }
 
   return '';
 }
@@ -471,7 +466,8 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     groupKey,
     isUnknownRegion,
     keepName: !!proxy?._keepName,
-    customGroups: Array.isArray(proxy?._customGroups) ? proxy._customGroups : []
+    customGroups: Array.isArray(proxy?._customGroups) ? proxy._customGroups : [],
+    airportTag: proxy?._subTag || userConfig.airportTag || ''
   };
 }
 

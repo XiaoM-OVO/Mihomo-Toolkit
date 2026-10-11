@@ -117,6 +117,77 @@ test('🚀 模板渲染 - 验证 nodes 流水线正确注入 {index}、{features
   assert.ok(result[1].name.includes('🦀'), `节点 2 应包含 🦀: ${result[1].name}`);
 });
 
+test('🪵 日志稳定性 - runNodesPipeline 带 logger 且命中业务池时正常输出诊断且不崩溃', async () => {
+  const proxies = [
+    { name: '🇭🇰 香港 01 Netflix 4K 家宽', server: '210.1.1.1', type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+  ];
+  const logs = [];
+  const logger = {
+    debug: msg => logs.push(msg)
+  };
+  const result = await runNodesPipeline(proxies, {
+    logger,
+    enableStreaming: true,
+    enableResidential: true
+  });
+  assert.equal(result.length, 1);
+  assert.ok(logs.length > 0);
+  assert.ok(logs.some(l => l.includes('业务:') && (l.includes('Netflix') || l.includes('流媒体'))));
+});
+
+test('🛡️ 碰撞安全 - runNodesPipeline 面对无序号或重名模板时自动追加序号防重', async () => {
+  const proxies = [
+    { name: '🇭🇰 香港 A', server: '1.2.3.4', type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
+    { name: '🇭🇰 香港 B', server: '1.2.3.5', type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+  ];
+  // 模板故意不写 {index}，会导致两节点计算出相同名称
+  const result = await runNodesPipeline(proxies, {
+    renameTemplate: '{icon} {region}'
+  });
+  assert.equal(result.length, 2);
+  assert.equal(result[0].name, '🇭🇰 香港');
+  assert.equal(result[1].name, '🇭🇰 香港 #2');
+});
+
+test('✈️ 机场标签从来源传至统一重命名计划', async () => {
+  const classified = classifyNode({ name: '🇭🇰 香港 01', _subTag: 'A', _indexPrefix: 'X', server: '1.2.3.4' });
+  assert.equal(classified.airportTag, 'A');
+  const fallback = classifyNode({ name: '🇭🇰 香港 02', server: '1.2.3.5' }, { airportTag: 'Global' });
+  assert.equal(fallback.airportTag, 'Global');
+
+  const config = {
+    airportTag: 'Global',
+    indexPrefixMap: { A: 'A' },
+    renameTemplate: '[{airport}] {icon} {region} {index}'
+  };
+  const nodeOutput = await runNodesPipeline([
+    { name: '🇭🇰 香港 01', _subTag: 'A', server: '1.2.3.4', type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
+    { name: '🇭🇰 香港 02', _subTag: 'A', server: '1.2.3.5', type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+  ], config);
+  assert.ok(nodeOutput[0].name.startsWith('[A]'));
+  assert.ok(nodeOutput[0].name.includes('A01'));
+  assert.ok(nodeOutput[1].name.includes('A02'));
+
+  const { buildProfile } = require('../src/pipeline/engine');
+  const profile = await buildProfile({
+    renameTemplate: '[{airport}] {icon} {region} {index}',
+    minorNodeThreshold: 1,
+    subscriptions: [{
+      tag: 'Air-A',
+      uri: 'vless://11111111-2222-3333-4444-555555555555@example.com:443?security=tls#🇭🇰 香港 03'
+    }]
+  }, { mode: 'config', noCache: true });
+  assert.ok(profile.outputData.proxies[0].name.startsWith('[Air-A]'));
+
+  const strategyConfig = { proxies: [
+    { name: '🇭🇰 香港 01', _subTag: 'A', server: '1.2.3.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
+    { name: '🇭🇰 香港 02', _subTag: 'A', server: '1.2.3.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+  ] };
+  const strategyOutput = require('../src/pipeline/strategy').runStrategyPipeline(strategyConfig, config);
+  assert.ok(strategyOutput.proxies[0].name.startsWith('[A]'));
+  assert.ok(strategyOutput.proxies[1].name.includes('A02'));
+});
+
 test('⚡ 缓存归一化 - options.mode 与 config.outputMode 命中同一份缓存', async () => {
   const dummySub = [{
     uri: 'vless://11111111-2222-3333-4444-555555555555@example.com:443?security=tls#🇭🇰 香港 01'

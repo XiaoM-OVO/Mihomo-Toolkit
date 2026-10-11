@@ -4,7 +4,7 @@
  * 基于地区字典与 Unicode 国旗正则，识别节点落地国家、地区与城市（支持最长优先与落地优先）。
  */
 
-const { getEnhancedRegionDefs } = require('./shared/regions');
+const { getEnhancedRegionDefs, getRegionFlagLookup } = require('./shared/regions');
 
 // 匹配 Unicode 国旗 + 紧随其后的地区名称
 const REGEX_UNKNOWN_FLAG = /(\p{Regional_Indicator}{2})\s*([A-Za-z\u4e00-\u9fa5]+(?:[\s-][A-Za-z\u4e00-\u9fa5]+)*)/u;
@@ -27,14 +27,16 @@ function matchNodeRegion(name, regionDefs, options = {}) {
   const defs = regionDefs || getEnhancedRegionDefs();
   const { strictRegionMatch = false, flagLookup } = options;
 
-  const matchedRegions = defs
-    .map(r => {
-      const reg = r._matchReg || (r.reg ? new RegExp(r.city ? `${r.reg.source}|${r.city}` : r.reg.source, 'i') : null);
-      if (!reg) return null;
+  const matchedRegions = defs.flatMap(r => {
+    const regs = [
+      r._matchReg || (r.reg ? new RegExp(r.city ? r.reg.source + '|' + r.city : r.reg.source, 'i') : null),
+      r._codeMatchReg || r.codeReg || null
+    ].filter(Boolean);
+    return regs.map(reg => {
       const m = name.match(reg);
       return m ? { def: r, len: m[0].length, index: m.index } : null;
-    })
-    .filter(Boolean);
+    }).filter(Boolean);
+  });
 
   if (matchedRegions.length > 0) {
     // 优先匹配长度最长的，长度相同匹配最靠后的 (比如 "深港"，以落地 "港" 为准)
@@ -45,8 +47,14 @@ function matchNodeRegion(name, regionDefs, options = {}) {
     return bestMatch?.def || null;
   }
 
-  // 宽松模式：通过 Unicode 国旗尝试反查或动态识别
+  // 已知旗帜直接反查，兼容旗帜后只有序号或符号的节点名。
   if (!strictRegionMatch) {
+    const flag = name.match(/\p{Regional_Indicator}{2}/u)?.[0];
+    const lookup = flagLookup || getRegionFlagLookup(defs);
+    const knownRegion = flag && lookup.get(flag);
+    if (knownRegion) return knownRegion;
+
+    // 未知旗帜仍要求跟随地区文字，不猜测纯序号的含义。
     const flagMatch = name.match(REGEX_UNKNOWN_FLAG);
     if (flagMatch) {
       const flagIcon = flagMatch[1];
