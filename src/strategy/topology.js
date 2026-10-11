@@ -4,7 +4,7 @@
  * 负责大区智能折叠、功能策略组构建（AI、流媒体、游戏等）、节点入桶路由以及自定义分组注入。
  */
 
-const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
+const { getEnhancedRegionDefs, CONTINENT_DEFS, DEFAULT_CORE_REGIONS } = require('../core/shared/regions');
 
 const HIGH_MULTI_GROUP = '高倍率优选';
 const EXPERIMENTAL_GROUP = '实验节点';
@@ -139,21 +139,37 @@ function buildProxyTopology({
   });
 
   // 3. 处理小众地区与大洲折叠
-  const regionNames = {
-    cn: '大陆节点', hk: '香港节点', tw: '台湾节点', jp: '日本节点',
-    kr: '韩国节点', sg: '新加坡节点', us: '美国节点'
+  const rawCoreList = Array.isArray(userConfig.coreRegions) ? userConfig.coreRegions : DEFAULT_CORE_REGIONS;
+  const coreRegionIds = new Set(rawCoreList.map(k => String(k).toLowerCase()));
+
+  const getRegionDisplayName = (r) => {
+    if (r.id === 'cn' || r.name === '中国') return '大陆节点';
+    return `${r.name}节点`;
   };
+
+  const regionNames = {};
+
+  // 先把已登记的地区元数据录入可用映射表，供下游 AI 偏好组等引用解析
+  regionDefs.forEach(r => {
+    const key = r.id || r.name;
+    regionNames[key] = getRegionDisplayName(r);
+  });
+  CONTINENT_DEFS.forEach(c => {
+    regionNames[c.id] = `${c.name}节点`;
+  });
 
   const threshold = userConfig.minorNodeThreshold ?? 3;
 
   regionDefs.forEach(r => {
     const key = r.id || r.name;
-    if (regionNames[key]) return;
+    const isCore = (r.id && coreRegionIds.has(r.id.toLowerCase())) ||
+                   (r.name && (coreRegionIds.has(r.name) || coreRegionIds.has(r.name.toLowerCase())));
     const nodes = buckets[key];
     if (nodes && nodes.length > 0) {
-      if (nodes.length >= threshold) {
-        regionNames[key] = `${r.name}节点`;
+      if (isCore || nodes.length >= threshold) {
+        // 主力免折叠大区或节点数达到阈值：保持独立建组
       } else {
+        // 小众地区节点折叠进大洲组或 other
         const targetContinent = r.group || 'other';
         if (!buckets[targetContinent]) buckets[targetContinent] = [];
         buckets[targetContinent].push(...nodes);
@@ -164,11 +180,13 @@ function buildProxyTopology({
 
   // 处理大洲折叠
   CONTINENT_DEFS.forEach(continent => {
-    if (buckets[continent.id]?.length >= threshold) {
-      regionNames[continent.id] = `${continent.name}节点`;
-    } else {
-      buckets.other.push(...(buckets[continent.id] || []));
-      buckets[continent.id] = [];
+    const isCore = coreRegionIds.has(continent.id.toLowerCase());
+    const nodes = buckets[continent.id];
+    if (nodes && nodes.length > 0) {
+      if (!isCore && nodes.length < threshold) {
+        buckets.other.push(...nodes);
+        buckets[continent.id] = [];
+      }
     }
   });
 

@@ -147,6 +147,8 @@ export interface ToolkitConfig {
   enableResidential?: boolean;
   /** 自定义地区分组阈值（节点数达到此值时独立建组，默认 3） */
   minorNodeThreshold?: number;
+  /** 主力免折叠大区代码清单（即使节点数低于阈值也保证独立建组，默认 ["cn", "hk", "tw", "jp", "kr", "sg", "us"]） */
+  coreRegions?: string[];
   /**
    * 在**只读骨架基线**（`手动选择` / `漏网之鱼` 及其 Emoji 变体）之外**追加**
    * 「即便暂时无节点也不被空组剪枝斩首」的策略组名。

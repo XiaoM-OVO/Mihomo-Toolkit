@@ -224,4 +224,46 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.ok(!buckets.us.includes('🇺🇸 专线·我的自建节点'), '专属节点不应随大流进入常规地区桶');
     assert.ok(buckets.hk.includes('🇭🇰 香港 01'), '普通节点正常入桶');
   });
+
+  it('buildProxyTopology - coreRegions 声明式主力免折叠大区定制', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const classifiedNodes = [
+      {
+        proxy: { name: '🇭🇰 香港 01' },
+        rawName: '🇭🇰 香港 01',
+        regionInfo: { id: 'hk', name: '香港' },
+        groupKey: 'hk',
+        tags: []
+      },
+      {
+        proxy: { name: '🇩🇪 德国 01' },
+        rawName: '🇩🇪 德国 01',
+        regionInfo: { group: 'eu', name: '德国' },
+        groupKey: '德国',
+        tags: []
+      }
+    ];
+
+    // Case 1: 默认配置 (hk 为默认主力，de 为小众地区，minorNodeThreshold = 3)
+    const resDefault = buildProxyTopology({
+      classifiedNodes,
+      userConfig: { ...DEFAULT_CONFIG, minorNodeThreshold: 3 },
+      registries
+    });
+    const defaultGroupNames = resDefault.proxyGroups.map(g => g.name);
+    assert.ok(defaultGroupNames.includes('香港节点'), '默认香港作为主力大区独立建组');
+    assert.ok(!defaultGroupNames.includes('德国节点'), '默认德国节点不足3个应折叠');
+    assert.ok(resDefault.buckets.other.includes('🇩🇪 德国 01'), '德国节点不足3个且欧洲大洲不足3个，最终折叠进 other 桶');
+
+    // Case 2: 用户自定义 coreRegions: ['德国'] (将德国设为主力，香港排除出主力)
+    const resCustom = buildProxyTopology({
+      classifiedNodes,
+      userConfig: { ...DEFAULT_CONFIG, minorNodeThreshold: 3, coreRegions: ['德国'] },
+      registries
+    });
+    const customGroupNames = resCustom.proxyGroups.map(g => g.name);
+    assert.ok(customGroupNames.includes('德国节点'), '德国作为自定义主力免折叠独立建组');
+    assert.ok(!customGroupNames.includes('香港节点'), '香港被移出主力且不足3个被折叠');
+    assert.ok(resCustom.buckets.other.includes('🇭🇰 香港 01'), '香港节点应折叠进 other 桶');
+  });
 });

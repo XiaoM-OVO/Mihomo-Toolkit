@@ -144,8 +144,12 @@ function validateMapping() {
   return true;
 }
 
+// 默认免折叠主力大区清单 (即使节点数低于阈值也保证独立建组)
+const DEFAULT_CORE_REGIONS = ['cn', 'hk', 'tw', 'jp', 'kr', 'sg', 'us'];
+
 module.exports = {
   CONTINENT_DEFS,
+  DEFAULT_CORE_REGIONS,
   getEnhancedRegionDefs,
   getRegionFlagLookup,
   validateMapping
