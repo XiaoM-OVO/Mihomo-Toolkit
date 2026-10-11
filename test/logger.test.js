@@ -172,4 +172,19 @@ describe('🪵 统一分级终端 Logger 模块测试', () => {
     assert.ok(res);
     assert.equal(logs.length, 0);
   });
+
+  it('流水线日志控制 - 自动化测试环境下默认静默 (防测试噪音)', async () => {
+    const { buildProfile } = require('../src/index');
+    const userConfig = {
+      subscriptions: [
+        {
+          uri: 'vless://11111111-2222-3333-4444-555555555555@hk.domain.com:443?security=tls#🇭🇰 香港 01',
+          tag: 'Sub1'
+        }
+      ]
+    };
+    const { proxies } = await buildProfile(userConfig, { mode: 'nodes', noCache: true });
+    assert.ok(proxies);
+    assert.equal(proxies.length, 1);
+  });
 });

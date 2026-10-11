@@ -118,11 +118,23 @@ function startServer(options = {}) {
     }
   }
 
+  const isTest = (
+    process.env.NODE_ENV === 'test' ||
+    Boolean(process.env.NODE_TEST_CONTEXT) ||
+    (Array.isArray(process.execArgv) && process.execArgv.some(arg => typeof arg === 'string' && arg.startsWith('--test')))
+  );
+  const envLogLevel = process.env.LOG_LEVEL || (process.env.DEBUG ? 'debug' : '');
+  const defaultLogLevel = (isTest && !envLogLevel) ? 'silent' : 'info';
+
   const serverLogger = (options.logger && typeof options.logger.child === 'function')
     ? options.logger
     : createLogger({
         tag: 'Server',
-        level: options.debug ? 'debug' : (localConfig.logLevel || 'info')
+        level: options.debug
+          ? 'debug'
+          : (options.silent
+              ? 'silent'
+              : (options.logLevel || localConfig.logLevel || envLogLevel || defaultLogLevel))
       });
 
   // 安全姿态：监听面是否回环 + 启动时是否已配置鉴权
