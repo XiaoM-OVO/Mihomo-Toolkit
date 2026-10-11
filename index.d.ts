@@ -50,6 +50,8 @@ export interface PureConfig {
   enableDashboard?: boolean;
   /** 是否开启物理参数去重（默认为 false） */
   enableDedupe?: boolean;
+  /** 是否开启节点智能排序（按大区、线路质量、倍率有序排布，默认为 false） */
+  enableNodeSort?: boolean;
   /** 严格地区匹配模式：为 true 时仅匹配完全确信的地区名 */
   strictRegionMatch?: boolean;
   /** 是否在节点名中显示特征 Emoji 图标（如 🚀, 🏠, 🛰️） */

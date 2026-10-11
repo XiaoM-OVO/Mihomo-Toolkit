@@ -10,6 +10,7 @@
 
 const { FIELDS_BY_KEY } = require('../data');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
+const { getIsolationBucket } = require('./cleaner');
 
 /** 悬空分隔符默认清单：取自字段注册表（单一真相源，避免与配置默认值漂移） */
 const DEFAULT_SEPARATORS = FIELDS_BY_KEY.renameSeparators.default;
@@ -58,9 +59,11 @@ function computeNodeIndices(items = [], options = {}) {
     const regionKey = item.regionInfo.id || item.regionInfo.name;
     const tag = item.airportTag || '';
     const prefix = item.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
-    const trackKey = prefix ? `${regionKey}__${prefix}` : regionKey;
+    const isoBucket = item.isolateBucket !== undefined ? item.isolateBucket : getIsolationBucket(item, options);
+    const trackKey = [regionKey, prefix, isoBucket].filter(Boolean).join('__');
+    const regionGroupKey = isoBucket ? `${regionKey}__${isoBucket}` : regionKey;
 
-    regionTotals[regionKey] = (regionTotals[regionKey] || 0) + 1;
+    regionTotals[regionGroupKey] = (regionTotals[regionGroupKey] || 0) + 1;
     groupTotals[trackKey] = (groupTotals[trackKey] || 0) + 1;
   });
 
@@ -76,14 +79,16 @@ function computeNodeIndices(items = [], options = {}) {
     const regionKey = item.regionInfo.id || item.regionInfo.name;
     const tag = item.airportTag || '';
     const prefix = item.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
-    const trackKey = prefix ? `${regionKey}__${prefix}` : regionKey;
+    const isoBucket = item.isolateBucket !== undefined ? item.isolateBucket : getIsolationBucket(item, options);
+    const trackKey = [regionKey, prefix, isoBucket].filter(Boolean).join('__');
+    const regionGroupKey = isoBucket ? `${regionKey}__${isoBucket}` : regionKey;
 
     groupTrack[trackKey] = (groupTrack[trackKey] || 0) + 1;
     const idx = groupTrack[trackKey];
-    const regionTotal = regionTotals[regionKey] || 1;
+    const regionTotal = regionTotals[regionGroupKey] || 1;
 
     let numStr = '';
-    // 当该大区节点数 > 1，或指定了前缀时，生成规范格式的序号 (如 01, L01)
+    // 当该大区/该隔离轨道节点数 > 1，或指定了前缀时，生成规范格式的序号 (如 01, L01)
     if (regionTotal > 1 || prefix) {
       numStr = prefix ? `${prefix}${String(idx).padStart(indexPad, '0')}` : String(idx).padStart(indexPad, '0');
     }

@@ -139,6 +139,7 @@ enableAirportTag: true             # 多订阅时自动为节点打上订阅来�
 # ⑦ 节点重命名与模板
 # ─────────────────────────────────────────────────────────────────────
 enableNodeRename: true             # 是否启用节点重命名（设为 false 可原样保留节点名称，且不影响地区识别）
+# enableNodeSort: false            # 是否启用节点智能排序（按大区、质量权重、入口、倍率升序排布）
 showFeatureIcon: true              # 是否在节点名后追加特征 Emoji 图标 (如 🚀 4K 等)
 # renameTemplate: "{icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
 # nodeIpVersion: "dual"            # 节点连接 IP 栈策略: dual (双栈并发竞速，推荐) | ipv6-prefer | ipv4-prefer | ipv6 | ipv4

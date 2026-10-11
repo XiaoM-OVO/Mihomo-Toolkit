@@ -8,6 +8,7 @@ const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode } = require('../core/cleaner');
 const { buildRenamePlan, resolveNameCollisions } = require('../core/rename');
+const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 // Name rendering and feature variables are owned by core/rename.
 const { createServiceRegistries } = require('../strategy/registries');
@@ -46,6 +47,13 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     // 2. 节点深度清洗与特征打标
     const regionDefs = getEnhancedRegionDefs();
     classifiedNodes = proxies.map(p => classifyNode(p, userConfig, { regionDefs }));
+
+    // 2.5 节点多维智能排序
+    if (userConfig.enableNodeSort && !isPreCleaned) {
+      classifiedNodes = sortNodes(classifiedNodes, userConfig);
+      proxies = classifiedNodes.map(c => c.proxy);
+      sourceSkeleton.proxies = proxies;
+    }
 
     // 3. 节点重命名与模板渲染由共享 Core 函数统一规划。
     const isRenameEnabled = !isPreCleaned && userConfig.enableNodeRename !== false;
