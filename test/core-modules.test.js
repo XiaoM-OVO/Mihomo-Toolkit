@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const { dedupeNodes, getNodeFingerprint } = require('../src/core/dedupe');
 const { matchNodeRegion, extractCity } = require('../src/core/geo');
-const { renderTemplate, createSeparatorCleaners } = require('../src/core/rename');
+const { renderTemplate, createSeparatorCleaners, resolveNameCollisions } = require('../src/core/rename');
 const { getEnhancedRegionDefs, validateMapping } = require('../src/core/shared/regions');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../src/core/shared/icons');
 const { isPrivateIp, isAllowedUrl } = require('../src/io/ssrf');
@@ -47,6 +47,20 @@ test('🧩 核心模块单元测试 - 地区与城市识别 (geo)', () => {
   assert.equal(extractCity('🇯🇵 东京 02 [VIP]', jp), '东京');
 });
 
+test('🧩 地区识别回归 - CN2、大小写歧义代码与旗帜序号', () => {
+  const defs = getEnhancedRegionDefs();
+  assert.equal(matchNodeRegion('香港 CN2 GIA 01', defs)?.id, 'hk');
+  assert.equal(matchNodeRegion('美国 CN2 GIA 01', defs)?.id, 'us');
+  assert.equal(matchNodeRegion('HK built in 01', defs)?.id, 'hk');
+  assert.equal(matchNodeRegion('US do it 01', defs)?.id, 'us');
+  assert.equal(matchNodeRegion('HK this is fast 01', defs)?.id, 'hk');
+  assert.equal(matchNodeRegion('🇭🇰 01', defs)?.id, 'hk');
+  assert.equal(matchNodeRegion('🇯🇵 — #02', defs)?.id, 'jp');
+  assert.equal(matchNodeRegion('IN 01', defs)?.name, '印度');
+  assert.equal(matchNodeRegion('IT 01', defs)?.name, '意大利');
+  assert.equal(matchNodeRegion('IS 01', defs)?.name, '冰岛');
+  assert.equal(matchNodeRegion('MY 01', defs)?.name, '马来西亚');
+});
 test('🧩 核心模块单元测试 - 节点重命名与模板渲染 (rename)', () => {
   const cleaners = createSeparatorCleaners();
   const vars = {
@@ -65,6 +79,46 @@ test('🧩 核心模块单元测试 - 节点重命名与模板渲染 (rename)', 
   assert.equal(renderedEmpty, '🇺🇸 美国');
 });
 
+test('🧩 模板渲染回归 - 空机场括号与悬空分隔符一并清理', () => {
+  const rendered = renderTemplate('[{airport}] | {icon} {region}', {
+    icon: '🇭🇰', region: '香港'
+  }, {}, createSeparatorCleaners());
+  assert.equal(rendered, '🇭🇰 香港');
+
+  const fullWidth = renderTemplate('【{airport}】 | （{airport}） | {region}', {
+    region: '香港'
+  }, {}, createSeparatorCleaners());
+  assert.equal(fullWidth, '香港');
+
+  // 模板渲染产物全空时无条件回退原始名称
+  const fallbackName = renderTemplate('{in} | {city}', {}, { name: 'RawProxy01' }, createSeparatorCleaners());
+  assert.equal(fallbackName, 'RawProxy01');
+});
+
+test('🧩 核心模块单元测试 - 末端同名碰撞防护 (resolveNameCollisions)', () => {
+  const proxies = [
+    { name: '🇭🇰 香港 01' },
+    { name: '🇭🇰 香港 01' },
+    { name: '🇯🇵 日本 01' },
+    { name: '🇭🇰 香港 01' }
+  ];
+  resolveNameCollisions(proxies);
+  assert.equal(proxies[0].name, '🇭🇰 香港 01');
+  assert.equal(proxies[1].name, '🇭🇰 香港 01 #2');
+  assert.equal(proxies[2].name, '🇯🇵 日本 01');
+  assert.equal(proxies[3].name, '🇭🇰 香港 01 #3');
+
+  // 避免与列表中已存在的带序号节点产生二次撞车
+  const preexisting = [
+    { name: '节点 A' },
+    { name: '节点 A' },
+    { name: '节点 A #2' }
+  ];
+  resolveNameCollisions(preexisting);
+  assert.equal(preexisting[0].name, '节点 A');
+  assert.equal(preexisting[1].name, '节点 A #3');
+  assert.equal(preexisting[2].name, '节点 A #2');
+});
 test('🧩 核心模块单元测试 - SSRF 私网校验', () => {
   assert.equal(isPrivateIp('127.0.0.1'), true);
   assert.equal(isPrivateIp('10.0.0.1'), true);

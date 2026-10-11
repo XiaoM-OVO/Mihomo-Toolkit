@@ -7,9 +7,9 @@
 const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode } = require('../core/cleaner');
-const { renderTemplate, createSeparatorCleaners, computeNodeIndices } = require('../core/rename');
+const { buildRenamePlan, resolveNameCollisions } = require('../core/rename');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
-const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../core/shared/icons');
+// Name rendering and feature variables are owned by core/rename.
 const { createServiceRegistries } = require('../strategy/registries');
 const { buildProxyTopology } = require('../strategy/topology');
 const { buildRoutingRules } = require('../strategy/rules');
@@ -47,62 +47,14 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     const regionDefs = getEnhancedRegionDefs();
     classifiedNodes = proxies.map(p => classifyNode(p, userConfig, { regionDefs }));
 
-    // 3. 节点重命名与模板渲染（已清洗节点跳过，防二次重命名污染）
-    const templateCleaners = createSeparatorCleaners(userConfig.renameSeparators);
-    const renameTemplate = userConfig.renameTemplate;
+    // 3. 节点重命名与模板渲染由共享 Core 函数统一规划。
     const isRenameEnabled = !isPreCleaned && userConfig.enableNodeRename !== false;
-
-    if (isRenameEnabled && renameTemplate) {
-      const indexMap = computeNodeIndices(classifiedNodes, userConfig);
-
-      // 动态合并来自 catalog 的特征图标与文本
-      const catalogIcons = {};
-      const catalogTexts = {};
-      if (userConfig.catalog && typeof userConfig.catalog.getCoreMatchers === 'function') {
-        userConfig.catalog.getCoreMatchers().forEach(m => {
-          if (m.uiIcon) catalogIcons[m.tag] = m.uiIcon;
-          if (m.uiText) catalogTexts[m.tag] = m.uiText;
-        });
-      }
-      const effectiveFeatureIcons = { ...FEATURE_ICONS, ...catalogIcons };
-      const effectiveFeatureTexts = { ...FEATURE_TEXT_MAP, ...catalogTexts };
-
-      classifiedNodes.forEach(item => {
-        if (item.skip || item.isSpecial || item.isInfo || !item.regionInfo || item.keepName) return;
-
-        let featureStr = '';
-        (item.tags || []).forEach(t => {
-          if (t === 'ipv6' || t === 'dualstack') return;
-          if (userConfig.showFeatureIcon !== false) {
-            if (effectiveFeatureIcons[t]) featureStr += effectiveFeatureIcons[t];
-          } else {
-            if (effectiveFeatureTexts[t]) featureStr += (featureStr ? '/' : '') + effectiveFeatureTexts[t];
-          }
-        });
-
-        const protocolIcon = PROTOCOL_ICONS[item.protocol] || '';
-        const numStr = indexMap.get(item) || '';
-        const vars = {
-          airport: item.airportTag || '',
-          icon: item.regionInfo.icon || '',
-          region: item.regionInfo.name || '',
-          index: numStr,
-          features: featureStr,
-          protocol: protocolIcon,
-          multi: item.attrs?.multiStr || '',
-          in: item.attrs?.entryStr || '',
-          city: item.destCity || '',
-          line: item.attrs?.cleanLines || '',
-          ip_stack: item.tags?.includes('dualstack') ? '双栈' : (item.tags?.includes('ipv6') ? 'IPv6' : ''),
-          transport: item.transportTag || ''
-        };
-
-        const newName = renderTemplate(renameTemplate, vars, item.proxy, templateCleaners);
-        if (newName) {
-          item.proxy.name = newName;
-        }
-      });
+    if (isRenameEnabled) {
+      const renamePlan = buildRenamePlan(classifiedNodes, userConfig);
+      for (const [item, name] of renamePlan) item.proxy.name = name;
+      resolveNameCollisions(proxies);
     }
+
   }
 
   // 4. 组装服务注册表与策略拓扑

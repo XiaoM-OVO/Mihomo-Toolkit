@@ -6,11 +6,12 @@
 
 // 入口地区/运营商前缀正则片段
 const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|香港|台湾|日本|韩国|新加坡|美国|英国|德国|法国|澳洲|英|德|法|澳|美|日|韩|新|港|台)";
+const IN_PREFIX_OPTIONAL = `(?:${IN_PREFIX}(?:\\s*(?:->|=>|~>|→|⇒|-|—|=|>|至)\\s*|\\s+)?)?`;
 
 // 顺序决定排序优先级与节点桶名
 const REGION_DEFS_RAW = [
   // --- 大中华区 ---
-  { id: "cn", name: "中国",   icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(CN|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
+  { id: "cn", name: "中国",   icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(?:CN(?!2)|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
   { id: "hk", name: "香港",   icon: "🇭🇰", _regTemplate: "港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong" },
   { id: "mo", name: "澳门",   icon: "🇲🇴", reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i },
   { id: "tw", name: "台湾",   icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", _regTemplate: "台|台湾|台灣|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet" },
@@ -21,7 +22,7 @@ const REGION_DEFS_RAW = [
   { id: "sg", name: "新加坡", icon: "🇸🇬", city: "狮城", _regTemplate: "新|新加坡|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest" },
 
   // --- 北美大区 ---
-  { id: "us", name: "美国",   icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", _regTemplate: "美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America" },
+  { id: "us", name: "美国",   icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", _regTemplate: "美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America|United States" },
 
   // --- 欧洲大区 ---
   { group: "eu", name: "英国",   icon: "🇬🇧", city: "伦敦|費勒姆", reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
@@ -32,18 +33,18 @@ const REGION_DEFS_RAW = [
   { group: "eu", name: "西班牙", icon: "🇪🇸", city: "马德里", reg: /西班牙|(?<![a-zA-Z])ES(?![a-zA-Z])|Spain/i },
   { group: "eu", name: "荷兰",   icon: "🇳🇱", city: "阿姆斯特丹", reg: /荷兰|(?<![a-zA-Z])NL(?![a-zA-Z])|Netherlands/i },
   { group: "eu", name: "瑞士",   icon: "🇨🇭", city: "苏黎世|日内瓦", reg: /瑞士|(?<![a-zA-Z])CH(?![a-zA-Z])|Switzerland/i },
-  { group: "eu", name: "意大利", icon: "🇮🇹", city: "米兰|罗马", reg: /意大利|(?<![a-zA-Z])IT(?![a-zA-Z])|Italy/i },
+  { group: "eu", name: "意大利", icon: "🇮🇹", city: "米兰|罗马", reg: /意大利|Italy/i, codeReg: /(?<![a-zA-Z])IT(?![a-zA-Z])/ },
   { group: "eu", name: "瑞典",   icon: "🇸🇪", city: "斯德哥尔摩", reg: /瑞典|(?<![a-zA-Z])SE(?![a-zA-Z])|Sweden/i },
   { group: "eu", name: "爱尔兰", icon: "🇮🇪", city: "都柏林", reg: /爱尔兰|(?<![a-zA-Z])IE(?![a-zA-Z])|Ireland/i },
   { group: "eu", name: "波兰",   icon: "🇵🇱", city: "华沙", reg: /波兰|(?<![a-zA-Z])PL(?![a-zA-Z])|Poland/i },
   { group: "eu", name: "芬兰",   icon: "🇫🇮", city: "赫尔辛基", reg: /芬兰|(?<![a-zA-Z])FI(?![a-zA-Z])|Finland/i },
-  { group: "eu", name: "冰岛",   icon: "🇮🇸", city: "雷克雅未克", reg: /冰岛|(?<![a-zA-Z])IS(?![a-zA-Z])|Iceland/i },
+  { group: "eu", name: "冰岛",   icon: "🇮🇸", city: "雷克雅未克", reg: /冰岛|Iceland/i, codeReg: /(?<![a-zA-Z])IS(?![a-zA-Z])/ },
 
   // --- 南亚大区 ---
-  { group: "sa", name: "印度",     icon: "🇮🇳", city: "孟买|新德里", reg: /印度|(?<![a-zA-Z])IN(?![a-zA-Z])|India/i },
+  { group: "sa", name: "印度",     icon: "🇮🇳", city: "孟买|新德里", reg: /印度|India/i, codeReg: /(?<![a-zA-Z])IN(?![a-zA-Z])/ },
 
   // --- 东南亚大区 ---
-  { group: "sea", name: "马来西亚", icon: "🇲🇾", city: "吉隆坡", reg: /马来|马来西亚|(?<![a-zA-Z])MY(?![a-zA-Z])|Malaysia/i },
+  { group: "sea", name: "马来西亚", icon: "🇲🇾", city: "吉隆坡", reg: /马来|马来西亚|Malaysia/i, codeReg: /(?<![a-zA-Z])MY(?![a-zA-Z])/ },
   { group: "sea", name: "泰国",     icon: "🇹🇭", city: "曼谷", reg: /泰国|(?<![a-zA-Z])TH(?![a-zA-Z])|Thailand/i },
   { group: "sea", name: "印尼",     icon: "🇮🇩", city: "雅加达", reg: /印尼|印度尼西亚|(?<![a-zA-Z])ID(?![a-zA-Z])|Indonesia/i },
   { group: "sea", name: "菲律宾",   icon: "🇵🇭", city: "马尼拉", reg: /菲律宾|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i },
@@ -74,7 +75,7 @@ const REGION_DEFS_RAW = [
 // 动态派生未定义 reg 的模板项
 for (const r of REGION_DEFS_RAW) {
   if (r._regTemplate && !r.reg) {
-    r.reg = new RegExp(IN_PREFIX + r._regTemplate, "i");
+    r.reg = new RegExp(IN_PREFIX_OPTIONAL + '(?:' + r._regTemplate + ')', "i");
   }
 }
 
@@ -91,14 +92,27 @@ const CONTINENT_DEFS = [
 /**
  * 运行时增强：预生成每个地区的 _cleanReg / _matchReg / _cityReg
  */
+const REGION_FLAG_LOOKUPS = new WeakMap();
+
 function enhanceRegionDefs(defs) {
   defs.forEach(r => {
     const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
     r._cleanReg = new RegExp(combinedSource, "ig");
     r._matchReg = new RegExp(combinedSource, "i");
     r._cityReg = r.city ? new RegExp(r.city, "i") : null;
+    r._codeMatchReg = r.codeReg || null;
   });
+  REGION_FLAG_LOOKUPS.set(defs, new Map(defs.filter(r => r.icon).map(r => [r.icon, r])));
   return defs;
+}
+
+function getRegionFlagLookup(defs) {
+  let lookup = REGION_FLAG_LOOKUPS.get(defs);
+  if (!lookup) {
+    lookup = new Map((Array.isArray(defs) ? defs : []).filter(r => r?.icon).map(r => [r.icon, r]));
+    if (Array.isArray(defs)) REGION_FLAG_LOOKUPS.set(defs, lookup);
+  }
+  return lookup;
 }
 
 /**
@@ -116,11 +130,11 @@ function validateMapping() {
   const mismatches = [];
   for (const r of REGION_DEFS_RAW) {
     if (r._regTemplate != null) {
-      const expectedSource = (IN_PREFIX + r._regTemplate);
+      const expectedSource = IN_PREFIX_OPTIONAL + '(?:' + r._regTemplate + ')';
       const actualSource = r.reg.source;
       const rebuiltSource = new RegExp(expectedSource, "i").source;
       if (actualSource !== rebuiltSource) {
-        mismatches.push(`${r.name}: reg.source 与 IN_PREFIX + _regTemplate 不一致`);
+        mismatches.push(`${r.name}: reg.source 与 IN_PREFIX_OPTIONAL + _regTemplate 不一致`);
       }
     }
   }
@@ -133,5 +147,6 @@ function validateMapping() {
 module.exports = {
   CONTINENT_DEFS,
   getEnhancedRegionDefs,
+  getRegionFlagLookup,
   validateMapping
 };
