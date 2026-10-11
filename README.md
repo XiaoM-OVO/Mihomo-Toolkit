@@ -209,11 +209,20 @@ subscriptions:
 
 # 4. 节点清洗与重命名
 enableDedupe: true               # 开启底层物理指纹去重
+enableNodeSort: true             # 开启节点多维智能排序 (按大区、隔离分类、线路质量、倍率升序排布)
 enableNodeRename: true           # 节点重命名开关 (设为 false 原样保留节点名，不影响地区识别)
 showFeatureIcon: true            # 是否追加 🚀/4K 等特征 Emoji
 removeInfoNodes: true            # 自动剔除订阅原生流量假节点 (避免与合成看板冲突)
 
 # 5. 策略组与分流
+coreRegions:                     # 主力免折叠大区清单 (低于阈值也保证独立建组)
+  - "cn"
+  - "hk"
+  - "tw"
+  - "jp"
+  - "kr"
+  - "sg"
+  - "us"
 enableAI: true                   # 独立 ChatGPT / Claude / Gemini 策略组
 enableStreaming: true            # 独立 Netflix / YouTube / Disney+ 策略组
 enableSocial: true               # 独立 Telegram / Twitter 策略组
@@ -277,6 +286,7 @@ mihomo-toolkit/
 │   │   ├── transport.js       # 统一传输层门面 (Host/SNI/Path提取、Host注入与协议识别)
 │   │   ├── geo.js             # 地区智能正则匹配与落地城市精准提取
 │   │   ├── rename.js          # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
+│   │   ├── sort.js            # 节点多维智能排序、隔离分类聚拢与顺序确定性保证
 │   │   ├── fission.js         # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
 │   │   ├── chinese-convert.js # 简繁中文递归转换与无依赖回退降级
 │   │   ├── chinese-sync.js    # 节点名/策略组名/成员引用/分流规则四路简繁同步

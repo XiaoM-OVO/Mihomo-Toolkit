@@ -290,6 +290,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── transport.js          # 统一传输层门面 (Host/SNI/Path提取、Host注入与类型识别)
 │   │   ├── geo.js                # 地区智能正则匹配与落地城市精准提取
 │   │   ├── rename.js             # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
+│   │   ├── sort.js               # 节点多维智能排序、隔离组聚拢与顺序确定性保证
 │   │   ├── fission.js            # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
 │   │   ├── chinese-convert.js    # 简繁中文递归转换与无依赖回退降级
 │   │   ├── chinese-sync.js       # 节点名/策略组名/成员引用/分流规则四路简繁同步

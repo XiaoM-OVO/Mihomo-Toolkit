@@ -167,6 +167,14 @@ defaultProxyMode: "manual"         # auto (自动测速) | manual (手动选择)
 regionGroupType: "url-test"        # 地区策略组类型: url-test (测速优选) | select (手动选择) | fallback (故障转移)
 # enableRegionHashLB: false        # 为达到条件的地区组增加哈希负载均衡（建议配合 regionGroupType: "select"）
 # minorNodeThreshold: 3            # 小众地区独立建组最小节点数（低于此值自动折叠至大洲组）
+# coreRegions:                     # 主力免折叠大区（低于阈值也保证独立建组）
+#   - "cn"
+#   - "hk"
+#   - "tw"
+#   - "jp"
+#   - "kr"
+#   - "sg"
+#   - "us"
 # hideUnknownGroup: false          # 是否在面板中隐藏「🗑️ 未知识别」组
 # exemptGroups:                    # 在只读骨架基线（手动选择 / 漏网之鱼）之外【追加】永不被空组剪枝斩首的组名
 #                                  # 同样只增不减：用于保护自建常驻组不被 DAG 级联清理误删

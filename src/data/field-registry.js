@@ -110,6 +110,8 @@ const FIELDS = [
   // ── 【3. 策略组建组与 UI 面板】 ───────────────────────────────────────────
   { key: 'minorNodeThreshold', type: 'number', default: 3, merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '小众地区建组阈值' },
+  { key: 'coreRegions', type: 'string[]', default: ['cn', 'hk', 'tw', 'jp', 'kr', 'sg', 'us'], merge: 'override', trust: 'any',
+    group: '策略组建组与 UI 面板', doc: '主力免折叠大区：即使节点数低于阈值也保证独立建组' },
   { key: 'regionGroupType', type: 'string', default: 'url-test', merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '地区组行为: url-test | select | fallback' },
   { key: 'enableRegionHashLB', type: 'boolean', default: false, merge: 'override', trust: 'any',

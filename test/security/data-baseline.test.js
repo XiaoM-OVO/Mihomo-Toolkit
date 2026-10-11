@@ -63,6 +63,7 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
         added.sort(),
         [
           'exemptGroups', 'protectedDomains',
+          'coreRegions',
           'devServices', 'geoipRepo', 'geositeRepo',
           'enableFission', 'fissionStack', 'fissionMaxNodes', 'fissionExcludeKeywords',
           'enableNodeSort',
