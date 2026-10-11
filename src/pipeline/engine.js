@@ -28,6 +28,17 @@ function normalizeOutputMode(rawMode) {
 }
 
 /**
+ * 判断当前是否处于自动化测试环境 (Node.js test runner 或 NODE_ENV=test)
+ */
+function isTestEnvironment() {
+  return (
+    process.env.NODE_ENV === 'test' ||
+    Boolean(process.env.NODE_TEST_CONTEXT) ||
+    (Array.isArray(process.execArgv) && process.execArgv.some(arg => typeof arg === 'string' && arg.startsWith('--test')))
+  );
+}
+
+/**
  * 安全提取异常的错误消息字符串，防止非 Error 对象（如 null, undefined, string, plain object）
  * 在读取 .message 时二次抛出 TypeError
  * @param {any} err
@@ -455,9 +466,15 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   // 入口统一展开 include 片段
   userConfig = expandIncludes(userConfig || {}, process.cwd());
 
+  const isTest = isTestEnvironment();
+  const envLogLevel = process.env.LOG_LEVEL || (process.env.DEBUG ? 'debug' : '');
+  const defaultLogLevel = (isTest && !envLogLevel) ? 'silent' : 'info';
+
   const effectiveLogLevel = options.debug
     ? 'debug'
-    : (options.silent || options.quiet ? 'silent' : (options.logLevel || userConfig.logLevel || 'info'));
+    : (options.silent || options.quiet
+        ? 'silent'
+        : (options.logLevel || userConfig.logLevel || envLogLevel || defaultLogLevel));
   const logger = (options.logger && typeof options.logger.child === 'function')
     ? options.logger
     : createLogger({
