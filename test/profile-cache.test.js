@@ -118,6 +118,34 @@ test.describe('ProfileCache: 代际时序与并发防护', () => {
       cache.nextGeneration();
     }, /exceeded Number\.MAX_SAFE_INTEGER/);
   });
+
+  test('安全淘汰与代际保护边界：delete(key, maxGeneration) 严格检验代次大于、等于、小于边界', () => {
+    const cache = new ProfileCache({ maxEntries: 10 });
+
+    // 1. 代次相等边界 (existing.generation === maxGeneration)：允许删除并返回 true
+    cache.set('equal-gen', { v: 1 }, { generation: 5 });
+    assert.equal(cache.has('equal-gen'), true);
+    const delEqual = cache.delete('equal-gen', 5);
+    assert.equal(delEqual, true, '代次相等边界允许淘汰');
+    assert.equal(cache.has('equal-gen'), false, '条目已被物理删除');
+
+    // 2. 老代次边界 (existing.generation < maxGeneration)：允许删除并返回 true
+    cache.set('older-gen', { v: 1 }, { generation: 3 });
+    const delOlder = cache.delete('older-gen', 5);
+    assert.equal(delOlder, true, '老代次条目允许淘汰');
+    assert.equal(cache.has('older-gen'), false);
+
+    // 3. 新代次保护边界 (existing.generation > maxGeneration)：拒绝删除并返回 false
+    cache.set('newer-gen', { v: 1 }, { generation: 8 });
+    const delNewer = cache.delete('newer-gen', 5);
+    assert.equal(delNewer, false, '新代次条目严禁删除');
+    assert.equal(cache.has('newer-gen'), true, '新代次条目完好保留');
+
+    // 4. 无代次参数：无条件正常删除
+    cache.set('unconditional', { v: 1 }, { generation: 8 });
+    assert.equal(cache.delete('unconditional'), true, '未传 maxGeneration 执行无条件删除');
+    assert.equal(cache.has('unconditional'), false);
+  });
 });
 
 test.describe('ProfileCache: LRU 容量控制与元数据解耦', () => {

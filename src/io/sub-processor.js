@@ -11,7 +11,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { parseContent, parseSubscriptionInfo, isExpiredNow } = require('./parsers');
+const { parseContent, parseSubscriptionInfo, isExpiredNow, isQuotaExhausted } = require('./parsers');
+const { hasOnlyPlaceholderNodes } = require('../core/cleaner');
 const { redactUrl } = require('./ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache } = require('./fetcher');
 const { DEFAULT_REQUEST_LIMITS } = require('./limits');
@@ -281,6 +282,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   let sourceSkeleton = { proxies: [] };
   let hasInjectedTag = false;
   let hasFailedSub = false;
+  let hasTerminalFailure = false;
   const collectedSubInfos = [];
   /** 单订阅节点数统计，用于资源配额校验 (perSubscriptionMaxNodes) */
   const perSubCounts = {};
@@ -350,6 +352,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           rawResult = { content: sub.uri, subInfo: null };
         } else {
           const subKey = sub.url;
+          const initialStale = (typeof subStaleCache.getSnapshot === 'function')
+            ? subStaleCache.getSnapshot(subKey)
+            : subStaleCache.get(subKey);
           const localSubPath = path.resolve(process.cwd(), sub.url);
           if (!/^https?:\/\//i.test(sub.url) && fs.existsSync(localSubPath) && fs.statSync(localSubPath).isFile()) {
             logger.debug(`📄 读取本地订阅文件: ${sub.url}`);
@@ -365,18 +370,99 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
                 timeoutMs: fetchTimeoutSec * 1000,
                 maxBytes: maxSubscriptionBytes
               });
-            if (!rawResult.content || (parseContent(rawResult.content).proxies || []).length === 0) {
-              throw new Error('Subscription returned no nodes');
+
+              // 检查本次成功响应附带的元信息（过期与流量检查）
+              if (rawResult.subInfo) {
+                const freshParsedInfo = parseSubscriptionInfo(rawResult.subInfo);
+                // 1. 本次响应明确已到期：绝不作为健康订阅，拒绝写入缓存
+                if (isExpiredNow(freshParsedInfo.expire)) {
+                  const expiredErr = new Error(`Subscription expired at ${new Date(freshParsedInfo.expire * 1000).toISOString().split('T')[0]}`);
+                  expiredErr.isExpired = true;
+                  expiredErr.subInfo = rawResult.subInfo;
+                  throw expiredErr;
+                }
+                // 2. 本次响应明确流量耗尽：绝不作为健康订阅
+                if (isQuotaExhausted(freshParsedInfo)) {
+                  const quotaErr = new Error('Subscription quota exhausted (upload + download >= total)');
+                  quotaErr.isQuotaExhausted = true;
+                  quotaErr.subInfo = rawResult.subInfo;
+                  throw quotaErr;
+                }
+              }
+
+              const parsedProxies = (parseContent(rawResult.content).proxies || []);
+              if (!rawResult.content || parsedProxies.length === 0) {
+                throw new Error('Subscription returned no nodes');
+              }
+
+              // 有效性检查：若返回的节点全部为无服务能力的占位/续费/提示节点，视为异常响应
+              if (hasOnlyPlaceholderNodes(parsedProxies)) {
+                const placeholderErr = new Error('Subscription returned only placeholder/notice nodes');
+                placeholderErr.isPlaceholderOnly = true;
+                throw placeholderErr;
+              }
+            } catch (e) {
+              const currentStale = subStaleCache.get(subKey);
+              const stale = currentStale;
+
+              // ─── 阶段一：独立判定终态失效（不依赖旧缓存是否存在或是否超期） ───
+              let isTerminal = false;
+              let terminalReason = '';
+
+              const httpStatus = e?.statusCode || e?.status;
+              if (httpStatus === 401) {
+                isTerminal = true;
+                terminalReason = 'HTTP 401 凭据失效';
+              } else if (e?.isExpired) {
+                isTerminal = true;
+                terminalReason = '本次响应确认已到期';
+              } else if (e?.isQuotaExhausted) {
+                isTerminal = true;
+                terminalReason = '本次响应确认流量已耗尽';
+              } else if (currentStale) {
+                const staleParsedInfo = parseSubscriptionInfo(currentStale.subInfo);
+                if (staleParsedInfo && isExpiredNow(staleParsedInfo.expire)) {
+                  isTerminal = true;
+                  terminalReason = `旧缓存已于 ${new Date(staleParsedInfo.expire * 1000).toISOString().split('T')[0]} 到期`;
+                }
+              }
+
+              // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号；若旧缓存存在则安全淘汰
+              // 安全淘汰：只有当前缓存条目仍为发起请求时捕获的旧条目时才允许物理删除，防止误删并发新任务刚写入的健康条目
+              if (isTerminal) {
+                hasTerminalFailure = true;
+                if (typeof subStaleCache.deleteIfMatch === 'function') {
+                  subStaleCache.deleteIfMatch(subKey, initialStale);
+                } else if (initialStale && subStaleCache.get(subKey) === initialStale) {
+                  subStaleCache.delete(subKey);
+                }
+              }
+
+              // ─── 阶段二：容灾决策检查（决定是否允许降级兜底） ───
+              let allowFallback = false;
+              let fallbackRejectReason = '';
+
+              if (isTerminal) {
+                fallbackRejectReason = `${terminalReason}，拒绝回退旧缓存`;
+              } else if (!stale) {
+                fallbackRejectReason = '无历史缓存';
+              } else if (Date.now() - stale.timestamp >= staleMaxAgeMs) {
+                fallbackRejectReason = '缓存超过保留期限 (fetchStaleTtl)';
+              } else {
+                // 网络超时、连接错误、5xx 或经论证的异常，允许降级
+                allowFallback = true;
+              }
+
+              if (allowFallback) {
+                logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
+                rawResult = { content: stale.content, subInfo: stale.subInfo, stale: true };
+              } else {
+                if (fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
+                  logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(sub.url, showFullUrl)}]: ${fallbackRejectReason}`);
+                }
+                throw e;
+              }
             }
-          } catch (e) {
-            const stale = subStaleCache.get(subKey);
-            if (stale && Date.now() - stale.timestamp < staleMaxAgeMs) {
-              logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
-              rawResult = { content: stale.content, subInfo: stale.subInfo, stale: true };
-            } else {
-              throw e;
-            }
-          }
             if (rawResult && !rawResult.stale) {
               subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
               pruneSubStaleCache(staleMaxAgeMs);
@@ -535,6 +621,12 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         else if (/timeout/i.test(shortMsg)) shortMsg = '拉取超时';
         else if (/HTTP Error: (\d+)/i.test(shortMsg)) shortMsg = `HTTP ${shortMsg.match(/HTTP Error: (\d+)/i)[1]}`;
         else if (/no nodes/i.test(shortMsg)) shortMsg = '未解析到有效节点';
+        else if (/expired/i.test(shortMsg)) shortMsg = '订阅已到期';
+        else if (/quota exhausted/i.test(shortMsg)) shortMsg = '流量已耗尽';
+
+        if (e?.subInfo) {
+          recordSubInfo(e.subInfo, sub.tag);
+        }
 
         subSummaries.push({
           type: sub.uri ? 'uri' : 'url',
@@ -593,6 +685,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   } else if (url) {
     // 2. 单 URL / URI / 本地文件路径 分支
     let rawResult;
+    let isTerminal = false;
+    let fallbackRejectReason = '';
+    let fetchError = null;
     const localFilePath = path.resolve(process.cwd(), url);
     if (!/^https?:\/\//i.test(url) && !/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
       if (fs.existsSync(localFilePath) && fs.statSync(localFilePath).isFile()) {
@@ -605,16 +700,130 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       logger.debug(`📌 解析 URI 节点: ${url.split('#').pop() || '未知'}`);
       rawResult = { content: url, subInfo: null };
     } else {
-      rawResult = await fetchNodes(url, {
-        showFullUrl, debug, logger,
-        proxyUrl: effectiveProxyUrl,
-        strategy: effectiveStrategy,
-        retry: fetchRetry,
-        timeoutMs: fetchTimeoutSec * 1000,
-        maxBytes: maxSubscriptionBytes
-      });
+      const subKey = url;
+      const initialStale = (typeof subStaleCache.getSnapshot === 'function')
+        ? subStaleCache.getSnapshot(subKey)
+        : subStaleCache.get(subKey);
+      try {
+        rawResult = await fetchNodes(url, {
+          showFullUrl, debug, logger,
+          proxyUrl: effectiveProxyUrl,
+          strategy: effectiveStrategy,
+          retry: fetchRetry,
+          timeoutMs: fetchTimeoutSec * 1000,
+          maxBytes: maxSubscriptionBytes
+        });
+
+        // 检查本次成功响应附带的元信息（过期与流量检查）
+        if (rawResult.subInfo) {
+          const freshParsedInfo = parseSubscriptionInfo(rawResult.subInfo);
+          // 1. 本次响应明确已到期：绝不作为健康订阅，拒绝写入缓存
+          if (isExpiredNow(freshParsedInfo.expire)) {
+            const expiredErr = new Error(`Subscription expired at ${new Date(freshParsedInfo.expire * 1000).toISOString().split('T')[0]}`);
+            expiredErr.isExpired = true;
+            expiredErr.subInfo = rawResult.subInfo;
+            throw expiredErr;
+          }
+          // 2. 本次响应明确流量耗尽：绝不作为健康订阅
+          if (isQuotaExhausted(freshParsedInfo)) {
+            const quotaErr = new Error('Subscription quota exhausted (upload + download >= total)');
+            quotaErr.isQuotaExhausted = true;
+            quotaErr.subInfo = rawResult.subInfo;
+            throw quotaErr;
+          }
+        }
+
+        const parsedProxies = (parseContent(rawResult.content).proxies || []);
+        if (!rawResult.content || parsedProxies.length === 0) {
+          throw new Error('Subscription returned no nodes');
+        }
+
+        // 有效性检查：若返回的节点全部为无服务能力的占位/续费/提示节点，视为异常响应
+        if (hasOnlyPlaceholderNodes(parsedProxies)) {
+          const placeholderErr = new Error('Subscription returned only placeholder/notice nodes');
+          placeholderErr.isPlaceholderOnly = true;
+          throw placeholderErr;
+        }
+      } catch (e) {
+        fetchError = e;
+        const currentStale = subStaleCache.get(subKey);
+        const stale = currentStale;
+
+        // ─── 阶段一：独立判定终态失效（不依赖旧缓存是否存在或是否超期） ───
+        let terminalReason = '';
+
+        const httpStatus = e?.statusCode || e?.status;
+        if (httpStatus === 401) {
+          isTerminal = true;
+          terminalReason = 'HTTP 401 凭据失效';
+        } else if (e?.isExpired) {
+          isTerminal = true;
+          terminalReason = '本次响应确认已到期';
+        } else if (e?.isQuotaExhausted) {
+          isTerminal = true;
+          terminalReason = '本次响应确认流量已耗尽';
+        } else if (currentStale) {
+          const staleParsedInfo = parseSubscriptionInfo(currentStale.subInfo);
+          if (staleParsedInfo && isExpiredNow(staleParsedInfo.expire)) {
+            isTerminal = true;
+            terminalReason = `旧缓存已于 ${new Date(staleParsedInfo.expire * 1000).toISOString().split('T')[0]} 到期`;
+          }
+        }
+
+        // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号；若旧缓存存在则安全淘汰
+        // 安全淘汰：只有当前缓存条目仍为发起请求时捕获的旧条目时才允许物理删除，防止误删并发新任务刚写入的健康条目
+        if (isTerminal) {
+          hasTerminalFailure = true;
+          if (typeof subStaleCache.deleteIfMatch === 'function') {
+            subStaleCache.deleteIfMatch(subKey, initialStale);
+          } else if (initialStale && subStaleCache.get(subKey) === initialStale) {
+            subStaleCache.delete(subKey);
+          }
+        }
+
+        // ─── 阶段二：容灾决策检查（决定是否允许降级兜底） ───
+        let allowFallback = false;
+
+        if (isTerminal) {
+          fallbackRejectReason = `${terminalReason}，拒绝回退旧缓存`;
+        } else if (!stale) {
+          fallbackRejectReason = '无历史缓存';
+        } else if (Date.now() - stale.timestamp >= staleMaxAgeMs) {
+          fallbackRejectReason = '缓存超过保留期限 (fetchStaleTtl)';
+        } else {
+          // 网络超时、连接错误、5xx 或经论证的异常，允许降级
+          allowFallback = true;
+        }
+
+        if (allowFallback) {
+          logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
+          rawResult = { content: stale.content, subInfo: stale.subInfo, stale: true };
+          hasFailedSub = true;
+        } else {
+          hasFailedSub = true;
+          if (e?.subInfo) {
+            recordSubInfo(e.subInfo, '');
+          }
+          if (fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
+            logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(url, showFullUrl)}]: ${fallbackRejectReason}`);
+          }
+          // 单 URL 模式下若因终态失效拒绝，构造空骨架以交付并保留元数据，与多订阅模式保持一致
+          if (isTerminal) {
+            rawResult = { content: '', subInfo: e?.subInfo || null };
+          } else {
+            throw e;
+          }
+        }
+      }
+
+      if (rawResult && !rawResult.stale && !isTerminal) {
+        subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
+        pruneSubStaleCache(staleMaxAgeMs);
+      }
     }
-    recordSubInfo(rawResult.subInfo, '');
+    if (rawResult && !isTerminal) {
+      recordSubInfo(rawResult.subInfo, '');
+    }
 
     // 关键：单 URL/本地文件同样属于「外部不可信输入」，输出骨架必须重建为纯数据面对象，
     // 严禁直接复用订阅顶层配置（否则 external-controller / script / tunnels 等会随产物下发）。
@@ -641,7 +850,13 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     const nodeCount = sourceSkeleton.proxies.length;
     logger.info(`📡 节点解析完成: ${nodeCount} 个节点`);
     if (enableDashboard) {
-      const { nodes: synthNodes } = generateInfoNodes(rawResult.subInfo, '');
+      if (isTerminal) {
+        const effectiveTag = (url && url.startsWith('http')) ? new URL(url).hostname : '订阅';
+        const failNode = createFetchErrorNode(effectiveTag, fallbackRejectReason || '订阅已到期');
+        sourceSkeleton.proxies.push(failNode);
+      }
+      const effectiveSubInfo = rawResult?.subInfo || (fetchError?.subInfo || null);
+      const { nodes: synthNodes } = generateInfoNodes(effectiveSubInfo, '');
       if (synthNodes.length > 0) {
         sourceSkeleton.proxies.unshift(...synthNodes);
       }
@@ -654,6 +869,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     sourceSkeleton,
     collectedSubInfos,
     hasFailedSub,
+    hasTerminalFailure,
     hasInjectedTag,
     perSubCounts
   };
