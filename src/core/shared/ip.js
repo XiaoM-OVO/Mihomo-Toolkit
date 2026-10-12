@@ -95,6 +95,57 @@ function isIPv6(ip) {
   return ipaddr.IPv6.isValid(clean);
 }
 
+const DOMAIN_LABEL_REGEX = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+
+/**
+ * 校验是否为合法的 FQDN 域名（或以 +. / *. 开头的通配域名）
+ * @param {string} str
+ * @returns {boolean}
+ */
+function isValidDomain(str) {
+  if (!str || typeof str !== 'string' || str.length > 253) return false;
+  let clean = str.trim().toLowerCase();
+  if (clean.startsWith('+.') || clean.startsWith('*.')) {
+    clean = clean.slice(2);
+  }
+  if (!clean.includes('.')) return false;
+  const labels = clean.split('.');
+  if (labels.some(l => !l || !DOMAIN_LABEL_REGEX.test(l))) return false;
+  const tld = labels[labels.length - 1];
+  if (!/^[a-zA-Z]{2,}$|^xn--[a-zA-Z0-9]+$/i.test(tld)) return false;
+  return true;
+}
+
+/**
+ * 是否属于回环（127.0.0.0/8、::1、localhost）或未指定地址（0.0.0.0、::）
+ * @param {string} host
+ * @returns {boolean}
+ */
+function isLoopbackOrUnspecified(host) {
+  if (!host || typeof host !== 'string') return false;
+  const clean = host.trim().toLowerCase();
+  if (clean === 'localhost' || clean.endsWith('.localhost')) return true;
+  if (isIPv4(clean)) {
+    try {
+      const p = ipaddr.parse(clean);
+      return p.range() === 'loopback' || p.range() === 'unspecified';
+    } catch {
+      return false;
+    }
+  }
+  if (isIPv6(clean)) {
+    try {
+      let v6 = clean;
+      if (v6.startsWith('[') && v6.endsWith(']')) v6 = v6.slice(1, -1);
+      const p = ipaddr.parse(v6);
+      return p.range() === 'loopback' || p.range() === 'unspecified';
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 /**
  * 从 URL、host:port 或裸域名/IP 中提取纯净的主机名/IP
  * 自动剥离协议头 (http/https)、端口号、路径及查询参数
@@ -137,7 +188,7 @@ function extractDomainOrIp(target) {
 }
 
 /**
- * 归一化并清洗订阅服务域名/IP 列表（过滤回环与无效地址，确保无空、去重）
+ * 归一化并清洗订阅服务域名/IP 列表（严格语法校验，过滤全量回环与非法字符，确保无空、去重）
  * @param {string|string[]} input
  * @returns {string[]}
  */
@@ -149,14 +200,19 @@ function normalizeSubDomains(input) {
 
   for (const item of list) {
     if (typeof item !== 'string') continue;
-    const parts = item.split(/[,;\s]+/);
+    const parts = item.split(/[,;]+/);
     for (const part of parts) {
-      const clean = extractDomainOrIp(part);
+      const trimmed = part.trim();
+      if (!trimmed || /\s/.test(trimmed)) continue;
+      const clean = extractDomainOrIp(trimmed);
       if (!clean) continue;
-      // 过滤回环与未指定地址（这些地址无需且不应注入直连规则）
-      if (clean === 'localhost' || clean === '127.0.0.1' || clean === '::1' || clean === '0.0.0.0') {
-        continue;
-      }
+      // 1. 过滤回环与未指定地址（127.0.0.0/8、::1、localhost、0.0.0.0、::）
+      if (isLoopbackOrUnspecified(clean)) continue;
+      // 2. 语法合法性硬校验：必须是合法 IPv4、IPv6 或规范 FQDN 域名
+      const isIp = isIPv4(clean) || isIPv6(clean);
+      const isDomain = isValidDomain(clean);
+      if (!isIp && !isDomain) continue;
+
       if (!seen.has(clean)) {
         seen.add(clean);
         results.push(clean);
@@ -171,6 +227,8 @@ module.exports = {
   isPrivateIPv6,
   isIPv4,
   isIPv6,
+  isValidDomain,
+  isLoopbackOrUnspecified,
   extractDomainOrIp,
   normalizeSubDomains
 };
