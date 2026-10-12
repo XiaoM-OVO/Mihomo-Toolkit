@@ -20,6 +20,7 @@
 
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { getIsolationBucket } = require('./cleaner');
+const { ISOLATION_SORT_ORDER } = require('../data/cleaner-rules');
 
 let cachedRegionOrder = null;
 
@@ -70,17 +71,10 @@ function compareNodes(a, b, options = {}) {
   if (orderA !== orderB) return orderA - orderB;
 
   // 2.5 隔离分类优先级 (同一大区内，标准节点在最前，隔离节点按业务类别整齐归拢)
-  const ISO_WEIGHT = {
-    '': 0,             // 标准大区主力节点
-    'residential': 1,  // 🏠 家宽优选
-    'download': 2,     // ⏬ 下载池
-    'experimental': 3, // 🧪 实验节点
-    'highMulti': 4     // 🛑 高倍率节点沉底
-  };
   const isoA = a.isolateBucket !== undefined ? a.isolateBucket : getIsolationBucket(a, options);
   const isoB = b.isolateBucket !== undefined ? b.isolateBucket : getIsolationBucket(b, options);
-  const isoWeightA = ISO_WEIGHT[isoA] ?? 99;
-  const isoWeightB = ISO_WEIGHT[isoB] ?? 99;
+  const isoWeightA = ISOLATION_SORT_ORDER[isoA] ?? 99;
+  const isoWeightB = ISOLATION_SORT_ORDER[isoB] ?? 99;
   if (isoWeightA !== isoWeightB) {
     return isoWeightA - isoWeightB;
   }
