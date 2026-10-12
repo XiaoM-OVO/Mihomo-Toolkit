@@ -25,6 +25,7 @@ const {
   sanitizeHosts
 } = require('../core/security/dns-sanitizer');
 const { deriveFakeIpFilterAdditions } = require('../core/security/resolver-plan');
+const { isIPv4, isIPv6, normalizeSubDomains } = require('../core/shared/ip');
 const { FAKEIP_FILTER_BASELINE, effectiveProtectedDomains } = require('../data');
 
 function dedupe(arr) {
@@ -123,7 +124,8 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     ? config._assetFakeIpFilters
     : [];
   const userFilters = Array.isArray(userConfig.fakeIpFilter) ? userConfig.fakeIpFilter : [];
-  const finalList = dedupe([...DEFAULT_SCRIPT_FILTERS, ...nodeFilters, ...assetFilters, ...userFilters]);
+  const subDomainFilters = normalizeSubDomains(userConfig.subDomain).filter(d => !isIPv4(d) && !isIPv6(d));
+  const finalList = dedupe([...DEFAULT_SCRIPT_FILTERS, ...nodeFilters, ...assetFilters, ...userFilters, ...subDomainFilters]);
 
   // 3. 破除死锁：引导 DNS 与节点解析器严格纯 IP 化 (INV-1 / INV-2 / INV-3)
   const safeDefaultNs = sanitizeDnsServerList(

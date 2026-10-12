@@ -73,7 +73,104 @@ function isPrivateIPv6(ip) {
   }
 }
 
+/**
+ * 校验是否为合法 IPv4 地址字面量
+ * @param {string} ip
+ * @returns {boolean}
+ */
+function isIPv4(ip) {
+  if (!ip || typeof ip !== 'string') return false;
+  return ipaddr.IPv4.isValid(ip.trim());
+}
+
+/**
+ * 校验是否为合法 IPv6 地址字面量（支持方括号 [::1] 形式）
+ * @param {string} ip
+ * @returns {boolean}
+ */
+function isIPv6(ip) {
+  if (!ip || typeof ip !== 'string') return false;
+  let clean = ip.trim();
+  if (clean.startsWith('[') && clean.endsWith(']')) clean = clean.slice(1, -1);
+  return ipaddr.IPv6.isValid(clean);
+}
+
+/**
+ * 从 URL、host:port 或裸域名/IP 中提取纯净的主机名/IP
+ * 自动剥离协议头 (http/https)、端口号、路径及查询参数
+ * @param {string} target
+ * @returns {string|null}
+ */
+function extractDomainOrIp(target) {
+  if (!target || typeof target !== 'string') return null;
+  let str = target.trim();
+  if (!str) return null;
+
+  // 1. 若为标准 URL，借助 URL 解析提取 hostname
+  if (/^https?:\/\//i.test(str)) {
+    try {
+      const u = new URL(str);
+      str = u.hostname;
+    } catch {
+      str = str.replace(/^https?:\/\//i, '').split('/')[0];
+    }
+  } else {
+    str = str.split('/')[0];
+  }
+
+  // 2. 剥离 IPv6 方括号端口 [2001:db8::1]:8080 ➔ 2001:db8::1
+  const v6Match = str.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (v6Match) {
+    return v6Match[1].toLowerCase();
+  }
+
+  // 3. 剥离 IPv4 / 域名端口 host:port
+  if (str.includes(':')) {
+    const colonCount = (str.match(/:/g) || []).length;
+    if (colonCount === 1) {
+      str = str.split(':')[0];
+    }
+  }
+
+  str = str.trim().toLowerCase().replace(/\.+$/, '');
+  return str || null;
+}
+
+/**
+ * 归一化并清洗订阅服务域名/IP 列表（过滤回环与无效地址，确保无空、去重）
+ * @param {string|string[]} input
+ * @returns {string[]}
+ */
+function normalizeSubDomains(input) {
+  if (!input) return [];
+  const list = Array.isArray(input) ? input : [input];
+  const results = [];
+  const seen = new Set();
+
+  for (const item of list) {
+    if (typeof item !== 'string') continue;
+    const parts = item.split(/[,;\s]+/);
+    for (const part of parts) {
+      const clean = extractDomainOrIp(part);
+      if (!clean) continue;
+      // 过滤回环与未指定地址（这些地址无需且不应注入直连规则）
+      if (clean === 'localhost' || clean === '127.0.0.1' || clean === '::1' || clean === '0.0.0.0') {
+        continue;
+      }
+      if (!seen.has(clean)) {
+        seen.add(clean);
+        results.push(clean);
+      }
+    }
+  }
+  return results;
+}
+
 module.exports = {
   isPrivateIp,
-  isPrivateIPv6
+  isPrivateIPv6,
+  isIPv4,
+  isIPv6,
+  extractDomainOrIp,
+  normalizeSubDomains
 };
