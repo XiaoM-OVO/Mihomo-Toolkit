@@ -1,8 +1,18 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
 
-const { normalizeSubDomains, extractDomainOrIp, isIPv4, isIPv6 } = require('../../src/core/shared/ip');
+const {
+  normalizeSubDomains,
+  extractDomainOrIp,
+  isIPv4,
+  isIPv6,
+  isValidDomain,
+  isLoopbackOrUnspecified
+} = require('../../src/core/shared/ip');
 const { buildRoutingRules } = require('../../src/strategy/rules');
 const { applyDnsOverlay } = require('../../src/strategy/dns');
 const { createServiceRegistries } = require('../../src/strategy/registries');
@@ -22,13 +32,40 @@ describe('【Strategy】订阅服务域名与 IP 直连注入 (subDomain)', () =
       assert.equal(extractDomainOrIp(null), null);
     });
 
-    it('normalizeSubDomains - 列表去重、空白逗号拆分与回环地址剔除', () => {
+    it('isValidDomain - 域名格式与合法 FQDN 校验', () => {
+      assert.equal(isValidDomain('sub.example.com'), true);
+      assert.equal(isValidDomain('sub-service.internal.io'), true);
+      assert.equal(isValidDomain('+.example.com'), true);
+      assert.equal(isValidDomain('*.example.com'), true);
+      assert.equal(isValidDomain('invalid..com'), false);
+      assert.equal(isValidDomain('bad domain.com'), false);
+      assert.equal(isValidDomain('domain-without-tld'), false);
+      assert.equal(isValidDomain('198.51.100.1'), false);
+      assert.equal(isValidDomain(''), false);
+    });
+
+    it('isLoopbackOrUnspecified - 回环段与未指定地址全量拦截', () => {
+      assert.equal(isLoopbackOrUnspecified('localhost'), true);
+      assert.equal(isLoopbackOrUnspecified('sub.localhost'), true);
+      assert.equal(isLoopbackOrUnspecified('127.0.0.1'), true);
+      assert.equal(isLoopbackOrUnspecified('127.0.0.2'), true);
+      assert.equal(isLoopbackOrUnspecified('127.255.255.255'), true);
+      assert.equal(isLoopbackOrUnspecified('::1'), true);
+      assert.equal(isLoopbackOrUnspecified('[::1]'), true);
+      assert.equal(isLoopbackOrUnspecified('0.0.0.0'), true);
+      assert.equal(isLoopbackOrUnspecified('::'), true);
+      assert.equal(isLoopbackOrUnspecified('198.51.100.1'), false);
+      assert.equal(isLoopbackOrUnspecified('sub.example.com'), false);
+    });
+
+    it('normalizeSubDomains - 列表去重、空白逗号拆分、回环剔除与非法字符过滤', () => {
       assert.deepEqual(normalizeSubDomains('sub.example.com'), ['sub.example.com']);
       assert.deepEqual(normalizeSubDomains(['sub.example.com', 'https://sub.example.com:3000']), ['sub.example.com']);
       assert.deepEqual(normalizeSubDomains('sub1.example.com, sub2.example.com'), ['sub1.example.com', 'sub2.example.com']);
-      assert.deepEqual(normalizeSubDomains(['127.0.0.1', 'localhost', '::1', '0.0.0.0']), []);
+      assert.deepEqual(normalizeSubDomains(['127.0.0.1', '127.0.0.8', 'localhost', '::1', '0.0.0.0', '::']), []);
       assert.deepEqual(normalizeSubDomains(['127.0.0.1:3000', 'sub.example.com']), ['sub.example.com']);
       assert.deepEqual(normalizeSubDomains(['198.51.100.1', '+.example.com']), ['198.51.100.1', '+.example.com']);
+      assert.deepEqual(normalizeSubDomains(['invalid..com', 'bad domain.com', 'http:///bad']), []);
     });
 
     it('isIPv4 & isIPv6 - 地址字面量准确识别', () => {
@@ -92,40 +129,48 @@ describe('【Strategy】订阅服务域名与 IP 直连注入 (subDomain)', () =
     });
   });
 
-  describe('4. 服务端 Host / X-Forwarded-Host 自适应推导 (server)', () => {
-    it('server - 收到带 Host 的订阅请求时自动注入直连规则', async () => {
-      const localConfig = {
-        subscriptions: [
-          {
-            uri: 'vless://4cff45d5-e95f-4f3c-9dc8-d2bcbd04ce8a@198.51.100.1:443?encryption=none&security=reality&sni=example.com#TestNode'
-          }
-        ],
-        enableCache: false
-      };
+  describe('4. 服务端 Host 自适应推导与防伪造隔离 (server)', () => {
+    it('server - 严格只依据标准 Host 注入直连规则，拒绝不可信 X-Forwarded-Host', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-subdomain-test-'));
+      const subFile = path.join(tmpDir, 'nodes.yaml');
+      fs.writeFileSync(
+        subFile,
+        'proxies:\n  - name: TestNode\n    type: vless\n    server: 198.51.100.1\n    port: 443\n    uuid: 4cff45d5-e95f-4f3c-9dc8-d2bcbd04ce8a\n',
+        'utf-8'
+      );
+      const configFile = path.join(tmpDir, 'config.yaml');
+      fs.writeFileSync(
+        configFile,
+        `logLevel: silent\nenableCache: false\nsubscriptions:\n  - url: ${JSON.stringify(subFile)}\n    tag: LOCAL\n`,
+        'utf-8'
+      );
 
-      const serverInstance = startServer({
+      const server = startServer({
         port: 0,
         host: '127.0.0.1',
+        configPath: configFile,
         silent: true
       });
 
-      // 覆盖 server 内部的 localConfig
-      const serverPort = await new Promise(resolve => {
-        serverInstance.listen(0, '127.0.0.1', () => {
-          resolve(serverInstance.address().port);
+      if (!server.listening) {
+        await new Promise((resolve, reject) => {
+          server.once('listening', resolve);
+          server.once('error', reject);
         });
-      });
+      }
+      const port = server.address().port;
 
       try {
         const body = await new Promise((resolve, reject) => {
           const req = http.request({
             hostname: '127.0.0.1',
-            port: serverPort,
+            port,
             path: '/sub',
             method: 'GET',
             headers: {
               'Host': 'sub.test-toolkit.com:443',
-              'X-Forwarded-Host': 'sub.test-toolkit.com'
+              // 模拟恶意客户端试图注入外部不可信域名
+              'X-Forwarded-Host': 'evil-attacker.com'
             }
           }, res => {
             let data = '';
@@ -136,10 +181,15 @@ describe('【Strategy】订阅服务域名与 IP 直连注入 (subDomain)', () =
           req.end();
         });
 
-        assert.ok(body.includes('DOMAIN,sub.test-toolkit.com,DIRECT'), '产物 rules 中必须包含推导出的直连规则');
-        assert.ok(body.includes('sub.test-toolkit.com'), '产物 fake-ip-filter 中必须包含推导出的域名');
+        // 1. 标准 Host 被清洗并注入直连规则与 fake-ip-filter
+        assert.ok(body.includes('DOMAIN,sub.test-toolkit.com,DIRECT'), '产物 rules 中必须包含推导出的 Host 直连规则');
+        assert.ok(body.includes('sub.test-toolkit.com'), '产物 fake-ip-filter 中必须包含推导出的 Host 域名');
+
+        // 2. 不可信的 X-Forwarded-Host 绝不被注入
+        assert.ok(!body.includes('evil-attacker.com'), '绝对不可采信不可信的 X-Forwarded-Host 请求头');
       } finally {
-        await new Promise(resolve => serverInstance.close(resolve));
+        await new Promise(resolve => server.close(resolve));
+        fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     });
   });

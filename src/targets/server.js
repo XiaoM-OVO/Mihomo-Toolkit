@@ -72,13 +72,8 @@ function getClientIp(req) {
   return raw || '127.0.0.1';
 }
 
-/** 提取客户端请求的目标 Host（优先读取反向代理投递的 X-Forwarded-Host，回退 Host 头） */
+/** 提取客户端请求的目标 Host（仅依据经过反向代理绑定的标准 Host 请求头，防止外部通过 X-Forwarded-Host 伪造投毒） */
 function getRequestHost(req) {
-  const xfh = req.headers && req.headers['x-forwarded-host'];
-  if (typeof xfh === 'string' && xfh.trim()) {
-    const first = xfh.split(',')[0].trim();
-    if (first) return first;
-  }
   const host = req.headers && req.headers['host'];
   if (typeof host === 'string' && host.trim()) {
     return host.trim();
