@@ -64,19 +64,19 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
 
     const testNodes = [
       {
-        proxy: { name: '🇭🇰 香港 01 ChatGPT 家宽 双栈', server: '1.2.3.4', type: 'vless', uuid: 'u1' },
+        proxy: { name: '🇭🇰 香港 01 ChatGPT 家宽 双栈', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u1' },
         expectedTags: ['chatgpt', 'residential', 'dualstack']
       },
       {
-        proxy: { name: '🇯🇵 日本 01 Netflix 4K IPv6', server: '2.3.4.5', type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
+        proxy: { name: '🇯🇵 日本 01 Netflix 4K IPv6', server: '2.3.4.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
         expectedTags: ['nf', 'ipv6']
       },
       {
-        proxy: { name: '🇺🇸 美国 01 YouTube 蜂窝 WAP', server: '3.4.5.6', type: 'trojan', password: 'p' },
+        proxy: { name: '🇺🇸 美国 01 YouTube 蜂窝 WAP', server: '3.4.5.6', port: 443, type: 'trojan', password: 'p' },
         expectedTags: ['yt', 'cellular', 'wap']
       },
       {
-        proxy: { name: '🇸🇬 新加坡 01 纯物理V6', server: '2001:db8::1', type: 'vless', uuid: 'u2' },
+        proxy: { name: '🇸🇬 新加坡 01 纯物理V6', server: '2001:db8::1', port: 443, type: 'vless', uuid: 'u2' },
         expectedTags: ['ipv6']
       }
     ];
@@ -92,8 +92,8 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
 
   it('pipeline - nodes 模板渲染注入 ({index}、{features} 与 {ip_stack})', async () => {
     const proxies = [
-      { name: '🇭🇰 香港 ChatGPT 家宽 双栈', server: '210.1.1.1', type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
-      { name: '🇭🇰 香港 Claude 专线', server: '210.1.1.2', type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+      { name: '🇭🇰 香港 ChatGPT 家宽 双栈', server: '210.1.1.1', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
+      { name: '🇭🇰 香港 Claude 专线', server: '210.1.1.2', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
     ];
 
     const config = {
@@ -120,7 +120,7 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
 
   it('logger - runNodesPipeline 携带 logger 输出诊断且平稳运行', async () => {
     const proxies = [
-      { name: '🇭🇰 香港 01 Netflix 4K 家宽', server: '210.1.1.1', type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+      { name: '🇭🇰 香港 01 Netflix 4K 家宽', server: '210.1.1.1', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
     ];
     const logs = [];
     const logger = {
@@ -138,8 +138,8 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
 
   it('rename - 碰撞安全：无序号或重名模板时自动追加序号防重', async () => {
     const proxies = [
-      { name: '🇭🇰 香港 A', server: '1.2.3.4', type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
-      { name: '🇭🇰 香港 B', server: '1.2.3.5', type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+      { name: '🇭🇰 香港 A', server: '1.2.3.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
+      { name: '🇭🇰 香港 B', server: '1.2.3.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
     ];
     // 模板故意不写 {index}，会导致两节点计算出相同名称
     const result = await runNodesPipeline(proxies, {
@@ -151,9 +151,9 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
   });
 
   it('rename - 机场标签从来源传递至统一重命名计划', async () => {
-    const classified = classifyNode({ name: '🇭🇰 香港 01', _subTag: 'A', _indexPrefix: 'X', server: '1.2.3.4' });
+    const classified = classifyNode({ name: '🇭🇰 香港 01', _subTag: 'A', _indexPrefix: 'X', server: '1.2.3.4', port: 443 });
     assert.equal(classified.airportTag, 'A');
-    const fallback = classifyNode({ name: '🇭🇰 香港 02', server: '1.2.3.5' }, { airportTag: 'Global' });
+    const fallback = classifyNode({ name: '🇭🇰 香港 02', server: '1.2.3.5', port: 443 }, { airportTag: 'Global' });
     assert.equal(fallback.airportTag, 'Global');
 
     const config = {
@@ -162,8 +162,8 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
       renameTemplate: '[{airport}] {icon} {region} {index}'
     };
     const nodeOutput = await runNodesPipeline([
-      { name: '🇭🇰 香港 01', _subTag: 'A', server: '1.2.3.4', type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
-      { name: '🇭🇰 香港 02', _subTag: 'A', server: '1.2.3.5', type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+      { name: '🇭🇰 香港 01', _subTag: 'A', server: '1.2.3.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
+      { name: '🇭🇰 香港 02', _subTag: 'A', server: '1.2.3.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
     ], config);
     assert.ok(nodeOutput[0].name.startsWith('[A]'));
     assert.ok(nodeOutput[0].name.includes('A01'));

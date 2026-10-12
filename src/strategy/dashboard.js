@@ -10,7 +10,7 @@
  */
 
 const { parseSubscriptionInfo, isExpiredNow } = require('../core/shared/sub-info');
-const { REGEX_INFO_NODE } = require('../data/cleaner-rules');
+const { isNoticeNode } = require('../core/cleaner');
 
 function formatBytes(bytes, fractionDigits = 2) {
   const units = ['MB', 'GB', 'TB', 'PB'];
@@ -123,13 +123,15 @@ function generateInfoNodes(subInfo, tag, options = {}) {
 }
 
 /**
- * 过滤机场原生自带的说明/伪节点
+ * 过滤机场原生自带的说明/伪节点 (权威复用 isNoticeNode 判定，绝不误伤真实代理节点与合成看板)
  */
 function filterRawInfoNodes(proxies = [], logger) {
+  if (!Array.isArray(proxies)) return [];
   return proxies.filter(p => {
-    if (!p || !p.name) return false;
-    if (REGEX_INFO_NODE.test(p.name)) {
-      if (logger) logger.debug(`🗑️ [说明过滤] 「${p.name}」`);
+    if (!p || typeof p !== 'object') return false;
+    if (p.isSyntheticInfo) return true;
+    if (isNoticeNode(p)) {
+      if (logger) logger.debug(`🗑️ [说明过滤] 「${p.name || p._rawName}」`);
       return false;
     }
     return true;

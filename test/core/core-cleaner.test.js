@@ -326,4 +326,253 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     const realIpv6Node = classifyNode({ name: '香港 Node v6 01', server: '1.2.3.4', port: 443 });
     assert.ok(realIpv6Node.tags.includes('ipv6'), 'Node v6 01 应正常识别为 IPv6');
   });
+
+  describe('【Phase 1】清洗规则收敛与公告节点处理修复专项', () => {
+    it('黑名单优先：对 synthetic / notice / whitelist / normal 均绝对优先拦截', () => {
+      const cfg = { blockKeywords: ['强制拦截'], blockServers: ['blocked.server.com'] };
+
+      // 1. synthetic 看板命中黑名单
+      const synth = { name: '剩余流量：强制拦截', server: '1.0.0.1', port: 80, isSyntheticInfo: true };
+      const synthRes = classifyNode(synth, cfg);
+      assert.equal(synthRes.skip, true);
+      assert.equal(synthRes.blockReason, '黑名单关键词');
+
+      // 2. 原生 notice 命中黑名单
+      const notice = { name: '套餐到期通知', server: 'blocked.server.com', port: 80 };
+      const noticeRes = classifyNode(notice, cfg);
+      assert.equal(noticeRes.skip, true);
+      assert.equal(noticeRes.blockReason, '黑名单服务器');
+
+      // 3. whitelist 白名单节点命中黑名单
+      const whitelistNode = { name: '自建专线 强制拦截', server: '1.2.3.4', port: 443 };
+      const whiteRes = classifyNode(whitelistNode, { ...cfg, whitelistKeywords: ['自建'] });
+      assert.equal(whiteRes.skip, true);
+      assert.equal(whiteRes.blockReason, '黑名单关键词');
+
+      // 4. _keepName 节点命中黑名单
+      const keepNode = { name: '局域网 强制拦截', server: '192.168.1.1', port: 7890, _keepName: true };
+      const keepRes = classifyNode(keepNode, cfg);
+      assert.equal(keepRes.skip, true);
+      assert.equal(keepRes.blockReason, '黑名单关键词');
+    });
+
+    it('白名单硬结构校验：必须满足有效 server/port 与非占位密码', () => {
+      const whiteCfg = { whitelistKeywords: ['自建'] };
+
+      // 缺少端口拦截
+      const missingPortNormal = classifyNode({ name: '香港节点', server: '1.2.3.4' });
+      assert.equal(missingPortNormal.skip, true);
+      assert.equal(missingPortNormal.blockReason, '假IP');
+
+      const missingPortWhite = classifyNode({ name: '自建节点', server: '1.2.3.4' }, whiteCfg);
+      assert.equal(missingPortWhite.skip, true);
+      assert.equal(missingPortWhite.blockReason, '假IP');
+
+      // 空 server 拦截
+      const emptyServer = classifyNode({ name: '自建节点', server: '', port: 443 }, whiteCfg);
+      assert.equal(emptyServer.skip, true);
+      assert.equal(emptyServer.blockReason, '假IP');
+
+      // 非法端口拦截
+      const zeroPort = classifyNode({ name: '自建节点', server: '1.2.3.4', port: 0 }, whiteCfg);
+      assert.equal(zeroPort.skip, true);
+      assert.equal(zeroPort.blockReason, '假IP');
+
+      const overflowPort = classifyNode({ name: '自建节点', server: '1.2.3.4', port: 70000 }, whiteCfg);
+      assert.equal(overflowPort.skip, true);
+      assert.equal(overflowPort.blockReason, '假IP');
+
+      // 占位弱口令拦截
+      const dummyPass = classifyNode({ name: '自建节点', server: '1.2.3.4', port: 443, password: 'password' }, whiteCfg);
+      assert.equal(dummyPass.skip, true);
+      assert.equal(dummyPass.blockReason, '假密码');
+
+      // 合法白名单节点：即使包含广告词，通过硬校验后依然豁免广告拦截与模板重命名
+      const validWhite = classifyNode(
+        { name: '自建节点 最新发布页', server: '1.2.3.4', port: 443, password: 'valid-password' },
+        whiteCfg
+      );
+      assert.equal(validWhite.skip, undefined);
+      assert.equal(validWhite.isSpecial, true);
+      assert.equal(validWhite.groupKey, 'special');
+    });
+
+    it('synthetic 看板与 removeInfoNodes 行为矩阵', () => {
+      // synthetic 节点开启看板规范化为 127.0.0.1:80
+      const synthOn = classifyNode(
+        { name: '剩余流量：100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
+        { enableDashboard: true }
+      );
+      assert.equal(synthOn.isInfo, true);
+      assert.equal(synthOn.isSyntheticInfo, true);
+      assert.equal(synthOn.proxy.server, '127.0.0.1');
+      assert.equal(synthOn.proxy.port, 80);
+
+      // synthetic 节点关闭看板被跳过
+      const synthOff = classifyNode(
+        { name: '剩余流量：100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
+        { enableDashboard: false }
+      );
+      assert.equal(synthOff.skip, true);
+      assert.equal(synthOff.blockReason, '看板关闭');
+
+      // 原生 notice 节点在 removeInfoNodes: true 时被过滤
+      const noticeTrue = classifyNode(
+        { name: '剩余流量：100G', server: '1.0.0.1', port: 80 },
+        { removeInfoNodes: true }
+      );
+      assert.equal(noticeTrue.skip, true);
+      assert.equal(noticeTrue.blockReason, '信息说明');
+
+      // 原生 notice 节点在 removeInfoNodes: false 时被保留为 info
+      const noticeFalse = classifyNode(
+        { name: '剩余流量：100G', server: '1.0.0.1', port: 80 },
+        { removeInfoNodes: false }
+      );
+      assert.equal(noticeFalse.skip, undefined);
+      assert.equal(noticeFalse.isInfo, true);
+      assert.equal(noticeFalse.groupKey, 'info');
+    });
+
+    it('误杀收敛：线路描述、服务器、电报专线与流媒体状态节点放行', () => {
+      const testCases = [
+        // 1. 词边界与服务器名称（非客服/失联/发布）
+        { name: '极客香港服务器', server: '1.2.3.4', port: 443 },
+        { name: '博客日本服务器', server: '1.2.3.4', port: 443 },
+        { name: '失效联通 01', server: '1.2.3.4', port: 443 },
+        { name: '防火墙失效 01', server: '1.2.3.4', port: 443 },
+        { name: '开发一步到位', server: '1.2.3.4', port: 443 },
+        // 2. 带宽与路由特性（非推销/价格）
+        { name: '香港 01 不限速 10G口', server: '1.2.3.4', port: 443 },
+        { name: '日本 02 1G带宽 不限速', server: '1.2.3.4', port: 443 },
+        { name: '新加坡 不限速 8折返', server: '1.2.3.4', port: 443 },
+        // 3. 电报专用与流媒体状态（非公告说明）
+        { name: '香港 01 电报专线', server: '1.2.3.4', port: 443 },
+        { name: '香港 01 电报专用', server: '1.2.3.4', port: 443 },
+        { name: '香港 01 [Netflix不可用]', server: '1.2.3.4', port: 443 },
+        { name: '香港 01 Disney不可用', server: '1.2.3.4', port: 443 },
+        { name: '香港 01 IPv6地址', server: '1.2.3.4', port: 443 },
+        { name: '香港 01 备用地址', server: '1.2.3.4', port: 443 }
+      ];
+
+      for (const item of testCases) {
+        const res = classifyNode(item, { removeInfoNodes: true });
+        assert.equal(
+          res.skip,
+          undefined,
+          `节点「${item.name}」不应被误拦截，实际拦截原因: ${res.blockReason}`
+        );
+        assert.notEqual(res.groupKey, 'info', `节点「${item.name}」不应被误判为公告`);
+      }
+    });
+
+    it('广告与公告正例可靠识别与拦截', () => {
+      // 广告词正例拦截
+      const adCases = [
+        '防失联地址发布页点击关注',
+        '最新发布页',
+        '📢 官方网址：https://example.com 优惠码9折 点击加入Q群',
+        '特惠套餐 9.9元/月',
+        '限时大促 5折套餐',
+        '联系在线客服',
+        '定制节点 01'
+      ];
+      for (const name of adCases) {
+        const res = classifyNode({ name, server: '1.2.3.4', port: 443 });
+        assert.equal(res.skip, true, `广告节点「${name}」应被拦截`);
+        assert.equal(res.blockReason, '广告词');
+      }
+
+      // 公告说明正例拦截
+      const noticeCases = [
+        { name: '剩余流量：100G', server: '1.0.0.1', port: 80 },
+        { name: '套餐到期时间: 2026-12-31', server: '1.0.0.1', port: 80 },
+        { name: '本节点维护不可用', server: '1.0.0.1', port: 80 }
+      ];
+      for (const item of noticeCases) {
+        const res = classifyNode(item, { removeInfoNodes: true });
+        assert.equal(res.skip, true, `公告节点「${item.name}」应被拦截`);
+        assert.equal(res.blockReason, '信息说明');
+      }
+    });
+
+    it('hasOnlyPlaceholderNodes 订阅有效性判定边界', () => {
+      const { hasOnlyPlaceholderNodes } = require('../../src/core/cleaner');
+
+      // 场景 1：全部是公告名称，但带真实 server/port 的订阅 ➔ 不应误判为整份无效
+      const realWithNoticeNames = [
+        { name: '公告：节点迁移通知', server: '104.28.1.1', port: 443 },
+        { name: '说明：备用入口', server: '104.28.1.2', port: 443 }
+      ];
+      assert.equal(
+        hasOnlyPlaceholderNodes(realWithNoticeNames),
+        false,
+        '具备真实物理代理参数的订阅不得被判定为 placeholder-only'
+      );
+
+      // 场景 2：仅有无网络参数/占位 IP 的纯公告订阅 ➔ 判定为整份无效
+      const dummyOnly = [
+        { name: '套餐已到期，请续费', server: '1.0.0.1', port: 80 },
+        { name: '剩余流量：0G', server: '127.0.0.1', port: 0 }
+      ];
+      assert.equal(
+        hasOnlyPlaceholderNodes(dummyOnly),
+        true,
+        '仅含假IP/假端口占位节点的订阅应准确识别为 placeholder-only'
+      );
+    });
+
+    it('_keepName 自建内网节点与私网/占位 IP 边界', () => {
+      // 1. 局域网与 Tailscale 必须真实解析为私网地址才凭借 _keepName 放行
+      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890, _keepName: true }, 'LAN'), '');
+      assert.equal(checkNodeBlockReason({ server: '10.0.0.1', port: 7890, _keepName: true }, 'LAN'), '');
+      assert.equal(checkNodeBlockReason({ server: '100.64.0.1', port: 443, _keepName: true }, 'Tailscale'), '');
+      assert.equal(checkNodeBlockReason({ server: '127.0.0.1', port: 1080, _keepName: true }, 'Loopback'), '');
+      assert.equal(checkNodeBlockReason({ server: 'localhost', port: 1080, _keepName: true }, 'Localhost'), '');
+      assert.equal(checkNodeBlockReason({ server: '[fc00::1]', port: 443, _keepName: true }, 'IPv6ULA'), '');
+      assert.equal(checkNodeBlockReason({ server: '[fe80::1]', port: 443, _keepName: true }, 'IPv6LinkLocal'), '');
+
+      // 2. 伪装私网前缀的非法格式即便带有 _keepName 也坚决拒绝 (必须验证 IP 真实解析)
+      assert.equal(checkNodeBlockReason({ server: '192.168.bad.ip', port: 7890, _keepName: true }, 'BadLan'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '192.168.999.999', port: 7890, _keepName: true }, 'BadLan2'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '10.256.1.1', port: 7890, _keepName: true }, 'BadLan3'), '假IP');
+
+      // 3. 公网占位 IP 即便带有 _keepName 也绝不放行
+      assert.equal(checkNodeBlockReason({ server: '0.0.0.0', port: 443, _keepName: true }, 'Zero'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '1.1.1.1', port: 443, _keepName: true }, 'DNS'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '8.8.8.8', port: 443, _keepName: true }, 'DNS2'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '255.255.255.255', port: 443, _keepName: true }, 'Broadcast'), '假IP');
+
+      // 4. 空服务与非法/缺少端口即便带有 _keepName 也坚决拦截
+      assert.equal(checkNodeBlockReason({ server: '', port: 443, _keepName: true }, 'Empty'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', _keepName: true }, 'MissingPort'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: null, _keepName: true }, 'NullPort'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 0, _keepName: true }, 'ZeroPort'), '假IP');
+      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 70000, _keepName: true }, 'OverflowPort'), '假IP');
+
+      // 5. _keepName 绝不豁免占位弱口令 (password、123456、全零 UUID 依然坚决阻断)
+      assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 443, password: 'password', _keepName: true }, 'KeepDummyPass'), '假密码');
+      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890, password: '123456', _keepName: true }, 'KeepDummyPass2'), '假密码');
+      assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 443, uuid: '00000000-0000-0000-0000-000000000000', _keepName: true }, 'KeepDummyUUID'), '假密码');
+    });
+
+    it('filterRawInfoNodes 权威复用 isNoticeNode，不误伤真实节点与合成看板', () => {
+      const { filterRawInfoNodes } = require('../../src/strategy/dashboard');
+
+      const mixedNodes = [
+        { name: '📊 [订阅] 剩余流量: 100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
+        { name: '剩余流量：500 GB', server: '1.0.0.1', port: 80 },
+        { name: '【公告】本站维护中', server: '127.0.0.1', port: 80 },
+        { name: '🇭🇰 香港 01 [Netflix不可用]', server: '1.2.3.4', port: 443 },
+        { name: '🇭🇰 香港 02 电报专线', server: '1.2.3.5', port: 443 }
+      ];
+
+      const filtered = filterRawInfoNodes(mixedNodes);
+      // 合成看板与 2 个真实代理节点应完好保留，2 个原生公告应被剔除
+      assert.equal(filtered.length, 3);
+      assert.ok(filtered.some(n => n.isSyntheticInfo));
+      assert.ok(filtered.some(n => n.name.includes('Netflix不可用')));
+      assert.ok(filtered.some(n => n.name.includes('电报专线')));
+    });
+  });
 });
