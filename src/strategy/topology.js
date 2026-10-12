@@ -9,8 +9,17 @@ const { getEnhancedRegionDefs, CONTINENT_DEFS, DEFAULT_CORE_REGIONS } = require(
 const HIGH_MULTI_GROUP = '高倍率优选';
 const EXPERIMENTAL_GROUP = '实验节点';
 
+// 由专用分支/策略独立维护的桶，通用 featurePools 遍历不重复入桶
+const DEDICATED_FEATURE_POOLS = new Set(['residential', 'download', 'experimental']);
+
 function dedupe(arr) {
   return [...new Set(arr)];
+}
+
+function addToBucket(bucket, item) {
+  if (Array.isArray(bucket) && !bucket.includes(item)) {
+    bucket.push(item);
+  }
 }
 
 const buildSelect = (name, proxies, hidden = false) => ({
@@ -68,74 +77,85 @@ function buildProxyTopology({
     const finalName = item.proxy?.name || item.rawName;
 
     if (item.isInfo) {
-      buckets.info.push(finalName);
+      addToBucket(buckets.info, finalName);
       return;
     }
 
     if (item.isSpecial) {
-      buckets.special.push(finalName);
+      addToBucket(buckets.special, finalName);
       return;
     }
 
+    // 2.2 节点专属策略组声明 (保持现有语义：customGroups 专用于目标定制组，不随大流进入常规地区桶与主力标准池)
     const customGroups = item.customGroups || item.proxy?._customGroups;
     const hasCustomGroups = Array.isArray(customGroups) && customGroups.length > 0;
     if (hasCustomGroups) {
-      // 拥有专属目标策略组声明，不随大流进入常规地区桶与主力标准池
-      return;
-    }
-
-    if (item.isUnknownRegion) {
-      buckets.unknown.push(finalName);
       return;
     }
 
     const tags = item.tags || [];
+    const multi = item.attrs?.multiNum ?? 1;
+    const isHighMulti = multi > (userConfig.highMultiThreshold ?? 2.5);
+
+    // 2.3 业务特征池与专用池并行分发 (多维事实保留，不互相截断)
+    // 🌟 将节点加入其命中的通用业务特征池 (AI, 流媒体, 游戏等)；跳过由专用分支独立维护的桶，避免重复入桶
+    (item.featurePools || []).forEach(p => {
+      if (DEDICATED_FEATURE_POOLS.has(p)) return;
+      if (!buckets[p]) buckets[p] = [];
+      addToBucket(buckets[p], finalName);
+    });
+
+    // 家宽池 (由 enableResidential 策略控制是否入桶)
+    if (userConfig.enableResidential && tags.includes('residential')) {
+      addToBucket(buckets.residential, finalName);
+      const resiKey = item.regionInfo?.id || item.regionInfo?.name || 'other';
+      if (!buckets.resiRegionMap[resiKey]) buckets.resiRegionMap[resiKey] = [];
+      addToBucket(buckets.resiRegionMap[resiKey], finalName);
+    }
 
     // 低倍率下载池
     if (tags.includes('download')) {
-      buckets.download.push(finalName);
+      addToBucket(buckets.download, finalName);
     }
+
+    // 高倍率专用池
+    if (userConfig.isolateHighMulti && isHighMulti) {
+      addToBucket(buckets.highMulti, finalName);
+    }
+
+    // 实验专用池 (由 isolateExperimental 策略控制是否入桶)
+    if (userConfig.isolateExperimental && tags.includes('experimental')) {
+      addToBucket(buckets.experimental, finalName);
+    }
+
+    // 2.4 主力地区组与全量标准池门禁判定 (Main Region & AllStandard Gating)
+    if (item.isUnknownRegion) {
+      addToBucket(buckets.unknown, finalName);
+      return;
+    }
+
+    // 隔离门禁：命中隔离策略时从主力地区桶与全量标准池中剔除
     if (userConfig.isolateDownload && tags.includes('download')) {
       return;
     }
-
-    // 家宽隔离
     if (userConfig.enableResidential && tags.includes('residential')) {
-      buckets.residential.push(finalName);
-      const resiKey = item.regionInfo?.id || item.regionInfo?.name || 'other';
-      if (!buckets.resiRegionMap[resiKey]) buckets.resiRegionMap[resiKey] = [];
-      buckets.resiRegionMap[resiKey].push(finalName);
       return;
     }
-
-    // 高倍率隔离
-    if (userConfig.isolateHighMulti && (item.attrs?.multiNum || 1) > (userConfig.highMultiThreshold ?? 2.5)) {
-      buckets.highMulti.push(finalName);
+    if (userConfig.isolateHighMulti && isHighMulti) {
       return;
     }
-
-    // 实验节点隔离
     if (userConfig.isolateExperimental && tags.includes('experimental')) {
-      buckets.experimental.push(finalName);
       return;
     }
 
-    // 进入地区桶与主力标准池
+    // 2.5 正常合格进入大区桶与主力标准池
     const rKey = item.regionInfo ? (item.regionInfo.id || item.regionInfo.name) : 'other';
     if (!buckets[rKey]) buckets[rKey] = [];
-    buckets[rKey].push(finalName);
+    addToBucket(buckets[rKey], finalName);
 
     if (rKey !== 'cn') {
-      buckets.allStandard.push(finalName);
+      addToBucket(buckets.allStandard, finalName);
     }
-
-    // 🌟 将节点加入其命中的所有业务特征池 (AI, 流媒体, 游戏等)
-    (item.featurePools || []).forEach(p => {
-      if (!buckets[p]) buckets[p] = [];
-      if (!buckets[p].includes(finalName)) {
-        buckets[p].push(finalName);
-      }
-    });
   });
 
   // 3. 处理小众地区与大洲折叠

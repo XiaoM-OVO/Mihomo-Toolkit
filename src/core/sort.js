@@ -21,6 +21,7 @@
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { getIsolationBucket } = require('./cleaner');
 const { ISOLATION_SORT_ORDER } = require('../data/cleaner-rules');
+const { isTrustedSynthetic } = require('./node-trust');
 
 let cachedRegionOrder = null;
 
@@ -52,9 +53,15 @@ function compareNodes(a, b, options = {}) {
   if (!a) return 1;
   if (!b) return -1;
 
-  // 1. 状态看板 / 虚拟说明节点置顶
-  const isSynthA = !!(a.isSyntheticInfo || a.proxy?.isSyntheticInfo || a.isInfo);
-  const isSynthB = !!(b.isSyntheticInfo || b.proxy?.isSyntheticInfo || b.isInfo);
+  // 1. 状态看板 / 虚拟说明节点置顶 (只有受信 synthetic 或已校验 info 才能置顶，外部伪造不可信)
+  const isSynth = (item) => {
+    if (!item) return false;
+    if (isTrustedSynthetic(item) || isTrustedSynthetic(item.proxy)) return true;
+    if (item.isInfo) return true;
+    return false;
+  };
+  const isSynthA = isSynth(a);
+  const isSynthB = isSynth(b);
   if (isSynthA !== isSynthB) {
     return isSynthA ? -1 : 1;
   }

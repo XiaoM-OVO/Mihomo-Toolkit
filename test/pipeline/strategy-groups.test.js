@@ -1,6 +1,7 @@
-﻿const { test, describe } = require('node:test');
+const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { runStrategyPipeline: strategyMain } = require('../../src/pipeline/strategy.js');
+const { markTrustedSynthetic } = require('../../src/core/node-trust');
 
 describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () => {
   test('strategyMain - AI / 流媒体 / 社交策略组生成与节点注入测试', () => {
@@ -146,8 +147,8 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
   test('strategyMain - 独立订阅看板策略组与主力组隔离测试 (enableDashboard)', () => {
     const rawConfig = {
       proxies: [
-        { name: '🏷️ [机场A] 剩余流量：100 GB / 500 GB (20.0%)', type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
-        { name: '📅 [机场A] 套餐到期：2026-12-31 (余 120 天)', type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
+        markTrustedSynthetic({ name: '🏷️ [机场A] 剩余流量：100 GB / 500 GB (20.0%)', type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
+        markTrustedSynthetic({ name: '📅 [机场A] 套餐到期：2026-12-31 (余 120 天)', type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
         { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
       ]
     };

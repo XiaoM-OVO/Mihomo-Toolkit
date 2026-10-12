@@ -7,6 +7,7 @@ const { classifyNode, getFeatureRules } = require('../../src/core/cleaner');
 const { runNodesPipeline } = require('../../src/pipeline/nodes');
 const { deepConvertStrings } = require('../../src/core/chinese-convert');
 const { runPipelineEngine } = require('../../src/pipeline/engine');
+const { markTrustedProxyMetadata } = require('../../src/core/node-trust');
 
 describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
   it('fission - 纯函数裂变算法 (零副作用)', () => {
@@ -180,10 +181,12 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     }, { mode: 'config', noCache: true });
     assert.ok(profile.outputData.proxies[0].name.startsWith('[Air-A]'));
 
-    const strategyConfig = { proxies: [
+    const strategyProxies = [
       { name: '🇭🇰 香港 01', _subTag: 'A', server: '1.2.3.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
       { name: '🇭🇰 香港 02', _subTag: 'A', server: '1.2.3.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
-    ] };
+    ];
+    strategyProxies.forEach(p => markTrustedProxyMetadata(p, { _subTag: 'A' }));
+    const strategyConfig = { proxies: strategyProxies };
     const strategyOutput = require('../../src/pipeline/strategy').runStrategyPipeline(strategyConfig, config);
     assert.ok(strategyOutput.proxies[0].name.startsWith('[A]'));
     assert.ok(strategyOutput.proxies[1].name.includes('A02'));

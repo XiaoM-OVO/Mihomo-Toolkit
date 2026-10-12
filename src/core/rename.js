@@ -171,9 +171,17 @@ function resolveNameCollisions(proxies = []) {
 /**
  * 为已分类节点统一计算目标名称；保持计算阶段纯净，由调用方提交名称。
  */
+function getRenameTier(item) {
+  if (item?._preserveExistingName) return 1;
+  if (item?.isSpecial || item?.keepName) return 1;
+  if (item?.isInfo) return 2;
+  if (!item?.regionInfo || item.regionInfo.isUnknown || item?.isUnknownRegion) return 3;
+  return 4;
+}
+
 function buildRenamePlan(items = [], config = {}) {
-  const plan = new Map();
-  if (!Array.isArray(items) || !config.renameTemplate || config.enableNodeRename === false) return plan;
+  const plan = [];
+  if (!Array.isArray(items)) return plan;
   const indexMap = computeNodeIndices(items, config);
   const catalogIcons = {};
   const catalogTexts = {};
@@ -188,7 +196,11 @@ function buildRenamePlan(items = [], config = {}) {
   const cleaners = createSeparatorCleaners(config.renameSeparators);
 
   for (const item of items) {
-    if (!item || item.skip || item.isSpecial || item.isInfo || item.keepName || !item.regionInfo) continue;
+    if (!item || item.skip || !item.proxy) continue;
+    const tier = getRenameTier(item);
+    let intendedName = item.proxy.name || item.rawName || '';
+    if (tier === 2 || tier === 3) intendedName = item.rawName || intendedName;
+    if (tier === 4 && config.renameTemplate && config.enableNodeRename !== false) {
     let features = '';
     for (const tag of item.tags || []) {
       if (tag === 'ipv6' || tag === 'dualstack') continue;
@@ -209,10 +221,53 @@ function buildRenamePlan(items = [], config = {}) {
       ip_stack: item.tags?.includes('dualstack') ? '双栈' : (item.tags?.includes('ipv6') ? 'IPv6' : ''),
       transport: item.transportTag || ''
     };
-    const name = renderTemplate(config.renameTemplate, vars, item.proxy, cleaners);
-    if (name) plan.set(item, name);
+      const name = renderTemplate(config.renameTemplate, vars, item.proxy, cleaners);
+      if (name) intendedName = name;
+    }
+    plan.push({ item, tier, intendedName });
   }
   return plan;
+}
+
+/**
+ * Resolve every intended name before committing any mutation. Within each tier,
+ * exact intended names are claimed before duplicate names receive suffixes, so
+ * generated names cannot steal another node's original target.
+ */
+function applyRenamePlan(items = [], renamePlan = []) {
+  const plans = Array.isArray(renamePlan) ? renamePlan : [];
+  const byTier = new Map([[1, []], [2, []], [3, []], [4, []]]);
+  for (const entry of plans) {
+    if (entry?.item && byTier.has(entry.tier)) byTier.get(entry.tier).push(entry);
+  }
+
+  const claimed = new Set();
+  const finalNames = new Map();
+  for (const tier of [1, 2, 3, 4]) {
+    const conflicts = [];
+    for (const entry of byTier.get(tier)) {
+      const base = String(entry.intendedName || entry.item.proxy?.name || entry.item.rawName || '');
+      if (!claimed.has(base)) {
+        claimed.add(base);
+        finalNames.set(entry.item, base);
+      } else {
+        conflicts.push({ entry, base });
+      }
+    }
+    for (const { entry, base } of conflicts) {
+      let index = 2;
+      let candidate = `${base} #${index}`;
+      while (claimed.has(candidate)) candidate = `${base} #${++index}`;
+      claimed.add(candidate);
+      finalNames.set(entry.item, candidate);
+    }
+  }
+
+  for (const item of items) {
+    const name = finalNames.get(item);
+    if (name !== undefined && item?.proxy) item.proxy.name = name;
+  }
+  return finalNames;
 }
 
 module.exports = {
@@ -220,5 +275,7 @@ module.exports = {
   computeNodeIndices,
   renderTemplate,
   buildRenamePlan,
+  applyRenamePlan,
+  getRenameTier,
   resolveNameCollisions
 };

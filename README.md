@@ -274,7 +274,8 @@ mihomo-toolkit/
 │   │   ├── config.js          # 完整配置装配流水线
 │   │   ├── nodes.js           # 纯净节点清洗流水线 (去重/打标/重命名)
 │   │   ├── report.js          # 健康审计报告流水线 (生成结构化 JSON)
-│   │   └── strategy.js        # 策略拓扑与分流规则注入流水线
+│   │   ├── strategy.js        # 策略拓扑与分流规则注入流水线
+│   │   └── envelope.js        # 节点只读 Envelope 包装与旁路接入
 │   │
 │   ├── targets/               # 🔌 宿主环境终端适配器 (轻量适配层)
 │   │   ├── cli.js             # 命令行工具 (mihomo-toolkit)
@@ -282,10 +283,12 @@ mihomo-toolkit/
 │   │
 │   ├── core/                  # 🧮 节点清洗核心算法层 (Pure & Deterministic)
 │   │   ├── cleaner.js         # 垃圾拦截、倍率线路提取、属性智能分类打标
+│   │   ├── node-trust.js      # 节点进程内信任边界与内部 Synthetic 身份标记
+│   │   ├── metadata.js        # 节点名称元数据只读提取与特征归一化
 │   │   ├── dedupe.js          # 底层物理网络指纹提取与特征去重
 │   │   ├── transport.js       # 统一传输层门面 (Host/SNI/Path提取、Host注入与协议识别)
 │   │   ├── geo.js             # 地区智能正则匹配与落地城市精准提取
-│   │   ├── rename.js          # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
+│   │   ├── rename.js          # 分级命名计划、两阶段冲突仲裁与模板变量解析
 │   │   ├── sort.js            # 节点多维智能排序、隔离分类聚拢与顺序确定性保证
 │   │   ├── fission.js         # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
 │   │   ├── chinese-convert.js # 简繁中文递归转换与无依赖回退降级

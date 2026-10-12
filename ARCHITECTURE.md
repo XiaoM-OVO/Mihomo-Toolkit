@@ -259,6 +259,22 @@
 * **Guarded Refresh 预热防重叠互斥锁**：
   常驻服务启动预热（`Warmup`）与定时轮询（`Cron`）共享 `isBackgroundRefreshing` 互斥锁，上一轮尚未完成时安全跳过并记录警告，杜绝多重后台任务积压引发雪崩。
 
+### 7. 分级命名计划与确定性冲突仲裁机制 (`src/core/rename.js` & `src/pipeline/nodes.js`)
+* **设计考量**：
+  在多订阅合并、禁用重命名、或自定义模板未包含序号变量（`{index}`）的场景下，同名节点可能引发内核崩溃或路由混淆。传统线性遍历在遇到重复名称时若直接分配 ` #2`，会抢占列表中原生存在的合规目标名称，导致级联重命名与序号漂移；同时，若多阶段流水线复跑时重复分配后缀，会导致名称产生多次追加污染（如 ` #2 #2`）。
+* **核心机理**：
+  1. **意图计算与状态提交解耦**：
+     `buildRenamePlan` 纯函数统一计算全量节点的意图名称（Intended Name），返回结构化计划数组 `[{ item, tier, intendedName }]`，不直接修改底层数据结构；由 `applyRenamePlan` 集中仲裁并提交。
+  2. **四级优先级梯队 (Tier 1~4)**：
+     - **Tier 1**：`_preserveExistingName`（已清洗受信节点）、`isSpecial`（特殊规则节点）、`keepName`（保留原名节点），享有最高认领特权；
+     - **Tier 2**：`isInfo`（信息/公告及虚拟看板节点）；
+     - **Tier 3**：未知地区节点（保留清洗后名称与原生特征）；
+     - **Tier 4**：普通大区节点（应用模板动态渲染）。
+  3. **两阶段确定性仲裁 (Two-Phase Claim Arbitration)**：
+     在每个优先级梯队内部，优先由无冲突项认领（Claim）其意图名称；冲突项统一收集后，在全局已认领集合之外按 ` #2`、` #3` 寻找空闲序号分配。高优先级梯队优先认领，且重复项不抢占原生目标名。
+  4. **进程内受信闭环与幂等性保障**：
+     基于模块私有 `WeakSet`（`markTrustedCleanedNode`）跟踪同进程已清洗节点，二次通过策略流水线时自动归入 Tier 1 保护，保障跨阶段调用与重复执行下的最终名称稳定性。
+
 ---
 
 ## 📂 四、 目录职责与代码地图
@@ -273,7 +289,8 @@ E:\CODE\mihomo-toolkit-next\
 │   │   ├── config.js             # runConfigPipeline: 交付完整 config (智能资产保活沙箱)
 │   │   ├── nodes.js              # runNodesPipeline: 交付纯净节点 proxies 数组
 │   │   ├── report.js             # buildAuditReport: 交付结构化健康审计 JSON
-│   │   └── strategy.js           # runStrategyPipeline: 纯策略组与分流拓扑组装流水线
+│   │   ├── strategy.js           # runStrategyPipeline: 纯策略组与分流拓扑组装流水线
+│   │   └── envelope.js           # createEnvelopesBypass: 节点只读 Envelope 包装与旁路接入 (零副作用)
 │   │
 │   ├── targets/                  # 🔌 宿主环境终端适配器 (仅做参数与调用封装)
 │   │   ├── cli.js                # CLI 入口 (mihomo-toolkit 命令行工具)
@@ -286,10 +303,12 @@ E:\CODE\mihomo-toolkit-next\
 │   │   │   ├── dns-sanitizer.js  # DNS 净化沙箱、DoH 修饰符分级剥离与 Hosts 审计
 │   │   │   └── resolver-plan.js  # INV 不变式自检 + Fake-IP 域名聚合
 │   │   ├── cleaner.js            # 垃圾拦截、倍率线路提取、属性智能分类打标
+│   │   ├── node-trust.js         # 节点进程内信任边界与内部 Synthetic 身份标记 (私有 WeakSet 隔离)
+│   │   ├── metadata.js           # 节点名称元数据只读提取 (大区/线路/倍率深度解析与冻结)
 │   │   ├── dedupe.js             # 底层物理网络指纹提取与特征去重
 │   │   ├── transport.js          # 统一传输层门面 (Host/SNI/Path提取、Host注入与类型识别)
 │   │   ├── geo.js                # 地区智能正则匹配与落地城市精准提取
-│   │   ├── rename.js             # 模板变量解析、Emoji 注入与悬空分隔符安全擦除
+│   │   ├── rename.js             # 分级命名计划、两阶段确定性冲突仲裁与模板变量解析
 │   │   ├── sort.js               # 节点多维智能排序、隔离组聚拢与顺序确定性保证
 │   │   ├── fission.js            # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
 │   │   ├── chinese-convert.js    # 简繁中文递归转换与无依赖回退降级
@@ -333,7 +352,7 @@ E:\CODE\mihomo-toolkit-next\
 │       ├── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
 │       └── cleaner-rules.js      # 节点清洗规则词库：入口/落地城市、线路与运营商、阻断正则与质量权重
 │
-├── test/                         # 🧪 自动化测试套件 (61 个测试套件，302 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (77 个测试套件，383 个全绿用例)
 │                                 #    其中 security-delivery-contract / dns-invariants /
 │                                 #    server-security / security-sanitizer / data-baseline /
 │                                 #    config-surface 为安全与契约回归套件

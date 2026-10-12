@@ -6,14 +6,16 @@
 
 const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
-const { classifyNode } = require('../core/cleaner');
-const { buildRenamePlan, resolveNameCollisions } = require('../core/rename');
+const { classifyNode, matchUserBlacklist } = require('../core/cleaner');
+const { buildRenamePlan, applyRenamePlan } = require('../core/rename');
+const { markTrustedCleanedNode } = require('../core/node-trust');
 const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 // Name rendering and feature variables are owned by core/rename.
 const { FEATURE_TEXT_MAP } = require('../core/shared/icons');
 const { resolveProxiesDomains } = require('../io/dns-resolver');
 const { fissionNodes } = require('../core/fission');
+const { createEnvelopesBypass } = require('./envelope');
 
 /**
  * 执行纯净节点清洗与标准化流水线
@@ -27,8 +29,41 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   let currentProxies = Array.isArray(proxies) ? proxies : [];
   const totalCount = currentProxies.length;
 
-  // 1. 物理特征去重
+  // 0. 旁路接入: 只读 Envelope 与节点元数据提取 (零副作用，单节点异常隔离)
+  try {
+    createEnvelopesBypass(currentProxies, { logger });
+  } catch (bypassErr) {
+    if (logger && typeof logger.debug === 'function') {
+      logger.debug(`⚠️ [Envelope 旁路] 批次处理异常: ${bypassErr?.message || bypassErr}`);
+    }
+  }
+
+  let discardedCount = 0;
   let dedupeCount = 0;
+  let fissionCount = 0;
+  let infoCount = 0;
+  let unknownCount = 0;
+
+  // 1. 前置安全门禁：防御非法输入 + 用户黑名单检查 (必须在物理去重前执行，确保黑名单节点不抢先去重掉后续正常节点)
+  const unblockedProxies = [];
+  for (const p of currentProxies) {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) {
+      discardedCount++;
+      if (logger) logger.debug(`🗑️ [阻断] 无效节点数据`);
+      continue;
+    }
+    const rawName = p._rawName || p.name || '';
+    const blacklistReason = matchUserBlacklist(p, rawName, config);
+    if (blacklistReason) {
+      discardedCount++;
+      if (logger) logger.debug(`🗑️ [阻断] 「${rawName}」 原因: ${blacklistReason}`);
+      continue;
+    }
+    unblockedProxies.push(p);
+  }
+  currentProxies = unblockedProxies;
+
+  // 2. 物理特征去重 (仅对未命中黑名单的合法候选节点去重)
   if (config.enableDedupe) {
     const beforeDedupe = currentProxies.length;
     currentProxies = dedupeNodes(currentProxies, {
@@ -39,8 +74,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     dedupeCount = beforeDedupe - currentProxies.length;
   }
 
-  // 2. 域名多 IP 节点裂变 (I/O 解析域名 -> Core 纯函数裂变)
-  let fissionCount = 0;
+  // 3. 域名多 IP 节点裂变 (I/O 解析域名 -> Core 纯函数裂变)
   if (config.enableFission) {
     const beforeFission = currentProxies.length;
     const domainIpsMap = await resolveProxiesDomains(currentProxies, config);
@@ -48,15 +82,27 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     fissionCount = Math.max(0, currentProxies.length - beforeFission);
   }
 
-  // 3. 深度清洗打标
+  // 3.5 裂变后黑名单复查 (防止域名解析为 IP 后绕过 blockServers)
+  if (fissionCount > 0) {
+    const postFissionProxies = [];
+    for (const p of currentProxies) {
+      const rawName = p._rawName || p.name || '';
+      const blacklistReason = matchUserBlacklist(p, rawName, config);
+      if (blacklistReason) {
+        discardedCount++;
+        if (logger) logger.debug(`🗑️ [阻断] 裂变节点「${rawName}」 原因: ${blacklistReason}`);
+        continue;
+      }
+      postFissionProxies.push(p);
+    }
+    currentProxies = postFissionProxies;
+  }
+
+  // 4. 深度清洗打标与硬结构校验 (classifyNode 内置自包含黑名单保护，针对独立调用提供兜底)
   const regionDefs = getEnhancedRegionDefs();
   const classified = currentProxies.map(p => classifyNode(p, config, { regionDefs }));
 
-  // 4. 过滤被阻断或无效/说明节点
-  let discardedCount = 0;
-  let infoCount = 0;
-  let unknownCount = 0;
-
+  // 5. 过滤被阻断或无效/说明节点
   const validItems = classified.filter(item => {
     if (item.skip) {
       discardedCount++;
@@ -84,9 +130,11 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     ? sortNodes(validItems, config)
     : validItems;
 
-  // 5. 统一计算动态序号与重命名
+  // 5. 统一计算动态序号与重命名计划，并完成两阶段冲突仲裁与最终名称提交
   const isRenameEnabled = config.enableNodeRename !== false;
-  const renamePlan = isRenameEnabled ? buildRenamePlan(effectiveItems, config) : new Map();
+  const renamePlan = buildRenamePlan(effectiveItems, isRenameEnabled ? config : { ...config, enableNodeRename: false });
+  const finalNames = applyRenamePlan(effectiveItems, renamePlan);
+  for (const item of effectiveItems) markTrustedCleanedNode(item.proxy);
 
   const catalogTexts = {};
   if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
@@ -140,7 +188,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     if (!item.regionInfo) return item.proxy;
 
     if (isRenameEnabled && config.renameTemplate) {
-      const newName = renamePlan.get(item) || '';
+      const newName = finalNames.get(item) || item.proxy?.name || '';
       if (newName) {
         if (logger) {
           const detailLine = buildDestinationLine(item);
@@ -150,7 +198,6 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
             logger.debug(`📌 [识别] 「${item.rawName}」\n${detailLine}`);
           }
         }
-        item.proxy.name = newName;
       }
     } else {
       if (logger) {
@@ -171,9 +218,6 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     item.proxy._cleaned = true;
     return item.proxy;
   });
-
-  // 末端名称碰撞守护 (Collision Guard): 确保输出给内核的节点名称 100% 互斥唯一
-  resolveNameCollisions(resultProxies);
 
   const stats = {
     total: totalCount,

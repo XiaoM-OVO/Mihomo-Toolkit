@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseContent, parseSubscriptionInfo, isExpiredNow, isQuotaExhausted } = require('./parsers');
 const { hasOnlyPlaceholderNodes } = require('../core/cleaner');
+const { markTrustedSynthetic, markTrustedProxyMetadata, sanitizeExternalProxy, sanitizeExternalProxies } = require('../core/node-trust');
 const { redactUrl } = require('./ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache } = require('./fetcher');
 const { DEFAULT_REQUEST_LIMITS } = require('./limits');
@@ -267,7 +268,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   const extractResetText = dsh.extractResetText || (() => '');
   const filterRawInfoNodes = dsh.filterRawInfoNodes || ((p) => p);
   const generateInfoNodes = dsh.generateInfoNodes || (() => ({ nodes: [], expireDays: -1 }));
-  const createFetchErrorNode = dsh.createFetchErrorNode || ((tag, msg) => ({ name: `❌ [${tag}] 拉取失败：${msg}`, type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }));
+  const createFetchErrorNode = dsh.createFetchErrorNode || ((tag, msg) => markTrustedSynthetic({ name: `❌ [${tag}] 拉取失败：${msg}`, type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }));
   const showFullUrl = userConfig.redactLevel === 'off';
   const debug = !!options.debug || userConfig.logLevel === 'debug';
   const enableDashboard = userConfig.enableDashboard !== false;
@@ -390,7 +391,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
                 }
               }
 
-              const parsedProxies = (parseContent(rawResult.content).proxies || []);
+              const parsedProxies = sanitizeExternalProxies(parseContent(rawResult.content).proxies || []);
               if (!rawResult.content || parsedProxies.length === 0) {
                 throw new Error('Subscription returned no nodes');
               }
@@ -490,7 +491,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         if (error) throw error;
         recordSubInfo(rawResult.subInfo, sub.tag);
         const subConfig = parseContent(rawResult.content);
-        let subProxies = subConfig.proxies || [];
+        let subProxies = sanitizeExternalProxies(subConfig.proxies || []);
 
         if (sub.name && subProxies.length === 1) {
           subProxies[0].name = sub.name;
@@ -553,18 +554,28 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           subProxies.forEach(p => { p._indexPrefix = effectiveIndexPrefix; });
         }
 
+        // Record only metadata assigned by this trusted subscription processor.
+        // The strategy boundary can then strip caller-forged private fields and restore these values.
+        subProxies.forEach(p => markTrustedProxyMetadata(p, {
+          _subTag: p._subTag,
+          _indexPrefix: p._indexPrefix,
+          _keepName: p._keepName,
+          _customGroups: p._customGroups,
+          _rawName: p._rawName
+        }));
+
         const { nodes: synthNodes, expireDays } = enableDashboard
           ? generateInfoNodes(rawResult.subInfo, effectiveTag, { isStale: !!rawResult.stale })
           : { nodes: [], expireDays: -1 };
 
         if (enableDashboard && resetText && (expireDays === -1 || expireDays > 30)) {
-          synthNodes.push({
+          synthNodes.push(markTrustedSynthetic({
             name: `🔄 [${effectiveTag}] ${resetText}`,
             type: 'direct',
             server: '1.0.0.1',
             port: 80,
             isSyntheticInfo: true
-          });
+          }));
         }
 
         if (synthNodes.length > 0) {
@@ -733,7 +744,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           }
         }
 
-        const parsedProxies = (parseContent(rawResult.content).proxies || []);
+        const parsedProxies = sanitizeExternalProxies(parseContent(rawResult.content).proxies || []);
         if (!rawResult.content || parsedProxies.length === 0) {
           throw new Error('Subscription returned no nodes');
         }
@@ -828,7 +839,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     // 关键：单 URL/本地文件同样属于「外部不可信输入」，输出骨架必须重建为纯数据面对象，
     // 严禁直接复用订阅顶层配置（否则 external-controller / script / tunnels 等会随产物下发）。
     const rawSubConfig = parseContent(rawResult.content);
-    let singleProxies = Array.isArray(rawSubConfig.proxies) ? rawSubConfig.proxies : [];
+    let singleProxies = sanitizeExternalProxies(Array.isArray(rawSubConfig.proxies) ? rawSubConfig.proxies : []);
     if (userConfig.removeInfoNodes !== false) {
       singleProxies = filterRawInfoNodes(singleProxies, logger);
     }

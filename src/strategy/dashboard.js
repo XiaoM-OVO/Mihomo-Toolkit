@@ -11,6 +11,7 @@
 
 const { parseSubscriptionInfo, isExpiredNow } = require('../core/shared/sub-info');
 const { isNoticeNode } = require('../core/cleaner');
+const { markTrustedSynthetic, isTrustedSynthetic } = require('../core/node-trust');
 
 function formatBytes(bytes, fractionDigits = 2) {
   const units = ['MB', 'GB', 'TB', 'PB'];
@@ -64,13 +65,13 @@ function generateInfoNodes(subInfo, tag, options = {}) {
     const isLow = remaining <= 5 * 1024 * 1024 * 1024 || (remaining / total) <= 0.05;
     const icon = isLow ? '🪫' : '🏷️';
     const label = isLow ? '流量告急' : '剩余流量';
-    nodes.push({
+    nodes.push(markTrustedSynthetic({
       name: `${icon} ${tagPrefix}${label}：${formatBytes(remaining)} / ${formatBytes(total)} (${percent}%)`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
       isSyntheticInfo: true
-    });
+    }));
   }
 
   // 2. 到期状态节点
@@ -82,41 +83,41 @@ function generateInfoNodes(subInfo, tag, options = {}) {
     expireDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
     if (expired || expireDays <= 0) {
       const expiredDays = Math.max(1, Math.floor((now - d) / (1000 * 60 * 60 * 24)));
-      nodes.push({
+      nodes.push(markTrustedSynthetic({
         name: `🛑 ${tagPrefix}套餐到期：${dateStr} (已失效 ${expiredDays} 天)`,
         type: 'direct',
         server: '1.0.0.1',
         port: 80,
         isSyntheticInfo: true
-      });
+      }));
     } else if (expireDays <= 3) {
-      nodes.push({
+      nodes.push(markTrustedSynthetic({
         name: `⚠️ ${tagPrefix}即将到期：${dateStr} (仅剩 ${expireDays} 天，请及时续费)`,
         type: 'direct',
         server: '1.0.0.1',
         port: 80,
         isSyntheticInfo: true
-      });
+      }));
     } else {
-      nodes.push({
+      nodes.push(markTrustedSynthetic({
         name: `📅 ${tagPrefix}套餐到期：${dateStr} (余 ${expireDays} 天)`,
         type: 'direct',
         server: '1.0.0.1',
         port: 80,
         isSyntheticInfo: true
-      });
+      }));
     }
   }
 
   // 3. 容灾降级标记（命中 stale 缓存时）
   if (isStale) {
-    nodes.push({
+    nodes.push(markTrustedSynthetic({
       name: `🔄 ${tagPrefix}抓取异常 · 启用缓存兜底`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
       isSyntheticInfo: true
-    });
+    }));
   }
 
   return { nodes, expireDays };
@@ -129,7 +130,7 @@ function filterRawInfoNodes(proxies = [], logger) {
   if (!Array.isArray(proxies)) return [];
   return proxies.filter(p => {
     if (!p || typeof p !== 'object') return false;
-    if (p.isSyntheticInfo) return true;
+    if (isTrustedSynthetic(p)) return true;
     if (isNoticeNode(p)) {
       if (logger) logger.debug(`🗑️ [说明过滤] 「${p.name || p._rawName}」`);
       return false;
@@ -225,13 +226,13 @@ function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, 
     const isLow = globalRemaining <= 10 * 1024 * 1024 * 1024 || (globalRemaining / globalTotal) <= 0.05;
     const globalIcon = isLow ? '🪫' : '📈';
 
-    topNodes.push({
+    topNodes.push(markTrustedSynthetic({
       name: `${globalIcon} [全局] 剩余流量：${formatBytes(globalRemaining)} / ${formatBytes(globalTotal)} (${globalPercent}%)`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
       isSyntheticInfo: true
-    });
+    }));
   }
 
   if (globalExpire > 0) {
@@ -254,13 +255,13 @@ function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, 
       expireDesc = `(仅剩 ${days} 天)`;
     }
 
-    topNodes.push({
+    topNodes.push(markTrustedSynthetic({
       name: `${expireIcon} [全局] ${expireLabel}：${dateStr} ${expireDesc}`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
       isSyntheticInfo: true
-    });
+    }));
   }
 
   return topNodes;
@@ -276,13 +277,13 @@ function createFetchErrorNode(effectiveTag, errorMsg = '') {
   else if (/HTTP Error: (\d+)/i.test(errorMsg)) shortMsg = `HTTP ${errorMsg.match(/HTTP Error: (\d+)/i)[1]}`;
   else if (/no nodes/i.test(errorMsg)) shortMsg = '未解析到有效节点';
 
-  return {
+  return markTrustedSynthetic({
     name: `❌ [${effectiveTag}] 拉取失败：${shortMsg}`,
     type: 'direct',
     server: '1.0.0.1',
     port: 80,
     isSyntheticInfo: true
-  };
+  });
 }
 
 module.exports = {

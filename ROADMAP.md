@@ -50,6 +50,11 @@
    - 从基于黑名单剥离全面升级为基于字段注册表 `trust: 'any'` 的显式白名单放行（fail-closed），有效收敛未来内核新字段可能带来的潜在越权风险；
    - 纠正 `output` 字段为 `trust: 'local'`，阻止远程配置操纵本地写盘目标路径；
    - 修复 DNS 不变式 (INV-8) 上下游上下文传递脱节与审计消费断层。
+- [x] **节点命名计划与两阶段冲突仲裁闭环 (Rename Closure)**：
+   - 引入分级意图规划 (`buildRenamePlan`) 与集中式两阶段仲裁提交 (`applyRenamePlan`)，解耦纯计算与状态突变；
+   - 划分 4 级优先级梯队（受信保留/Special/KeepName ➔ Info ➔ 未知地区 ➔ 模板渲染），高优先级节点享有绝对认领优先权；
+   - 实现“先认领原生目标名、后分配冲突候选”仲裁算法，避免重复项推挤抢占原生序号；
+   - 基于进程私有 `WeakSet` 凭证与流水线闭环保证多阶段与重复运行的严格幂等性。
 - [ ] **服务目录单点激活 (Single-Point Service Activation)**：
    - *当前现状*：用户在 `customServices` 添加服务后，还必须在 `aiServices` 或 `streamingServices` 中再次列出该 key 才能生效，容易产生漏配混淆。
    - *规划方案*：支持“声明即激活”，或在自定义项中增加 `active: true` 选项，简化配置书写。
