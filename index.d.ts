@@ -286,6 +286,11 @@ export interface ToolkitConfig {
   customRules?: string[];
   /** 自定义 Rule-Provider 定义（name → { type, behavior, url, path… }） */
   customRuleProviders?: Record<string, any>;
+  /**
+   * 订阅服务域名或 IP（自动注入为最前列直连规则与 fake-ip-filter，防止客户端拉取订阅走代理循环或延迟叠加）。
+   * 支持单个域名/IP 字符串，或域名/IP 数组。常驻服务端亦会自动自适应提取请求 Host。
+   */
+  subDomain?: string | string[];
 
   // 安全与资源配额
   /**

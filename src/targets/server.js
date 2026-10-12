@@ -17,6 +17,7 @@ const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits'
 const { hardenRemoteConfig } = require('../core/security/remote-config');
 const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
+const { normalizeSubDomains } = require('../core/shared/ip');
 const pkg = require('../../package.json');
 
 /** 回环地址判定（仅这些地址可视为「本机可信接入」） */
@@ -69,6 +70,20 @@ function getClientIp(req) {
   const raw = req.socket?.remoteAddress || '';
   if (raw.startsWith('::ffff:')) return raw.slice(7);
   return raw || '127.0.0.1';
+}
+
+/** 提取客户端请求的目标 Host（优先读取反向代理投递的 X-Forwarded-Host，回退 Host 头） */
+function getRequestHost(req) {
+  const xfh = req.headers && req.headers['x-forwarded-host'];
+  if (typeof xfh === 'string' && xfh.trim()) {
+    const first = xfh.split(',')[0].trim();
+    if (first) return first;
+  }
+  const host = req.headers && req.headers['host'];
+  if (typeof host === 'string' && host.trim()) {
+    return host.trim();
+  }
+  return null;
 }
 
 function startServer(options = {}) {
@@ -349,6 +364,15 @@ function startServer(options = {}) {
           res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end('Bad Request: Please provide ?url=... or ?config=... or place a config.yaml in the working directory.');
           return;
+        }
+
+        // 订阅服务域名/IP 直连自适应推导：优先读取反向代理或客户端请求的 Host，安全合并到 subDomain
+        const reqHost = getRequestHost(req);
+        const validReqHosts = normalizeSubDomains(reqHost);
+        if (validReqHosts.length > 0) {
+          const existing = normalizeSubDomains(userConfig.subDomain);
+          const combined = Array.from(new Set([...existing, ...validReqHosts]));
+          userConfig = { ...userConfig, subDomain: combined };
         }
 
         const debugMode = reqUrl.searchParams.get('debug') === '1';

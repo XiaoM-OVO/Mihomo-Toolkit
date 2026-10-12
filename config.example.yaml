@@ -350,6 +350,14 @@ enableProcessDirect: true          # P2P/BT 强制直连
 #     interval: 86400
 #     format: yaml
 
+# 🌐 订阅服务域名/IP 直连（自动注入最前列直连规则与 fake-ip-filter，防止客户端刷新订阅走代理循环与高延迟）
+# 服务端亦支持根据 HTTP 请求 Host 头自动推导；此处配置可用于预热、CLI 生成或显式固定
+# subDomain: "sub.example.com"
+# 或配置多个域名/IP 列表：
+# subDomain:
+#   - "sub.example.com"
+#   - "198.51.100.1"
+
 
 # ─────────────────────────────────────────────────────────────────────
 # ⑫ 测速与规则集

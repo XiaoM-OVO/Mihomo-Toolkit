@@ -5,6 +5,7 @@
  */
 
 const { FIELDS_BY_KEY } = require('../data');
+const { isIPv4, isIPv6, normalizeSubDomains } = require('../core/shared/ip');
 
 function dedupe(arr) {
   return [...new Set(arr)];
@@ -55,6 +56,20 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   const routingRules = ['RULE-SET,lan-domain,DIRECT', 'RULE-SET,lan-ip,DIRECT,no-resolve'];
   if (userConfig.enableIPv6) {
     routingRules.push('IP-CIDR6,::1/128,DIRECT,no-resolve', 'IP-CIDR6,fc00::/7,DIRECT,no-resolve', 'IP-CIDR6,fe80::/10,DIRECT,no-resolve');
+  }
+
+  // 订阅服务与面板节点直连注入（防止客户端刷新订阅走代理产生延迟叠加或死锁）
+  const subDomains = normalizeSubDomains(userConfig.subDomain);
+  for (const item of subDomains) {
+    if (isIPv4(item)) {
+      routingRules.push(`IP-CIDR,${item}/32,DIRECT,no-resolve`);
+    } else if (isIPv6(item)) {
+      routingRules.push(`IP-CIDR6,${item}/128,DIRECT,no-resolve`);
+    } else if (item.startsWith('+.') || item.startsWith('*.')) {
+      routingRules.push(`DOMAIN-SUFFIX,${item.replace(/^(\+\.|\*\.)/, '')},DIRECT`);
+    } else {
+      routingRules.push(`DOMAIN,${item},DIRECT`);
+    }
   }
 
   // QUIC 分流拦截

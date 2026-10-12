@@ -320,6 +320,8 @@ const FIELDS = [
     group: '自定义规则入口', doc: '注入到 MATCH 之前的自定义分流规则（优先级最高）' },
   { key: 'customRuleProviders', type: 'object', merge: 'override', trust: 'any',
     group: '自定义规则入口', doc: '自定义 Rule-Provider 定义（name → {type, behavior, url…}）' },
+  { key: 'subDomain', type: 'string[]', merge: 'override', trust: 'any',
+    group: '自定义规则入口', doc: '订阅服务域名或 IP（自动注入为直连分流规则与 fake-ip-filter，防止客户端拉取订阅走代理循环与高延迟）' },
 
   // ── 【15. 安全与资源配额】 ───────────────────────────────────────────────
   { key: 'security', type: 'object', merge: 'override', trust: 'local',
