@@ -12,17 +12,17 @@ const IN_PREFIX_OPTIONAL = `(?:${IN_PREFIX}(?:\\s*(?:->|=>|~>|→|⇒|-|—|=|>|
 const REGION_DEFS_RAW = [
   // --- 大中华区 ---
   { id: "cn", name: "中国",   icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(?:CN(?!2)|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
-  { id: "hk", name: "香港",   icon: "🇭🇰", _regTemplate: "港|香港|香江|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong" },
+  { id: "hk", name: "香港",   icon: "🇭🇰", _regTemplate: "香港|香江|(?<![空海端])港(?![口湾澳])|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong" },
   { id: "mo", name: "澳门",   icon: "🇲🇴", reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i },
-  { id: "tw", name: "台湾",   icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", _regTemplate: "台|台湾|台灣|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet" },
+  { id: "tw", name: "台湾",   icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", _regTemplate: "台湾|台灣|(?<![平前后戏平台])台(?![平前后湾灣风])|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet" },
 
   // --- 亚洲核心区 ---
-  { id: "jp", name: "日本",   icon: "🇯🇵", city: "东京|大阪|埼玉|京都|川崎", _regTemplate: "日|日本|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala" },
-  { id: "kr", name: "韩国",   icon: "🇰🇷", city: "首尔|春川", _regTemplate: "韩|韩国|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea" },
-  { id: "sg", name: "新加坡", icon: "🇸🇬", city: "狮城", _regTemplate: "新|新加坡|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest" },
+  { id: "jp", name: "日本",   icon: "🇯🇵", city: "东京|大阪|埼玉|京都|川崎", _regTemplate: "日本|日(?![常用期间程志照益本])|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala" },
+  { id: "kr", name: "韩国",   icon: "🇰🇷", city: "首尔|春川", _regTemplate: "韩国|韩(?![信国])|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea" },
+  { id: "sg", name: "新加坡", icon: "🇸🇬", city: "狮城", _regTemplate: "新加坡|新(?![建春年线增华上线节点加北坡])|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest" },
 
   // --- 北美大区 ---
-  { id: "us", name: "美国",   icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", _regTemplate: "美|美国|西美|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America|United States" },
+  { id: "us", name: "美国",   icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", _regTemplate: "美国|西美|美西|美东|(?<![完优赞欧])美(?![食味丽国西东])|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America|United States" },
 
   // --- 欧洲大区 ---
   { group: "eu", name: "英国",   icon: "🇬🇧", city: "伦敦|費勒姆", reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
