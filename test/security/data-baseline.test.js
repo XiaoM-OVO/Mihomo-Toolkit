@@ -18,7 +18,19 @@ const {
   ENTRY_NORMALIZERS,
   normalizeDomainList,
   effectiveProtectedDomains,
-  effectiveExemptGroups
+  effectiveExemptGroups,
+  ENTRY_CITIES,
+  EXIT_REGIONS,
+  TAG_MAP,
+  LINE_QUALITY_TIERS,
+  getLineQualityWeight,
+  STATIC_FEATURE_RULES,
+  ISOLATION_SORT_ORDER,
+  REGEX_FAKE_IPV4,
+  REGEX_FAKE_IPV6,
+  REGEX_DUMMY_AUTH,
+  REGEX_INFO_NODE,
+  REGEX_AD_TYPO
 } = require('../../src/data');
 const { REMOTE_CONFIG_FORBIDDEN_KEYS, hardenRemoteConfig } = require('../../src/core/security/remote-config');
 const { sanitizeHosts } = require('../../src/core/security/dns-sanitizer');
@@ -268,6 +280,73 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
 
       const once = effectiveProtectedDomains(['mybank.example']);
       assert.deepStrictEqual(effectiveProtectedDomains(once), once);
+    });
+  });
+
+  describe('cleaner-rules - 节点清洗只读规则与词库基线完整性', () => {
+    it('cleaner-rules - 城市与地区词库格式正确且具备代表性条目', () => {
+      assert.ok(Array.isArray(ENTRY_CITIES) && ENTRY_CITIES.length >= 40);
+      assert.ok(Array.isArray(EXIT_REGIONS) && EXIT_REGIONS.length >= 40);
+      assert.ok(ENTRY_CITIES.includes('深圳') && ENTRY_CITIES.includes('SZX'));
+      assert.ok(EXIT_REGIONS.includes('香港') && EXIT_REGIONS.includes('HKG'));
+      assert.equal(TAG_MAP['深圳'], '深');
+      assert.equal(TAG_MAP['SZX'], '深');
+      assert.equal(TAG_MAP['上海'], '沪');
+      assert.equal(TAG_MAP['PVG'], '沪');
+    });
+
+    it('cleaner-rules - 线路质量权重与梯队判定自洽', () => {
+      assert.ok(Array.isArray(LINE_QUALITY_TIERS) && LINE_QUALITY_TIERS.length === 5);
+      assert.equal(getLineQualityWeight('IEPL/深港'), 1);
+      assert.equal(getLineQualityWeight('IPLC专线'), 1);
+      assert.equal(getLineQualityWeight('CN2 GIA'), 2);
+      assert.equal(getLineQualityWeight('CMIN2'), 2);
+      assert.equal(getLineQualityWeight('AS9929'), 2);
+      assert.equal(getLineQualityWeight('优质专线VIP'), 3);
+      assert.equal(getLineQualityWeight('BGP'), 4);
+      assert.equal(getLineQualityWeight('CMI'), 4);
+      assert.equal(getLineQualityWeight('中转隧道'), 5);
+      assert.equal(getLineQualityWeight('普通直连节点'), 6);
+      assert.equal(getLineQualityWeight(''), 6);
+      assert.equal(getLineQualityWeight(null), 6);
+    });
+
+    it('cleaner-rules - 静态业务特征与隔离排序权重无孤儿', () => {
+      assert.ok(Array.isArray(STATIC_FEATURE_RULES) && STATIC_FEATURE_RULES.length >= 10);
+      for (const rule of STATIC_FEATURE_RULES) {
+        assert.ok(rule.reg instanceof RegExp, `规则 ${rule.tag} reg 不是 RegExp`);
+        assert.ok(typeof rule.tag === 'string' && rule.tag.length > 0, '规则 tag 缺失');
+      }
+      assert.equal(ISOLATION_SORT_ORDER[''], 0);
+      assert.equal(ISOLATION_SORT_ORDER.std, 0);
+      assert.equal(ISOLATION_SORT_ORDER.residential, 1);
+      assert.equal(ISOLATION_SORT_ORDER.download, 2);
+      assert.equal(ISOLATION_SORT_ORDER.experimental, 3);
+      assert.equal(ISOLATION_SORT_ORDER.highMulti, 4);
+    });
+
+    it('cleaner-rules - 拦截与阻断正则基线工作正常', () => {
+      assert.ok(REGEX_FAKE_IPV4.test('127.0.0.1'));
+      assert.ok(REGEX_FAKE_IPV4.test('10.0.0.1'));
+      assert.ok(REGEX_FAKE_IPV4.test('192.168.1.1'));
+      assert.ok(!REGEX_FAKE_IPV4.test('1.2.3.4'));
+
+      assert.ok(REGEX_FAKE_IPV6.test('::1'));
+      assert.ok(REGEX_FAKE_IPV6.test('fc00::1'));
+      assert.ok(!REGEX_FAKE_IPV6.test('2400:3200::1'));
+
+      assert.ok(REGEX_DUMMY_AUTH.test('password'));
+      assert.ok(REGEX_DUMMY_AUTH.test('123456'));
+      assert.ok(REGEX_DUMMY_AUTH.test('00000000-0000-0000-0000-000000000000'));
+      assert.ok(!REGEX_DUMMY_AUTH.test('my-secret-key-12345'));
+
+      assert.ok(REGEX_INFO_NODE.test('剩余流量：100G'));
+      assert.ok(REGEX_INFO_NODE.test('套餐到期时间'));
+      assert.ok(!REGEX_INFO_NODE.test('🇭🇰 香港 01 BGP'));
+
+      assert.ok(REGEX_AD_TYPO.test('防失联地址'));
+      assert.ok(REGEX_AD_TYPO.test('最新发布页'));
+      assert.ok(!REGEX_AD_TYPO.test('🇭🇰 香港 01'));
     });
   });
 

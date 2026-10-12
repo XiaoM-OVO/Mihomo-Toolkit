@@ -4,70 +4,41 @@
  * 负责广告与引流节点拦截、虚假IP与假密码过滤、倍率/线路/入口识别打标。
  */
 
-const { escapeRegex, matchNodeRegion, extractCity } = require('./geo');
+const { matchNodeRegion, extractCity } = require('./geo');
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { looksLikeDomain } = require('./fission');
 const { getTransportType } = require('./transport');
 const { buildServiceCatalog } = require('../config/catalog');
-
-const REGEX_ALL_FLAGS = /\p{Regional_Indicator}{2}/gu;
-const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过期|更新公告|重置|维护|不可用|扣费|节点说明|防失联|官网|地址|Q群|电报|Tg群|距离下次/i;
-const REGEX_FORBID_DL_STR = '(?:禁止|禁|严禁|请勿|勿|不要|不能|拒绝|屏蔽|防)(?:BT|PT|P2P|下载|测速|迅雷)|(?:仅限|仅供)(?:网页|日常|聊天)|\\b(?:No|Block|Ban)[\\s\\-_]*(?:BT|PT|Torrent|Download)\\b';
-const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)`, 'ig');
-const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, 'i');
-
-// 虚假/私网/回环与占位 IP 判定
-const REGEX_FAKE_IPV4 = /^(?:0\.|127\.|10\.|192\.168\.|169\.254\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.|(?:1\.1\.1\.1|8\.8\.8\.8)(?:$|:))/;
-const REGEX_FAKE_IPV6 = /^(?:\[?(?:::1|0*(?::0*)*:0*1)\]?(?:$|:)|\[?f[cd][0-9a-f]{2}:|\[?fe80:)/i;
-
-// 入口城市关键词（按长度降序排布，长词优先贪婪匹配）
-const ENTRY_CITIES = [
-  '新加坡', '深圳', '广州', '上海', '北京', '杭州', '四川', '重庆', '东莞',
-  '江苏', '南京', '武汉', '成都', '无锡', '香港', '台湾', '日本', '韩国',
-  '英国', '美国', 'Ingress', 'SZX', 'CAN', 'PVG', 'SHA', 'PEK', 'PKX', 'HGH',
-  '深', '广', '沪', '京', '杭', '川', '渝', '莞', '苏', '鲁', '徐', '湘',
-  '宁', '汉', '穗', '蓉', '港', '台', '日', '新', '韩', '英', '美', '辽'
-];
-const EXIT_REGIONS = [
-  'Destination', '多伦多', '芝加哥', '新加坡', '澳大利亚', '俄罗斯', '香港',
-  '台湾', '日本', '韩国', '美国', '英国', '德国', '法国', '印度', '狮城',
-  '上海', '广州', '深圳', 'Exit', 'HKG', 'TYO', 'SIN', 'LAX', 'HK', 'TW',
-  'JP', 'SG', 'US', 'KR', 'UK', 'DE', 'FR', '港', '台', '美', '日', '韩',
-  '新', '英', '德', '法', '俄', '印', '澳', '中', '沪', '广', '深'
-];
-
-const entryPattern = ENTRY_CITIES.map(escapeRegex).join('|');
-const exitPattern = EXIT_REGIONS.map(escapeRegex).join('|');
-const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:->|=>|~>|→|⇒|-|—|=|>|至)\\s*|\\s+)?(?=${exitPattern})`, 'i');
-
-// 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
-const REGEX_MULTI = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍(?:率)?)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍(?:率)?)(?!\s*\d))/i;
-
-// 识别线路类型与营销标识 (CMIN2 优先于 CMI，AS9929 优先于 9929)
-const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMIN2|CMI|CUG|PCCW|AS9929|9929|AS4837|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|专线|中转|隧道)/gi;
-const REGEX_TECH_LINE_TEST = new RegExp(REGEX_TECH_LINE.source, 'i');
-const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
-const REGEX_FLUFF_LINE_TEST = new RegExp(REGEX_FLUFF_LINE.source, 'i');
-
-const LINE_MAP = { CTCUCM: '三网', CTCUM: '三网', CTCU: '电联', CUCT: '电联', CMCU: '移联', CUCM: '移联', CTCM: '电移', CMCT: '电移' };
-const CN_MAP = { 移动: '移', 联通: '联', 电信: '电' };
-
-const TAG_MAP = {
-  深: '深', 深圳: '深', SZX: '深', 广: '广', 广州: '广', 穗: '广', CAN: '广',
-  上海: '沪', 沪: '沪', PVG: '沪', SHA: '沪', 京: '京', 北京: '京',
-  PEK: '京', PKX: '京', 杭: '杭', 杭州: '杭', HGH: '杭',
-  四川: '川', 川: '川', 渝: '渝', 重庆: '渝', 东莞: '莞', 莞: '莞',
-  南京: '宁', 宁: '宁', 成都: '蓉', 蓉: '蓉', 武汉: '汉', 汉: '汉', 鲁: '鲁', 苏: '苏', 江苏: '苏',
-  港: '港', 香港: '港', 台: '台', 台湾: '台', 日: '日', 日本: '日', 新加坡: '新',
-  韩: '韩', 韩国: '韩', 英: '英', 英国: '英', 美: '美', 美国: '美'
-};
+const {
+  REGEX_INFO_NODE,
+  REGEX_NOTICE_KEYWORD,
+  REGEX_FORBID_DL,
+  REGEX_CLEANUP,
+  REGEX_FAKE_IPV4,
+  REGEX_FAKE_IPV6,
+  REGEX_DUMMY_AUTH,
+  REGEX_AD_TYPO,
+  REGEX_AD_PROMO,
+  REGEX_AD_PRICE,
+  TAG_MAP,
+  REGEX_ENTRY_CITY,
+  REGEX_MULTI,
+  ARCH_AVOID_SET,
+  REGEX_TECH_LINE,
+  REGEX_FLUFF_LINE,
+  LINE_MAP,
+  CARRIER_SHORT_MAP,
+  CARRIER_COMBO_MAP,
+  getLineQualityWeight,
+  STATIC_FEATURE_RULES
+} = require('../data/cleaner-rules');
 
 function dedupe(arr) {
   return [...new Set(arr)];
 }
 
 /**
- * 基础节点名称清洗（去除零宽字符、非国旗 Emoji、空白折叠）
+ * 基础节点名称清洗（去除零宽字符、非国旗 Emoji、空白折叠与广告/禁止下载词）
  * @param {string} rawName
  * @returns {string}
  */
@@ -87,25 +58,18 @@ function sanitizeNodeName(rawName) {
 
 /**
  * 三网/两网运营商压缩
+ * @param {Array<string>} arr
+ * @returns {Array<string>}
  */
 function compressLineArr(arr) {
-  const FULL_SET = new Set(['电信', '移动', '联通']);
-  const SHORT_MAP = { 电信: '电', 移动: '移', 联通: '联' };
-  const atomSet = new Set(Object.values(SHORT_MAP));
-  const comboMap = {
-    电联: new Set(['电', '联']),
-    移联: new Set(['移', '联']),
-    电移: new Set(['电', '移']),
-    三网: new Set(['移', '联', '电'])
-  };
-
   const deduped = dedupe(arr);
   const carrierItems = [];
   const nonCarrierItems = [];
+  const carrierAtoms = new Set(Object.values(CARRIER_SHORT_MAP));
 
   for (const item of deduped) {
-    if (FULL_SET.has(item) || atomSet.has(item)) {
-      carrierItems.push(SHORT_MAP[item] || item);
+    if (CARRIER_SHORT_MAP[item] || carrierAtoms.has(item)) {
+      carrierItems.push(CARRIER_SHORT_MAP[item] || item);
     } else {
       nonCarrierItems.push(item);
     }
@@ -114,7 +78,7 @@ function compressLineArr(arr) {
   if (carrierItems.length === 0) return nonCarrierItems;
 
   const currentAtoms = new Set(carrierItems);
-  for (const [comboName, atomGroup] of Object.entries(comboMap)) {
+  for (const [comboName, atomGroup] of Object.entries(CARRIER_COMBO_MAP)) {
     if (Array.from(atomGroup).every(atom => currentAtoms.has(atom))) {
       return [comboName, ...nonCarrierItems];
     }
@@ -123,7 +87,7 @@ function compressLineArr(arr) {
 }
 
 /**
- * 提取节点属性 (倍率、入口城市、线路特征)
+ * 提取节点属性 (倍率、入口城市、线路特征与质量权重)
  * @param {string} name
  * @param {object} [userConfig={}]
  */
@@ -140,7 +104,7 @@ function extractNodeAttributes(name, userConfig = {}) {
   // 2. 提取倍率
   cleanName = cleanName.replace(REGEX_MULTI, (m, m1, m2, m3) => {
     // 排除系统架构与指令集关键词 (如 x64, x86, x32)
-    if (!m1 && !m.includes('倍') && (m2 === '64' || m2 === '86' || m2 === '32' || m3 === '64' || m3 === '86' || m3 === '32')) {
+    if (!m1 && !m.includes('倍') && (ARCH_AVOID_SET.has(m2) || ARCH_AVOID_SET.has(m3))) {
       return m;
     }
     const num = parseFloat(m1 || m2 || m3);
@@ -162,7 +126,7 @@ function extractNodeAttributes(name, userConfig = {}) {
     else if (key === 'AS4837') key = '4837';
     let short = LINE_MAP[key];
     if (!short) {
-      const cnKey = Object.keys(CN_MAP).find(k => match.includes(k));
+      const cnKey = Object.keys(CARRIER_SHORT_MAP).find(k => match.includes(k));
       if (cnKey) short = cnKey;
     }
     if (short) attrs.lineArr.push(short);
@@ -180,12 +144,7 @@ function extractNodeAttributes(name, userConfig = {}) {
   });
 
   attrs.cleanLines = dedupe(attrs.lineArr).join('/');
-  const fullLineStr = attrs.cleanLines + fluffStr;
-  attrs.bestLineWeight = /(IEPL|IPLC)/.test(fullLineStr) ? 1 :
-                        /(GIA|CN2|9929|CMIN2)/.test(fullLineStr) ? 2 :
-                        /(专线|VIP|PRO|高速|极速|优化|PREMIUM)/.test(fullLineStr) ? 3 :
-                        /(BGP|CMI)/.test(fullLineStr) ? 4 :
-                        /(中转|隧道)/.test(fullLineStr) ? 5 : 6;
+  attrs.bestLineWeight = getLineQualityWeight(attrs.cleanLines + fluffStr);
 
   return { attrs, cleanName };
 }
@@ -193,6 +152,10 @@ function extractNodeAttributes(name, userConfig = {}) {
 /**
  * 用户显式黑名单判定：节点名关键词 / 服务器字段命中即拦截。
  * 优先级高于白名单——显式拒绝不应被白名单关键词放行。
+ * @param {object} proxy
+ * @param {string} rawName
+ * @param {object} [userConfig={}]
+ * @returns {string} 拦截原因或空字符串
  */
 function matchUserBlacklist(proxy, rawName, userConfig = {}) {
   const nameLower = (rawName || '').toLowerCase();
@@ -206,6 +169,11 @@ function matchUserBlacklist(proxy, rawName, userConfig = {}) {
 
 /**
  * 拦截与阻断判定
+ * @param {object} proxy
+ * @param {string} rawName
+ * @param {object} [userConfig={}]
+ * @param {object} [options={}]
+ * @returns {string} 拦截原因或空字符串
  */
 function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
   const server = (proxy?.server || '').trim();
@@ -213,12 +181,9 @@ function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
     || server === 'localhost'
     || REGEX_FAKE_IPV4.test(server)
     || REGEX_FAKE_IPV6.test(server);
-  const isDummyAuth = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i.test(proxy.uuid || proxy.password || '');
-  const isAdTypo = /防.{0,3}失|失.{0,3}联|地.{0,3}[址止]|官.{0,3}[网罔]|发.{0,3}[布步]|交.{0,3}流|群.{0,3}组|客.{0,3}服|定.{0,3}制/i.test(rawName)
-    || (
-      /(?:特惠|促销|优惠|不限速|大促|套餐)/.test(rawName) &&
-      /(?:元|块|折|¥|售\s*\d+(?:\.\d+)?|价\s*\d+(?:\.\d+)?|\d+G)/i.test(rawName)
-    );
+  const isDummyAuth = REGEX_DUMMY_AUTH.test(proxy?.uuid || proxy?.password || '');
+  const isAdTypo = REGEX_AD_TYPO.test(rawName)
+    || (REGEX_AD_PROMO.test(rawName) && REGEX_AD_PRICE.test(rawName));
 
   if (isFakeServer) return '假IP';
   if (proxy?._keepName) return ''; // 豁免非致命无效/假密码/广告拦截，保留原名与自建节点
@@ -229,68 +194,14 @@ function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
 }
 
 /**
- * 编译全量特征规则列表（包含静态特征、AI 服务注册表、流媒体注册表与自定义服务）
- * @param {object} userConfig
+ * 编译全量特征规则列表（包含静态特征基线、AI 服务注册表、流媒体注册表与自定义服务）
+ * @param {object} [userConfig={}]
  * @returns {Array<{ reg: RegExp, tag: string, pool?: string, groupName?: string }>}
  */
 function getFeatureRules(userConfig = {}) {
-  const rules = [
-    // 1. 家宽/住宅
-    {
-      reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i,
-      tag: 'residential',
-      pool: 'residential'
-    },
-    // 2. 游戏
-    {
-      reg: /(?:游戏|🎮)|\b(?:Game|FullCone)\b/i,
-      tag: 'game',
-      pool: 'game'
-    },
-    // 3. 免费 / 公益
-    {
-      reg: /(?:免费|白嫖|公益|🆓)/i,
-      tag: 'free'
-    },
-    // 4. WAP / 移动优化
-    {
-      reg: /(?:📱)|\bWAP\b/i,
-      tag: 'wap'
-    },
-    // 5. 蜂窝网络
-    {
-      reg: /(?:蜂窝|Cellular|移动网络)/i,
-      tag: 'cellular'
-    },
-    // 6. CDN 中转
-    {
-      reg: /(?:CDN中转|中转CDN|CDN加速|☁️)/i,
-      tag: 'CDN'
-    },
-    // 7. AWS / 云厂商
-    {
-      reg: /(?:\bAmazon\b|\bAWS\b|🛰️)/i,
-      tag: 'AWS'
-    },
-    // 8. 实验节点
-    {
-      reg: /(?:测试|实验|备用|测速)/i,
-      tag: 'experimental',
-      pool: 'experimental'
-    },
-    // 9. 双栈
-    {
-      reg: /(?:双栈|DualStack)/i,
-      tag: 'dualstack'
-    },
-    // 10. IPv6
-    {
-      reg: /\b(?:IPv6|v6)\b/i,
-      tag: 'ipv6'
-    }
-  ];
+  const rules = [...STATIC_FEATURE_RULES];
 
-  // 11. 动态服务编目特征规则注入 (统一由 catalog 单一事实来源驱动)
+  // 动态服务编目特征规则注入 (统一由 catalog 单一事实来源驱动)
   const catalog = userConfig.catalog || buildServiceCatalog(userConfig);
 
   // AI 助手特征规则（逆序 unshift，确保高优先级）
@@ -332,12 +243,6 @@ function getFeatureRules(userConfig = {}) {
 }
 
 /**
- * 核心节点分类打标函数
- * @param {object} proxy
- * @param {object} userConfig
- * @param {object} [options={}]
- */
-/**
  * 判定节点在当前配置下归属的隔离分类（家宽、高倍率、下载、实验）
  * @param {object} item 或包含 tags 与 attrs 的对象
  * @param {object} [userConfig={}]
@@ -364,6 +269,13 @@ function getIsolationBucket(item, userConfig = {}) {
   return '';
 }
 
+/**
+ * 核心节点分类打标函数 (纯函数)
+ * @param {object} proxy
+ * @param {object} [userConfig={}]
+ * @param {object} [options={}]
+ * @returns {object} 分类结果
+ */
 function classifyNode(proxy, userConfig = {}, options = {}) {
   const rawName = proxy._rawName || proxy.name || '';
   const defs = options.regionDefs || getEnhancedRegionDefs();
@@ -505,6 +417,8 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
  * 判定单个节点是否为显而易见的无服务能力占位/提示节点
  * 仅用于订阅有效性前置拦截（防止“续费/到期/公告”占位节点把失效订阅误判为成功）
  * 必须结合“假IP/假端口/无真实代理特征”与“提示性名称”双重特征，绝不误杀真实节点
+ * @param {object} proxy
+ * @returns {boolean}
  */
 function isNoticePlaceholderNode(proxy) {
   if (!proxy || typeof proxy !== 'object') return false;
@@ -516,7 +430,7 @@ function isNoticePlaceholderNode(proxy) {
     || REGEX_FAKE_IPV6.test(server);
 
   const isNoticeName = REGEX_INFO_NODE.test(rawName)
-    || /(?:续费|充值|到期|过期|用尽|耗尽|欠费|公告|说明|官网|防失联|通知|联系)/i.test(rawName);
+    || REGEX_NOTICE_KEYWORD.test(rawName);
 
   return isFakeServer && isNoticeName;
 }

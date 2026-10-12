@@ -330,9 +330,10 @@ E:\CODE\mihomo-toolkit-next\
 │   │
 │   └── data/                     # 📦 只读运行基础层 (最底层，程序所有 / 用户只读)
 │       ├── field-registry.js     # 字段注册表 SSOT：字段名 / 默认值 / 类型 / 合并语义 / 信任级
-│       └── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
+│       ├── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
+│       └── cleaner-rules.js      # 节点清洗规则词库：入口/落地城市、线路与运营商、阻断正则与质量权重
 │
-├── test/                         # 🧪 自动化测试套件 (25 个测试文件，203 个全绿用例)
+├── test/                         # 🧪 自动化测试套件 (61 个测试套件，302 个全绿用例)
 │                                 #    其中 security-delivery-contract / dns-invariants /
 │                                 #    server-security / security-sanitizer / data-baseline /
 │                                 #    config-surface 为安全与契约回归套件
