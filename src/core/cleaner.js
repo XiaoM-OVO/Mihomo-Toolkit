@@ -13,10 +13,12 @@ const ipaddr = require('ipaddr.js');
 const {
   REGEX_INFO_NODE,
   REGEX_NOTICE_KEYWORD,
+  REGEX_EXPLICIT_NOTICE,
   REGEX_FORBID_DL,
   REGEX_CLEANUP,
   REGEX_FAKE_IPV4,
   REGEX_FAKE_IPV6,
+  REGEX_PRIVATE_OR_LOOPBACK,
   REGEX_DUMMY_AUTH,
   REGEX_AD_TYPO,
   REGEX_AD_PROMO,
@@ -180,6 +182,72 @@ function matchUserBlacklist(proxy, rawName, userConfig = {}) {
 }
 
 /**
+ * 解析并判定主机地址是否为合法的私网、局域网或回环地址 (用于 _keepName 放行校验)
+ * 必须解析为有效 IP 且属于受限网段，格式错误的非法前缀坚决拒绝
+ * @param {string} server
+ * @returns {boolean}
+ */
+function isPrivateOrLoopbackServer(server) {
+  if (!server || typeof server !== 'string') return false;
+  const s = server.trim().replace(/^\[|\]$/g, '');
+  if (s.toLowerCase() === 'localhost') return true;
+  if (!ipaddr.isValid(s)) return false;
+  try {
+    const addr = ipaddr.parse(s);
+    const range = addr.range();
+    const ALLOWED_RANGES = [
+      'loopback',
+      'private',
+      'carrierGradeNat', // 100.64.0.0/10 (Tailscale / CGNAT)
+      'linkLocal',       // 169.254.0.0/16 or fe80::/10
+      'uniqueLocal'      // fc00::/7 (IPv6 ULA)
+    ];
+    return ALLOWED_RANGES.includes(range);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 判定主机地址与端口是否为结构性无效/占位服务
+ * @param {string} server
+ * @param {number|string} [port]
+ * @returns {boolean}
+ */
+function isFakeServerAddress(server, port) {
+  const s = String(server || '').trim();
+  const portNum = port != null && port !== '' ? Number(port) : null;
+  const isFakePort = portNum === null || !Number.isInteger(portNum) || portNum <= 0 || portNum > 65535;
+  const isFakeIp = !s
+    || s === 'localhost'
+    || REGEX_FAKE_IPV4.test(s)
+    || REGEX_FAKE_IPV6.test(s);
+  return !s || isFakePort || isFakeIp;
+}
+
+/**
+ * 判定节点是否为原生公告/说明候选节点
+ * @param {object} proxy
+ * @param {string} [rawName]
+ * @returns {boolean}
+ */
+function isNoticeNode(proxy, rawName) {
+  if (!proxy || typeof proxy !== 'object') return false;
+  if (proxy.isSyntheticInfo) return false;
+  const name = rawName || proxy._rawName || proxy.name || '';
+  if (!name) return false;
+
+  // 1. 明确的纯流量/到期横幅标题 (无论挂在什么 server/port 下均判定为说明)
+  if (REGEX_EXPLICIT_NOTICE.test(name)) return true;
+
+  // 2. 一般公告/说明词必须同时伴随无效/占位网络参数，绝不误杀具备真实代理参数的节点
+  const isNotice = REGEX_INFO_NODE.test(name) || REGEX_NOTICE_KEYWORD.test(name);
+  if (!isNotice) return false;
+
+  return isFakeServerAddress(proxy.server, proxy.port);
+}
+
+/**
  * 拦截与阻断判定
  * @param {object} proxy
  * @param {string} rawName
@@ -189,21 +257,40 @@ function matchUserBlacklist(proxy, rawName, userConfig = {}) {
  */
 function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
   const server = String(proxy?.server || '').trim();
-  const portNum = proxy?.port != null ? Number(proxy.port) : null;
-  const isFakePort = portNum !== null && (!Number.isInteger(portNum) || portNum <= 0 || portNum > 65535);
+  const portNum = proxy?.port != null && proxy?.port !== '' ? Number(proxy.port) : null;
+  const isFakePort = portNum === null || !Number.isInteger(portNum) || portNum <= 0 || portNum > 65535;
+
+  // 1. 硬结构校验：server 不能为空，普通/特殊代理必须具备 1~65535 的合法整数端口
+  if (!server || isFakePort) return '假IP';
+
+  // 2. 假 IP / 回环 / 占位 IP 判定
   const isFakeIp = server === 'localhost'
     || REGEX_FAKE_IPV4.test(server)
     || REGEX_FAKE_IPV6.test(server);
 
-  if (!server || isFakePort) return '假IP';
-  if (proxy?._keepName) return ''; // 豁免自建内网节点、非致命无效/假密码/广告拦截，保留原名
-  if (isFakeIp) return '假IP';
+  if (isFakeIp) {
+    // 仅在显式声明 _keepName 且 server 真实解析为合法的局域网/私网/回环地址时放行自建内网节点
+    if (!proxy?._keepName || !isPrivateOrLoopbackServer(server)) {
+      return '假IP';
+    }
+  }
 
+  // 3. 弱口令 / 虚拟占位鉴权判定
+  // normal、special 与 _keepName 均必须满足非占位弱口令要求，绝无豁免
   const isDummyAuth = REGEX_DUMMY_AUTH.test(proxy?.uuid || proxy?.password || '');
+  if (isDummyAuth) {
+    return '假密码';
+  }
+
+  // 白名单/特殊节点或 keepName 节点已通过上述硬结构校验，豁免后续广告词检查
+  if (options.isSpecial || proxy?._keepName) {
+    return '';
+  }
+
+  // 4. 广告词与推销判定 (仅对 normal 节点生效)
   const isAdTypo = REGEX_AD_TYPO.test(rawName)
     || (REGEX_AD_PROMO.test(rawName) && REGEX_AD_PRICE.test(rawName));
 
-  if (isDummyAuth) return '假密码';
   if (isAdTypo) return '广告词';
 
   return '';
@@ -293,13 +380,21 @@ function getIsolationBucket(item, userConfig = {}) {
  * @returns {object} 分类结果
  */
 function classifyNode(proxy, userConfig = {}, options = {}) {
-  if (!proxy || typeof proxy !== 'object') {
+  // 1. 拒绝 null、数组、非对象等无效输入
+  if (!proxy || typeof proxy !== 'object' || Array.isArray(proxy)) {
     return { skip: true, rawName: '', blockReason: '无效节点数据' };
   }
   const rawName = proxy._rawName || proxy.name || '';
   const defs = options.regionDefs || getEnhancedRegionDefs();
 
-  // 1. 虚拟信息节点优先处理
+  // 2. 检查用户显式黑名单 (最高优先级，任何节点类型包括 synthetic/notice/whitelist 均不得豁免)
+  const blacklistReason = matchUserBlacklist(proxy, rawName, userConfig);
+  if (blacklistReason) {
+    return { skip: true, rawName, blockReason: blacklistReason };
+  }
+
+  // 3. 分流节点类型：synthetic、notice candidate、special、normal
+  // 3.1 虚拟看板节点优先处理
   if (proxy.isSyntheticInfo) {
     if (userConfig.enableDashboard === false) {
       return { skip: true, rawName, blockReason: '看板关闭' };
@@ -309,20 +404,15 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     return { isInfo: true, isSyntheticInfo: true, proxy, rawName, groupKey: 'info' };
   }
 
-  // 2. 原生信息说明节点
-  if (REGEX_INFO_NODE.test(rawName)) {
-    if (userConfig.removeInfoNodes) {
+  // 3.2 原生信息说明节点 (公告候选)
+  if (isNoticeNode(proxy, rawName)) {
+    if (userConfig.removeInfoNodes !== false) {
       return { skip: true, rawName, blockReason: '信息说明' };
     }
     return { isInfo: true, proxy, rawName, groupKey: 'info' };
   }
 
-  // 3. 用户黑名单（显式拒绝优先于白名单）与白名单、自定义特殊节点
-  const blacklistReason = matchUserBlacklist(proxy, rawName, userConfig);
-  if (blacklistReason) {
-    return { skip: true, rawName, blockReason: blacklistReason };
-  }
-
+  // 3.3 白名单与特殊节点判定
   const tempNameLower = rawName.toLowerCase();
   const subTagLower = (proxy._subTag || '').toLowerCase();
   const whitelist = toArray(userConfig.whitelistKeywords).map(k => String(k).toLowerCase()).filter(Boolean);
@@ -343,6 +433,17 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     }
   }
 
+  // 4. 差异化校验：normal 与 special 均必须满足硬结构校验
+  const blockReason = checkNodeBlockReason(proxy, rawName, userConfig, {
+    regionDefs: defs,
+    featureRules: options.featureRules,
+    isSpecial
+  });
+  if (blockReason) {
+    return { skip: true, rawName, blockReason };
+  }
+
+  // 若为通过硬结构校验的合法 special 节点，豁免广告拦截与模板重命名，直接交付
   if (isSpecial) {
     proxy.name = specialTargetName || proxy.name;
     return {
@@ -354,12 +455,6 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
       featurePools: [],
       attrs: { multiNum: 1.0, multiStr: '', entryStr: '', lineArr: [], cleanLines: '' }
     };
-  }
-
-  // 4. 无效节点与广告拦截判定
-  const blockReason = checkNodeBlockReason(proxy, rawName, userConfig, { regionDefs: defs, featureRules: options.featureRules });
-  if (blockReason) {
-    return { skip: true, rawName, blockReason };
   }
 
   // 5. 字符清洗与属性提取
@@ -448,17 +543,11 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
  */
 function isNoticePlaceholderNode(proxy) {
   if (!proxy || typeof proxy !== 'object') return false;
+  if (proxy.isSyntheticInfo) return false;
   const rawName = proxy._rawName || proxy.name || '';
-  const server = String(proxy.server || '').trim();
-  const portNum = proxy.port != null ? Number(proxy.port) : null;
-  const isFakePort = portNum !== null && (!Number.isInteger(portNum) || portNum <= 0 || portNum > 65535);
-  const isFakeServer = !server
-    || isFakePort
-    || server === 'localhost'
-    || REGEX_FAKE_IPV4.test(server)
-    || REGEX_FAKE_IPV6.test(server);
-
-  const isNoticeName = REGEX_INFO_NODE.test(rawName)
+  const isFakeServer = isFakeServerAddress(proxy.server, proxy.port);
+  const isNoticeName = REGEX_EXPLICIT_NOTICE.test(rawName)
+    || REGEX_INFO_NODE.test(rawName)
     || REGEX_NOTICE_KEYWORD.test(rawName);
 
   return isFakeServer && isNoticeName;
@@ -481,6 +570,8 @@ module.exports = {
   getFeatureRules,
   classifyNode,
   getIsolationBucket,
+  isPrivateOrLoopbackServer,
+  isNoticeNode,
   isNoticePlaceholderNode,
   hasOnlyPlaceholderNodes
 };

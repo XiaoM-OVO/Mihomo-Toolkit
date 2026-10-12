@@ -108,14 +108,14 @@ describe('【Pipeline】核心流水线装配与交付形态 (pipeline)', () => 
     assert.equal(invalidCleaned[0]['ip-version'], undefined);
   });
 
-  it('buildProfile - 订阅项 keepName 豁免假密码拦截并保留指定原名与 groups 注入', async () => {
+  it('buildProfile - 订阅项 keepName 保留指定原名与 groups 注入', async () => {
     const { buildProfile } = require('../../src/pipeline/engine');
-    const dummyUri = 'ss://YWVzLTEyOC1nY206cGFzc3dvcmQ=@my-host.com:443#Dummy';
+    const validUri = 'ss://YWVzLTEyOC1nY206bXktc2VjcmV0QG15LWhvc3QuY29tOjQ0Mw==#MyDirect';
     const cfg = {
       enableAI: true,
       subscriptions: [
         {
-          uri: dummyUri,
+          uri: validUri,
           name: '🇯🇵 专线·我的直连节点',
           keepName: true,
           groups: ['🤖 ChatGPT', '我的独享专线']
