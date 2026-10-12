@@ -8,6 +8,7 @@ const {
   classifyNode,
   isNoticePlaceholderNode
 } = require('../../src/core/cleaner');
+const { markTrustedSynthetic } = require('../../src/core/node-trust');
 
 describe('【Core】节点清洗与属性提取 (cleaner)', () => {
   it('sanitizeNodeName - 基础字符与广告词过滤', () => {
@@ -96,13 +97,13 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     assert.equal(result.groupKey, 'hk');
     assert.ok(result.tags.includes('streaming'));
 
-    // 虚拟信息节点
-    const infoProxy = {
+    // 虚拟信息节点 (内部受信看板)
+    const infoProxy = markTrustedSynthetic({
       name: '剩余流量：100G',
       server: '1.0.0.1',
       port: 80,
       isSyntheticInfo: true
-    };
+    });
     const infoResult = classifyNode(infoProxy);
     assert.equal(infoResult.isInfo, true);
     assert.equal(infoResult.groupKey, 'info');
@@ -327,12 +328,12 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     assert.ok(realIpv6Node.tags.includes('ipv6'), 'Node v6 01 应正常识别为 IPv6');
   });
 
-  describe('【Phase 1】清洗规则收敛与公告节点处理修复专项', () => {
+  describe('【Core】清洗规则收敛与公告节点处理专项', () => {
     it('黑名单优先：对 synthetic / notice / whitelist / normal 均绝对优先拦截', () => {
       const cfg = { blockKeywords: ['强制拦截'], blockServers: ['blocked.server.com'] };
 
       // 1. synthetic 看板命中黑名单
-      const synth = { name: '剩余流量：强制拦截', server: '1.0.0.1', port: 80, isSyntheticInfo: true };
+      const synth = markTrustedSynthetic({ name: '剩余流量：强制拦截', server: '1.0.0.1', port: 80, isSyntheticInfo: true });
       const synthRes = classifyNode(synth, cfg);
       assert.equal(synthRes.skip, true);
       assert.equal(synthRes.blockReason, '黑名单关键词');
@@ -400,7 +401,7 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     it('synthetic 看板与 removeInfoNodes 行为矩阵', () => {
       // synthetic 节点开启看板规范化为 127.0.0.1:80
       const synthOn = classifyNode(
-        { name: '剩余流量：100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
+        markTrustedSynthetic({ name: '剩余流量：100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
         { enableDashboard: true }
       );
       assert.equal(synthOn.isInfo, true);
@@ -410,7 +411,7 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
 
       // synthetic 节点关闭看板被跳过
       const synthOff = classifyNode(
-        { name: '剩余流量：100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
+        markTrustedSynthetic({ name: '剩余流量：100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
         { enableDashboard: false }
       );
       assert.equal(synthOff.skip, true);
@@ -560,7 +561,7 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
       const { filterRawInfoNodes } = require('../../src/strategy/dashboard');
 
       const mixedNodes = [
-        { name: '📊 [订阅] 剩余流量: 100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true },
+        markTrustedSynthetic({ name: '📊 [订阅] 剩余流量: 100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
         { name: '剩余流量：500 GB', server: '1.0.0.1', port: 80 },
         { name: '【公告】本站维护中', server: '127.0.0.1', port: 80 },
         { name: '🇭🇰 香港 01 [Netflix不可用]', server: '1.2.3.4', port: 443 },

@@ -14,6 +14,7 @@ const { runStrategyPipeline } = require('./strategy');
 const { aggregateSubscriptions } = require('../strategy/dashboard');
 const { syncChineseConvert } = require('../core/chinese-sync');
 const { resetToolkitOutputKeys, enforceOutputContract } = require('../core/security/control-plane');
+const { isTrustedSynthetic } = require('../core/node-trust');
 
 /**
  * 装配并序列化完整 Mihomo 配置文件
@@ -57,9 +58,9 @@ function runConfigPipeline({
   const proxies = outputData.proxies || [];
   const rules = outputData.rules || [];
   if (logger) {
-    const realProxies = proxies.filter(p => !p.isSyntheticInfo);
+    const realProxies = proxies.filter(p => !isTrustedSynthetic(p));
     const isZeroNode = realProxies.length === 0;
-    const synthCount = proxies.filter(p => p.isSyntheticInfo).length;
+    const synthCount = proxies.filter(p => isTrustedSynthetic(p)).length;
     const regionalGroups = groups.filter(g => g.name && /节点/.test(g.name));
     const serviceGroups = groups.filter(g => g.name && !/节点/.test(g.name));
     const lines = [`📐 拓扑策略装配完成:`];

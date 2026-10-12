@@ -6,8 +6,9 @@
 
 const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
-const { classifyNode } = require('../core/cleaner');
-const { buildRenamePlan, resolveNameCollisions } = require('../core/rename');
+const { classifyNode, matchUserBlacklist } = require('../core/cleaner');
+const { buildRenamePlan, applyRenamePlan } = require('../core/rename');
+const { isTrustedCleanedNode, isTrustedSynthetic, markTrustedCleanedNode, restoreTrustedProxyMetadata, sanitizeExternalProxy } = require('../core/node-trust');
 const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 // Name rendering and feature variables are owned by core/rename.
@@ -35,33 +36,61 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
 
   // 若上游流水线未提供已分类打标的节点（如 Clash Verge 独立脚本入口），则在本地执行打标与格式化
   if (!classifiedNodes) {
-    const rawProxies = sourceSkeleton.proxies || [];
-    const isPreCleaned = rawProxies.some(p => p && p._cleaned);
-    let proxies = rawProxies;
-
-    // 1. 节点底层去重（已清洗节点跳过）
-    if (userConfig.enableDedupe && !isPreCleaned) {
-      proxies = dedupeNodes(rawProxies);
-    }
-
-    // 2. 节点深度清洗与特征打标
+    const rawProxies = Array.isArray(sourceSkeleton.proxies) ? sourceSkeleton.proxies : [];
     const regionDefs = getEnhancedRegionDefs();
-    classifiedNodes = proxies.map(p => classifyNode(p, userConfig, { regionDefs }));
+    const entries = [];
 
-    // 2.5 节点多维智能排序
-    if (userConfig.enableNodeSort && !isPreCleaned) {
-      classifiedNodes = sortNodes(classifiedNodes, userConfig);
-      proxies = classifiedNodes.map(c => c.proxy);
-      sourceSkeleton.proxies = proxies;
+    // Trust comes from the private in-process WeakSet, never from a caller supplied _cleaned field.
+    rawProxies.forEach((rawProxy, index) => {
+      if (!rawProxy || typeof rawProxy !== 'object' || Array.isArray(rawProxy)) return;
+      const trustedCleaned = isTrustedCleanedNode(rawProxy);
+      const trustedInternal = trustedCleaned || isTrustedSynthetic(rawProxy);
+      const proxy = trustedInternal ? rawProxy : restoreTrustedProxyMetadata(rawProxy, sanitizeExternalProxy(rawProxy));
+      const rawName = proxy._rawName || proxy.name || '';
+      if (matchUserBlacklist(proxy, rawName, userConfig)) return;
+      entries.push({ proxy, trustedCleaned, index });
+    });
+
+    // Existing in-process pipeline output wins physical duplicates; raw additions are deduped against it.
+    if (userConfig.enableDedupe && entries.some(entry => !entry.trustedCleaned)) {
+      const preferred = [
+        ...entries.filter(entry => entry.trustedCleaned),
+        ...entries.filter(entry => !entry.trustedCleaned)
+      ];
+      const deduped = dedupeNodes(preferred.map(entry => entry.proxy));
+      const counts = new Map();
+      for (const proxy of deduped) counts.set(proxy, (counts.get(proxy) || 0) + 1);
+      const kept = new Set(deduped);
+      const used = new Map();
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const proxy = entries[i].proxy;
+        const count = used.get(proxy) || 0;
+        if (!kept.has(proxy) || count >= (counts.get(proxy) || 0)) entries.splice(i, 1);
+        else used.set(proxy, count + 1);
+      }
     }
 
-    // 3. 节点重命名与模板渲染由共享 Core 函数统一规划。
-    const isRenameEnabled = !isPreCleaned && userConfig.enableNodeRename !== false;
-    if (isRenameEnabled) {
-      const renamePlan = buildRenamePlan(classifiedNodes, userConfig);
-      for (const [item, name] of renamePlan) item.proxy.name = name;
-      resolveNameCollisions(proxies);
+    const classifiedEntries = entries.map(entry => ({
+      ...entry,
+      item: classifyNode(entry.proxy, userConfig, { regionDefs })
+    })).filter(entry => !entry.item.skip);
+
+    const existingItems = classifiedEntries
+      .filter(entry => entry.trustedCleaned)
+      .map(entry => ({ ...entry.item, _preserveExistingName: true }));
+    let newItems = classifiedEntries.filter(entry => !entry.trustedCleaned).map(entry => entry.item);
+    if (userConfig.enableNodeSort && newItems.length > 1) {
+      newItems = sortNodes(newItems, userConfig);
     }
+    classifiedNodes = [...existingItems, ...newItems];
+
+    const renamePlan = buildRenamePlan(classifiedNodes, userConfig);
+    applyRenamePlan(classifiedNodes, renamePlan);
+    for (const item of classifiedNodes) {
+      item.proxy._cleaned = true;
+      markTrustedCleanedNode(item.proxy);
+    }
+    sourceSkeleton.proxies = classifiedNodes.map(item => item.proxy);
 
   }
 

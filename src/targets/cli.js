@@ -13,6 +13,7 @@ const { buildProfile, normalizeOutputMode } = require('../pipeline/engine');
 const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
 const { createLogger } = require('../core/logger');
+const { isTrustedSynthetic } = require('../core/node-trust');
 const pkg = require('../../package.json');
 
 function run(argv = process.argv) {
@@ -165,7 +166,7 @@ function run(argv = process.argv) {
       const targetOut = options.out || userConfig.output || defaultOut;
       const outPath = path.resolve(process.cwd(), targetOut);
       fs.writeFileSync(outPath, yamlStr, 'utf-8');
-      const isZeroNode = mode === 'config' && (!result.proxies || result.proxies.filter(p => !p.isSyntheticInfo).length === 0);
+      const isZeroNode = mode === 'config' && (!result.proxies || result.proxies.filter(p => !isTrustedSynthetic(p)).length === 0);
       const modeSuffix = isZeroNode ? ' (纯分流拦截模式)' : '';
       logger.success(`🎉 配置文件构建成功${modeSuffix} ➔ ${outPath}`);
 

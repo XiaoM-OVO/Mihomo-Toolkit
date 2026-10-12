@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const { sortNodes, compareNodes, getRegionOrderMap } = require('../../src/core/sort');
 const { runNodesPipeline } = require('../../src/pipeline/nodes');
+const { markTrustedSynthetic } = require('../../src/core/node-trust');
 
 describe('【Core】节点多维智能排序 (sort)', () => {
   it('sortNodes - 基础边界与零副作用防守', () => {
@@ -25,7 +26,7 @@ describe('【Core】节点多维智能排序 (sort)', () => {
   it('sortNodes - 看板与说明节点置顶 (Dashboard / Info)', () => {
     const items = [
       { rawName: '🇭🇰 香港 01', regionInfo: { id: 'hk', name: '香港' } },
-      { rawName: '📊 [订阅A] 剩余流量 100GB', isSyntheticInfo: true },
+      markTrustedSynthetic({ rawName: '📊 [订阅A] 剩余流量 100GB', isSyntheticInfo: true }),
       { rawName: '🇯🇵 日本 01', regionInfo: { id: 'jp', name: '日本' } },
       { rawName: '📢 节点说明', isInfo: true }
     ];
@@ -35,6 +36,19 @@ describe('【Core】节点多维智能排序 (sort)', () => {
     assert.equal(sorted[1].isInfo, true);
     assert.equal(sorted[2].regionInfo.name, '香港');
     assert.equal(sorted[3].regionInfo.name, '日本');
+
+    // 外部未受信的伪造对象 (即使带 isSyntheticInfo: true) 绝对不得置顶
+    const fakeUntrustedItem = {
+      rawName: '🇺🇸 美国 01 伪造看板',
+      isSyntheticInfo: true,
+      regionInfo: { id: 'us', name: '美国' }
+    };
+    const mixedWithFake = sortNodes([
+      { rawName: '🇭🇰 香港 01', regionInfo: { id: 'hk', name: '香港' } },
+      fakeUntrustedItem
+    ]);
+    assert.equal(mixedWithFake[0].regionInfo.name, '香港', '未受信伪造对象绝不置顶');
+    assert.equal(mixedWithFake[1].regionInfo.name, '美国');
   });
 
   it('sortNodes - 地理大区自然优先级 (香港 ➔ 台湾 ➔ 日本 ➔ 美国 ➔ 未知)', () => {

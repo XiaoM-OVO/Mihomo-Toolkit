@@ -9,6 +9,7 @@ const { getEnhancedRegionDefs } = require('./shared/regions');
 const { looksLikeDomain } = require('./fission');
 const { getTransportType } = require('./transport');
 const { buildServiceCatalog } = require('../config/catalog');
+const { isTrustedSynthetic } = require('./node-trust');
 const ipaddr = require('ipaddr.js');
 const {
   REGEX_INFO_NODE,
@@ -233,7 +234,7 @@ function isFakeServerAddress(server, port) {
  */
 function isNoticeNode(proxy, rawName) {
   if (!proxy || typeof proxy !== 'object') return false;
-  if (proxy.isSyntheticInfo) return false;
+  if (isTrustedSynthetic(proxy)) return false;
   const name = rawName || proxy._rawName || proxy.name || '';
   if (!name) return false;
 
@@ -394,8 +395,8 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   }
 
   // 3. 分流节点类型：synthetic、notice candidate、special、normal
-  // 3.1 虚拟看板节点优先处理
-  if (proxy.isSyntheticInfo) {
+  // 3.1 虚拟看板节点优先处理 (仅对内部可信 synthetic 节点生效，外部伪造标记绝无豁免)
+  if (isTrustedSynthetic(proxy)) {
     if (userConfig.enableDashboard === false) {
       return { skip: true, rawName, blockReason: '看板关闭' };
     }
@@ -487,23 +488,22 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     }
   }
 
-  if (regionInfo) {
-    const rules = options.featureRules || getFeatureRules(userConfig);
-    for (const rule of rules) {
-      if (rule.reg.test(rawName)) {
-        tags.add(rule.tag);
-        if (rule.pool && !featurePools.includes(rule.pool)) {
-          featurePools.push(rule.pool);
-        }
+  // 7. 特征标签与规则匹配 (不论是否有明确大区，客观存在的业务特征规则均予匹配，不丢失业务能力)
+  const rules = options.featureRules || getFeatureRules(userConfig);
+  for (const rule of rules) {
+    if (rule.reg.test(rawName)) {
+      tags.add(rule.tag);
+      if (rule.pool && !featurePools.includes(rule.pool)) {
+        featurePools.push(rule.pool);
       }
     }
+  }
 
-    // 低倍率 / 下载
-    if (attrs.isLowMulti && !isForbidDownload) {
-      tags.add('download');
-      if (!featurePools.includes('download')) {
-        featurePools.push('download');
-      }
+  // 低倍率 / 下载 (非禁止下载场景)
+  if (attrs.isLowMulti && !isForbidDownload) {
+    tags.add('download');
+    if (!featurePools.includes('download')) {
+      featurePools.push('download');
     }
   }
 
@@ -543,7 +543,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
  */
 function isNoticePlaceholderNode(proxy) {
   if (!proxy || typeof proxy !== 'object') return false;
-  if (proxy.isSyntheticInfo) return false;
+  if (isTrustedSynthetic(proxy)) return false;
   const rawName = proxy._rawName || proxy.name || '';
   const isFakeServer = isFakeServerAddress(proxy.server, proxy.port);
   const isNoticeName = REGEX_EXPLICIT_NOTICE.test(rawName)
@@ -573,5 +573,6 @@ module.exports = {
   isPrivateOrLoopbackServer,
   isNoticeNode,
   isNoticePlaceholderNode,
-  hasOnlyPlaceholderNodes
+  hasOnlyPlaceholderNodes,
+  matchUserBlacklist
 };
