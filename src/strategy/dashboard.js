@@ -10,8 +10,7 @@
  */
 
 const { parseSubscriptionInfo, isExpiredNow } = require('../core/shared/sub-info');
-
-const REGEX_INFO_NODES = /剩余|到期|过期|套餐|流量|时间|有效|更新|官网|维护|群|发布|节点说明|失效|获取|网址|Q群|电报|Tg群|下次|关注|官方|签到/i;
+const { REGEX_INFO_NODE } = require('../data/cleaner-rules');
 
 function formatBytes(bytes, fractionDigits = 2) {
   const units = ['MB', 'GB', 'TB', 'PB'];
@@ -129,7 +128,7 @@ function generateInfoNodes(subInfo, tag, options = {}) {
 function filterRawInfoNodes(proxies = [], logger) {
   return proxies.filter(p => {
     if (!p || !p.name) return false;
-    if (REGEX_INFO_NODES.test(p.name)) {
+    if (REGEX_INFO_NODE.test(p.name)) {
       if (logger) logger.debug(`🗑️ [说明过滤] 「${p.name}」`);
       return false;
     }

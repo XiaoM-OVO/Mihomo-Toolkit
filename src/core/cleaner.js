@@ -9,6 +9,7 @@ const { getEnhancedRegionDefs } = require('./shared/regions');
 const { looksLikeDomain } = require('./fission');
 const { getTransportType } = require('./transport');
 const { buildServiceCatalog } = require('../config/catalog');
+const ipaddr = require('ipaddr.js');
 const {
   REGEX_INFO_NODE,
   REGEX_NOTICE_KEYWORD,
@@ -35,6 +36,16 @@ const {
 
 function dedupe(arr) {
   return [...new Set(arr)];
+}
+
+function toArray(val) {
+  if (Array.isArray(val)) return val;
+  if (val == null) return [];
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  return [];
 }
 
 /**
@@ -78,7 +89,8 @@ function compressLineArr(arr) {
   if (carrierItems.length === 0) return nonCarrierItems;
 
   const currentAtoms = new Set(carrierItems);
-  for (const [comboName, atomGroup] of Object.entries(CARRIER_COMBO_MAP)) {
+  const sortedCombos = Object.entries(CARRIER_COMBO_MAP).sort((a, b) => b[1].size - a[1].size);
+  for (const [comboName, atomGroup] of sortedCombos) {
     if (Array.from(atomGroup).every(atom => currentAtoms.has(atom))) {
       return [comboName, ...nonCarrierItems];
     }
@@ -108,7 +120,7 @@ function extractNodeAttributes(name, userConfig = {}) {
       return m;
     }
     const num = parseFloat(m1 || m2 || m3);
-    if (!isNaN(num) && num > 0 && num <= 50) {
+    if (!isNaN(num) && num >= 0 && num <= 50) {
       attrs.multiNum = num;
       if (num !== 1) attrs.multiStr = `x${num}`;
       if (userConfig.lowMultiThreshold > 0 && num <= userConfig.lowMultiThreshold) {
@@ -160,8 +172,8 @@ function extractNodeAttributes(name, userConfig = {}) {
 function matchUserBlacklist(proxy, rawName, userConfig = {}) {
   const nameLower = (rawName || '').toLowerCase();
   const serverLower = (proxy?.server || '').toLowerCase();
-  const keywords = (userConfig.blockKeywords || []).map(k => String(k).toLowerCase()).filter(Boolean);
-  const servers = (userConfig.blockServers || []).map(s => String(s).toLowerCase()).filter(Boolean);
+  const keywords = toArray(userConfig.blockKeywords).map(k => String(k).toLowerCase()).filter(Boolean);
+  const servers = toArray(userConfig.blockServers).map(s => String(s).toLowerCase()).filter(Boolean);
   if (keywords.some(k => nameLower.includes(k))) return '黑名单关键词';
   if (servers.some(s => serverLower.includes(s))) return '黑名单服务器';
   return '';
@@ -176,17 +188,21 @@ function matchUserBlacklist(proxy, rawName, userConfig = {}) {
  * @returns {string} 拦截原因或空字符串
  */
 function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
-  const server = (proxy?.server || '').trim();
-  const isFakeServer = proxy?.port === 0
-    || server === 'localhost'
+  const server = String(proxy?.server || '').trim();
+  const portNum = proxy?.port != null ? Number(proxy.port) : null;
+  const isFakePort = portNum !== null && (!Number.isInteger(portNum) || portNum <= 0 || portNum > 65535);
+  const isFakeIp = server === 'localhost'
     || REGEX_FAKE_IPV4.test(server)
     || REGEX_FAKE_IPV6.test(server);
+
+  if (!server || isFakePort) return '假IP';
+  if (proxy?._keepName) return ''; // 豁免自建内网节点、非致命无效/假密码/广告拦截，保留原名
+  if (isFakeIp) return '假IP';
+
   const isDummyAuth = REGEX_DUMMY_AUTH.test(proxy?.uuid || proxy?.password || '');
   const isAdTypo = REGEX_AD_TYPO.test(rawName)
     || (REGEX_AD_PROMO.test(rawName) && REGEX_AD_PRICE.test(rawName));
 
-  if (isFakeServer) return '假IP';
-  if (proxy?._keepName) return ''; // 豁免非致命无效/假密码/广告拦截，保留原名与自建节点
   if (isDummyAuth) return '假密码';
   if (isAdTypo) return '广告词';
 
@@ -260,7 +276,7 @@ function getIsolationBucket(item, userConfig = {}) {
   if (userConfig.isolateHighMulti && multi > highMultiThreshold) {
     return 'highMulti';
   }
-  if (userConfig.isolateDownload && (tags.includes('download') || item.attrs?.isLowMulti)) {
+  if (userConfig.isolateDownload && tags.includes('download')) {
     return 'download';
   }
   if (userConfig.isolateExperimental && tags.includes('experimental')) {
@@ -277,6 +293,9 @@ function getIsolationBucket(item, userConfig = {}) {
  * @returns {object} 分类结果
  */
 function classifyNode(proxy, userConfig = {}, options = {}) {
+  if (!proxy || typeof proxy !== 'object') {
+    return { skip: true, rawName: '', blockReason: '无效节点数据' };
+  }
   const rawName = proxy._rawName || proxy.name || '';
   const defs = options.regionDefs || getEnhancedRegionDefs();
 
@@ -306,7 +325,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 
   const tempNameLower = rawName.toLowerCase();
   const subTagLower = (proxy._subTag || '').toLowerCase();
-  const whitelist = (userConfig.whitelistKeywords || []).map(k => k.toLowerCase());
+  const whitelist = toArray(userConfig.whitelistKeywords).map(k => String(k).toLowerCase()).filter(Boolean);
 
   let isSpecial = false;
   let specialTargetName = '';
@@ -349,7 +368,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   const { attrs, cleanName } = extractNodeAttributes(sanitized, userConfig);
 
   // 6. 地区与城市匹配
-  let regionInfo = matchNodeRegion(sanitizeNodeName(proxy.name), defs, userConfig);
+  let regionInfo = matchNodeRegion(sanitized, defs, userConfig);
   if (!regionInfo) regionInfo = matchNodeRegion(cleanName, defs, userConfig);
 
   let destCity = '';
@@ -362,8 +381,15 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   const featurePools = [];
 
   // 网络层 IPv6 识别：当 server 字段是物理 IPv6 地址时自动识别
-  if (proxy.server && !looksLikeDomain(proxy.server) && String(proxy.server).includes(':')) {
-    tags.add('ipv6');
+  if (proxy.server) {
+    const cleanServer = String(proxy.server).trim().replace(/^\[|\]$/g, '');
+    if (cleanServer.includes(':') && ipaddr.isValid(cleanServer)) {
+      try {
+        if (ipaddr.parse(cleanServer).kind() === 'ipv6') {
+          tags.add('ipv6');
+        }
+      } catch {}
+    }
   }
 
   if (regionInfo) {
@@ -423,8 +449,11 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 function isNoticePlaceholderNode(proxy) {
   if (!proxy || typeof proxy !== 'object') return false;
   const rawName = proxy._rawName || proxy.name || '';
-  const server = (proxy.server || '').trim();
-  const isFakeServer = proxy.port === 0
+  const server = String(proxy.server || '').trim();
+  const portNum = proxy.port != null ? Number(proxy.port) : null;
+  const isFakePort = portNum !== null && (!Number.isInteger(portNum) || portNum <= 0 || portNum > 65535);
+  const isFakeServer = !server
+    || isFakePort
     || server === 'localhost'
     || REGEX_FAKE_IPV4.test(server)
     || REGEX_FAKE_IPV6.test(server);

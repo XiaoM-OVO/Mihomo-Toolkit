@@ -25,8 +25,8 @@ function escapeRegex(str) {
 // =============================================================================
 
 // 虚假/私网/回环与占位 IP 判定
-const REGEX_FAKE_IPV4 = /^(?:0\.|127\.|10\.|192\.168\.|169\.254\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.|(?:1\.1\.1\.1|8\.8\.8\.8)(?:$|:))/;
-const REGEX_FAKE_IPV6 = /^(?:\[?(?:::1|0*(?::0*)*:0*1)\]?(?:$|:)|\[?f[cd][0-9a-f]{2}:|\[?fe80:)/i;
+const REGEX_FAKE_IPV4 = /^(?:0\.|127\.|10\.|192\.168\.|169\.254\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.|(?:1\.1\.1\.1|1\.0\.0\.1|8\.8\.8\.8|8\.8\.4\.4|9\.9\.9\.9|114\.114\.114\.114|255\.255\.255\.255)(?:$|:))/;
+const REGEX_FAKE_IPV6 = /^(?:\[?(?:::1?|0*(?::0*)*:0*1)\]?(?:$|:)|\[?f[cd][0-9a-f]{2}:|\[?fe80:)/i;
 
 // 弱口令 / 虚拟占位鉴权判定
 const REGEX_DUMMY_AUTH = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i;
@@ -38,14 +38,17 @@ const REGEX_INFO_NODE = /剩余流量|套餐到期|到期时间|有效时间|过
 const REGEX_NOTICE_KEYWORD = /(?:续费|充值|到期|过期|用尽|耗尽|欠费|公告|说明|官网|防失联|通知|联系)/i;
 
 // 广告词 / 变体引流词 / 套餐价格推销
-const REGEX_AD_TYPO = /防.{0,3}失|失.{0,3}联|地.{0,3}[址止]|官.{0,3}[网罔]|发.{0,3}[布步]|交.{0,3}流|群.{0,3}组|客.{0,3}服|定.{0,3}制/i;
+const REGEX_AD_TYPO = /防.{0,3}失|失.{0,3}联|地.{0,3}[址止]|官.{0,3}[网罔]|发.{0,3}[布步]|交.{0,3}流[群组TGtg]|群.{0,3}组|Q.{0,2}群|TG.{0,2}群|客.{0,3}服|定.{0,3}制[联系群客]|定制节点/i;
 const REGEX_AD_PROMO = /(?:特惠|促销|优惠|不限速|大促|套餐)/;
 const REGEX_AD_PRICE = /(?:元|块|折|¥|售\s*\d+(?:\.\d+)?|价\s*\d+(?:\.\d+)?|\d+G)/i;
 
 // 禁止下载 / BT 相关规则与清洗正则
 const REGEX_FORBID_DL_STR = '(?:禁止|禁|严禁|请勿|勿|不要|不能|拒绝|屏蔽|防)(?:BT|PT|P2P|下载|测速|迅雷)|(?:仅限|仅供)(?:网页|日常|聊天)|\\b(?:No|Block|Ban)[\\s\\-_]*(?:BT|PT|Torrent|Download)\\b';
 const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, 'i');
-const REGEX_CLEANUP = new RegExp(`${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club)`, 'ig');
+const REGEX_CLEANUP = new RegExp(
+  `${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)[a-zA-Z0-9][-a-zA-Z0-9]*(?:\\.[a-zA-Z0-9][-a-zA-Z0-9]*)+(?:\\/[^\\s\\u4e00-\\u9fa5]*)?|\\b[a-zA-Z0-9][-a-zA-Z0-9]{0,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club|site|icu|info|io|link|shop)(?:\\/[^\\s\\u4e00-\\u9fa5]*)?`,
+  'ig'
+);
 
 // =============================================================================
 // 2. 入口城市与落地大区识别词库
@@ -80,8 +83,20 @@ const TAG_MAP = {
   韩: '韩', 韩国: '韩', 英: '英', 英国: '英', 美: '美', 美国: '美'
 };
 
+const SINGLE_EXIT_LOOKAHEAD = {
+  日: '(?![常用期间程志照益本])',
+  新: '(?![建春年线增华上线节点加北坡])',
+  美: '(?![食味丽国西东])',
+  台: '(?![平前后湾灣风])',
+  港: '(?![口湾澳])',
+  中: '(?![转间心])'
+};
+
 const entryPattern = ENTRY_CITIES.map(escapeRegex).join('|');
-const exitPattern = EXIT_REGIONS.map(escapeRegex).join('|');
+const exitPattern = EXIT_REGIONS.map(r => {
+  const esc = escapeRegex(r);
+  return SINGLE_EXIT_LOOKAHEAD[r] ? `${esc}${SINGLE_EXIT_LOOKAHEAD[r]}` : esc;
+}).join('|');
 const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:->|=>|~>|→|⇒|-|—|=|>|至)\\s*|\\s+)?(?=${exitPattern})`, 'i');
 
 // =============================================================================
@@ -89,7 +104,7 @@ const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:->|=>|~>|→|⇒
 // =============================================================================
 
 // 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
-const REGEX_MULTI = /(?<![a-zA-Z])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍(?:率)?)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍(?:率)?)(?!\s*\d))/i;
+const REGEX_MULTI = /(?<![a-zA-Z0-9])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍(?:率)?)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍(?:率)?)(?!\s*\d))/i;
 
 // 排除系统架构与指令集关键词 (如 x64, x86, x32)
 const ARCH_AVOID_SET = new Set(['64', '86', '32']);
@@ -123,12 +138,12 @@ const CARRIER_SHORT_MAP = {
   联通: '联'
 };
 
-// 组合运营商判定（两网 / 三网）
+// 组合运营商判定（三网优先于两网，大集合优先匹配）
 const CARRIER_COMBO_MAP = {
+  三网: new Set(['移', '联', '电']),
   电联: new Set(['电', '联']),
   移联: new Set(['移', '联']),
-  电移: new Set(['电', '移']),
-  三网: new Set(['移', '联', '电'])
+  电移: new Set(['电', '移'])
 };
 
 // 线路质量权重梯队 (1 ~ 6 级，越小质量越优)
@@ -160,7 +175,7 @@ function getLineQualityWeight(lineStr) {
 const STATIC_FEATURE_RULES = [
   // 1. 家宽/住宅
   {
-    reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|ISP|Home|HKT|HKBN|HGC|WTT|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|So[-_]?net|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)/i,
+    reg: /(?:家宽|住宅|宽带|原生|🏠|Residential|\b(?:ISP|Home|Netvigator|CTM|Hinet|Kbro|Seednet|APTG|Nuro|OCN|Plala|Singtel|StarHub|MyRepublic|ViewQwest|Comcast|Xfinity|Spectrum|Verizon|Cox)\b|HKT|HKBN|HGC|WTT|So[-_]?net)/i,
     tag: 'residential',
     pool: 'residential'
   },
@@ -208,7 +223,7 @@ const STATIC_FEATURE_RULES = [
   },
   // 10. IPv6
   {
-    reg: /\b(?:IPv6|v6)\b/i,
+    reg: /\b(?:IPv6|v6(?![.\d]))\b/i,
     tag: 'ipv6'
   }
 ];

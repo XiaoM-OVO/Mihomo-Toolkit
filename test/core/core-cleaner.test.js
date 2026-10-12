@@ -5,7 +5,8 @@ const {
   sanitizeNodeName,
   extractNodeAttributes,
   checkNodeBlockReason,
-  classifyNode
+  classifyNode,
+  isNoticePlaceholderNode
 } = require('../../src/core/cleaner');
 
 describe('【Core】节点清洗与属性提取 (cleaner)', () => {
@@ -211,5 +212,118 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
       const { attrs } = extractNodeAttributes(e.name);
       assert.equal(attrs.entryStr, e.expected, `入口「${e.name}」应识别为「${e.expected}」，实际: ${attrs.entryStr}`);
     }
+  });
+
+  it('compressLineArr - 运营商组合优先级（三网防吞噬）', () => {
+    // 包含电信、联通、移动三网时，优先压缩为「三网」，绝不降级为「电联」
+    const res = extractNodeAttributes('香港 电信 联通 移动 01');
+    assert.deepEqual(res.attrs.lineArr, ['三网']);
+    assert.equal(res.attrs.cleanLines, '三网');
+
+    // 两网时按对应两网压缩
+    assert.deepEqual(extractNodeAttributes('香港 电信 联通 01').attrs.lineArr, ['电联']);
+    assert.deepEqual(extractNodeAttributes('香港 移动 联通 01').attrs.lineArr, ['移联']);
+    assert.deepEqual(extractNodeAttributes('香港 电信 移动 01').attrs.lineArr, ['电移']);
+  });
+
+  it('classifyNode - 严禁BT下载隔离桶防护 (绝不误入下载策略组)', () => {
+    // 带有严禁BT特征的低倍率节点：不可进入 download 隔离池
+    const forbidNode = { name: '🇭🇰 香港 01 x0.2 严禁BT', server: '1.2.3.4', port: 443 };
+    const forbidRes = classifyNode(forbidNode, { lowMultiThreshold: 0.5, isolateDownload: true });
+    assert.ok(!forbidRes.tags.includes('download'), '严禁BT节点不应获得 download 标签');
+    assert.notEqual(forbidRes.isolateBucket, 'download', '严禁BT节点绝不应进入 download 隔离池');
+
+    // 正常低倍率节点：正常进入 download 隔离池
+    const normalNode = { name: '🇭🇰 香港 01 x0.2 高速', server: '1.2.3.4', port: 443 };
+    const normalRes = classifyNode(normalNode, { lowMultiThreshold: 0.5, isolateDownload: true });
+    assert.ok(normalRes.tags.includes('download'));
+    assert.equal(normalRes.isolateBucket, 'download');
+  });
+
+  it('classifyNode - 单字大区避让常见中文词 (日常/新建/完美 绝不误判出国)', () => {
+    const cases = [
+      { name: '香港 日用 01', expected: 'hk' },
+      { name: '香港 日常 01', expected: 'hk' },
+      { name: '台湾 日常 01', expected: 'tw' },
+      { name: '美国 新建 01', expected: 'us' },
+      { name: '香港 新节点 01', expected: 'hk' },
+      { name: '香港 完美 01', expected: 'hk' },
+      { name: '日常节点 01', expected: 'unknown' }
+    ];
+
+    for (const c of cases) {
+      const res = classifyNode({ name: c.name, server: '1.2.3.4', port: 443 });
+      assert.equal(res.groupKey, c.expected, `节点「${c.name}」应归入「${c.expected}」，实际: ${res.groupKey}`);
+    }
+  });
+
+  it('稳健性防御 - 假IP/非法端口/空服务/0倍率/非数组入参/自建内网节点', () => {
+    // 1. 0倍率 / 0x 节点支持
+    const zeroMulti = extractNodeAttributes('香港 01 0倍率', { lowMultiThreshold: 0.5 });
+    assert.equal(zeroMulti.attrs.multiNum, 0);
+    assert.equal(zeroMulti.attrs.multiStr, 'x0');
+    assert.equal(zeroMulti.attrs.isLowMulti, true);
+
+    const zeroX = extractNodeAttributes('香港 01 x0', { lowMultiThreshold: 0.5 });
+    assert.equal(zeroX.attrs.multiNum, 0);
+    assert.equal(zeroX.attrs.isLowMulti, true);
+
+    // 4X4 不被误识别为倍率 4
+    const mimo = extractNodeAttributes('香港 4X4 01');
+    assert.equal(mimo.attrs.multiNum, 1);
+    assert.equal(mimo.attrs.multiStr, '');
+
+    // 2. null / 无效入参防御
+    const nullRes = classifyNode(null);
+    assert.equal(nullRes.skip, true);
+    assert.equal(nullRes.blockReason, '无效节点数据');
+
+    // 3. 配置入参类型防御 (非数组安全归一化)
+    const strCfgRes = classifyNode(
+      { name: '测试节点 01', server: '1.2.3.4', port: 443 },
+      { blockKeywords: '测试', whitelistKeywords: '自建' }
+    );
+    assert.equal(strCfgRes.skip, true);
+    assert.equal(strCfgRes.blockReason, '黑名单关键词');
+
+    // 4. 空服务与非法端口拦截
+    assert.equal(checkNodeBlockReason({ server: '', port: 443 }, 'Normal'), '假IP');
+    assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 0 }, 'Normal'), '假IP');
+    assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: '0' }, 'Normal'), '假IP');
+    assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 70000 }, 'Normal'), '假IP');
+    assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: -1 }, 'Normal'), '假IP');
+
+    // 5. _keepName 自建内网节点放行 (局域网/Tailscale IP)
+    assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890, _keepName: true }, 'LAN'), '');
+    assert.equal(checkNodeBlockReason({ server: '100.64.0.1', port: 443, _keepName: true }, 'Tailscale'), '');
+    // 未开启 keepName 时仍受假IP规则保护
+    assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890 }, 'LAN'), '假IP');
+
+    // 6. 1.0.0.1 占位节点判定
+    assert.equal(isNoticePlaceholderNode({ name: '套餐已到期，请续费', server: '1.0.0.1', port: 80 }), true);
+  });
+
+  it('广告与特征边界 - Telegram短链清理 / 单词边界 / 版本号防误判', () => {
+    // 1. Telegram 短链与 URL Path 清理
+    const tgUrl = '香港 01 https://t.me/my_channel 严禁BT';
+    const tgClean = sanitizeNodeName(tgUrl);
+    assert.ok(!tgClean.includes('t.me'));
+    assert.ok(!tgClean.includes('my_channel'));
+
+    const bareTg = '香港 01 t.me/my_channel';
+    assert.equal(sanitizeNodeName(bareTg), '香港 01');
+
+    const pathUrl = '香港 01 https://test.com/aff/123';
+    assert.equal(sanitizeNodeName(pathUrl), '香港 01');
+
+    // 2. 英文特征词边界防护 (Whisper 不误打 ISP，Node-v6.0 不误打 IPv6)
+    const whisperNode = classifyNode({ name: '香港 Whisper 01', server: '1.2.3.4', port: 443 });
+    assert.ok(!whisperNode.tags.includes('residential'), 'Whisper 不应被误判为家宽住宅 ISP');
+
+    const versionNode = classifyNode({ name: '香港 Node-v6.0', server: '1.2.3.4', port: 443 });
+    assert.ok(!versionNode.tags.includes('ipv6'), 'Node-v6.0 不应被误判为 IPv6');
+
+    const realIpv6Node = classifyNode({ name: '香港 Node v6 01', server: '1.2.3.4', port: 443 });
+    assert.ok(realIpv6Node.tags.includes('ipv6'), 'Node v6 01 应正常识别为 IPv6');
   });
 });
