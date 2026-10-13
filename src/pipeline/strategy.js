@@ -118,7 +118,8 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     rules: sourceSkeleton.rules,
     ruleProviders: sourceSkeleton['rule-providers'],
     exemptGroups: userConfig.exemptGroups,
-    userConfig
+    userConfig,
+    logger
   });
   sourceSkeleton['proxy-groups'] = pruned.proxyGroups;
   sourceSkeleton['rules'] = pruned.rules;
