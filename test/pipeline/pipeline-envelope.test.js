@@ -24,12 +24,12 @@ describe('【Pipeline】节点只读 Envelope 包装与旁路接入 (envelope)',
 
     const env = createEnvelope(proxy, 0);
     assert.ok(env);
-    assert.equal(env.rawName, rawWithSpaces, 'rawName 必须保留原始字符串，绝不提前 trim');
+    assert.equal(env.rawName, rawWithSpaces, 'rawName 必须保留原始字符串，不提前 trim');
     assert.equal(env.normalizedRawName, '🇭🇰 香港 01 x1.0', 'normalizedRawName 应安全 trim');
     assert.equal(env.rawProxy, proxy, 'rawProxy 必须持有原对象引用');
   });
 
-  it('创建 Envelope 绝不增删改原 proxy 的任何属性与值', () => {
+  it('创建 Envelope 不修改原 proxy 的任何属性与值', () => {
     const originalProxy = {
       name: '🇭🇰 香港 01',
       server: '1.2.3.4',
@@ -53,7 +53,7 @@ describe('【Pipeline】节点只读 Envelope 包装与旁路接入 (envelope)',
     assert.equal(snapshotAfter, snapshotBefore, '原 proxy 的内容不得被原地修改');
   });
 
-  it('传入可变 metadata 时深拷贝并递归冻结副本，绝不改动或冻结调用方原对象', () => {
+  it('传入可变 metadata 时深拷贝并递归冻结副本，不改动或冻结调用方原对象', () => {
     const proxy = { name: '🇭🇰 香港 01', server: '1.2.3.4', port: 443 };
     const callerMeta = {
       groupKey: 'hk',
@@ -93,7 +93,7 @@ describe('【Pipeline】节点只读 Envelope 包装与旁路接入 (envelope)',
       env.metadata.extra.config.enabled = false;
     }, TypeError);
 
-    // 2. 调用方自己的原对象与嵌套结构绝不得被意外冻结
+    // 2. 调用方自己的原对象与嵌套结构不应被意外冻结
     assert.equal(Object.isFrozen(callerMeta), false, '调用方 metadata 原对象不得被冻结');
     assert.equal(Object.isFrozen(callerMeta.extra), false, '调用方 extra 子对象不得被冻结');
     assert.equal(Object.isFrozen(callerMeta.extra.values), false, '调用方 extra.values 数组不得被冻结');

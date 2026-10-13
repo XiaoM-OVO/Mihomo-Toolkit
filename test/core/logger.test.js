@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { createLogger, Logger, redactText } = require('../../src/core/logger');
 
 describe('【Core】统一分级终端 Logger (logger)', () => {
-  it('filter - silent 模式彻底静默', () => {
+  it('filter - silent 模式完全静默', () => {
     const logs = [];
     const logger = createLogger({
       level: 'silent',
@@ -157,7 +157,7 @@ describe('【Core】统一分级终端 Logger (logger)', () => {
     assert.ok(unredactedLogs[0].includes('supersecret999'));
   });
 
-  it('pipeline - options.silent / quiet 彻底静默', async () => {
+  it('pipeline - options.silent / quiet 完全静默', async () => {
     const { runPipelineEngine } = require('../../src/pipeline/engine');
     const logs = [];
     const customLogger = createLogger({

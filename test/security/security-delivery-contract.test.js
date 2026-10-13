@@ -73,7 +73,7 @@ proxies:
     password: pass
 `;
 
-/** 控制面攻击载荷：绝不允许出现在产物顶层 */
+/** 控制面字段测试载荷：不应出现在产物顶层 */
 const FORBIDDEN_TOP_LEVEL = [
   'external-controller', 'secret', 'external-ui', 'allow-lan',
   'mixed-port', 'port', 'socks-port', 'redir-port', 'tproxy-port',

@@ -214,16 +214,16 @@ describe('【Server】Profile 内存缓存与 SWR 状态机 (profile-cache)', ()
 
     it('normalizeCacheDurations - null / 空字符串 / 布尔值隐式转换陷阱防御', () => {
       const resNull = normalizeCacheDurations({ cacheTtl: null, cacheStaleMaxAge: null });
-      assert.equal(resNull.freshTtlMs, 300000, 'null 绝不能变成 0，应回退默认 300s');
-      assert.equal(resNull.staleMaxAgeMs, 86400000, 'null 绝不能变成 0，应回退默认 24h');
+      assert.equal(resNull.freshTtlMs, 300000, 'null 不应转换为 0，应回退默认 300s');
+      assert.equal(resNull.staleMaxAgeMs, 86400000, 'null 不应转换为 0，应回退默认 24h');
 
       const resEmpty = normalizeCacheDurations({ cacheTtl: '   ', cacheStaleMaxAge: '' });
-      assert.equal(resEmpty.freshTtlMs, 300000, '空字符串绝不能变成 0');
+      assert.equal(resEmpty.freshTtlMs, 300000, '空字符串不应转换为 0');
       assert.equal(resEmpty.staleMaxAgeMs, 86400000);
 
       const resBool = normalizeCacheDurations({ cacheTtl: false, cacheStaleMaxAge: true });
-      assert.equal(resBool.freshTtlMs, 300000, 'false 绝不能隐式转成 0');
-      assert.equal(resBool.staleMaxAgeMs, 86400000, 'true 绝不能隐式转成 1s');
+      assert.equal(resBool.freshTtlMs, 300000, 'false 不应隐式转成 0');
+      assert.equal(resBool.staleMaxAgeMs, 86400000, 'true 不应隐式转成 1s');
     });
 
     it('normalizeCacheDurations - staleMaxAge < freshTtl 时自动对齐', () => {

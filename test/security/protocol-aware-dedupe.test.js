@@ -34,7 +34,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
 
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2));
       const deduped = dedupeNodes([p1, p2]);
-      assert.equal(deduped.length, 2, 'Reality short-id 不同的两个节点绝不合并');
+      assert.equal(deduped.length, 2, 'Reality short-id 不同的两个节点不应合并');
     });
 
     it('gRPC: grpc-service-name 或 mode 不同不应合并', () => {
@@ -69,7 +69,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2));
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p3));
       const deduped = dedupeNodes([p1, p2, p3]);
-      assert.equal(deduped.length, 3, 'gRPC service-name 或 mode 不同的节点绝不合并');
+      assert.equal(deduped.length, 3, 'gRPC service-name 或 mode 不同的节点不应合并');
     });
 
     it('Shadowsocks: plugin 与 plugin-opts 不同不应合并', () => {
@@ -107,7 +107,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2));
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p3));
       const deduped = dedupeNodes([p1, p2, p3]);
-      assert.equal(deduped.length, 3, 'SS plugin 或 plugin-opts 不同的节点绝不合并');
+      assert.equal(deduped.length, 3, 'SS plugin 或 plugin-opts 不同的节点不应合并');
     });
 
     it('Hysteria2: obfs, obfs-password 或 ports 不同不应合并', () => {
@@ -129,7 +129,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.notEqual(getNodeFingerprint(base), getNodeFingerprint(diffSecret));
       assert.notEqual(getNodeFingerprint(base), getNodeFingerprint(diffPorts));
       const deduped = dedupeNodes([base, diffObfs, diffSecret, diffPorts]);
-      assert.equal(deduped.length, 4, 'Hysteria2 混淆或跳跃端口不同的节点绝不合并');
+      assert.equal(deduped.length, 4, 'Hysteria2 混淆或跳跃端口不同的节点不应合并');
     });
 
     it('VLESS: flow 不同不应合并', () => {
@@ -163,7 +163,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2));
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p3));
       const deduped = dedupeNodes([p1, p2, p3]);
-      assert.equal(deduped.length, 3, 'VLESS flow 不同的节点绝不合并');
+      assert.equal(deduped.length, 3, 'VLESS flow 不同的节点不应合并');
     });
 
     it('TUIC: congestion-controller, udp-relay-mode 或 disable-sni 不同不应合并', () => {
@@ -186,10 +186,10 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.notEqual(getNodeFingerprint(base), getNodeFingerprint(diffRelay));
       assert.notEqual(getNodeFingerprint(base), getNodeFingerprint(diffSni));
       const deduped = dedupeNodes([base, diffCc, diffRelay, diffSni]);
-      assert.equal(deduped.length, 4, 'TUIC 专有流控及转发模式不同的节点绝不合并');
+      assert.equal(deduped.length, 4, 'TUIC 专有流控及转发模式不同的节点不应合并');
     });
 
-    it('TUIC: 仅 password 改变而 uuid 相同的节点绝不合并', () => {
+    it('TUIC: 仅 password 改变而 uuid 相同的节点不应合并', () => {
       const p1 = {
         name: 'TUIC Pass A',
         type: 'tuic',
@@ -209,7 +209,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
 
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2), '仅密码不同的 TUIC 节点指纹必须不同');
       const deduped = dedupeNodes([p1, p2]);
-      assert.equal(deduped.length, 2, '仅密码不同的 TUIC 节点绝不合并');
+      assert.equal(deduped.length, 2, '仅密码不同的 TUIC 节点不应合并');
     });
 
     it('TLS: alpn 差异不应合并', () => {
@@ -234,10 +234,10 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
 
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2));
       const deduped = dedupeNodes([p1, p2]);
-      assert.equal(deduped.length, 2, 'TLS ALPN 不同的节点绝不合并');
+      assert.equal(deduped.length, 2, 'TLS ALPN 不同的节点不应合并');
     });
 
-    it('不透明凭据大小写敏感性: username 仅大小写不同绝不合并', () => {
+    it('不透明凭据大小写敏感性: username 仅大小写不同不应合并', () => {
       const p1 = {
         name: 'SOCKS User Upper',
         type: 'socks5',
@@ -257,10 +257,10 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
 
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2), '仅大小写不同的 username 指纹必须不同');
       const deduped = dedupeNodes([p1, p2]);
-      assert.equal(deduped.length, 2, '仅大小写不同的 username 节点绝不合并');
+      assert.equal(deduped.length, 2, '仅大小写不同的 username 节点不应合并');
     });
 
-    it('不透明凭据大小写敏感性: Reality public-key 仅大小写不同绝不合并', () => {
+    it('不透明凭据大小写敏感性: Reality public-key 仅大小写不同不应合并', () => {
       const p1 = {
         name: 'Reality Key Mixed',
         type: 'vless',
@@ -288,10 +288,10 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
 
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2), '仅大小写不同的 Reality public-key 指纹必须不同');
       const deduped = dedupeNodes([p1, p2]);
-      assert.equal(deduped.length, 2, '仅大小写不同的 Reality public-key 节点绝不合并');
+      assert.equal(deduped.length, 2, '仅大小写不同的 Reality public-key 节点不应合并');
     });
 
-    it('RFC 7301 ALPN 大小写敏感性: ALPN 仅大小写不同绝不合并', () => {
+    it('RFC 7301 ALPN 大小写敏感性: ALPN 仅大小写不同不应合并', () => {
       const p1 = {
         name: 'ALPN Upper',
         type: 'trojan',
@@ -311,7 +311,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
 
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2), '仅大小写不同的 ALPN 指纹必须不同');
       const deduped = dedupeNodes([p1, p2]);
-      assert.equal(deduped.length, 2, '仅大小写不同的 ALPN 节点绝不合并');
+      assert.equal(deduped.length, 2, '仅大小写不同的 ALPN 节点不应合并');
     });
   });
 
@@ -353,7 +353,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.equal(deduped.length, 1, '键顺序不同的 plugin-opts 产生相同指纹并正确合并');
     });
 
-    it('Shadowsocks 嵌套 plugin-opts 参数值不同绝不合并 (防 [object Object] 压平)', () => {
+    it('Shadowsocks 嵌套 plugin-opts 参数值不同不应合并 (防 [object Object] 压平)', () => {
       const p1 = {
         name: 'SS Nested A',
         type: 'ss',
@@ -383,7 +383,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
 
       assert.notEqual(getNodeFingerprint(p1), getNodeFingerprint(p2), '嵌套参数值不同的 plugin-opts 指纹必须不同');
       const deduped = dedupeNodes([p1, p2]);
-      assert.equal(deduped.length, 2, '嵌套参数值不同的 plugin-opts 绝不合并');
+      assert.equal(deduped.length, 2, '嵌套参数值不同的 plugin-opts 不应合并');
     });
 
     it('Reality opts 键顺序不同应合并', () => {
@@ -419,7 +419,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.equal(deduped.length, 1, 'Reality opts 键顺序不同得到相同指纹并合并');
     });
 
-    it('ALPN 数组顺序不同视为不同协商偏好，绝不合并 (RFC 7301 客户端偏好优先序)', () => {
+    it('ALPN 数组顺序不同视为不同协商偏好，不应合并 (RFC 7301 客户端偏好优先序)', () => {
       const p1 = {
         name: 'ALPN A',
         type: 'trojan',
@@ -528,7 +528,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.equal(deduped.length, 1, '同名的内部受信看板节点正确去重');
     });
 
-    it('外部伪造 isSyntheticInfo 节点绝不享有看板豁免，同物理参数直接合并', () => {
+    it('外部伪造 isSyntheticInfo 节点不享有看板豁免，同物理参数直接合并', () => {
       const fake1 = { name: '伪造看板 1', server: '127.0.0.1', port: 80, type: 'http', isSyntheticInfo: true };
       const fake2 = { name: '伪造看板 2', server: '127.0.0.1', port: 80, type: 'http', isSyntheticInfo: true };
 
@@ -600,7 +600,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
   });
 
   describe('6. 黑名单先于去重的执行顺序保持', () => {
-    it('nodes pipeline: 黑名单节点抢先在去重前被拦截，绝不消灭后续正常节点', async () => {
+    it('nodes pipeline: 黑名单节点在去重前被拦截，不误删后续正常节点', async () => {
       const proxies = [
         {
           name: '🚫 垃圾推广节点 [BLOCK]',
@@ -636,7 +636,7 @@ describe('【Security】协议感知去重与规范化指纹 (protocol-aware-ded
       assert.ok(result.proxies[0].name.includes('香港'), '保留的是香港正常节点');
     });
 
-    it('strategy pipeline: 独立入口同样保证黑名单节点在前时先阻断，绝不抢先去重后续正常节点', () => {
+    it('strategy pipeline: 独立入口同样保证黑名单节点在前时先阻断，不误删后续正常节点', () => {
       const skeleton = {
         proxies: [
           {

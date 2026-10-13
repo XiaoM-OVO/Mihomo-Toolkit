@@ -1,4 +1,4 @@
-﻿const { test, describe } = require('node:test');
+const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildProfile } = require('../../src/index.js');
 const { subStaleCache, SubStaleCacheMap } = require('../../src/io/fetcher.js');
@@ -75,7 +75,7 @@ describe('【Pipeline】多订阅生命周期与容灾鉴权/过期防护 (sub-e
     }
   });
 
-  test('HTTP 401：明确鉴权拒绝，绝不回退旧缓存并物理淘汰 subStaleCache', async () => {
+  test('HTTP 401：明确鉴权拒绝，不回退旧缓存并清理 subStaleCache', async () => {
     subStaleCache.clear();
     profileCache.clear();
     try {
@@ -94,7 +94,7 @@ describe('【Pipeline】多订阅生命周期与容灾鉴权/过期防护 (sub-e
       // 2. 账号失效返回 401 Unauthorized
       globalThis.fetch = async () => new Response('Unauthorized', { status: 401 });
       const r2 = await buildProfile(cfg, { mode: 'config', noCache: true });
-      assert.ok(!r2.yamlStr.includes('香港'), '401 凭据失效时绝不得输出旧节点');
+      assert.ok(!r2.yamlStr.includes('香港'), '401 凭据失效时不输出旧节点');
       assert.equal(subStaleCache.has(url), false, '401 发生后必须物理删除对应 subStaleCache');
 
       // 3. 随后发生普通网络故障，不得复活容灾
@@ -160,7 +160,7 @@ describe('【Pipeline】多订阅生命周期与容灾鉴权/过期防护 (sub-e
     }
   });
 
-  test('本次成功响应确认已到期：绝不作为健康订阅写入缓存，拒绝容灾并物理淘汰', async () => {
+  test('本次成功响应确认已到期：不作为健康订阅写入缓存，拒绝容灾并物理淘汰', async () => {
     subStaleCache.clear();
     profileCache.clear();
     try {
@@ -182,7 +182,7 @@ describe('【Pipeline】多订阅生命周期与容灾鉴权/过期防护 (sub-e
         headers: { 'subscription-userinfo': `upload=100; download=200; total=1000000; expire=${expirePast}` }
       });
       const r2 = await buildProfile(cfg, { mode: 'config', noCache: true });
-      assert.ok(!r2.yamlStr.includes('香港'), '本次响应已过期，绝不得输出旧节点');
+      assert.ok(!r2.yamlStr.includes('香港'), '本次响应已过期，不输出旧节点');
       assert.equal(subStaleCache.has(url), false, '本次确认到期必须清除 subStaleCache，不得缓存死数据');
     } finally {
       restoreFetch();
@@ -301,14 +301,14 @@ describe('【Pipeline】多订阅生命周期与容灾鉴权/过期防护 (sub-e
 
       // 检验：由于旧缓存未包含过期 expire，且异常响应不可覆盖缓存，降级使用上次健康数据
       assert.ok(r2.yamlStr.includes('香港'), '占位节点不得洗掉真实节点，旧有效缓存应受保护');
-      assert.ok(!r2.yamlStr.includes('官网地址'), '占位节点绝不得被当成正常代理节点');
+      assert.ok(!r2.yamlStr.includes('官网地址'), '占位节点不作为正常代理节点输出');
       assert.ok(subStaleCache.has(url), '原有效旧缓存仍应保留');
     } finally {
       restoreFetch();
     }
   });
 
-  test('多订阅场景：一个订阅失效或到期，绝不影响其他正常订阅', async () => {
+  test('多订阅场景：一个订阅失效或到期，不影响其他正常订阅', async () => {
     subStaleCache.clear();
     profileCache.clear();
     try {
@@ -343,7 +343,7 @@ proxies:
       assert.ok(r1.yamlStr.includes('美国'));
       assert.ok(r1.yamlStr.includes('香港'));
 
-      // 2. 随后 BadAirport 返回 401 彻底死亡，GoodAirport 依然健康
+      // 2. 随后 BadAirport 返回 401 失效，GoodAirport 依然健康
       globalThis.fetch = async (reqUrl) => {
         const u = reqUrl.toString();
         if (u.includes('sub-good')) return new Response(GOOD_CONTENT, { status: 200 });
@@ -351,7 +351,7 @@ proxies:
       };
       const r2 = await buildProfile(cfg, { mode: 'config', noCache: true });
       assert.ok(r2.yamlStr.includes('美国'), '正常订阅不受任何影响');
-      assert.ok(!r2.yamlStr.includes('香港'), '失效订阅的旧节点被彻底剥离');
+      assert.ok(!r2.yamlStr.includes('香港'), '失效订阅的旧节点被正常移除');
       assert.equal(subStaleCache.has(urlBad), false, '坏订阅被清除');
       assert.ok(subStaleCache.has(urlGood), '好订阅继续保持');
     } finally {
@@ -671,13 +671,13 @@ proxies:
 
       // 4. 关键断言：
       // (a) Profile Cache 代际保护：Task 1 的 taskGeneration (1) 低于缓存中条目的 generation (2)，profileCache.delete(cacheKey, 1) 拒绝删除！
-      assert.ok(profileCache.has(cacheKey), 'ProfileCache 中的新条目绝不能被旧任务误删');
+      assert.ok(profileCache.has(cacheKey), 'ProfileCache 中的新条目不被旧任务误删');
       const cachedAfterOldSettles = profileCache.getWithStatus(cacheKey, { freshTtlMs: 300000 });
       assert.equal(cachedAfterOldSettles.status, 'fresh');
       assert.equal(cachedAfterOldSettles.generation, gen2, '缓存中条目的代次必须依然是 Task 2 的代次');
 
       // (b) 订阅级缓存安全保护：Task 1 失败时只能根据发起时捕获的旧条目淘汰，不得误删 Task 2 新写入的 subStaleCache！
-      assert.ok(subStaleCache.has(url), 'subStaleCache 绝不得被旧任务 Task 1 误删');
+      assert.ok(subStaleCache.has(url), 'subStaleCache 不被旧任务 Task 1 误删');
       assert.equal(subStaleCache.get(url), t2StaleEntry, 'subStaleCache 中保留的必须严格是 Task 2 写入的健康条目引用');
 
       // 5. 模拟普通网络故障：验证 Task 2 留下的新订阅缓存能够正常提供容灾降级
@@ -703,16 +703,16 @@ proxies:
       });
 
       assert.equal(normalFailOutcome?.hasTerminalFailure, true, '确认终态失效');
-      assert.equal(subStaleCache.has(url), false, '普通单任务遭遇 401 必须彻底淘汰 subStaleCache');
-      assert.equal(profileCache.has(cacheKey), false, '对应 ProfileCache 必须被彻底淘汰');
+      assert.equal(subStaleCache.has(url), false, '普通单任务遭遇 401 必须清理 subStaleCache');
+      assert.equal(profileCache.has(cacheKey), false, '对应 ProfileCache 必须被清理');
 
-      // 再次模拟网络故障，由于缓存已被合法清除，绝不得发生死尸复活式容灾
+      // 再次模拟网络故障，由于缓存已被合法清除，不应发生失效容灾
       globalThis.fetch = async () => { throw new TypeError('Network timeout'); };
       const emptyRes = await buildProfile(cfg, {
         mode: 'config',
         forceRefresh: true
       });
-      assert.ok(!emptyRes.yamlStr.includes('香港'), '已淘汰的失效缓存绝不得继续容灾');
+      assert.ok(!emptyRes.yamlStr.includes('香港'), '已淘汰的失效缓存不再继续容灾');
     } finally {
       restoreFetch();
     }
@@ -751,10 +751,10 @@ proxies:
     const latestSnapshot = cache.getSnapshot(url);
     const deleteLatestResult = cache.deleteIfMatch(url, latestSnapshot);
     assert.equal(deleteLatestResult, true, '最新快照（引用与版本均一致）允许淘汰');
-    assert.equal(cache.has(url), false, '条目已被彻底淘汰');
-    assert.equal(cache._versions.has(url), false, '_versions 内部版本映射必须已被同步清理，绝无内存残留');
+    assert.equal(cache.has(url), false, '条目已被清理');
+    assert.equal(cache._versions.has(url), false, '_versions 内部版本映射必须已被同步清理，避免残留');
 
-    // 5. 契约防御：直接传入裸条目对象（缺少 version 快照契约）坚决拒绝删除
+    // 5. 契约防御：直接传入裸条目对象（缺少 version 快照契约）时拒绝删除
     cache.set(url, { content: 'raw-data', timestamp: Date.now() });
     const rawEntry = cache.get(url);
     assert.equal(cache.deleteIfMatch(url, rawEntry), false, '直接传入裸条目非快照对象必须被拒绝');

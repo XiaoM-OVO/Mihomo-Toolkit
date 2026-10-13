@@ -123,7 +123,7 @@ function runConfigPipeline({
   // 6. YAML 序列化与标头注入
   let yamlStr = yaml.stringify(outputData);
 
-  let pkgVersion = '2.0.0-dev';
+  let pkgVersion = '2.0.0-alpha';
   try {
     const pkg = require('../../package.json');
     if (pkg && pkg.version) pkgVersion = pkg.version;
