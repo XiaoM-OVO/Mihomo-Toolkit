@@ -8,7 +8,7 @@
 const { SKELETON_EXEMPT_GROUPS, effectiveExemptGroups } = require('../data');
 
 const DEFAULT_EXEMPT_GROUPS = [...SKELETON_EXEMPT_GROUPS];
-const VALID_BUILTIN_TARGETS = ['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS'];
+const VALID_BUILTIN_TARGETS = ['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS', 'GLOBAL'];
 
 /**
  * 执行 DAG 拓扑级联清理

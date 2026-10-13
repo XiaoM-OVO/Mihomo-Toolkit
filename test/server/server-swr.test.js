@@ -396,6 +396,7 @@ subscriptions:
         assert.ok(sharedOutcome !== null, '复用方必须成功接收 onBuildOutcome 回调');
         assert.equal(sharedOutcome.published, true, '复用任务发布成功必须被准确报告');
         assert.equal(sharedOutcome.hasFailedSub, false);
+        assert.equal(sharedOutcome.hasTerminalFailure, false, '复用方元数据契约必须包含 hasTerminalFailure');
         assert.equal(sharedOutcome.result, undefined, '内部元数据不得泄漏完整 result');
       } finally {
         server.close();

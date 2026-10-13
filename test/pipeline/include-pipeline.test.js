@@ -10,6 +10,7 @@ const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 
 const { buildProfile } = require('../../src/index.js');
+const { expandIncludes } = require('../../src/config/include.js');
 
 const CLI_PATH = path.join(__dirname, '..', '..', 'src', 'targets', 'cli.js');
 
@@ -52,6 +53,49 @@ describe('【Pipeline】配置片段展开与链路一致性 (include-pipeline)'
       assert.ok(fs.existsSync(customOut), '片段提供的 output 未被 CLI 采纳');
       assert.ok(fs.readFileSync(customOut, 'utf-8').includes('香港'), '片段中的 subscriptions 未驱动产出节点');
       assert.ok(!fs.existsSync(path.join(dir, 'nodes.yaml')), '不应回落到默认输出路径');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('expandIncludes - 展开幂等性：二次展开不重复读盘，即使原片段文件已被删除', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-idempotent-'));
+    try {
+      const frag = path.join(dir, 'temp.yaml');
+      fs.writeFileSync(frag, 'logLevel: "debug"\n');
+      const expanded1 = expandIncludes({ include: [frag] }, dir);
+      assert.equal(expanded1.logLevel, 'debug');
+
+      // 模拟片段文件已被删除
+      fs.unlinkSync(frag);
+
+      // 二次展开不应抛出 ENOENT，应直接返回已展开的配置
+      const expanded2 = expandIncludes(expanded1, process.cwd());
+      assert.equal(expanded2.logLevel, 'debug');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('expandIncludes - 数组对象并集去重：对对象属性键顺序不敏感', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-token-'));
+    try {
+      const frag = path.join(dir, 'sub.yaml');
+      // 键顺序为 url, tag
+      fs.writeFileSync(frag, 'subscriptions:\n  - url: "https://a.com"\n    tag: "A"\n');
+
+      // 主配置键顺序为 tag, url
+      const res = expandIncludes(
+        {
+          include: [frag],
+          subscriptions: [{ tag: 'A', url: 'https://a.com' }]
+        },
+        dir
+      );
+
+      // 去重后应只有 1 项，而不是 2 项
+      assert.equal(res.subscriptions.length, 1, '不同键顺序的对象项未被成功去重');
+      assert.equal(res.subscriptions[0].tag, 'A');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

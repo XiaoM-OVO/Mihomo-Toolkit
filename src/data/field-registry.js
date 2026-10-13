@@ -64,8 +64,8 @@ const FIELDS = [
     group: '节点清洗与处理', doc: '节点智能排序：按大区、线路质量、倍率有序排布' },
   { key: 'assetClosure', type: 'string', default: 'standard', merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '节点专属 DNS 依赖继承强度: standard / strict / off' },
-  { key: 'assetDomainAllowlist', type: 'string[]', default: [], merge: 'override', trust: 'any',
-    group: '节点清洗与处理', doc: 'assetClosure=strict 时允许被继承的域名（只收窄不放宽）' },
+  { key: 'assetDomainAllowlist', type: 'string[]', default: [], merge: 'override', trust: 'local',
+    group: '节点清洗与处理', doc: 'assetClosure=strict 时允许被继承的域名（仅可信来源可写）' },
   { key: 'enableDashboard', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '订阅看板：为流量/到期信息建立独立策略组' },
   { key: 'removeInfoNodes', type: 'boolean', default: true, merge: 'override', trust: 'any',
@@ -225,7 +225,7 @@ const FIELDS = [
   { key: 'dnsServer', type: 'string[]', default: ['223.5.5.5', '119.29.29.29'],
     merge: 'override', trust: 'local', group: 'DNS 与 Hosts 安全面', doc: '节点服务器域名专用解析 DNS' },
 
-  // ── 【8. 安全防漏与底层内核覆写】 ─────────────────────────────────────────
+  // ── 【8. 安全防漏与内核覆写】 ─────────────────────────────────────────
   { key: 'enableProcessDirect', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '安全防漏与内核覆写', doc: '进程直连防漏' },
   { key: 'enableTrafficAudit', type: 'boolean', default: true, merge: 'override', trust: 'any',
@@ -316,10 +316,10 @@ const FIELDS = [
     group: '运行模式与缓存', doc: '简繁转换方向: s2t | t2s' },
 
   // ── 【14. 自定义规则入口】 ───────────────────────────────────────────────
-  { key: 'customRules', type: 'string[]', merge: 'override', trust: 'any',
-    group: '自定义规则入口', doc: '注入到 MATCH 之前的自定义分流规则（优先级最高）' },
-  { key: 'customRuleProviders', type: 'object', merge: 'override', trust: 'any',
-    group: '自定义规则入口', doc: '自定义 Rule-Provider 定义（name → {type, behavior, url…}）' },
+  { key: 'customRules', type: 'string[]', merge: 'override', trust: 'local',
+    group: '自定义规则入口', doc: '注入到 MATCH 之前的自定义分流规则（优先级最高，防策略劫持仅可信来源可写）' },
+  { key: 'customRuleProviders', type: 'object', merge: 'override', trust: 'local',
+    group: '自定义规则入口', doc: '自定义 Rule-Provider 定义（name → {type, behavior, url…}，防出网探测仅可信来源可写）' },
   { key: 'subDomain', type: 'string[]', merge: 'override', trust: 'any',
     group: '自定义规则入口', doc: '订阅服务域名或 IP（自动注入为直连分流规则与 fake-ip-filter，防止客户端拉取订阅走代理循环与高延迟）' },
 

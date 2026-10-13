@@ -147,6 +147,8 @@ function recordRevalidateFailure(cacheKey) {
     revalidateBackoffs.delete(oldestKey);
   }
 
+  // 严格 LRU 容量控制：更新前先删后插，确保最新访问/更新的键排在 Map 末尾
+  revalidateBackoffs.delete(cacheKey);
   revalidateBackoffs.set(cacheKey, {
     failures,
     until: now + delayMs
@@ -535,8 +537,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     if (typeof options.onBuildOutcome === 'function') {
       try {
         options.onBuildOutcome({
-          published: finalOutcome.published,
-          hasFailedSub: finalOutcome.hasFailedSub
+          published: finalOutcome.published === true,
+          hasFailedSub: finalOutcome.hasFailedSub === true,
+          hasTerminalFailure: finalOutcome.hasTerminalFailure === true
         });
       } catch (_) {}
     }
