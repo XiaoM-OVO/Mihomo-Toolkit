@@ -140,21 +140,33 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('protectedDomains'));
       assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('exemptGroups'));
       assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('output'), 'output 必须是远程剥夺字段');
+      assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('customRules'), 'customRules 必须是远程剥夺字段（防策略劫持）');
+      assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('customRuleProviders'), 'customRuleProviders 必须是远程剥夺字段（防出网探测）');
+      assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('assetDomainAllowlist'), 'assetDomainAllowlist 必须是远程剥夺字段（防清明白名单）');
     });
 
-    it('hardenRemoteConfig - 无法通过 ?config= 摘掉受保护域名或注入豁免组', () => {
+    it('hardenRemoteConfig - 无法通过 ?config= 摘掉受保护域名、注入自定义规则或篡改豁免组', () => {
       const r = hardenRemoteConfig({
         subscriptions: [{ url: 'https://example.com/sub.yaml' }],
         protectedDomains: [],
         exemptGroups: ['🗑️ 未知识别'],
-        dnsServer: ['1.2.3.4']
+        dnsServer: ['1.2.3.4'],
+        customRules: ['DOMAIN,evil.com,DIRECT'],
+        customRuleProviders: { evil: { url: 'https://evil.com' } },
+        assetDomainAllowlist: []
       });
       assert.equal(r.ok, true);
       assert.equal(r.config.protectedDomains, undefined);
       assert.equal(r.config.exemptGroups, undefined);
       assert.equal(r.config.dnsServer, undefined);
+      assert.equal(r.config.customRules, undefined);
+      assert.equal(r.config.customRuleProviders, undefined);
+      assert.equal(r.config.assetDomainAllowlist, undefined);
       assert.ok(r.strippedKeys.includes('protectedDomains'));
       assert.ok(r.strippedKeys.includes('exemptGroups'));
+      assert.ok(r.strippedKeys.includes('customRules'));
+      assert.ok(r.strippedKeys.includes('customRuleProviders'));
+      assert.ok(r.strippedKeys.includes('assetDomainAllowlist'));
     });
 
     it('hardenRemoteConfig - 白名单收敛拦截未知字段与本地资源 [Fail-Closed]', () => {

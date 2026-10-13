@@ -32,11 +32,22 @@ function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof RegExp);
 }
 
-/** 数组并集去重时用于判定「同一项」的稳定键 */
+/** 递归对对象键排序以获得稳定的规范化表达 */
+function canonicalizeObject(val) {
+  if (val === null || typeof val !== 'object' || val instanceof RegExp) return val;
+  if (Array.isArray(val)) return val.map(canonicalizeObject);
+  const sorted = {};
+  for (const k of Object.keys(val).sort()) {
+    sorted[k] = canonicalizeObject(val[k]);
+  }
+  return sorted;
+}
+
+/** 数组并集去重时用于判定「同一项」的稳定键（键乱序无关） */
 function itemToken(item) {
   if (item && typeof item === 'object') {
     try {
-      return JSON.stringify(item);
+      return JSON.stringify(canonicalizeObject(item));
     } catch {
       return String(item);
     }
@@ -97,7 +108,15 @@ function mergeConfig(low, high) {
  * @returns {object} 展开后的新配置对象
  * @throws {Error} 环路 / 深度超限 / 片段缺失 / 扩展名不支持 / 解析失败
  */
+/** 记录已完成展开的配置对象实例（零字段侵入、零内存泄漏） */
+const expandedConfigs = new WeakSet();
+
 function expandIncludes(userConfig, baseDir, _stack, _depth) {
+  // 严格幂等防重：已完成展开的配置对象不再重复读盘与二次解析（防止 cwd 漂移与重复 I/O）
+  if (userConfig && typeof userConfig === 'object' && expandedConfigs.has(userConfig)) {
+    return userConfig;
+  }
+
   const cfg = isPlainObject(userConfig) ? userConfig : {};
   const stack = _stack || [];
   const depth = _depth || 0;
@@ -134,7 +153,9 @@ function expandIncludes(userConfig, baseDir, _stack, _depth) {
   }
 
   // 主对象最后覆盖，且其 `include` 键保留到结果里（与 servicesConfigFile 保留行为一致）
-  return mergeConfig(merged, cfg);
+  const result = mergeConfig(merged, cfg);
+  expandedConfigs.add(result);
+  return result;
 }
 
 module.exports = {

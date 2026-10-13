@@ -49,4 +49,13 @@ describe('【Pipeline】DAG 级联空组剪枝与规则殉葬 (strategy-prune)',
     assert.ok(!result.ruleProviders['parent-rule']);
     assert.ok(result.ruleProviders['base-rule']);
   });
+
+  it('pruneEmptyGroups - 内置目标 GLOBAL 作为有效代理目标不被剪枝', () => {
+    const proxyGroups = [
+      { name: 'MyGlobalProxy', proxies: ['GLOBAL'] }
+    ];
+    const result = pruneEmptyGroups({ proxyGroups });
+    assert.equal(result.proxyGroups.length, 1);
+    assert.deepEqual(result.proxyGroups[0].proxies, ['GLOBAL']);
+  });
 });
