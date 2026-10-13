@@ -227,7 +227,7 @@
      *放行白名单**由只读数据层派生**：仅放行 `src/data/field-registry.js` 中声明 `trust: 'any'` 的字段，其余字段（未登记的未知字段或声明 `trust: 'local'` 的特权字段）一律物理剥离。*
      *库契约：`buildProfile(userConfig)` 的 `userConfig` 视为可信输入；处理不可信配置的调用方必须先经 `hardenRemoteConfig()` 降级。*
 
-  2. **控制面净化审计 + 节点资产闭包（`control-plane.js::partitionControlPlane` + `io/sub-processor.js::applySubscriptionGuards`）**
+  2. **控制面净化审计 + 节点资产闭包（`control-plane.js::partitionControlPlane` + `pipeline/ingestion.js::applySubscriptionGuards`）**
      字段按「数据面（仅静态 `proxies`）｜控制面与外部动态源（如 `proxy-providers` 剥离）｜攻击特征签名｜未登记字段（fail-closed）」分类并审计，阻断未受控动态节点源进入流水线中间态；
      多订阅与单 URL/本地文件**两条输入路径共用同一网关**，避免净化逻辑分叉。
      同时执行 **Dependency Tracing**：只收编指向自身节点资产域的 Hosts / Nameserver-Policy / Fake-IP-Filter，
@@ -286,6 +286,7 @@ E:\CODE\mihomo-toolkit-next\
 │   │
 │   ├── pipeline/                 # 🚀 交付流水线 (与交付形态 1:1 映射)
 │   │   ├── engine.js             # runPipelineEngine: 总调度引擎，按 Checkpoint 截断控制交付
+│   │   ├── ingestion.js          # processSubscriptionSources: 订阅并发抓取调度与安全网关 (净化审计+资产闭包+Stale回退)
 │   │   ├── config.js             # runConfigPipeline: 交付完整 config (智能资产保活沙箱)
 │   │   ├── nodes.js              # runNodesPipeline: 交付纯净节点 proxies 数组
 │   │   ├── report.js             # buildAuditReport: 交付结构化健康审计 JSON
@@ -329,7 +330,6 @@ E:\CODE\mihomo-toolkit-next\
 │   │
 │   ├── io/                       # 📡 外部世界通信层 (唯一允许副作用的底层)
 │   │   ├── fetcher.js            # 安全 HTTP 抓取调度、逐跳重定向校验、响应流式限长与 Stale 容灾兜底缓存
-│   │   ├── sub-processor.js      # 多订阅并发抓取、统一安全网关(净化审计+资产闭包)、树状日志
 │   │   ├── cache.js              # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏；缓存键由 engine 结构化生成)
 │   │   ├── ssrf.js               # SSRF 深度校验、私网拦截与 Token 脱敏
 │   │   ├── limits.js             # 资源超限拦截 (URL 上限、配置大小、响应限长、节点总量与单订阅配额)

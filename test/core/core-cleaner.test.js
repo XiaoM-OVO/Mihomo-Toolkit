@@ -5,10 +5,15 @@ const {
   sanitizeNodeName,
   extractNodeAttributes,
   checkNodeBlockReason,
-  classifyNode,
-  isNoticePlaceholderNode
+  classifyNode
 } = require('../../src/core/cleaner');
+const {
+  isNoticeNode,
+  isNoticePlaceholderNode,
+  hasOnlyPlaceholderNodes
+} = require('../../src/core/notice');
 const { markTrustedSynthetic } = require('../../src/core/node-trust');
+const { buildServiceCatalog } = require('../../src/config/catalog');
 
 describe('【Core】节点清洗与属性提取 (cleaner)', () => {
   it('sanitizeNodeName - 基础字符与广告词过滤', () => {
@@ -91,7 +96,8 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
       type: 'vless',
       uuid: 'uuid-1'
     };
-    const result = classifyNode(hkProxy);
+    const defaultCatalog = buildServiceCatalog();
+    const result = classifyNode(hkProxy, { catalog: defaultCatalog });
     assert.ok(!result.skip);
     assert.ok(result.regionInfo);
     assert.equal(result.groupKey, 'hk');
@@ -498,8 +504,6 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     });
 
     it('hasOnlyPlaceholderNodes 订阅有效性判定边界', () => {
-      const { hasOnlyPlaceholderNodes } = require('../../src/core/cleaner');
-
       // 场景 1：全部是公告名称，但带真实 server/port 的订阅 ➔ 不应误判为整份无效
       const realWithNoticeNames = [
         { name: '公告：节点迁移通知', server: '104.28.1.1', port: 443 },

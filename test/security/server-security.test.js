@@ -36,7 +36,11 @@ function makeFixture(extraConfig = '') {
   return { dir, configFile };
 }
 
-async function startTestServer(options) {
+async function startTestServer(options = {}) {
+  const originalAuthToken = process.env.AUTH_TOKEN;
+  if (!options.envAuthToken) {
+    delete process.env.AUTH_TOKEN;
+  }
   const server = startServer({ port: 0, logger: silentLogger, ...options });
   if (!server.listening) {
     await new Promise((resolve, reject) => {
@@ -44,13 +48,30 @@ async function startTestServer(options) {
       server.once('error', reject);
     });
   }
+  const originalClose = server.close.bind(server);
+  server.close = function(cb) {
+    if (typeof server.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
+    if (originalAuthToken !== undefined) {
+      process.env.AUTH_TOKEN = originalAuthToken;
+    }
+    return originalClose(cb);
+  };
   return { server, port: server.address().port };
 }
 
 function get(port, pathname, headers = {}) {
   return new Promise((resolve, reject) => {
     const req = http.request(
-      { host: '127.0.0.1', port, path: pathname, method: 'GET', headers, agent: false },
+      {
+        host: '127.0.0.1',
+        port,
+        path: pathname,
+        method: 'GET',
+        headers: { Connection: 'close', ...headers },
+        agent: false
+      },
       (res) => {
         let body = '';
         res.setEncoding('utf-8');

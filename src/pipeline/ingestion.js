@@ -1,22 +1,23 @@
 /**
  * -----------------------------------------------------------------------------
- * Mihomo-Toolkit: 订阅源抓取调度与预处理网关 (Subscription Processor)
+ * Pipeline Layer: 订阅摄入流水线与安全网关 (Subscription Ingestion Pipeline)
  * -----------------------------------------------------------------------------
  * 职责：
  * 1. 并发调度多订阅 HTTP 抓取与直接 URI 识别
  * 2. 结合 Stale 缓存实施失败平滑容灾降级
  * 3. 提取订阅信息、识别机场标签、嗅探重置日
- * 4. 树状输出解析统计日志
+ * 4. 控制面净化审计与节点专属资产闭包提取 (applySubscriptionGuards)
+ * 5. 树状输出解析统计日志
  */
 
 const fs = require('fs');
 const path = require('path');
-const { parseContent, parseSubscriptionInfo, isExpiredNow, isQuotaExhausted } = require('./parsers');
-const { hasOnlyPlaceholderNodes } = require('../core/cleaner');
+const { parseContent, parseSubscriptionInfo, isExpiredNow, isQuotaExhausted } = require('../io/parsers');
+const { hasOnlyPlaceholderNodes } = require('../core/notice');
 const { markTrustedSynthetic, markTrustedProxyMetadata, sanitizeExternalProxy, sanitizeExternalProxies } = require('../core/node-trust');
-const { redactUrl } = require('./ssrf');
-const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache } = require('./fetcher');
-const { DEFAULT_REQUEST_LIMITS } = require('./limits');
+const { redactUrl } = require('../io/ssrf');
+const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache } = require('../io/fetcher');
+const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
 const { effectiveProtectedDomains } = require('../data');

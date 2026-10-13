@@ -253,7 +253,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 ### 核心安全防护机制
 
 1. **交付契约白名单**（`control-plane.js`）：产物顶层键采用白名单收口机制，防范订阅源携带的 `external-controller`、`secret`、`hosts` 等控制面字段污染最终产物。
-2. **控制面净化与资产闭包**（`sub-processor.js`）：剥离非节点控制字段的同时，自动识别并继承节点服务器专用的 Hosts 映射与私有 DoH 解析策略，兼顾安全性与节点连通性。
+2. **控制面净化与资产闭包**（`ingestion.js`）：剥离非节点控制字段的同时，自动识别并继承节点服务器专用的 Hosts 映射与私有 DoH 解析策略，兼顾安全性与节点连通性。
 3. **DNS 净化与不变式自检**（`dns.js` + `resolver-plan.js`）：引导层 DNS 纯 IP 化，过滤高危修饰符；交付前执行 INV 不变式自检，降低 Fake-IP 虚拟环路与解析异常风险。
 4. **远程配置白名单收敛**（`remote-config.js`）：对 `?config=` 输入实施 fail-closed 白名单过滤，仅放行明确允许的安全字段，限制对宿主机资源的访问。
 5. **SSRF 与资源配额防御**（`ssrf.js` / `fetcher.js` / `limits.js`）：包含私网网段拦截、重定向逐跳复核、响应体流式限长与单次构建节点配额限制，缓解网络探测与资源消耗风险。
@@ -271,6 +271,7 @@ mihomo-toolkit/
 │   │
 │   ├── pipeline/              # 🚀 交付流水线 (与交付形态 1:1 映射)
 │   │   ├── engine.js          # 全流程总调度引擎 (生命周期早退与 Checkpoint 截断)
+│   │   ├── ingestion.js       # 订阅并发抓取调度与安全网关 (净化审计+资产闭包+Stale回退)
 │   │   ├── config.js          # 完整配置装配流水线
 │   │   ├── nodes.js           # 纯净节点清洗流水线 (去重/打标/重命名)
 │   │   ├── report.js          # 健康审计报告流水线 (生成结构化 JSON)
@@ -283,6 +284,8 @@ mihomo-toolkit/
 │   │
 │   ├── core/                  # 🧮 节点清洗核心算法层 (Pure & Deterministic)
 │   │   ├── cleaner.js         # 垃圾拦截、倍率线路提取、属性智能分类打标
+│   │   ├── notice.js          # 原生公告、续费通知与无服务能力占位伪节点判定
+│   │   ├── isolation.js       # 业务分类隔离判定 (家宽/高倍率/下载/实验)
 │   │   ├── node-trust.js      # 节点进程内信任边界与内部 Synthetic 身份标记
 │   │   ├── metadata.js        # 节点名称元数据只读提取与特征归一化
 │   │   ├── dedupe.js          # 底层物理网络指纹提取与特征去重
@@ -307,7 +310,6 @@ mihomo-toolkit/
 │   │
 │   ├── io/                    # 📡 外部世界通信层 (唯一允许副作用的底层)
 │   │   ├── fetcher.js         # 安全 HTTP 抓取调度与 Stale 容灾兜底缓存
-│   │   ├── sub-processor.js   # 多订阅并发抓取、URI 分流、单订阅说明过滤与树状日志
 │   │   ├── cache.js           # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
 │   │   ├── ssrf.js            # SSRF 深度校验、私网拦截与 Token 脱敏
 │   │   ├── limits.js          # 资源超限拦截 (URL 上限、配置大小、节点总数防御)

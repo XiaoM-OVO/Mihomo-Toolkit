@@ -6,7 +6,7 @@
 
 const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
-const { classifyNode, matchUserBlacklist } = require('../core/cleaner');
+const { classifyNode, matchUserBlacklist, getFeatureRules } = require('../core/cleaner');
 const { buildRenamePlan, applyRenamePlan } = require('../core/rename');
 const { markTrustedCleanedNode } = require('../core/node-trust');
 const { sortNodes } = require('../core/sort');
@@ -100,7 +100,8 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
 
   // 4. 深度清洗打标与硬结构校验 (classifyNode 内置自包含黑名单保护，针对独立调用提供兜底)
   const regionDefs = getEnhancedRegionDefs();
-  const classified = currentProxies.map(p => classifyNode(p, config, { regionDefs }));
+  const featureRules = getFeatureRules(config);
+  const classified = currentProxies.map(p => classifyNode(p, config, { regionDefs, featureRules }));
 
   // 5. 过滤被阻断或无效/说明节点
   const validItems = classified.filter(item => {

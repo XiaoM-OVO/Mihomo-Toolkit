@@ -36,7 +36,7 @@ const { REMOTE_CONFIG_FORBIDDEN_KEYS, hardenRemoteConfig } = require('../../src/
 const { sanitizeHosts } = require('../../src/core/security/dns-sanitizer');
 const { applyDnsOverlay } = require('../../src/strategy/dns');
 const { pruneEmptyGroups } = require('../../src/strategy/prune');
-const { applySubscriptionGuards } = require('../../src/io/sub-processor');
+const { applySubscriptionGuards } = require('../../src/pipeline/ingestion');
 
 const GOLDEN_PATH = path.join(__dirname, '..', 'fixtures', 'default-config.golden.json');
 

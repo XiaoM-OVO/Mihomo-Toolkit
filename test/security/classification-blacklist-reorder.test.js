@@ -10,10 +10,12 @@ const {
 const {
   classifyNode,
   checkNodeBlockReason,
-  isNoticeNode,
-  hasOnlyPlaceholderNodes,
   matchUserBlacklist
 } = require('../../src/core/cleaner');
+const {
+  isNoticeNode,
+  hasOnlyPlaceholderNodes
+} = require('../../src/core/notice');
 const { dedupeNodes } = require('../../src/core/dedupe');
 const { sortNodes } = require('../../src/core/sort');
 const { runNodesPipeline } = require('../../src/pipeline/nodes');

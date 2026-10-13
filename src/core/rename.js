@@ -10,7 +10,7 @@
 
 const { FIELDS_BY_KEY } = require('../data');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
-const { getIsolationBucket } = require('./cleaner');
+const { getIsolationBucket } = require('./isolation');
 
 /** 悬空分隔符默认清单：取自字段注册表（单一真相源，避免与配置默认值漂移） */
 const DEFAULT_SEPARATORS = FIELDS_BY_KEY.renameSeparators.default;

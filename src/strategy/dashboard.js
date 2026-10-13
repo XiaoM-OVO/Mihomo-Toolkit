@@ -10,7 +10,7 @@
  */
 
 const { parseSubscriptionInfo, isExpiredNow } = require('../core/shared/sub-info');
-const { isNoticeNode } = require('../core/cleaner');
+const { isNoticeNode } = require('../core/notice');
 const { markTrustedSynthetic, isTrustedSynthetic } = require('../core/node-trust');
 
 function formatBytes(bytes, fractionDigits = 2) {
