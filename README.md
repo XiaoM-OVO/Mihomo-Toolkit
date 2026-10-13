@@ -6,12 +6,12 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/Version-v2.0.0--dev-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-276%20Passed-brightgreen)](test/)
+[![Version](https://img.shields.io/badge/Version-v2.0.0--alpha-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
+[![Tests](https://img.shields.io/badge/Tests-430%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底 · 零维护** 」
 
-> ⚠️ **开发中版本 · `v2.0.0-dev`**：本项目尚未发布正式版，接口与配置可能随时调整，暂不建议用于生产环境。
+> ⚠️ **开发中版本 · `v2.0.0-alpha`**：本项目当前处于核心稳定性加固与债务清零阶段（Milestone 1），接口与配置可能随时微调，暂不建议直接用于生产环境。开发进展与演进规划请参阅 [开发路线图 (ROADMAP.md)](ROADMAP.md)。
 
 </div>
 
@@ -27,7 +27,8 @@
   - [3. 客户端无缝集成](#3-客户端无缝集成)
 - [⚙️ 配置详解 (`config.yaml`)](#️-配置详解-configyaml)
 - [🔐 安全模型与信任边界](#-安全模型与信任边界)
-- [📂 项目工程结构](#-项目工程结构)
+- [🏗️ 系统架构与分层导览](#️-系统架构与分层导览)
+- [🗺️ 开发路线与演进规划](#️-开发路线与演进规划)
 - [❓ 常见问题 (FAQ)](#-常见问题-faq)
 - [📜 鸣谢与声明](#-鸣谢与声明)
 
@@ -252,87 +253,44 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 
 ### 核心安全防护机制
 
-1. **交付契约白名单**（`control-plane.js`）：产物顶层键采用白名单收口机制，防范订阅源携带的 `external-controller`、`secret`、`hosts` 等控制面字段污染最终产物。
-2. **控制面净化与资产闭包**（`ingestion.js`）：剥离非节点控制字段的同时，自动识别并继承节点服务器专用的 Hosts 映射与私有 DoH 解析策略，兼顾安全性与节点连通性。
-3. **DNS 净化与不变式自检**（`dns.js` + `resolver-plan.js`）：引导层 DNS 纯 IP 化，过滤高危修饰符；交付前执行 INV 不变式自检，降低 Fake-IP 虚拟环路与解析异常风险。
-4. **远程配置白名单收敛**（`remote-config.js`）：对 `?config=` 输入实施 fail-closed 白名单过滤，仅放行明确允许的安全字段，限制对宿主机资源的访问。
-5. **SSRF 与资源配额防御**（`ssrf.js` / `fetcher.js` / `limits.js`）：包含私网网段拦截、重定向逐跳复核、响应体流式限长与单次构建节点配额限制，缓解网络探测与资源消耗风险。
+1. **交付契约白名单**（`src/core/security/control-plane.js`）：产物顶层键采用白名单收口机制，防范订阅源携带的 `external-controller`、`secret`、`hosts` 等控制面字段污染最终产物。
+2. **控制面净化与资产闭包**（`src/pipeline/ingestion.js` + `src/core/security/dns-sanitizer.js`）：剥离非节点控制字段的同时，自动识别并继承节点服务器专用的 Hosts 映射与私有 DoH 解析策略，兼顾安全性与节点连通性。
+3. **DNS 净化与不变式自检**（`src/strategy/dns.js` + `src/core/security/resolver-plan.js`）：引导层 DNS 纯 IP 化，过滤高危修饰符；交付前执行 INV 不变式自检，降低 Fake-IP 虚拟环路与解析异常风险。
+4. **远程配置白名单收敛**（`src/core/security/remote-config.js`）：对 `?config=` 输入实施 fail-closed 白名单过滤，仅放行明确允许的安全字段，限制对宿主机资源的访问。
+5. **SSRF 与资源配额防御**（`src/io/ssrf.js` / `src/io/fetcher.js` / `src/io/limits.js`）：包含私网网段拦截、重定向逐跳复核、响应体流式限长与单次构建节点配额限制，缓解网络探测与资源消耗风险。
 
-> 📖 **进阶架构与威胁模型**：关于系统分层契约、安全沙箱算法及残余风险评估的完整技术推演，请参阅 [系统架构白皮书 (ARCHITECTURE.md)](ARCHITECTURE.md)。
+> 📖 **进阶架构与威胁模型**：关于系统分层契约、安全沙箱算法及残余风险评估的完整技术推演，请参阅 [架构设计文档](ARCHITECTURE.md)。
 
 ---
 
-## 📂 项目工程结构
+## 🏗️ 系统架构与分层导览
 
-```text
-mihomo-toolkit/
-├── 🧠 src/                     # 核心引擎源码
-│   ├── index.js               # 🌟 全库唯一顶层门面 (Facade)，导出完整公共 API
-│   │
-│   ├── pipeline/              # 🚀 交付流水线 (与交付形态 1:1 映射)
-│   │   ├── engine.js          # 全流程总调度引擎 (生命周期早退与 Checkpoint 截断)
-│   │   ├── ingestion.js       # 订阅并发抓取调度与安全网关 (净化审计+资产闭包+Stale回退)
-│   │   ├── config.js          # 完整配置装配流水线
-│   │   ├── nodes.js           # 纯净节点清洗流水线 (去重/打标/重命名)
-│   │   ├── report.js          # 健康审计报告流水线 (生成结构化 JSON)
-│   │   ├── strategy.js        # 策略拓扑与分流规则注入流水线
-│   │   └── envelope.js        # 节点只读 Envelope 包装与旁路接入
-│   │
-│   ├── targets/               # 🔌 宿主环境终端适配器 (轻量适配层)
-│   │   ├── cli.js             # 命令行工具 (mihomo-toolkit)
-│   │   └── server.js          # 常驻 HTTP 订阅服务 (/sub, /healthz, 鉴权)
-│   │
-│   ├── core/                  # 🧮 节点清洗核心算法层 (Pure & Deterministic)
-│   │   ├── cleaner.js         # 垃圾拦截、倍率线路提取、属性智能分类打标
-│   │   ├── notice.js          # 原生公告、续费通知与无服务能力占位伪节点判定
-│   │   ├── isolation.js       # 业务分类隔离判定 (家宽/高倍率/下载/实验)
-│   │   ├── node-trust.js      # 节点进程内信任边界与内部 Synthetic 身份标记
-│   │   ├── metadata.js        # 节点名称元数据只读提取与特征归一化
-│   │   ├── dedupe.js          # 底层物理网络指纹提取与特征去重
-│   │   ├── transport.js       # 统一传输层门面 (Host/SNI/Path提取、Host注入与协议识别)
-│   │   ├── geo.js             # 地区智能正则匹配与落地城市精准提取
-│   │   ├── rename.js          # 分级命名计划、两阶段冲突仲裁与模板变量解析
-│   │   ├── sort.js            # 节点多维智能排序、隔离分类聚拢与顺序确定性保证
-│   │   ├── fission.js         # 域名并发 DNS 解析与多 IP 独立节点裂变增殖
-│   │   ├── chinese-convert.js # 简繁中文递归转换与无依赖回退降级
-│   │   ├── chinese-sync.js    # 节点名/策略组名/成员引用/分流规则四路简繁同步
-│   │   └── shared/            # 地区大区字典表 (regions.js) 与 图标字典 (icons.js)
-│   │
-│   ├── strategy/              # 🌐 策略组拓扑与内核优化层
-│   │   ├── dashboard.js       # 看板合成、多订阅流量与到期聚合中心
-│   │   ├── topology.js        # 六维服务大区折叠与动态测速策略组装配
-│   │   ├── rules.js           # 规则集 (Rule-Providers) 与分流路由组装
-│   │   ├── registries.js      # 六维服务注册表管理模块 (委托至 config/catalog)
-│   │   ├── prune.js           # DAG 递归空组级联淘汰与殉葬规则清理
-│   │   ├── presentation.js    # 展示层终末装配器 (按 groupIconMode 统一挂载在线图标与赋予徽标)
-│   │   ├── dns.js             # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
-│   │   └── kernel.js          # TUN 网卡、Sniffer 嗅探器及内核性能调优
-│   │
-│   ├── io/                    # 📡 外部世界通信层 (唯一允许副作用的底层)
-│   │   ├── fetcher.js         # 安全 HTTP 抓取调度与 Stale 容灾兜底缓存
-│   │   ├── cache.js           # 内存级 LRU-TTL 缓存管理器 (带 MAX_ENTRIES 防泄漏)
-│   │   ├── ssrf.js            # SSRF 深度校验、私网拦截与 Token 脱敏
-│   │   ├── limits.js          # 资源超限拦截 (URL 上限、配置大小、节点总数防御)
-│   │   ├── fetch-proxy.js     # 本地代理调度封装 (undici ProxyAgent)
-│   │   └── parsers/           # Vless / VMess / Trojan / Shadowsocks / YAML 全格式解析器
-│   │
-│   ├── config/                # ⚙️ 配置策略层 (操作者改什么)
-│   │   ├── defaults.js        # 出厂默认配置（由只读数据层的字段注册表派生）
-│   │   ├── catalog.js         # 🌟 领域服务编目 (SSOT)、六维内置基准与增量深度合并引擎
-│   │   ├── include.js         # 通用配置片段挂载 include（主文件优先 / 递归 / 环路防护）
-│   │   └── index.js           # resolveConfig 合并器（注册表驱动的只增不减基线合并）
-│   │
-│   └── data/                  # 📦 只读运行基础层 (程序所有 / 用户只读，最底层)
-│       ├── field-registry.js  # 字段注册表 SSOT：有哪些字段 / 默认值 / 合并语义 / 信任级
-│       ├── security-baselines.js # 安全基线词典：受保护域名、骨架豁免组、fake-ip-filter 保底名单
-│       └── cleaner-rules.js   # 节点清洗规则词库：入口/落地城市、线路与运营商、阻断正则与质量权重
-│
-├── test/                      # 🧪 自动化测试套件 (61 个测试套件，302 个全绿用例)
-├── config.example.yaml        # 极简扁平化配置模板
-├── index.d.ts                 # 完整 TypeScript 类型契约声明
-├── package.json               # 项目依赖与多命令配置
-└── ARCHITECTURE.md            # 系统架构设计白皮书
-```
+本项目遵循现代洋葱分层架构（Onion Architecture）设计，将高频纯计算核心与底层 I/O 副作用隔离，自顶向下划分为 7 个逻辑层级：
+
+| 逻辑层级 | 源码目录 | 核心职责与边界契约 |
+| :--- | :--- | :--- |
+| **Layer 1: Targets** | `src/targets/` | 宿主环境终端适配（CLI 命令行工具、常驻 HTTP 订阅服务、Token 鉴权） |
+| **Layer 2: Pipeline** | `src/pipeline/` | 交付流水线总调度编排（生命周期早退、按 `outputMode` 截断、并发单飞） |
+| **Layer 3: Strategy** | `src/strategy/` | 策略拓扑与规则组装（六维大区折叠、DAG 空组剪枝、Fake-IP/DNS 与内核优化） |
+| **Layer 4: Core** | `src/core/` | 纯计算核心算法（物理网络指纹去重、属性打标、意图重命名、简繁四路同步） |
+| **Layer 5: IO** | `src/io/` | 外部世界通信边界（唯一允许副作用底层：HTTP 抓取、SSRF 拦截、多协议解析） |
+| **Layer 6: Config** | `src/config/` | 配置装载与合并（`resolveConfig` 求解器、服务编目 SSOT、配置片段挂载） |
+| **Layer 7: Data** | `src/data/` | 只读运行基础基线（字段注册表 SSOT、不可变安全基线、清洗规则词库） |
+
+> 📖 **完整文件树与拓扑推演**：关于全仓 66 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
+
+---
+
+## 🗺️ 开发路线与演进规划
+
+本项目采用“稳定性先行、大动作新功能排后”的务实演进路线，划分为 4 个推进阶段：
+
+- 🟢 **Milestone 1 (v2.0-Alpha)**：稳定性加固与核心债务清零（当前核心：修复优先级倒挂、SSRF 穿透、消除 IO 反向依赖、协议截断修复）；
+- 🟡 **Milestone 2 (v2.0-Beta)**：宿主健壮性加固（优雅停机 Graceful Shutdown、DNS 裂变并发流控、CLI `--dry-run` 诊断）；
+- 🔵 **Milestone 3 (v2.0-GA)**：声明式策略拓扑 DSL 与配置解耦；
+- 🟣 **Milestone 4 (v2.1+)**：离线 IP/ASN 标签库与 Sub-Store 原生流水线适配。
+
+> 📋 **详细任务跟踪**：41 项审查排查出的技术债务明细与推进状态，请参阅 [开发路线图](ROADMAP.md)。
 
 ---
 

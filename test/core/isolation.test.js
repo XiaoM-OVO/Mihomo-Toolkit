@@ -7,7 +7,7 @@ const { sortNodes } = require('../../src/core/sort');
 const { computeNodeIndices } = require('../../src/core/rename');
 
 describe('【Core】节点隔离策略 (isolation)', () => {
-  it('cleaner.js 契约：严禁再导出 getIsolationBucket，旧路径已彻底切断', () => {
+  it('cleaner.js 契约：不再导出 getIsolationBucket，模块已解耦', () => {
     assert.equal(cleaner.getIsolationBucket, undefined, 'cleaner.js 不应保留 getIsolationBucket 导出');
   });
 

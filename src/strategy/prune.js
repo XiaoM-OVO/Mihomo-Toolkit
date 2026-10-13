@@ -2,7 +2,7 @@
  * DAG 级联空组清理与拓扑环路破除机制
  *
  * 基于汇点反向可达性推导 (Sink-to-Source Reverse Reachability) 与三色标记 DFS 破环，
- * 递归剔除无节点可用或被洗劫一空的策略组，切断恶性循环依赖，级联清理殉葬的分流规则及孤儿 Rule-Providers，
+ * 递归剔除无可用节点的策略组，切断循环依赖，级联清理关联的分流规则及孤儿 Rule-Providers，
  * 避免 Mihomo 内核因引用不存在的策略组或循环依赖 (circular reference) 而启动崩溃。
  */
 
@@ -21,7 +21,7 @@ const MAX_DFS_DEPTH = 1000;
  * @param {Array<object>} [params.proxies=[]] 物理节点列表
  * @param {Array<string>} [params.rules=[]] 路由分流规则列表
  * @param {object} [params.ruleProviders={}] 规则集资源提供者
- * @param {Array<string>} [params.exemptGroups] 豁免斩首的基础骨架组
+ * @param {Array<string>} [params.exemptGroups] 豁免剪枝的基础骨架组
  * @param {object} [params.userConfig=null] 用户上下文配置（用于保护 customRuleProviders 等显式声明）
  * @param {object} [params.logger=null] 分级日志记录器
  * @returns {object} { proxyGroups, rules, ruleProviders, removedGroups, brokenEdges, rescuedGroups }
@@ -35,7 +35,7 @@ function pruneEmptyGroups({
   userConfig = null,
   logger = null
 }) {
-  // 1. 构建命名空间：严格区分物理代理、内置目标与策略组，杜绝静默覆盖与命名歧义
+  // 1. 构建命名空间：严格区分物理代理、内置目标与策略组，防止静默覆盖与命名歧义
   const builtinTargets = new Set(VALID_BUILTIN_TARGETS);
   const physicalNodeNames = new Set();
   if (Array.isArray(proxies)) {
@@ -48,10 +48,10 @@ function pruneEmptyGroups({
 
   const exemptSet = new Set(effectiveExemptGroups(exemptGroups));
 
-  // 深度复制策略组并建立映射，严格校验同名冲突，杜绝静默覆盖
+  // 深度复制策略组并建立映射，严格校验同名冲突，防止静默覆盖
   const groupMap = new Map();
   const originalOrder = new Map();
-  // 保持只读快照以支撑豁免组注血可追溯性（防止后续维护意外污染原始输入事实）
+  // 保持只读快照以支撑豁免组保活可追溯性（防止后续维护意外污染原始输入事实）
   const initialProxiesMap = new Map();
 
   if (Array.isArray(proxyGroups)) {
@@ -102,7 +102,7 @@ function pruneEmptyGroups({
 
   /**
    * 豁免组保活复苏辅助函数 (DRY & 可追溯性)
-   * 严禁保留死节点（防内核崩溃），但忠实记录注血前丢失的原成员供审计调试
+   * 清理失效节点引用（防内核崩溃），并记录兜底前丢失的原成员供审计调试
    * @param {string} name 策略组名称
    * @param {object} group 策略组对象
    */
@@ -116,7 +116,7 @@ function pruneEmptyGroups({
       });
       if (logger && typeof logger.warn === 'function') {
         const lostInfo = lost.length > 0 ? ` (原成员: ${lost.join(', ')})` : '';
-        logger.warn(`🛡️ 骨架组 [${name}] 节点全军覆没，已注入 DIRECT 兜底保活${lostInfo}`);
+        logger.warn(`🛡️ 骨架组 [${name}] 无可用节点，已注入 DIRECT 兜底保活${lostInfo}`);
       }
     }
     group.proxies = ['DIRECT'];
@@ -125,7 +125,7 @@ function pruneEmptyGroups({
   /**
    * 自底向上生产性可达集合推导 (Sink-to-Source Reverse Reachability)
    * 仅以真实物理节点或控制拦截终点（REJECT/GLOBAL）作为有效汇点反向染色。
-   * 若一个普通非豁免组最终只能到达 DIRECT，说明已被洗劫一空，不具备代理价值，予以淘汰。
+   * 若普通非豁免组最终只能到达 DIRECT，说明无可用代理节点，按规则予以剪枝淘汰。
    * @param {Map<string, object>} activeGroups 当前活跃的策略组集合
    * @returns {Set<string>} 能连通到生产性汇点的组名称集合
    */
@@ -167,7 +167,7 @@ function pruneEmptyGroups({
     return reachable;
   }
 
-  // 阶段 1：豁免组前置注血与第一轮可达性收敛
+  // 阶段 1：豁免组保活与第一轮可达性收敛
   // 1.1 先行推导当前可达性
   let reachable = computeReachableGroups(groupMap);
 
@@ -178,7 +178,7 @@ function pruneEmptyGroups({
     }
   }
 
-  // 1.3 骨架组注血后，普通组若无法通达生产性汇点（即使包含 DIRECT），一律视为空壳予以剪枝淘汰
+  // 1.3 豁免组保活后，普通组若无法通达生产性汇点（即使包含 DIRECT），视为空组予以剪枝淘汰
   for (const name of Array.from(groupMap.keys())) {
     if (!reachable.has(name)) {
       if (!exemptSet.has(name)) {
@@ -285,7 +285,7 @@ function pruneEmptyGroups({
     }
   }
 
-  // 3.1 终末收敛：清理存活组中指向已被剔除组的残余引用；骨架组若遭洗劫强制注血 DIRECT
+  // 3.1 终末收敛：清理存活组中指向已被剔除组的残余引用；骨架组若为空则注入 DIRECT 保活
   for (const group of groupMap.values()) {
     group.proxies = group.proxies.filter(target => isProductiveSink(target) || target === 'DIRECT' || groupMap.has(target));
     if (group.proxies.length === 0 && exemptSet.has(group.name)) {
@@ -293,7 +293,7 @@ function pruneEmptyGroups({
     }
   }
 
-  // 阶段 4：规则与 Rule-Providers 级联殉葬
+  // 阶段 4：规则与 Rule-Providers 级联注销
   let currentRules = Array.isArray(rules) ? [...rules] : [];
   const providers = { ...ruleProviders };
 
@@ -308,12 +308,12 @@ function pruneEmptyGroups({
     });
     const droppedRulesCount = originalRuleCount - currentRules.length;
     if (droppedRulesCount > 0 && logger && typeof logger.debug === 'function') {
-      logger.debug(`🕊️ 规则殉葬: 目标策略组已淘汰，注销 ${droppedRulesCount} 条分流规则`);
+      logger.debug(`🧹 规则清理: 目标策略组已淘汰，注销 ${droppedRulesCount} 条分流规则`);
     }
   }
 
   // 清理孤儿 Rule Providers：
-  // 尊重用户主权，用户显式声明的 customRuleProviders 享有免死金牌，绝不作为孤儿误删
+  // 尊重用户声明，用户显式声明的 customRuleProviders 受保护，不作为孤儿规则集清理
   const userCustomProviders = new Set(
     userConfig?.customRuleProviders && typeof userConfig.customRuleProviders === 'object'
       ? Object.keys(userConfig.customRuleProviders)

@@ -11,7 +11,7 @@ const cleaner = require('../../src/core/cleaner');
 const { markTrustedSynthetic } = require('../../src/core/node-trust');
 
 describe('【Core】占位与公告节点判定 (notice)', () => {
-  it('cleaner.js 契约：严禁再导出 notice 相关函数，旧路径已彻底切断', () => {
+  it('cleaner.js 契约：不再导出 notice 相关函数，模块已解耦', () => {
     assert.equal(cleaner.isNoticeNode, undefined, 'cleaner 不应导出 isNoticeNode');
     assert.equal(cleaner.isNoticePlaceholderNode, undefined, 'cleaner 不应导出 isNoticePlaceholderNode');
     assert.equal(cleaner.hasOnlyPlaceholderNodes, undefined, 'cleaner 不应导出 hasOnlyPlaceholderNodes');
@@ -76,12 +76,12 @@ describe('【Core】占位与公告节点判定 (notice)', () => {
       assert.equal(isNoticeNode({ name: '套餐到期日：2026-12-31', server: '1.2.3.4', port: 443 }), true);
     });
 
-    it('一般公告/说明词：伴随假服务参数才判定为 notice，真实代理参数绝不误杀', () => {
+    it('一般公告/说明词：伴随假服务参数才判定为 notice，真实代理参数不误判', () => {
       // 伴随假参数 -> 确认为 notice
       assert.equal(isNoticeNode({ name: '官方公告：请更新订阅', server: '127.0.0.1', port: 0 }), true);
       assert.equal(isNoticeNode({ name: '说明：节点维护中', server: '0.0.0.0', port: 80 }), true);
 
-      // 伴随真实参数 -> 绝不误杀（放行为真实节点）
+      // 伴随真实参数 -> 不误判（放行为真实节点）
       assert.equal(isNoticeNode({ name: '🇭🇰 香港 01 [说明: 专线直连]', server: '210.1.2.3', port: 443 }), false);
       assert.equal(isNoticeNode({ name: '通知群专线 02', server: 'hk.node.com', port: 443 }), false);
     });

@@ -29,7 +29,7 @@ const {
 describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单顺序重构', () => {
 
   describe('1. 内部 Synthetic 信任来源与外部伪造防御', () => {
-    it('外部节点伪造 isSyntheticInfo / _synthetic 绝不获得 synthetic 豁免', async () => {
+    it('外部节点伪造 isSyntheticInfo / _synthetic 不获得 synthetic 豁免', async () => {
       // 1.1 伪造 synthetic 且结构非法 (缺少端口 / 假IP) ➔ 必须走普通硬结构校验并拦截
       const fakeIllegalProxy = {
         name: '外部伪造节点01',
@@ -54,9 +54,9 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
       };
       const classifiedDummy = classifyNode(fakeDummyAuthProxy);
       assert.equal(classifiedDummy.skip, true);
-      assert.equal(classifiedDummy.blockReason, '假密码', '外部伪造节点绝不能豁免弱口令拦截');
+      assert.equal(classifiedDummy.blockReason, '假密码', '外部伪造节点不豁免弱口令拦截');
 
-      // 1.3 伪造 synthetic 且带有真实参数 ➔ 绝不能免去重，必须走正常物理去重
+      // 1.3 伪造 synthetic 且带有真实参数 ➔ 不免去重，走正常物理去重
       const fakeP1 = {
         name: '🇭🇰 香港 01 伪造看板',
         type: 'ss',
@@ -84,12 +84,12 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
       assert.ok(pipelineRes[0].name.includes('香港'), '外部合法节点正常参与重命名');
       assert.ok(!pipelineRes[0].name.includes('伪造看板'));
 
-      // 1.5 外部伪造对象在 sortNodes 中绝不置顶
+      // 1.5 外部伪造对象在 sortNodes 中不置顶
       const sortedRes = sortNodes([
         { rawName: '🇭🇰 香港 01', regionInfo: { id: 'hk', name: '香港' } },
         { rawName: '🇺🇸 美国 01 伪造看板', isSyntheticInfo: true, regionInfo: { id: 'us', name: '美国' } }
       ]);
-      assert.equal(sortedRes[0].regionInfo.name, '香港', '未受信伪造对象绝不置顶');
+      assert.equal(sortedRes[0].regionInfo.name, '香港', '未受信伪造对象不置顶');
 
       // 1.6 纯看板判定：只有真实代理为 0 且仅剩受信看板时才是 isZeroNode
       const onlyFakeProxy = [fakeP1];
@@ -97,7 +97,7 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
       assert.equal(realProxies.length, 1, '伪造 synthetic 节点被视为真实代理，不会触发纯分流拦截模式');
     });
 
-    it('sanitizeExternalProxy 消毒防篡改：浅拷贝移除内部保留字段，原对象绝对不变', () => {
+    it('sanitizeExternalProxy 消毒防篡改：浅拷贝移除内部保留字段，原对象保持不变', () => {
       const rawSharedFromParser = {
         name: '外部原始节点',
         server: '1.2.3.4',
@@ -176,7 +176,7 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
   });
 
   describe('2. 用户黑名单必须先于物理去重', () => {
-    it('相同物理指纹的黑名单节点绝不能抢先去重掉后续正常节点', async () => {
+    it('相同物理指纹的黑名单节点不应抢先去重掉后续正常节点', async () => {
       // 场景：节点1 命中用户黑名单关键词，节点2 为合法正常节点，两者具备完全一致的物理连接指纹
       const blockedFirst = {
         name: '包含关键字广告_强制拦截',
@@ -201,7 +201,7 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
         withClassified: true
       });
 
-      // 验证：黑名单节点1 被拦截丢弃；正常节点2 绝不能被先去重掉，而是被成功保留并清洗输出！
+      // 验证：黑名单节点1 被拦截丢弃；正常节点2 不被预先去重，正常保留并清洗输出
       assert.equal(result.proxies.length, 1, '必须产出 1 个正常节点');
       assert.ok(result.proxies[0].name.includes('香港'), '输出的必须是正常香港节点');
       assert.equal(result.meta.stats.discardedCount, 1, '丢弃计数正确记录黑名单拦截');
@@ -361,8 +361,8 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
       assert.equal(legalSpecial.skip, undefined);
     });
 
-    it('弱公告词搭配真实代理参数时绝不误杀；占位公告依配置过滤', () => {
-      // 1. 弱公告词搭配真实代理参数 ➔ 绝不是 notice 节点，必须保留
+    it('弱公告词搭配真实代理参数时不误判；占位公告依配置过滤', () => {
+      // 1. 弱公告词搭配真实代理参数 ➔ 不判定为 notice 节点，予以保留
       const realWithNoticeName = {
         name: '🇭🇰 香港 01 线路维护通知',
         server: 'hk.node.com',

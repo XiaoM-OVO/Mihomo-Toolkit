@@ -130,7 +130,7 @@ describe('【Strategy】订阅服务域名与 IP 直连注入 (subDomain)', () =
   });
 
   describe('4. 服务端 Host 自适应推导与防伪造隔离 (server)', () => {
-    it('server - 严格只依据标准 Host 注入直连规则，拒绝不可信 X-Forwarded-Host', async () => {
+    it('server - 仅依据标准 Host 注入直连规则，忽略不可信 X-Forwarded-Host', async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-subdomain-test-'));
       const subFile = path.join(tmpDir, 'nodes.yaml');
       fs.writeFileSync(
@@ -185,8 +185,8 @@ describe('【Strategy】订阅服务域名与 IP 直连注入 (subDomain)', () =
         assert.ok(body.includes('DOMAIN,sub.test-toolkit.com,DIRECT'), '产物 rules 中必须包含推导出的 Host 直连规则');
         assert.ok(body.includes('sub.test-toolkit.com'), '产物 fake-ip-filter 中必须包含推导出的 Host 域名');
 
-        // 2. 不可信的 X-Forwarded-Host 绝不被注入
-        assert.ok(!body.includes('evil-attacker.com'), '绝对不可采信不可信的 X-Forwarded-Host 请求头');
+        // 2. 不可信的 X-Forwarded-Host 不被注入
+        assert.ok(!body.includes('evil-attacker.com'), '不可采信外部 X-Forwarded-Host 请求头');
       } finally {
         await new Promise(resolve => server.close(resolve));
         fs.rmSync(tmpDir, { recursive: true, force: true });

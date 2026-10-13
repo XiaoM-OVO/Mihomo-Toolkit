@@ -96,7 +96,7 @@ describe('【Core】节点名称元数据只读旁路提取 (metadata)', () => {
     assert.ok(meta.features.includes('streaming'), '应包含 streaming 特征');
     assert.ok(meta.features.includes('ipv6'), '应包含 ipv6 特征');
     assert.ok(meta.features.includes('game'), '应包含 game 特征');
-    assert.ok(!meta.features.includes('x0.5'), '倍率绝不应混入 features');
+    assert.ok(!meta.features.includes('x0.5'), '倍率不混入 features');
     assert.deepEqual(meta.multiplier, { value: 0.5, hasExplicit: true });
   });
 
@@ -150,7 +150,7 @@ describe('【Core】节点名称元数据只读旁路提取 (metadata)', () => {
     assert.deepEqual(transit.multiplier, { value: 2, hasExplicit: true });
   });
 
-  it('输入字符串不被修改，且输出元数据对象彻底冻结', () => {
+  it('输入字符串不被修改，且输出元数据对象已被冻结', () => {
     const original = '  🇭🇰 香港 01 x0.5 家宽  ';
     const snapshot = original;
     const meta = extractMetadata(original);

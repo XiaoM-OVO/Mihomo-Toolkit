@@ -61,7 +61,7 @@ function assertIsDAG(proxyGroups, proxies = []) {
   assert.equal(visitedCount, groupNames.size, '策略组图必须为严格 DAG (零环路)');
 }
 
-describe('【Pipeline】DAG 级联空组剪枝与规则殉葬 (strategy-prune)', () => {
+describe('【Pipeline】DAG 级联空组剪枝与级联清理 (strategy-prune)', () => {
   it('pruneEmptyGroups - DAG 级联空组清理、骨架组保活与孤儿规则提供者清理', () => {
     const proxyGroups = [
       { name: '🚀 基础代理', proxies: ['Node1'] },
@@ -140,7 +140,7 @@ describe('【Pipeline】DAG 级联空组剪枝与规则殉葬 (strategy-prune)',
     assert.ok(result.removedGroups.has('GroupA'));
     assert.ok(result.removedGroups.has('GroupB'));
 
-    // 规则同步殉葬
+    // 规则同步清理
     assert.equal(result.rules.length, 1);
     assert.ok(result.rules[0].includes('SurvivorGroup'));
 
@@ -201,7 +201,7 @@ describe('【Pipeline】DAG 级联空组剪枝与规则殉葬 (strategy-prune)',
     assertIsDAG(result.proxyGroups, proxies);
   });
 
-  it('pruneEmptyGroups - 双方均有真实物理叶子的交叉依赖成功破环且双方均幸存', () => {
+  it('pruneEmptyGroups - 双方均有真实物理叶子的交叉依赖成功破环且双方均保留', () => {
     // GroupA 拥有 Node1，GroupB 拥有 Node2，但两组互相交叉引用对方
     const proxyGroups = [
       { name: 'GroupA', proxies: ['Node1', 'GroupB'] },
@@ -215,7 +215,7 @@ describe('【Pipeline】DAG 级联空组剪枝与规则殉葬 (strategy-prune)',
     assert.equal(result.brokenEdges.length, 1);
     assert.deepEqual(result.brokenEdges[0], { from: 'GroupB', to: 'GroupA' });
 
-    // 双方均有真实节点，故均幸存，且图彻底变为 DAG
+    // 双方均有真实节点因而均保留，且图转换为严格 DAG
     const remainingNames = result.proxyGroups.map(g => g.name);
     assert.deepEqual(remainingNames, ['GroupA', 'GroupB']);
 
@@ -326,17 +326,17 @@ describe('【Pipeline】DAG 级联空组剪枝与规则殉葬 (strategy-prune)',
     assertIsDAG(result.proxyGroups, proxies);
   });
 
-  it('pruneEmptyGroups - 豁免组保活注血追溯性记录 (rescuedGroups 准确记录 lostProxies)', () => {
+  it('pruneEmptyGroups - 豁免组兜底保活追溯性记录 (rescuedGroups 准确记录 lostProxies)', () => {
     const proxyGroups = [
       { name: '📍 手动选择', proxies: ['🇭🇰 香港节点', '🇯🇵 日本节点'] }
     ];
-    // 物理节点中没有香港和日本节点 -> 骨架组变空注血
+    // 物理节点中没有香港和日本节点 -> 骨架组变空触发保活
     const result = pruneEmptyGroups({ proxyGroups, proxies: [] });
 
     assert.equal(result.proxyGroups.length, 1);
     assert.deepEqual(result.proxyGroups[0].proxies, ['DIRECT']); // 运行时只输出安全 DIRECT
 
-    // rescuedGroups 忠实记录被救活前丢失的原成员
+    // rescuedGroups 记录兜底保活前丢失的原成员
     assert.equal(result.rescuedGroups.length, 1);
     assert.equal(result.rescuedGroups[0].name, '📍 手动选择');
     assert.deepEqual(result.rescuedGroups[0].lostProxies, ['🇭🇰 香港节点', '🇯🇵 日本节点']);
@@ -374,7 +374,7 @@ describe('【Pipeline】DAG 级联空组剪枝与规则殉葬 (strategy-prune)',
     assert.ok(result.ruleProviders['my-custom-provider']);
   });
 
-  it('pruneEmptyGroups - 非豁免普通应用组仅含 DIRECT 时被坚决剪枝淘汰 (消灭无意义占地卡片)', () => {
+  it('pruneEmptyGroups - 非豁免普通应用组仅含 DIRECT 时被剪枝淘汰 (避免空组残留)', () => {
     const proxyGroups = [
       { name: '📍 手动选择', proxies: ['DIRECT'] },                         // 骨架豁免组
       { name: '🤖 ChatGPT', proxies: ['📍 手动选择', 'DIRECT'] },             // 普通应用组，无真实物理代理
@@ -403,11 +403,11 @@ describe('【Pipeline】DAG 级联空组剪枝与规则殉葬 (strategy-prune)',
     assert.ok(survivingNames.includes('🐟 漏网之鱼'));
     assert.ok(survivingNames.includes('🚫 广告拦截'));
 
-    // 无真实节点、只通向 DIRECT 的纯占位应用组被坚决淘汰
+    // 无真实节点、只通向 DIRECT 的纯占位应用组被淘汰
     assert.ok(!survivingNames.includes('🤖 ChatGPT'));
     assert.ok(!survivingNames.includes('▶️ YouTube'));
 
-    // 对应规则随之殉葬注销
+    // 对应规则随之注销清理
     assert.ok(!result.rules.some(r => r.includes('🤖 ChatGPT')));
     assert.ok(!result.rules.some(r => r.includes('▶️ YouTube')));
     assert.ok(result.rules.some(r => r.includes('🚫 广告拦截')));

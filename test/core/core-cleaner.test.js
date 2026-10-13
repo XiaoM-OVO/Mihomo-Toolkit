@@ -222,7 +222,7 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
   });
 
   it('compressLineArr - 运营商组合优先级（三网防吞噬）', () => {
-    // 包含电信、联通、移动三网时，优先压缩为「三网」，绝不降级为「电联」
+    // 包含电信、联通、移动三网时，优先压缩为「三网」，不降级为「电联」
     const res = extractNodeAttributes('香港 电信 联通 移动 01');
     assert.deepEqual(res.attrs.lineArr, ['三网']);
     assert.equal(res.attrs.cleanLines, '三网');
@@ -233,12 +233,12 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     assert.deepEqual(extractNodeAttributes('香港 电信 移动 01').attrs.lineArr, ['电移']);
   });
 
-  it('classifyNode - 严禁BT下载隔离桶防护 (绝不误入下载策略组)', () => {
+  it('classifyNode - 严禁BT下载隔离桶防护 (不进入下载策略组)', () => {
     // 带有严禁BT特征的低倍率节点：不可进入 download 隔离池
     const forbidNode = { name: '🇭🇰 香港 01 x0.2 严禁BT', server: '1.2.3.4', port: 443 };
     const forbidRes = classifyNode(forbidNode, { lowMultiThreshold: 0.5, isolateDownload: true });
     assert.ok(!forbidRes.tags.includes('download'), '严禁BT节点不应获得 download 标签');
-    assert.notEqual(forbidRes.isolateBucket, 'download', '严禁BT节点绝不应进入 download 隔离池');
+    assert.notEqual(forbidRes.isolateBucket, 'download', '严禁BT节点不进入 download 隔离池');
 
     // 正常低倍率节点：正常进入 download 隔离池
     const normalNode = { name: '🇭🇰 香港 01 x0.2 高速', server: '1.2.3.4', port: 443 };
@@ -247,7 +247,7 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     assert.equal(normalRes.isolateBucket, 'download');
   });
 
-  it('classifyNode - 单字大区避让常见中文词 (日常/新建/完美 绝不误判出国)', () => {
+  it('classifyNode - 单字大区避让常见中文词 (日常/新建/完美 不误判为海外地区)', () => {
     const cases = [
       { name: '香港 日用 01', expected: 'hk' },
       { name: '香港 日常 01', expected: 'hk' },
@@ -537,25 +537,25 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
       assert.equal(checkNodeBlockReason({ server: '[fc00::1]', port: 443, _keepName: true }, 'IPv6ULA'), '');
       assert.equal(checkNodeBlockReason({ server: '[fe80::1]', port: 443, _keepName: true }, 'IPv6LinkLocal'), '');
 
-      // 2. 伪装私网前缀的非法格式即便带有 _keepName 也坚决拒绝 (必须验证 IP 真实解析)
+      // 2. 伪装私网前缀的非法格式即便带有 _keepName 也予以拒绝 (必须验证 IP 真实解析)
       assert.equal(checkNodeBlockReason({ server: '192.168.bad.ip', port: 7890, _keepName: true }, 'BadLan'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '192.168.999.999', port: 7890, _keepName: true }, 'BadLan2'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '10.256.1.1', port: 7890, _keepName: true }, 'BadLan3'), '假IP');
 
-      // 3. 公网占位 IP 即便带有 _keepName 也绝不放行
+      // 3. 公网占位 IP 即便带有 _keepName 也不予放行
       assert.equal(checkNodeBlockReason({ server: '0.0.0.0', port: 443, _keepName: true }, 'Zero'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '1.1.1.1', port: 443, _keepName: true }, 'DNS'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '8.8.8.8', port: 443, _keepName: true }, 'DNS2'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '255.255.255.255', port: 443, _keepName: true }, 'Broadcast'), '假IP');
 
-      // 4. 空服务与非法/缺少端口即便带有 _keepName 也坚决拦截
+      // 4. 空服务与非法/缺少端口即便带有 _keepName 也会被拦截
       assert.equal(checkNodeBlockReason({ server: '', port: 443, _keepName: true }, 'Empty'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '192.168.1.1', _keepName: true }, 'MissingPort'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: null, _keepName: true }, 'NullPort'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 0, _keepName: true }, 'ZeroPort'), '假IP');
       assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 70000, _keepName: true }, 'OverflowPort'), '假IP');
 
-      // 5. _keepName 绝不豁免占位弱口令 (password、123456、全零 UUID 依然坚决阻断)
+      // 5. _keepName 不豁免占位弱口令 (password、123456、全零 UUID 依然阻断)
       assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 443, password: 'password', _keepName: true }, 'KeepDummyPass'), '假密码');
       assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890, password: '123456', _keepName: true }, 'KeepDummyPass2'), '假密码');
       assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 443, uuid: '00000000-0000-0000-0000-000000000000', _keepName: true }, 'KeepDummyUUID'), '假密码');

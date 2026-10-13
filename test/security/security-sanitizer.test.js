@@ -171,7 +171,7 @@ describe('【Security】控制面净化与 DNS 消毒沙箱 (sanitizer)', () => 
       const dotV4 = sanitizeDnsServer('tls://223.5.5.5', { role: ROLES.PROXY_SERVER });
       assert.strictEqual(dotV4.ok, true);
       assert.strictEqual(dotV4.value, 'tls://223.5.5.5');
-      assert.ok(!dotV4.value.includes('/dns-query'), 'DoT 绝不能包含 /dns-query');
+      assert.ok(!dotV4.value.includes('/dns-query'), 'DoT 不应包含 /dns-query');
 
       const dotV6 = sanitizeDnsServer('tls://[2400:3200::1]', { role: ROLES.PROXY_SERVER });
       assert.strictEqual(dotV6.ok, true);

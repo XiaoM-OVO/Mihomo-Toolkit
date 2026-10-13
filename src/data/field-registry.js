@@ -129,7 +129,7 @@ const FIELDS = [
   // DAG 级联剪枝的骨架豁免组：新增项走 additive（基线只能追加不可删减）
   { key: 'exemptGroups', type: 'string[]', default: [], merge: 'additive', trust: 'local',
     baseline: SKELETON_EXEMPT_GROUPS, normalize: 'text', group: '策略组建组与 UI 面板',
-    doc: '在骨架豁免基线之外追加「永不被空组剪枝斩首」的策略组名' },
+    doc: '在骨架豁免基线之外追加「豁免空组剪枝清理」的策略组名' },
 
   // ── 【4. 核心分流开关】 ───────────────────────────────────────────────────
   { key: 'enableAdBlock', type: 'boolean', default: true, merge: 'override', trust: 'any',
