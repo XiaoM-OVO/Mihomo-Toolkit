@@ -6,7 +6,7 @@
 
 const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
-const { classifyNode, matchUserBlacklist } = require('../core/cleaner');
+const { classifyNode, matchUserBlacklist, getFeatureRules } = require('../core/cleaner');
 const { buildRenamePlan, applyRenamePlan } = require('../core/rename');
 const { isTrustedCleanedNode, isTrustedSynthetic, markTrustedCleanedNode, restoreTrustedProxyMetadata, sanitizeExternalProxy } = require('../core/node-trust');
 const { sortNodes } = require('../core/sort');
@@ -70,9 +70,10 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
       }
     }
 
+    const featureRules = getFeatureRules(userConfig);
     const classifiedEntries = entries.map(entry => ({
       ...entry,
-      item: classifyNode(entry.proxy, userConfig, { regionDefs })
+      item: classifyNode(entry.proxy, userConfig, { regionDefs, featureRules })
     })).filter(entry => !entry.item.skip);
 
     const existingItems = classifiedEntries

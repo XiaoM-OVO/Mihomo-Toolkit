@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const { fissionNode, fissionNodes, looksLikeDomain } = require('../../src/core/fission');
 const { computeNodeIndices, renderTemplate, createSeparatorCleaners } = require('../../src/core/rename');
 const { classifyNode, getFeatureRules } = require('../../src/core/cleaner');
+const { resolveConfig } = require('../../src/config');
+const { buildServiceCatalog } = require('../../src/config/catalog');
 const { runNodesPipeline } = require('../../src/pipeline/nodes');
 const { deepConvertStrings } = require('../../src/core/chinese-convert');
 const { runPipelineEngine } = require('../../src/pipeline/engine');
@@ -57,11 +59,11 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
   });
 
   it('cleaner - 识别矩阵 (AI / 流媒体 / IPv6 / 双栈 / 家宽)', () => {
-    const userConfig = {
+    const userConfig = resolveConfig({
       enableAI: true,
       enableStreaming: true,
       showFeatureIcon: true
-    };
+    });
 
     const testNodes = [
       {
@@ -89,6 +91,48 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
         assert.ok(classified.tags.includes(tag), `节点「${proxy.name}」应包含标签: ${tag}, 实际: ${classified.tags.join(',')}`);
       });
     });
+  });
+
+  it('cleaner - getFeatureRules 显式依赖注入与缺失防御', () => {
+    // 1. 缺少 catalog 且尝试启用 AI 时抛出明确 TypeError
+    assert.throws(
+      () => getFeatureRules({ enableAI: true }),
+      /userConfig\.catalog.*is required/
+    );
+
+    // 2. 缺少 catalog 且尝试启用 Streaming 时抛出明确 TypeError
+    assert.throws(
+      () => getFeatureRules({ enableStreaming: true }),
+      /userConfig\.catalog.*is required/
+    );
+
+    // 3. 显式关闭全部动态服务时，零依赖返回纯净静态特征基线
+    const staticOnly = getFeatureRules({ enableAI: false, enableStreaming: false });
+    assert.ok(Array.isArray(staticOnly));
+    assert.ok(staticOnly.length > 0);
+    // 不包含动态 AI 服务的 tag（如 chatgpt）
+    assert.ok(!staticOnly.some(r => r.tag === 'chatgpt'));
+
+    // 4. 正确注入 catalog 时，动态 AI 与流媒体规则成功注入
+    const catalog = buildServiceCatalog();
+    const dynamicRules = getFeatureRules({ catalog, enableAI: true, enableStreaming: true });
+    assert.ok(dynamicRules.some(r => r.tag === 'chatgpt'));
+    assert.ok(dynamicRules.some(r => r.tag === 'netflix' || r.tag === 'nf'));
+
+    // 5. classifyNode 独立调用时，若显式开启 AI 但缺少 catalog 应抛出明确 TypeError
+    assert.throws(
+      () => classifyNode({ name: '香港节点', server: '1.2.3.4', port: 443 }, { enableAI: true }),
+      /userConfig\.catalog.*is required/
+    );
+
+    // 6. classifyNode 注入 options.featureRules 时直接生效
+    const customRules = [{ reg: /SpecialNode/i, tag: 'my-special-tag' }];
+    const res = classifyNode(
+      { name: 'SpecialNode 01', server: '1.2.3.4', port: 443 },
+      {},
+      { featureRules: customRules }
+    );
+    assert.ok(res.tags.includes('my-special-tag'));
   });
 
   it('pipeline - nodes 模板渲染注入 ({index}、{features} 与 {ip_stack})', async () => {

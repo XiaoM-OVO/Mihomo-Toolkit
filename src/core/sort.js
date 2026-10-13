@@ -19,7 +19,7 @@
  */
 
 const { getEnhancedRegionDefs } = require('./shared/regions');
-const { getIsolationBucket } = require('./cleaner');
+const { getIsolationBucket } = require('./isolation');
 const { ISOLATION_SORT_ORDER } = require('../data/cleaner-rules');
 const { isTrustedSynthetic } = require('./node-trust');
 

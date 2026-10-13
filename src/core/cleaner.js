@@ -8,13 +8,11 @@ const { matchNodeRegion, extractCity } = require('./geo');
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { looksLikeDomain } = require('./fission');
 const { getTransportType } = require('./transport');
-const { buildServiceCatalog } = require('../config/catalog');
 const { isTrustedSynthetic } = require('./node-trust');
+const { getIsolationBucket } = require('./isolation');
+const { isNoticeNode } = require('./notice');
 const ipaddr = require('ipaddr.js');
 const {
-  REGEX_INFO_NODE,
-  REGEX_NOTICE_KEYWORD,
-  REGEX_EXPLICIT_NOTICE,
   REGEX_FORBID_DL,
   REGEX_CLEANUP,
   REGEX_FAKE_IPV4,
@@ -210,45 +208,6 @@ function isPrivateOrLoopbackServer(server) {
 }
 
 /**
- * 判定主机地址与端口是否为结构性无效/占位服务
- * @param {string} server
- * @param {number|string} [port]
- * @returns {boolean}
- */
-function isFakeServerAddress(server, port) {
-  const s = String(server || '').trim();
-  const portNum = port != null && port !== '' ? Number(port) : null;
-  const isFakePort = portNum === null || !Number.isInteger(portNum) || portNum <= 0 || portNum > 65535;
-  const isFakeIp = !s
-    || s === 'localhost'
-    || REGEX_FAKE_IPV4.test(s)
-    || REGEX_FAKE_IPV6.test(s);
-  return !s || isFakePort || isFakeIp;
-}
-
-/**
- * 判定节点是否为原生公告/说明候选节点
- * @param {object} proxy
- * @param {string} [rawName]
- * @returns {boolean}
- */
-function isNoticeNode(proxy, rawName) {
-  if (!proxy || typeof proxy !== 'object') return false;
-  if (isTrustedSynthetic(proxy)) return false;
-  const name = rawName || proxy._rawName || proxy.name || '';
-  if (!name) return false;
-
-  // 1. 明确的纯流量/到期横幅标题 (无论挂在什么 server/port 下均判定为说明)
-  if (REGEX_EXPLICIT_NOTICE.test(name)) return true;
-
-  // 2. 一般公告/说明词必须同时伴随无效/占位网络参数，绝不误杀具备真实代理参数的节点
-  const isNotice = REGEX_INFO_NODE.test(name) || REGEX_NOTICE_KEYWORD.test(name);
-  if (!isNotice) return false;
-
-  return isFakeServerAddress(proxy.server, proxy.port);
-}
-
-/**
  * 拦截与阻断判定
  * @param {object} proxy
  * @param {string} rawName
@@ -299,17 +258,37 @@ function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
 
 /**
  * 编译全量特征规则列表（包含静态特征基线、AI 服务注册表、流媒体注册表与自定义服务）
+ * 严格遵循洋葱模型：本函数为纯计算函数，不再反向依赖 config/catalog。
+ * 动态服务规则统一由入参中的 userConfig.catalog (ServiceCatalog 实例) 提供。
+ *
  * @param {object} [userConfig={}]
+ * @param {object} [userConfig.catalog] 由配置层编译生成的 ServiceCatalog 实例
+ * @param {boolean} [userConfig.enableAI]
+ * @param {boolean} [userConfig.enableStreaming]
  * @returns {Array<{ reg: RegExp, tag: string, pool?: string, groupName?: string }>}
  */
 function getFeatureRules(userConfig = {}) {
   const rules = [...STATIC_FEATURE_RULES];
 
-  // 动态服务编目特征规则注入 (统一由 catalog 单一事实来源驱动)
-  const catalog = userConfig.catalog || buildServiceCatalog(userConfig);
+  const enableAI = userConfig.enableAI !== false;
+  const enableStreaming = userConfig.enableStreaming !== false;
+
+  // 若明确关闭了所有动态编目服务，直接返回纯净的静态特征基线 (零依赖纯函数)
+  if (!enableAI && !enableStreaming) {
+    return rules;
+  }
+
+  const catalog = userConfig.catalog;
+  if (!catalog) {
+    throw new TypeError(
+      'getFeatureRules: userConfig.catalog (ServiceCatalog) is required when dynamic service rules (enableAI/enableStreaming) are active. ' +
+      'Please construct catalog via resolveConfig(userConfig) or buildServiceCatalog(userConfig) in the configuration/pipeline layer, ' +
+      'or disable dynamic rules with { enableAI: false, enableStreaming: false }.'
+    );
+  }
 
   // AI 助手特征规则（逆序 unshift，确保高优先级）
-  if (userConfig.enableAI !== false) {
+  if (enableAI) {
     const aiActive = catalog.getActiveServices('ai', userConfig);
     aiActive.slice().reverse().forEach(({ key, service }) => {
       if (service.reg) {
@@ -324,7 +303,7 @@ function getFeatureRules(userConfig = {}) {
   }
 
   // 流媒体服务特征规则
-  if (userConfig.enableStreaming !== false) {
+  if (enableStreaming) {
     const streamActive = catalog.getActiveServices('streaming', userConfig);
     streamActive.forEach(({ key, service }) => {
       if (service.reg) {
@@ -344,33 +323,6 @@ function getFeatureRules(userConfig = {}) {
   }
 
   return rules;
-}
-
-/**
- * 判定节点在当前配置下归属的隔离分类（家宽、高倍率、下载、实验）
- * @param {object} item 或包含 tags 与 attrs 的对象
- * @param {object} [userConfig={}]
- * @returns {string} 'residential' | 'highMulti' | 'download' | 'experimental' | ''
- */
-function getIsolationBucket(item, userConfig = {}) {
-  if (!item) return '';
-  const tags = item.tags || [];
-  const multi = item.attrs?.multiNum ?? 1;
-  const highMultiThreshold = userConfig.highMultiThreshold ?? 2.5;
-
-  if (userConfig.enableResidential && tags.includes('residential')) {
-    return 'residential';
-  }
-  if (userConfig.isolateHighMulti && multi > highMultiThreshold) {
-    return 'highMulti';
-  }
-  if (userConfig.isolateDownload && tags.includes('download')) {
-    return 'download';
-  }
-  if (userConfig.isolateExperimental && tags.includes('experimental')) {
-    return 'experimental';
-  }
-  return '';
 }
 
 /**
@@ -489,7 +441,15 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   }
 
   // 7. 特征标签与规则匹配 (不论是否有明确大区，客观存在的业务特征规则均予匹配，不丢失业务能力)
-  const rules = options.featureRules || getFeatureRules(userConfig);
+  let rules = options.featureRules;
+  if (!rules) {
+    if (userConfig.catalog || userConfig.enableAI !== undefined || userConfig.enableStreaming !== undefined) {
+      rules = getFeatureRules(userConfig);
+    } else {
+      // 默认独立/无配置调用场景：无 catalog 且未显式指定动态服务开关，默认采用静态基线规则
+      rules = STATIC_FEATURE_RULES;
+    }
+  }
   for (const rule of rules) {
     if (rule.reg.test(rawName)) {
       tags.add(rule.tag);
@@ -534,45 +494,12 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   };
 }
 
-/**
- * 判定单个节点是否为显而易见的无服务能力占位/提示节点
- * 仅用于订阅有效性前置拦截（防止“续费/到期/公告”占位节点把失效订阅误判为成功）
- * 必须结合“假IP/假端口/无真实代理特征”与“提示性名称”双重特征，绝不误杀真实节点
- * @param {object} proxy
- * @returns {boolean}
- */
-function isNoticePlaceholderNode(proxy) {
-  if (!proxy || typeof proxy !== 'object') return false;
-  if (isTrustedSynthetic(proxy)) return false;
-  const rawName = proxy._rawName || proxy.name || '';
-  const isFakeServer = isFakeServerAddress(proxy.server, proxy.port);
-  const isNoticeName = REGEX_EXPLICIT_NOTICE.test(rawName)
-    || REGEX_INFO_NODE.test(rawName)
-    || REGEX_NOTICE_KEYWORD.test(rawName);
-
-  return isFakeServer && isNoticeName;
-}
-
-/**
- * 判定订阅返回的节点列表是否全部为占位/提示节点（即无任何有效可用节点）
- * @param {Array<object>} proxies
- * @returns {boolean}
- */
-function hasOnlyPlaceholderNodes(proxies) {
-  if (!Array.isArray(proxies) || proxies.length === 0) return true;
-  return proxies.every(p => isNoticePlaceholderNode(p));
-}
-
 module.exports = {
   sanitizeNodeName,
   extractNodeAttributes,
   checkNodeBlockReason,
   getFeatureRules,
   classifyNode,
-  getIsolationBucket,
   isPrivateOrLoopbackServer,
-  isNoticeNode,
-  isNoticePlaceholderNode,
-  hasOnlyPlaceholderNodes,
   matchUserBlacklist
 };
