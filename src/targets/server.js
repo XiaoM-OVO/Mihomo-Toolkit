@@ -12,7 +12,7 @@ const yaml = require('yaml');
 const { buildProfile, normalizeOutputMode } = require('../pipeline/engine');
 const { createLogger } = require('../core/logger');
 const { safeFetchText } = require('../io/fetcher');
-const { isAllowedUrl, redactUrl } = require('../io/ssrf');
+const { isAllowedUrlAsync, redactUrl } = require('../io/ssrf');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { hardenRemoteConfig } = require('../core/security/remote-config');
 const { absolutizeMountPaths } = require('../config/mounts');
@@ -315,7 +315,7 @@ function startServer(options = {}) {
             rejectParams();
             return;
           }
-          if (!isAllowedUrl(configUrl)) {
+          if (!(await isAllowedUrlAsync(configUrl))) {
             res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end('Bad Request: Invalid or disallowed config URL');
             return;
@@ -346,7 +346,10 @@ function startServer(options = {}) {
             rejectParams();
             return;
           }
-          const blocked = subUrls.filter(u => !isAllowedUrl(u));
+          // 外部可控入口必须做 DNS 解析后的 SSRF 预检：同步字面量判断会放行
+          // 「域名合法但解析到内网 / 云元数据」的绕过。逐个 await，禁止用 async 谓词直接 filter。
+          const checks = await Promise.all(subUrls.map(u => isAllowedUrlAsync(u)));
+          const blocked = subUrls.filter((_, i) => !checks[i]);
           if (blocked.length > 0) {
             res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end(`Bad Request: Invalid or disallowed subscription URL(s): ${blocked.map(redactUrl).join(', ')}`);

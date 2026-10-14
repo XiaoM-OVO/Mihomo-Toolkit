@@ -8,6 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const dnsPromises = require('node:dns').promises;
 const { startServer, isLoopbackHost, safeTokenEqual, getClientIp } = require('../../src/targets/server');
 const { hardenRemoteConfig } = require('../../src/core/security/remote-config');
 const { readBodyWithLimit } = require('../../src/io/fetcher');
@@ -220,6 +221,30 @@ describe('【Security】常驻服务安全姿态与防御 (server-security)', ()
         assert.equal(res.status, 400, '回环监听下参数闸门不应拦截');
         assert.match(res.body, /disallowed config URL/);
       } finally {
+        server.close();
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('server - 参数化入口做 DNS 后置 SSRF 预检：域名解析至内网一律 400', async () => {
+      const { dir, configFile } = makeFixture();
+      const { server, port } = await startTestServer({ host: '127.0.0.1', configPath: configFile });
+      const origResolve4 = dnsPromises.resolve4;
+      const origResolve6 = dnsPromises.resolve6;
+      dnsPromises.resolve4 = async () => ['10.9.9.9'];
+      dnsPromises.resolve6 = async () => [];
+      try {
+        // ?config= 入口：域名合法但解析到私网，同步字面量判断会放行，必须由异步预检拦下
+        const viaConfig = await get(port, `/sub?config=${encodeURIComponent('http://rebind-cfg.internal/x.yaml')}`);
+        assert.equal(viaConfig.status, 400, '?config= 解析至内网的域名未被预检拦截');
+        assert.match(viaConfig.body, /disallowed config URL/);
+
+        const viaUrl = await get(port, `/sub?url=${encodeURIComponent('http://rebind-sub.internal/nodes.yaml')}`);
+        assert.equal(viaUrl.status, 400, '?url= 解析至内网的域名未被预检拦截');
+        assert.match(viaUrl.body, /disallowed subscription URL/);
+      } finally {
+        dnsPromises.resolve4 = origResolve4;
+        dnsPromises.resolve6 = origResolve6;
         server.close();
         fs.rmSync(dir, { recursive: true, force: true });
       }

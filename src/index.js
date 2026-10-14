@@ -10,7 +10,7 @@ const { buildProfile, runPipelineEngine, normalizeOutputMode } = require('./pipe
 const { runConfigPipeline } = require('./pipeline/config');
 const { safeFetchText } = require('./io/fetcher');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('./io/limits');
-const { redactUrl, isAllowedUrl, validateUrlSsrf } = require('./io/ssrf');
+const { redactUrl, isAllowedUrl, isAllowedUrlAsync, validateUrlSsrf } = require('./io/ssrf');
 const {
   parseContent,
   parseUri,
@@ -47,6 +47,7 @@ module.exports = {
   buildAuditReport,
   redactUrl,
   isAllowedUrl,
+  isAllowedUrlAsync,
   safeFetchText,
   validateRequestLimits,
   DEFAULT_REQUEST_LIMITS,
