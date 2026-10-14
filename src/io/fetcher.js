@@ -230,7 +230,8 @@ async function safeFetchText(url, options = {}) {
         const err = new Error(`HTTP Error: ${res.status}`);
         err.status = res.status;
         err.statusCode = res.status;
-        err.retryable = res.status >= 500; // 5xx 可重试，4xx 等确定性错误不重试
+        // 5xx 服务端故障、408 请求超时、429 限流均属瞬时错误，可重试；其余 4xx 为确定性错误不重试
+        err.retryable = res.status >= 500 || res.status === 408 || res.status === 429;
         throw err;
       }
       const text = await readBodyWithLimit(res, maxBytes);

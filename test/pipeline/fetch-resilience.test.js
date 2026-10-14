@@ -53,6 +53,46 @@ describe('【Pipeline】订阅抓取容灾与重试降级 (fetch-resilience)', (
     }
   });
 
+  test('瞬时性 4xx 可重试：408 / 429 连续失败后成功', async () => {
+    for (const status of [408, 429]) {
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount++;
+        if (fetchCount <= 2) return new Response('', { status });
+        return new Response(SUB_CONTENT, { status: 200 });
+      };
+      try {
+        const cfg = baseConfig('http://93.184.216.34/sub-retryable-' + status, { retry: 2 });
+        const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
+        assert.equal(fetchCount, 3, `${status} 应可重试，共尝试 3 次`);
+        assert.ok(yamlStr.includes('香港'));
+      } finally {
+        restoreFetch();
+      }
+    }
+  });
+
+  test('确定性 4xx 不重试：403 只尝试一次', async () => {
+    let fetchCount = 0;
+    globalThis.fetch = async () => {
+      fetchCount++;
+      return new Response('', { status: 403 });
+    };
+    try {
+      const cfg = {
+        subscriptions: [
+          { uri: 'vless://11111111-2222-3333-4444-555555555555@us.domain.com:443?security=tls#🇺🇸 美国 01', tag: 'OK' },
+          { url: 'http://93.184.216.34/fail403', tag: 'Fail', retry: 2 }
+        ],
+        minorNodeThreshold: 1
+      };
+      await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
+      assert.equal(fetchCount, 1, '403 属确定性错误，不应重试');
+    } finally {
+      restoreFetch();
+    }
+  });
+
   test('4xx 不重试：404 只尝试一次', async () => {
     let fetchCount = 0;
     globalThis.fetch = async () => {
