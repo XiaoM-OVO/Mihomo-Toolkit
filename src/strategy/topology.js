@@ -29,6 +29,28 @@ const buildSelect = (name, proxies, hidden = false) => ({
   hidden
 });
 
+// 目标组名归一化：剥离书写时的前导 Emoji / 符号装饰，仅保留名称本体。
+// 用于精确比对——既兼容「🤖 ChatGPT」这类带图标前缀的书写习惯，
+// 又杜绝「节点」这类短目标名通过子串匹配误命中「香港节点」等多个无关策略组。
+const GROUP_DECORATION_PREFIX = /^[^\p{L}\p{N}]+/u;
+
+function stripGroupDecoration(rawName) {
+  const stripped = String(rawName || '').replace(GROUP_DECORATION_PREFIX, '').trim();
+  return stripped || String(rawName || '').trim();
+}
+
+/**
+ * 按「归一化精确匹配」解析目标策略组，禁止子串模糊命中。
+ * @param {Array<object>} groups 现有策略组列表
+ * @param {string} rawTarget 目标组名（允许带 Emoji/图标前缀）
+ * @returns {object|null}
+ */
+function resolveTargetGroup(groups, rawTarget) {
+  const target = stripGroupDecoration(rawTarget).toLowerCase();
+  if (!target) return null;
+  return groups.find(g => stripGroupDecoration(g.name).toLowerCase() === target) || null;
+}
+
 /**
  * 构建完整的策略组拓扑
  * @param {object} params
@@ -483,7 +505,7 @@ function buildProxyTopology({
       const matched = buckets.special.filter(n => n.toLowerCase().includes(kw));
       if (!matched.length) continue;
       for (const tName of targetGroups) {
-        const group = finalGroups.find(g => g.name === tName || (tName && tName.includes(g.name)) || (g.name && g.name.includes(tName)));
+        const group = resolveTargetGroup(finalGroups, tName);
         if (group && group.proxies) {
           const s = new Set(group.proxies);
           matched.forEach(n => { if (!s.has(n)) group.proxies.push(n); });
@@ -502,19 +524,14 @@ function buildProxyTopology({
     for (const rawTarget of customGroups) {
       if (!rawTarget || typeof rawTarget !== 'string') continue;
       const tName = rawTarget.trim();
-      const group = finalGroups.find(g =>
-        g.name === tName ||
-        (g.name && g.name.toLowerCase() === tName.toLowerCase()) ||
-        (g.name && g.name.toLowerCase().includes(tName.toLowerCase())) ||
-        (tName && tName.toLowerCase().includes(g.name.toLowerCase()))
-      );
+      const group = resolveTargetGroup(finalGroups, tName);
       if (group && Array.isArray(group.proxies)) {
         if (!group.proxies.includes(nodeName)) {
           group.proxies.unshift(nodeName);
         }
       } else if (!group) {
-        // 若目标组不存在，动态自动创建新策略组
-        finalGroups.push(buildSelect(tName, [nodeName, 'DIRECT']));
+        // 若目标组不存在，动态自动创建新策略组（名称剥离图标前缀，维持纯名称基线）
+        finalGroups.push(buildSelect(stripGroupDecoration(tName), [nodeName, 'DIRECT']));
       }
     }
   });
@@ -532,7 +549,7 @@ function buildProxyTopology({
       }
       if (nodesToInject.length === 0) continue;
       for (const targetName of targetGroups) {
-        const group = finalGroups.find(g => g.name === targetName || (targetName && targetName.includes(g.name)) || (g.name && g.name.includes(targetName)));
+        const group = resolveTargetGroup(finalGroups, targetName);
         if (group && group.proxies) {
           const existing = new Set(group.proxies);
           nodesToInject.forEach(n => { if (!existing.has(n)) group.proxies.push(n); });

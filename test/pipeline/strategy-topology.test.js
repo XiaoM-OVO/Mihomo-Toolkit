@@ -225,6 +225,59 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.ok(buckets.hk.includes('🇭🇰 香港 01'), '普通节点正常入桶');
   });
 
+  it('buildProxyTopology - customGroups 精确匹配：短目标名不再子串误注入', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const classifiedNodes = [
+      {
+        proxy: { name: '🇺🇸 美国 01' },
+        rawName: '🇺🇸 美国 01',
+        regionInfo: { id: 'us', name: '美国' },
+        groupKey: 'us',
+        tags: []
+      },
+      {
+        proxy: { name: '🇺🇸 专线·自建节点' },
+        rawName: '🇺🇸 专线·自建节点',
+        regionInfo: { id: 'us', name: '美国' },
+        groupKey: 'us',
+        customGroups: ['节点'],
+        tags: []
+      },
+      {
+        proxy: { name: '🇺🇸 专线·AI节点' },
+        rawName: '🇺🇸 专线·AI节点',
+        regionInfo: { id: 'us', name: '美国' },
+        groupKey: 'us',
+        customGroups: ['🤖 ChatGPT'],
+        tags: []
+      }
+    ];
+
+    const { proxyGroups } = buildProxyTopology({
+      classifiedNodes,
+      userConfig: { ...DEFAULT_CONFIG, minorNodeThreshold: 1 },
+      registries
+    });
+
+    const usGroup = proxyGroups.find(g => g.name === '美国节点');
+    assert.ok(usGroup, '应存在美国节点组');
+    assert.ok(
+      !usGroup.proxies.includes('🇺🇸 专线·自建节点'),
+      '目标名「节点」不应通过子串匹配误注入「美国节点」组'
+    );
+
+    const exactGroup = proxyGroups.find(g => g.name === '节点');
+    assert.ok(exactGroup, '目标名精确不存在时应动态新建同名组，而非模糊注入他组');
+    assert.ok(exactGroup.proxies.includes('🇺🇸 专线·自建节点'));
+
+    const gptGroup = proxyGroups.find(g => g.name === 'ChatGPT');
+    assert.ok(gptGroup, '应存在 ChatGPT 组');
+    assert.ok(
+      gptGroup.proxies.includes('🇺🇸 专线·AI节点'),
+      '带 Emoji 前缀的目标名仍应精确命中同名组'
+    );
+  });
+
   it('buildProxyTopology - coreRegions 声明式主力免折叠大区定制', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
     const classifiedNodes = [
