@@ -164,7 +164,7 @@
 | 域名并发解析无流控与排队池 | `src/io/dns-resolver.js` | 资源耗尽风险 | `resolveProxiesDomains` 全量并发，大订阅易耗尽套接字并触发 DNS 限流 | M2 阶段 |
 | DoH 查询不支持代理且串行阻塞 | `src/io/dns-resolver.js` | 健壮性缺陷 | `queryDoh` 裸调用全局 `fetch`，不走本地代理；且对 AliDNS 与 Google 串行兜底阻塞 | M2 阶段 |
 | Shadowsocks 密码与插件多值截断 (已修复) | `src/io/parsers/shadowsocks.js` | 兼容性缺陷 | 明文凭证用 `split(':')`，密码含冒号被截断；插件参数用 `split('=')` 同理截断 | M1 阶段 |
-| VMess 字段兼容狭窄与伪装头丢失 | `src/io/parsers/vmess.js` | 兼容性缺陷 | TLS 仅严格匹配字符串 `'tls'`；`tcp+http` 混淆伪装头时丢弃了 host/path | M1 阶段 |
+| VMess 字段兼容狭窄与伪装头丢失 (已修复) | `src/io/parsers/vmess.js` | 兼容性缺陷 | TLS 仅严格匹配字符串 `'tls'`；`tcp+http` 混淆伪装头时丢弃了 host/path | M1 阶段 |
 | gRPC 协议路径多别名兼容缺失 (已修复) | `src/io/parsers/vless.js`, `trojan.js` | 兼容性缺陷 | 仅获取 `serviceName`，未兼容通用的 `service-name` 或 `path` 参数 | M1 阶段 |
 | HTTP 重试状态码一刀切判死 4xx (已修复) | `src/io/fetcher.js` | 健壮性坏味道 | `err.retryable = res.status >= 500` 导致 HTTP 429 与 408 直接放弃重试 | M1 阶段 |
 | 订阅内容 Base64 盲解码性能开销 | `src/io/parsers/index.js` | 性能坏味道 | 未做字符特征预检，对任意 Plain 文本直接调用解码，造成无效解析尝试 | M2 阶段 |
