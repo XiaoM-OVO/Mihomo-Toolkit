@@ -24,6 +24,9 @@
 # 抓取设置（本地代理 + 容灾兜底）
 fetchProxyPort: 7890          # 抓取代理端口，留空=直连；每项订阅可用 proxy 单独覆盖
 fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失败自动走代理
+# 直连模式：本机 DNS 解析失败/无记录一律拒绝（fail-closed）。
+# 代理模式：目标域名由代理侧解析，本机校验无法约束其实际出口；如需完整 SSRF 防护，
+#           请在代理侧配置 ACL 拒绝私网/回环/云元数据目标（本工具不宣称代理模式已完整防护）。
 # fetchRetry: 2               # 拉取失败重试次数（超时/网络错误/5xx 重试，4xx 快速失败）
 # fetchTimeout: 15            # 单次拉取超时秒数
 # fetchStaleTtl: 24           # 网络中断时复用上次成功缓存的小时数（0=关闭容灾）

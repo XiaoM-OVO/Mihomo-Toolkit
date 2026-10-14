@@ -7,6 +7,12 @@
  * 2. 支持 本地代理调度、三态策略 (direct/proxy/auto) 与按订阅粒度覆盖
  * 3. 抓取重试策略：仅重试网络抖动/超时/5xx，快速失败 4xx 确定性错误
  * 4. Stale 兜底容灾缓存：网络故障时复用上次有效内容，保障下游节点不掉线
+ *
+ * SSRF 语义：每跳重定向与每次重试/回退都重新校验。
+ *   - 直连：本地 DNS 解析结果即权威，解析失败/无记录一律拒绝（fail-closed）；
+ *   - 代理：目标域名由代理侧解析，本机校验不构成安全保证，仅做尽力过滤。
+ *     代理模式残余风险（分裂 DNS / 代理侧私有解析 / 代理 ACL 缺失）无法在本层消除，
+ *     需由代理侧 ACL 兜底；详见 io/ssrf.js 文件头。
  */
 
 const net = require('net');
@@ -193,12 +199,18 @@ async function safeFetchText(url, options = {}) {
     proxyAgentCache.set(proxyUrl, proxyDispatcher);
   }
 
+  // SSRF 严格度随模式变化：
+  //   - 直连：本地解析结果即权威 → strict，DNS 失败/无记录一律拒绝（fail-closed）；
+  //   - 代理：目标由代理侧解析，本地结果不构成安全保证 → 非严格，仅尽力过滤。
+  //     残余风险（分裂 DNS / 代理侧私有解析 / 代理 ACL 缺失）无法在本层消除，见 ssrf.js 文件头。
+  const ssrfStrict = !proxyDispatcher;
+
   let currentUrl = url;
   let redirects = 0;
 
   try {
     while (true) {
-      await validateUrlSsrf(currentUrl);
+      await validateUrlSsrf(currentUrl, { strict: ssrfStrict });
       const parsedUrl = new URL(currentUrl);
       const fetchOpts = buildFetchOpts(parsedUrl, controller.signal);
       const res = await fetch(parsedUrl.toString(), proxyDispatcher ? { ...fetchOpts, dispatcher: proxyDispatcher } : fetchOpts);
