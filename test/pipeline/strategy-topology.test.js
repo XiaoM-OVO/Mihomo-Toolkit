@@ -164,7 +164,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
       registries
     });
 
-    const hkHashGroup = proxyGroups.find(g => g.name === '⚖️ 负载均衡-哈希 (香港)');
+    const hkHashGroup = proxyGroups.find(g => g.name === '负载均衡-哈希 (香港)');
     assert.ok(hkHashGroup, '应生成香港哈希负载均衡组');
     assert.equal(hkHashGroup.type, 'load-balance');
     assert.equal(hkHashGroup.strategy, 'consistent-hashing');
@@ -173,7 +173,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
 
     const hkGroup = proxyGroups.find(g => g.name === '香港节点');
     assert.ok(hkGroup, '应包含香港地区组');
-    assert.equal(hkGroup.proxies[0], '⚖️ 负载均衡-哈希 (香港)');
+    assert.equal(hkGroup.proxies[0], '负载均衡-哈希 (香港)');
     assert.ok(hkGroup.proxies.includes('🇭🇰 香港 01'));
     assert.ok(hkGroup.proxies.includes('🇭🇰 香港 02'));
 
