@@ -65,8 +65,8 @@
   - [x] 消除 `cleaner.js:classifyNode` 中原地修改 `proxy.server / port / name` 的副作用；
   - [x] 消除 `kernel.js:applyCoreOptimize` 中原地修改代理节点属性的副作用；
   - [x] 修正机场订阅 Tag 隐式豁免广告清洗的逻辑越权缺陷（`subTagLower === k`）。
-- [ ] **代码去重与死代码清理**：
-  - [ ] 消除 `ingestion.js` 中 `ingestSubscriptions` 与 `ingestUrls` 之间超 130 行的重复代码；
+- [x] **代码去重与死代码清理**：
+  - [x] 消除 `ingestion.js` 中多订阅与单 URL 两条路径之间超 130 行的重复代码；
   - [x] 剔除 `rename.js` 中未被业务调用的遗留死代码 `resolveNameCollisions`；
   - [x] 统一 `metadata.js` 与 `regions.js` 的地区事实源，统一看板节点假 IP 定义（`1.0.0.1` vs `127.0.0.1`）。
 - [x] **安全隐私与凭证脱敏加固**：
@@ -138,7 +138,7 @@
 | 循环内重复排序静态字典 (已修复) | `src/data/cleaner-rules.js` | 性能坏味道 | `CARRIER_COMBO_MAP` 预排序常量化为 `SORTED_CARRIER_COMBOS`，消除循环内排序开销 | M1 阶段 |
 | 字段注册表元数据分类错位 (已修复) | `src/data/field-registry.js` | 规范/遗留 | `include` 归入基础配置挂载；`devServices` 归入扩展分流开关并支持自定义 dev 服务 | M1 阶段 |
 | 注册表兜底机制双轨制 | `src/data/field-registry.js` | 设计坏味道 | 存在 12 个 `default: undefined` 字段依赖代码内隐式兜底 | M2 阶段 |
-| include 原始对象二次传参穿透 | `src/config/include.js` | 边界缺陷 | `WeakSet` 仅缓存展开后对象，二次传入同字面量无法阻断二次读盘 | M1 阶段 |
+| include 原始对象二次传参穿透 (已修复) | `src/config/include.js` | 边界缺陷 | `WeakSet` 仅缓存展开后对象，二次传入同字面量无法阻断二次读盘 | M1 阶段 |
 | resolveConfig 浅拷贝覆盖风险 | `src/config/index.js` | 坏味道 | 顶层使用 `Object.assign` 浅合并，复杂嵌套配置存在子属性丢失风险 | M2 阶段 |
 | 外部配置装载隐式 cwd 依赖 | `src/config/index.js` | 环境敏感 | SDK 调用时默认回退至 `process.cwd()`，存在跨目录解析偏差 | M1 阶段 |
 | 外部脚本未沙箱化执行 | `src/config/mounts.js` | 安全隐患 | `.js` / `.cjs` 配置文件通过 `require()` 直接执行，未做沙箱隔离 | M3 阶段 |
@@ -174,7 +174,7 @@
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
 | :--- | :--- | :---: | :--- | :---: |
 | 策略组目标模糊子串匹配风险 | `src/strategy/topology.js` | 逻辑隐患 | `customGroups` 匹配使用双向 `includes`，目标名为“节点”易错误注入 | M1 阶段 |
-| 哈希负载均衡组硬编码 Emoji 泄露 | `src/strategy/topology.js`, `presentation.js` | 规范缺陷 | `⚖️ 负载均衡-哈希` 组名硬编码带 Emoji，纯图标模式下无法剥离 | M1 阶段 |
+| 哈希负载均衡组硬编码 Emoji 泄露 (已修复) | `src/strategy/topology.js`, `presentation.js` | 规范缺陷 | `⚖️ 负载均衡-哈希` 组名硬编码带 Emoji，纯图标模式下无法剥离 | M1 阶段 |
 | TUN 路由排除缺少 IPv6 私网网段 | `src/strategy/kernel.js` | 规范缺陷 | 路由排除名单仅写死 IPv4 私网，未包含 `fc00::/7` 与 `fe80::/10` | M2 阶段 |
 | 内核优化阶段原地突变代理对象 (已修复) | `src/strategy/kernel.js` | 坏味道 | 原地修改 `config.proxies` 节点的 `client-fingerprint` 与 `udp` 属性 | M1 阶段 |
 | 规则展示层盲目分词替换组名 | `src/strategy/presentation.js` | 坏味道 | 按逗号切分后的所有 token 盲目尝试替换 Emoji，未限定在 TARGET 字段 | M2 阶段 |
@@ -183,7 +183,7 @@
 ### 6. Pipeline 编排与 Targets 宿主交付层问题清单 (第 5 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
 | :--- | :--- | :---: | :--- | :---: |
-| 订阅摄入全流程大量代码复制粘贴 | `src/pipeline/ingestion.js` | 代码坏味道 | `ingestSubscriptions` 与 `ingestUrls` 存在超 130 行完全一致的流程代码 | M1 阶段 |
+| 订阅摄入全流程大量代码复制粘贴 (已修复) | `src/pipeline/ingestion.js` | 代码坏味道 | `ingestSubscriptions` 与 `ingestUrls` 存在超 130 行完全一致的流程代码 | M1 阶段 |
 | 策略层同步降级兜底逻辑重复实现 | `src/pipeline/strategy.js`, `nodes.js` | 架构坏味道 | 因 `runStrategyPipeline` 同步性，手写了 60 行同步版清洗逻辑与 `nodes.js` 割裂 | M2 阶段 |
 | 服务端缺少优雅退出与平滑停机 | `src/targets/server.js` | 生产级缺陷 | 未监听 `SIGTERM`/`SIGINT`，容器终止时直接强杀，无法等待请求排空 | M2 阶段 |
 | 配置文件热重载缺乏防抖并发保护 | `src/targets/server.js` | 健壮性坏味道 | 高并发下检测到变动时并发触发同步重读，遇编辑器中间态易报错回退 | M2 阶段 |
