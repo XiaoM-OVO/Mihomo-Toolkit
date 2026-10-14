@@ -29,7 +29,7 @@ const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../
  */
 function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipelineContext = {}) {
   const safeExtConfig = (typeof userConfigOrProfile === 'object' && userConfigOrProfile !== null) ? userConfigOrProfile : {};
-  const userConfig = resolveConfig(safeExtConfig);
+  const userConfig = resolveConfig(safeExtConfig, { logger: pipelineContext.logger });
   if (!userConfig.enablePipeline) return sourceSkeleton;
 
   let classifiedNodes = pipelineContext.classifiedNodes;

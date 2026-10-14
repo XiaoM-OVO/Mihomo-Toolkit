@@ -37,9 +37,10 @@ function loadExternalServicesConfig(filePath, baseDir = process.cwd()) {
  * 属于 fail-open，必须显式告警（基线本身不受影响）。
  *
  * @param {object} merged 合并后的配置对象（原地修改）
+ * @param {object} [logger] 可选分级日志记录器
  * @returns {object} merged
  */
-function applyAdditiveFields(merged) {
+function applyAdditiveFields(merged, logger) {
   for (const field of ADDITIVE_FIELDS) {
     const normalize = ENTRY_NORMALIZERS[field.normalize] || ENTRY_NORMALIZERS.text;
     const raw = merged[field.key];
@@ -53,9 +54,12 @@ function applyAdditiveFields(merged) {
     }
     merged[field.key] = mergeBaseline(field.baseline, raw, normalize);
     if (rejected.length > 0) {
-      console.warn(
-        `[Config] ${field.key} 有 ${rejected.length} 个条目格式非法、已忽略（只读基线不受影响）: ${rejected.join(', ')}`
-      );
+      const msg = `[Config] ${field.key} 有 ${rejected.length} 个条目格式非法、已忽略（只读基线不受影响）: ${rejected.join(', ')}`;
+      if (logger && typeof logger.warn === 'function') {
+        logger.warn(msg);
+      } else if (merged.logLevel !== 'silent') {
+        console.warn(msg);
+      }
     }
   }
   return merged;
@@ -64,9 +68,10 @@ function applyAdditiveFields(merged) {
 /**
  * 解析并生成最终生效的配置对象
  * @param {object} [userConfig={}] 用户自定义配置
+ * @param {object} [options={}] 可选解析选项 (如 logger)
  * @returns {object} 合并后的最终配置
  */
-function resolveConfig(userConfig = {}) {
+function resolveConfig(userConfig = {}, options = {}) {
   // 0. 先展开通用片段挂载（include）：主文件优先、数组并集去重、支持递归 include。
   //    CLI / server 在读取配置文件现场已把挂载路径转成绝对路径，故此处以 cwd 为基准
   //    只影响「SDK 直接传对象且写相对路径」的场景。
@@ -96,7 +101,8 @@ function resolveConfig(userConfig = {}) {
   }
 
   // 3. 只读基线 + 用户追加：安全基线只能加强，不能被配置削减
-  applyAdditiveFields(merged);
+  const logger = options?.logger || userConfig?.logger;
+  applyAdditiveFields(merged, logger);
 
   // 4. 构建单一事实来源 ServiceCatalog 实例
   merged.catalog = buildServiceCatalog(merged);

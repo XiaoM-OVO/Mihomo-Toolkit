@@ -133,10 +133,10 @@
 ### 2. Data & Config 层问题清单 (第 1 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
 | :--- | :--- | :---: | :--- | :---: |
-| 分类开关判定遗漏与不一致 | `src/config/catalog.js` | 逻辑缺陷 | 遍历 `dev` 分类时未检查开关；判定逻辑存在 `=== false` 与 `!` 混用 | M1 阶段 |
-| 绕过 Logger 的裸控制台输出 | `src/config/index.js` | 坏味道 | `applyAdditiveFields` 使用 `console.warn`，静默模式下仍会输出 | M1 阶段 |
+| 分类开关判定遗漏与不一致 (已修复) | `src/config/catalog.js` | 逻辑缺陷 | `getActiveServices('dev')` 与策略层动态联动；支持 `enableGitHub`/`enableScholar` 及扩展 | M1 阶段 |
+| 绕过 Logger 的裸控制台输出 (已修复) | `src/config/index.js` | 坏味道 | `applyAdditiveFields` 支持注入分级 `logger`，且在 `logLevel: 'silent'` 下静默 | M1 阶段 |
 | 循环内重复排序静态字典 (已修复) | `src/data/cleaner-rules.js` | 性能坏味道 | `CARRIER_COMBO_MAP` 预排序常量化为 `SORTED_CARRIER_COMBOS`，消除循环内排序开销 | M1 阶段 |
-| 字段注册表元数据分类错位 | `src/data/field-registry.js` | 规范/遗留 | `include` 错划入扩展分流开关；`devServices` 错划入图标仓库 | M1 阶段 |
+| 字段注册表元数据分类错位 (已修复) | `src/data/field-registry.js` | 规范/遗留 | `include` 归入基础配置挂载；`devServices` 归入扩展分流开关并支持自定义 dev 服务 | M1 阶段 |
 | 注册表兜底机制双轨制 | `src/data/field-registry.js` | 设计坏味道 | 存在 12 个 `default: undefined` 字段依赖代码内隐式兜底 | M2 阶段 |
 | include 原始对象二次传参穿透 | `src/config/include.js` | 边界缺陷 | `WeakSet` 仅缓存展开后对象，二次传入同字面量无法阻断二次读盘 | M1 阶段 |
 | resolveConfig 浅拷贝覆盖风险 | `src/config/index.js` | 坏味道 | 顶层使用 `Object.assign` 浅合并，复杂嵌套配置存在子属性丢失风险 | M2 阶段 |
