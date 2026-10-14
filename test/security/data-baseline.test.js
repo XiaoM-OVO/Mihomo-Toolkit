@@ -24,7 +24,10 @@ const {
   TAG_MAP,
   LINE_QUALITY_TIERS,
   getLineQualityWeight,
+  SORTED_CARRIER_COMBOS,
+  DOMESTIC_ENTRY_CITIES,
   STATIC_FEATURE_RULES,
+  STREAMING_FEATURE_REG,
   ISOLATION_SORT_ORDER,
   REGEX_FAKE_IPV4,
   REGEX_FAKE_IPV6,
@@ -305,10 +308,15 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.equal(TAG_MAP['SZX'], '深');
       assert.equal(TAG_MAP['上海'], '沪');
       assert.equal(TAG_MAP['PVG'], '沪');
+      assert.ok(DOMESTIC_ENTRY_CITIES instanceof Set);
+      assert.ok(DOMESTIC_ENTRY_CITIES.has('深') && DOMESTIC_ENTRY_CITIES.has('SZX'));
+      assert.ok(DOMESTIC_ENTRY_CITIES.has('沪') && DOMESTIC_ENTRY_CITIES.has('PVG'));
     });
 
     it('cleaner-rules - 线路质量权重与梯队判定自洽', () => {
       assert.ok(Array.isArray(LINE_QUALITY_TIERS) && LINE_QUALITY_TIERS.length === 5);
+      assert.ok(Array.isArray(SORTED_CARRIER_COMBOS) && SORTED_CARRIER_COMBOS.length === 4);
+      assert.equal(SORTED_CARRIER_COMBOS[0][0], '三网', '大集合三网必须排在最前');
       assert.equal(getLineQualityWeight('IEPL/深港'), 1);
       assert.equal(getLineQualityWeight('IPLC专线'), 1);
       assert.equal(getLineQualityWeight('CN2 GIA'), 2);
@@ -329,6 +337,9 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
         assert.ok(rule.reg instanceof RegExp, `规则 ${rule.tag} reg 不是 RegExp`);
         assert.ok(typeof rule.tag === 'string' && rule.tag.length > 0, '规则 tag 缺失');
       }
+      assert.ok(STREAMING_FEATURE_REG instanceof RegExp, 'STREAMING_FEATURE_REG 必须为 RegExp');
+      assert.ok(STREAMING_FEATURE_REG.test('Netflix 解锁'));
+      assert.ok(STREAMING_FEATURE_REG.test('Disney+ 4K'));
       assert.equal(ISOLATION_SORT_ORDER[''], 0);
       assert.equal(ISOLATION_SORT_ORDER.std, 0);
       assert.equal(ISOLATION_SORT_ORDER.residential, 1);

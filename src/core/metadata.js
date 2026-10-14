@@ -16,9 +16,11 @@ const {
   REGEX_TECH_LINE,
   LINE_MAP,
   CARRIER_SHORT_MAP,
-  CARRIER_COMBO_MAP,
+  SORTED_CARRIER_COMBOS,
   ARCH_AVOID_SET,
   STATIC_FEATURE_RULES,
+  STREAMING_FEATURE_REG,
+  DOMESTIC_ENTRY_CITIES,
   REGEX_ENTRY_CITY
 } = require('../data/cleaner-rules');
 
@@ -27,24 +29,6 @@ const { extractCity } = require('./geo');
 
 // 模块级单例大区定义缓存，避免每次单节点提取产生高频克隆
 const DEFAULT_ENHANCED_DEFS = getEnhancedRegionDefs();
-
-// 国内常见中转入口城市与代码集合 (避免将国内中转入口误判为冲突的落地地区)
-const DOMESTIC_ENTRY_CITIES = new Set([
-  '深', '深圳', 'SZX',
-  '广', '广州', '穗', 'CAN',
-  '沪', '上海', 'SHA', 'PVG',
-  '京', '北京', 'PEK', 'PKX',
-  '杭', '杭州', 'HGH',
-  '川', '四川', '成都', '蓉',
-  '渝', '重庆',
-  '莞', '东莞',
-  '苏', '江苏', '南京', '宁', '无锡',
-  '汉', '武汉',
-  '鲁', '徐', '湘', '辽'
-]);
-
-// 通用流媒体特征识别正则
-const STREAMING_FEATURE_REG = /(?:流媒体|解锁|📺|Netflix|NF|奈飞|网飞|耐飞|YouTube|YT|油管|Disney\+|Disney|迪士尼|D\+|TikTok|抖音海外|TT|Spotify|声田|声破天|HBO|Hulu|Bilibili|哔哩哔哩|动画疯|Bahamut|BBC|Abema|DMM|TVer|DAZN|Paramount\+|Peacock)/i;
 
 /**
  * 运营商缩写合并 (纯函数)
@@ -68,8 +52,7 @@ function compressCarrierLines(arr) {
   if (carrierItems.length === 0) return nonCarrierItems;
 
   const currentAtoms = new Set(carrierItems);
-  const sortedCombos = Object.entries(CARRIER_COMBO_MAP).sort((a, b) => b[1].size - a[1].size);
-  for (const [comboName, atomGroup] of sortedCombos) {
+  for (const [comboName, atomGroup] of SORTED_CARRIER_COMBOS) {
     if (Array.from(atomGroup).every(atom => currentAtoms.has(atom))) {
       return [comboName, ...nonCarrierItems];
     }

@@ -135,7 +135,7 @@
 | :--- | :--- | :---: | :--- | :---: |
 | 分类开关判定遗漏与不一致 | `src/config/catalog.js` | 逻辑缺陷 | 遍历 `dev` 分类时未检查开关；判定逻辑存在 `=== false` 与 `!` 混用 | M1 阶段 |
 | 绕过 Logger 的裸控制台输出 | `src/config/index.js` | 坏味道 | `applyAdditiveFields` 使用 `console.warn`，静默模式下仍会输出 | M1 阶段 |
-| 循环内重复排序静态字典 | `src/data/cleaner-rules.js` | 性能坏味道 | `CARRIER_COMBO_MAP` 清洗每节点时重复计算排序，应预编译为静态常量 | M1 阶段 |
+| 循环内重复排序静态字典 (已修复) | `src/data/cleaner-rules.js` | 性能坏味道 | `CARRIER_COMBO_MAP` 预排序常量化为 `SORTED_CARRIER_COMBOS`，消除循环内排序开销 | M1 阶段 |
 | 字段注册表元数据分类错位 | `src/data/field-registry.js` | 规范/遗留 | `include` 错划入扩展分流开关；`devServices` 错划入图标仓库 | M1 阶段 |
 | 注册表兜底机制双轨制 | `src/data/field-registry.js` | 设计坏味道 | 存在 12 个 `default: undefined` 字段依赖代码内隐式兜底 | M2 阶段 |
 | include 原始对象二次传参穿透 | `src/config/include.js` | 边界缺陷 | `WeakSet` 仅缓存展开后对象，二次传入同字面量无法阻断二次读盘 | M1 阶段 |

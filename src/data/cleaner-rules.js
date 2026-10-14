@@ -89,6 +89,21 @@ const TAG_MAP = {
   韩: '韩', 韩国: '韩', 英: '英', 英国: '英', 美: '美', 美国: '美'
 };
 
+// 国内常见中转入口城市与代码集合 (避免将国内中转入口误判为冲突的落地地区)
+const DOMESTIC_ENTRY_CITIES = new Set([
+  '深', '深圳', 'SZX',
+  '广', '广州', '穗', 'CAN',
+  '沪', '上海', 'SHA', 'PVG',
+  '京', '北京', 'PEK', 'PKX',
+  '杭', '杭州', 'HGH',
+  '川', '四川', '成都', '蓉',
+  '渝', '重庆',
+  '莞', '东莞',
+  '苏', '江苏', '南京', '宁', '无锡',
+  '汉', '武汉',
+  '鲁', '徐', '湘', '辽'
+]);
+
 const SINGLE_EXIT_LOOKAHEAD = {
   日: '(?![常用期间程志照益本])',
   新: '(?![建春年线增华上线节点加北坡])',
@@ -151,6 +166,11 @@ const CARRIER_COMBO_MAP = {
   移联: new Set(['移', '联']),
   电移: new Set(['电', '移'])
 };
+
+// 预排序组合运营商列表 (三网优先于两网，大集合优先匹配，避免高频循环内重复排序)
+const SORTED_CARRIER_COMBOS = Object.freeze(
+  Object.entries(CARRIER_COMBO_MAP).sort((a, b) => b[1].size - a[1].size)
+);
 
 // 线路质量权重梯队 (1 ~ 6 级，越小质量越优)
 const LINE_QUALITY_TIERS = [
@@ -234,6 +254,9 @@ const STATIC_FEATURE_RULES = [
   }
 ];
 
+// 通用流媒体特征识别正则 (包含国内外主流流媒体平台与解锁标记)
+const STREAMING_FEATURE_REG = /(?:流媒体|解锁|📺|Netflix|NF|奈飞|网飞|耐飞|YouTube|YT|油管|Disney\+|Disney|迪士尼|D\+|TikTok|抖音海外|TT|Spotify|声田|声破天|HBO|Hulu|Bilibili|哔哩哔哩|动画疯|Bahamut|BBC|Abema|DMM|TVer|DAZN|Paramount\+|Peacock)/i;
+
 // =============================================================================
 // 6. 隔离分类排序权重 (Isolation Sort Order)
 // =============================================================================
@@ -267,6 +290,7 @@ module.exports = {
   ENTRY_CITIES,
   EXIT_REGIONS,
   TAG_MAP,
+  DOMESTIC_ENTRY_CITIES,
   REGEX_ENTRY_CITY,
   // 倍率
   REGEX_MULTI,
@@ -279,10 +303,12 @@ module.exports = {
   LINE_MAP,
   CARRIER_SHORT_MAP,
   CARRIER_COMBO_MAP,
+  SORTED_CARRIER_COMBOS,
   LINE_QUALITY_TIERS,
   getLineQualityWeight,
   // 特征规则
   STATIC_FEATURE_RULES,
+  STREAMING_FEATURE_REG,
   // 隔离排序
   ISOLATION_SORT_ORDER
 };
