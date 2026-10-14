@@ -516,7 +516,10 @@ export function redactUrl(url: string): string;
 export function isAllowedUrl(urlString: string): boolean;
 
 /**
- * 异步校验 URL 是否属于公网合法地址（在同步字面量校验之上补做 DNS 解析，防 DNS 指向内网的 SSRF 绕过）
+ * 异步预检 URL 是否属于公网合法地址（在同步字面量校验之上补做 DNS 解析）。
+ *
+ * **非严格语义**：仅拒绝字面量违规与「能解析到私网」的目标；本地解析失败不据此拒绝
+ * （此时尚不知道后续走直连还是代理），严格判定由连接现场 `validateUrlSsrf` 按模式执行。
  * @param urlString 待校验的 URL
  */
 export function isAllowedUrlAsync(urlString: string): Promise<boolean>;
@@ -565,9 +568,23 @@ export interface SafeFetchResult {
 export function safeFetchText(url: string, options?: SafeFetchOptions): Promise<SafeFetchResult>;
 
 /**
- * 深度 SSRF 校验：协议白名单、私网/回环/CGNAT/云元数据与 DNS 解析结果拦截
+ * 深度 SSRF 校验（连接现场强制校验）：协议白名单、私网/回环/CGNAT/云元数据与 DNS 解析结果拦截。
+ *
+ * @param urlString 待校验的 URL
+ * @param options.strict 默认 true（直连语义）：本地解析结果即权威，DNS 失败 / 超时 / A-AAAA
+ *   均无记录 → 一律拒绝（fail-closed）；false 表示代理语义（目标由代理侧解析，本地结果不权威，
+ *   解析失败不据此拒绝，仅对能解析到的地址尽力过滤）。
+ * @param options.resolve 可注入的确定性解析器（测试用），默认走系统 DNS。
+ * @throws 命中策略拦截（`err.ssrfBlocked='policy'`，`retryable=false` 不重试/不回退）
+ *   或无法证明（`err.ssrfBlocked='unverified'`，允许 auto 模式回退代理）
  */
-export function validateUrlSsrf(urlString: string): Promise<true>;
+export function validateUrlSsrf(
+  urlString: string,
+  options?: {
+    strict?: boolean;
+    resolve?: (host: string, family: 4 | 6) => Promise<string[]>;
+  }
+): Promise<true>;
 
 /**
  * 校验请求与资源配额，返回 null 表示通过

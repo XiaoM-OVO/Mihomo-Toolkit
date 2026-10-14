@@ -5,9 +5,25 @@
  *
  * 两道防线：
  *   - `isAllowedUrl`：同步字面量校验（协议 / 回环字面量 / 字面量 IP），零 I/O，供高频预筛；
- *   - `isAllowedUrlAsync` / `validateUrlSsrf`：在其之上补做 DNS 解析，
- *     拦截「域名本身合法、但解析结果指向内网」的绕过。凡是放行后要真实发起请求的
- *     外部可控入口（server 参数化入口、fetcher 建连前）都必须过后者。
+ *   - `validateUrlSsrf`：在其之上补做 DNS 解析，拦截「域名本身合法、但解析结果指向内网」的绕过。
+ *     它是**连接现场**的强制校验，凡放行后会真实发起请求的入口都必须过它。
+ *   - `isAllowedUrlAsync`：预检用途（server 参数化入口），采用**非严格**语义：
+ *     本地解析失败不据此拒绝（此时尚不知道后续走直连还是代理），严格判定留给连接现场。
+ *
+ * 分模式严格度（`validateUrlSsrf` 的 `strict` 选项）：
+ *   - 直连（strict=true，默认）：本地解析结果即权威。
+ *     DNS 解析失败 / 超时 / A/AAAA 均无记录 → 一律拒绝（fail-closed）；
+ *     解析成功的全部候选地址逐一检查，只要存在禁止地址即拒绝整个目标。
+ *   - 代理（strict=false）：目标域名由代理侧解析，本地解析结果**不构成安全保证**，
+ *     因此解析失败不据此拒绝，仅对能解析到的地址做「尽力而为」过滤。
+ *
+ * 残余风险（代理模式，必须显式认知）：
+ *   本机回环代理**不等于**可信安全边界——代理由用户自行配置，其路由与 ACL 本工具无法读取、
+ *   无法验证、也无法强制。代理模式**无法**防护：分裂 DNS（本机解析得公网、代理侧解析得内网）、
+ *   代理侧私有解析、以及代理自身 ACL 缺失导致的私网/回环/元数据出站。
+ *   若需完整 SSRF 防护，必须在代理侧自行配置 ACL 拒绝私网/回环/元数据目标。
+ *   本工具不宣称代理模式已完整防护 SSRF。
+ *   （建连阶段的 IP 固定 / IP Pinning，属 ROADMAP M3 任务，不在此层实现。）
  */
 
 const { isPrivateIp, isPrivateIPv6 } = require('../infra/ip');
@@ -18,6 +34,101 @@ try { dns = require('dns').promises; } catch { dns = null; }
 const dnsCache = new Map();
 const DNS_CACHE_TTL_MS = 30000;
 const DNS_CACHE_MAX = 1000;
+const DNS_TIMEOUT_MS = 5000;
+
+/** 回环 / 未指定地址字面量（localhost、0.0.0.0、::1） */
+const LOOPBACK_LITERAL_REGEX = /^(localhost|0\.0\.0\.0|::1)$/;
+const IPV4_LITERAL_REGEX = /^\d+\.\d+\.\d+\.\d+$/;
+
+/**
+ * 判定主机名是否为回环 / 未指定 / localhost 子域。
+ * 这类主机名无需 DNS 即可判定，且必须在解析**之前**前置拒绝：
+ * 否则「解析失败即放行」的非严格路径会被 `evil.localhost` 之类的子域绕过。
+ */
+function isLoopbackHostName(host) {
+  if (LOOPBACK_LITERAL_REGEX.test(host)) return true;
+  return host === 'localhost' || host.endsWith('.localhost');
+}
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('DNS timeout')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+/**
+ * 默认域名解析器：并发查询 A/AAAA 并缓存成功结果。
+ * 解析失败 / 超时一律 reject（由调用方按 `strict` 决定拒绝还是放行）。
+ * @param {string} host
+ * @param {4|6} family
+ * @returns {Promise<string[]>}
+ */
+function defaultResolver(host, family) {
+  if (!dns) return Promise.reject(new Error('DNS module unavailable'));
+  const now = Date.now();
+  const cached = dnsCache.get(host);
+  if (cached && cached.expireAt > now) {
+    return Promise.resolve(family === 4 ? cached.v4 : cached.v6);
+  }
+
+  const work = (async () => {
+    const [r4, r6] = await Promise.allSettled([dns.resolve4(host), dns.resolve6(host)]);
+    // A 与 AAAA 查询均失败（NXDOMAIN / 网络不可用）→ 无法证明目标安全，向上传播
+    if (r4.status === 'rejected' && r6.status === 'rejected') {
+      throw new Error(`DNS resolution failed: ${host}`);
+    }
+    const v4 = r4.status === 'fulfilled' ? r4.value : [];
+    const v6 = r6.status === 'fulfilled' ? r6.value : [];
+    if (v4.length > 0 || v6.length > 0) {
+      if (dnsCache.size >= DNS_CACHE_MAX) dnsCache.delete(dnsCache.keys().next().value);
+      dnsCache.set(host, { v4, v6, expireAt: Date.now() + DNS_CACHE_TTL_MS });
+    }
+    return family === 4 ? v4 : v6;
+  })();
+
+  return withTimeout(work, DNS_TIMEOUT_MS);
+}
+
+/**
+ * 解析域名的全部候选地址（A + AAAA）。
+ *
+ * @param {string} host
+ * @param {object} [options]
+ * @param {(host: string, family: 4|6) => Promise<string[]>} [options.resolve] 可注入解析器（测试用）
+ * @returns {Promise<{ ok: boolean, v4: string[], v6: string[] }>}
+ *   ok=false 表示「无法证明目标安全」：解析失败、超时或 A/AAAA 均无记录。
+ *   ok=true 时 v4/v6 为**全部**候选地址，调用方必须逐一检查——
+ *   避免客户端或代理在多个地址中挑中未被检查的那一个。
+ */
+async function resolveCandidates(host, options = {}) {
+  const resolveFn = typeof options.resolve === 'function' ? options.resolve : defaultResolver;
+  const [r4, r6] = await Promise.allSettled([resolveFn(host, 4), resolveFn(host, 6)]);
+  const v4 = r4.status === 'fulfilled' && Array.isArray(r4.value) ? r4.value : [];
+  const v6 = r6.status === 'fulfilled' && Array.isArray(r6.value) ? r6.value : [];
+  return { ok: v4.length > 0 || v6.length > 0, v4, v6 };
+}
+
+/** 构造确定性策略拦截错误（协议 / 回环 / 私网 / 元数据字面量） */
+function policyBlocked(message) {
+  const err = new Error(message);
+  err.ssrfBlocked = 'policy';
+  // 确定性策略拦截：不重试、且不允许 auto 模式回退代理
+  err.retryable = false;
+  return err;
+}
+
+/** 构造「无法证明目标安全」错误（DNS 失败 / 超时 / 无记录） */
+function unverifiedBlocked(message) {
+  const err = new Error(message);
+  err.ssrfBlocked = 'unverified';
+  // 刻意不设 retryable=false：允许 auto 模式在直连解析失败后回退代理
+  // （存在「仅代理侧可解析」的合法场景，见 fetcher.fetchNodes）。
+  return err;
+}
 
 function isAllowedUrl(urlStr) {
   try {
@@ -25,7 +136,7 @@ function isAllowedUrl(urlStr) {
     if (!['http:', 'https:'].includes(parsed.protocol)) return false;
     let host = parsed.hostname.toLowerCase();
     if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
-    if (/^(localhost|0\.0\.0\.0|::1)$/.test(host)) return false;
+    if (isLoopbackHostName(host)) return false;
     if (isPrivateIp(host)) return false;
     if (isPrivateIPv6(host)) return false;
     return true;
@@ -34,78 +145,68 @@ function isAllowedUrl(urlStr) {
   }
 }
 
-async function dnsResolveWithTimeout(host, family) {
-  if (!dns) return [];
-  const now = Date.now();
-  const cached = dnsCache.get(host);
-  if (cached && cached.expireAt > now) {
-    return family === 4 ? cached.v4 : cached.v6;
-  }
-
-  const dnsPromise = (async () => {
-    try {
-      const [v4Result, v6Result] = await Promise.allSettled([
-        dns.resolve4(host),
-        dns.resolve6(host)
-      ]);
-      const v4 = v4Result.status === 'fulfilled' ? v4Result.value : [];
-      const v6 = v6Result.status === 'fulfilled' ? v6Result.value : [];
-      if (dnsCache.size >= DNS_CACHE_MAX) dnsCache.delete(dnsCache.keys().next().value);
-      dnsCache.set(host, { v4, v6, expireAt: Date.now() + DNS_CACHE_TTL_MS });
-      return family === 4 ? v4 : v6;
-    } catch {
-      return [];
-    }
-  })();
-
-  let timer = null;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('DNS timeout')), 5000);
-  });
-  try {
-    return await Promise.race([dnsPromise, timeout]);
-  } catch {
-    return [];
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-async function validateUrlSsrf(urlStr) {
+/**
+ * 连接现场的强制 SSRF 校验。
+ *
+ * @param {string} urlStr
+ * @param {object} [options]
+ * @param {boolean} [options.strict=true] true=直连语义（DNS 失败/无记录一律拒绝）；
+ *   false=代理语义（本地解析不权威，失败不据此拒绝，仅尽力过滤）
+ * @param {(host: string, family: 4|6) => Promise<string[]>} [options.resolve] 可注入解析器（测试用）
+ * @returns {Promise<true>}
+ * @throws {Error} 命中策略拦截（`ssrfBlocked='policy'`）或无法证明（`ssrfBlocked='unverified'`）
+ */
+async function validateUrlSsrf(urlStr, options = {}) {
+  const strict = options.strict !== false;
   const parsedUrl = new URL(urlStr);
   if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new Error(`SSRF blocked: illegal protocol ${parsedUrl.protocol}`);
+    throw policyBlocked(`SSRF blocked: illegal protocol ${parsedUrl.protocol}`);
   }
+
   let host = parsedUrl.hostname.toLowerCase();
   if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
-  if (/^(localhost|0\.0\.0\.0|::1)$/i.test(host)) {
-    throw new Error(`SSRF blocked: illegal host ${host}`);
+
+  // 1. 回环 / 未指定 / localhost 子域：无需 DNS 前置拒绝
+  if (isLoopbackHostName(host)) {
+    throw policyBlocked(`SSRF blocked: illegal host ${host}`);
   }
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-    if (isPrivateIp(host)) throw new Error(`SSRF blocked: private IP ${host}`);
-  } else if (host.includes(':')) {
-    if (isPrivateIPv6(host)) throw new Error(`SSRF blocked: private IPv6 ${host}`);
-  } else if (dns) {
-    const v4 = await dnsResolveWithTimeout(host, 4);
-    for (const ip of v4) {
-      if (isPrivateIp(ip)) throw new Error(`SSRF blocked: ${host} resolved to private IP ${ip}`);
+
+  // 2. 字面量 IP 直判（覆盖 IPv4、IPv6 及 IPv4 映射地址）
+  if (IPV4_LITERAL_REGEX.test(host)) {
+    if (isPrivateIp(host)) throw policyBlocked(`SSRF blocked: private IP ${host}`);
+    return true;
+  }
+  if (host.includes(':')) {
+    if (isPrivateIPv6(host)) throw policyBlocked(`SSRF blocked: private IPv6 ${host}`);
+    return true;
+  }
+
+  // 3. 域名：解析全部候选地址后逐一检查
+  const { ok, v4, v6 } = await resolveCandidates(host, options);
+  if (!ok) {
+    if (strict) {
+      throw unverifiedBlocked(
+        `SSRF blocked: unable to verify ${host} (DNS resolution failed, timed out, or returned no records)`
+      );
     }
-    const v6 = await dnsResolveWithTimeout(host, 6);
-    for (const ip of v6) {
-      if (isPrivateIPv6(ip)) {
-        throw new Error(`SSRF blocked: ${host} resolved to private IPv6 ${ip}`);
-      }
-    }
+    // 代理模式：本地解析结果不构成保证，交由代理侧策略兜底（残余风险见文件头注释）
+    return true;
+  }
+  for (const ip of v4) {
+    if (isPrivateIp(ip)) throw policyBlocked(`SSRF blocked: ${host} resolved to private IP ${ip}`);
+  }
+  for (const ip of v6) {
+    if (isPrivateIPv6(ip)) throw policyBlocked(`SSRF blocked: ${host} resolved to private IPv6 ${ip}`);
   }
   return true;
 }
 
 /**
- * 异步 SSRF 预检：在 `isAllowedUrl` 的字面量校验之上补做 DNS 解析。
+ * 异步 SSRF 预检（**非严格**）：在 `isAllowedUrl` 的字面量校验之上补做 DNS 解析。
  *
- * `isAllowedUrl` 只看 URL 字面量，面对「域名合法但解析到 127.0.0.1 / 私网 / 云元数据」
- * 完全放行；凡放行后会真实发起请求的外部可控入口，必须改用它。
- * DNS 解析失败 / 超时按「无法证明其恶意」放行，与 fetcher 建连前的 gate 保持一致。
+ * 供 server 参数化入口在「尚不知道后续走直连还是代理」时做廉价前置过滤：
+ * 只拒绝字面量违规与「能解析到私网」的目标；解析失败不据此拒绝，
+ * 强制判定留给连接现场 `safeFetchText` 按模式执行（见 validateUrlSsrf）。
  *
  * @param {string} urlStr
  * @returns {Promise<boolean>}
@@ -113,7 +214,7 @@ async function validateUrlSsrf(urlStr) {
 async function isAllowedUrlAsync(urlStr) {
   if (!isAllowedUrl(urlStr)) return false;
   try {
-    await validateUrlSsrf(urlStr);
+    await validateUrlSsrf(urlStr, { strict: false });
     return true;
   } catch {
     return false;
