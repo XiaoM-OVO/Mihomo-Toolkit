@@ -129,6 +129,15 @@ describe('【Core】统一分级终端 Logger (logger)', () => {
 
     const vlessUri = 'vless://uuid-1234-5678@node1.example.com:443';
     assert.equal(redactText(vlessUri), 'vless://***@node1.example.com:443');
+
+    const hy2Uri = 'hy2://mypassword123@node2.example.com:443';
+    assert.equal(redactText(hy2Uri), 'hy2://***@node2.example.com:443');
+
+    const tuicUri = 'tuic://uuid-1234:pass456@node3.example.com:8443';
+    assert.equal(redactText(tuicUri), 'tuic://***@node3.example.com:8443');
+
+    const vmessUri = 'vmess://eyJhZGQiOiIxMjcuMC4wLjEiLCJpZCI6InV1aWQtMTIzNCJ9';
+    assert.equal(redactText(vmessUri), 'vmess://***');
   });
 
   it('redact - Logger 集成脱敏选项受控生效', () => {

@@ -9,7 +9,7 @@
  * 4. 契合客户端 2 列网格布局的全局配对汇总节点
  */
 
-const { parseSubscriptionInfo, isExpiredNow } = require('../core/shared/sub-info');
+const { parseSubscriptionInfo, isExpiredNow } = require('../infra/sub-info');
 const { isNoticeNode } = require('../core/notice');
 const { markTrustedSynthetic, isTrustedSynthetic } = require('../core/node-trust');
 

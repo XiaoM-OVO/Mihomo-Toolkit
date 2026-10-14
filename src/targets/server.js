@@ -17,7 +17,7 @@ const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits'
 const { hardenRemoteConfig } = require('../core/security/remote-config');
 const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
-const { normalizeSubDomains } = require('../core/shared/ip');
+const { normalizeSubDomains } = require('../infra/ip');
 const pkg = require('../../package.json');
 
 /** 回环地址判定（仅这些地址可视为「本机可信接入」） */

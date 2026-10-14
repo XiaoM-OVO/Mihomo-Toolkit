@@ -15,7 +15,7 @@
 'use strict';
 
 const ipaddr = require('ipaddr.js');
-const { isPrivateIPv6 } = require('../shared/ip');
+const { isPrivateIPv6 } = require('../../infra/ip');
 const { PROTECTED_DOMAINS, effectiveProtectedDomains } = require('../../data');
 
 // ─────────────────────────────────────────────────────────────────────────────

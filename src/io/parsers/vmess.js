@@ -13,6 +13,8 @@ function parseVmessUri(uri) {
     if (!jsonStr) return null;
     const data = JSON.parse(jsonStr);
 
+    const isTls = data.tls === 'tls' || data.tls === true || data.tls === 'true' || data.tls === 1 || data.tls === '1';
+
     const proxy = {
       name: data.ps || `${data.add}:${data.port}`,
       type: 'vmess',
@@ -21,7 +23,7 @@ function parseVmessUri(uri) {
       uuid: data.id,
       alterId: parseInt(data.aid) || 0,
       cipher: data.scy || 'auto',
-      tls: data.tls === 'tls',
+      tls: isTls,
       'skip-cert-verify': false
     };
 
@@ -42,7 +44,7 @@ function parseVmessUri(uri) {
       if (data.host) proxy['ws-opts'].headers.Host = data.host;
     } else if (network === 'grpc') {
       proxy['grpc-opts'] = {
-        'grpc-service-name': data.path || ''
+        'grpc-service-name': data.path || data.serviceName || data['service-name'] || ''
       };
     } else if (network === 'h2' || network === 'http') {
       proxy.network = 'h2';
@@ -50,6 +52,14 @@ function parseVmessUri(uri) {
         host: data.host ? [data.host] : [],
         path: data.path || '/'
       };
+    } else if (network === 'tcp' && data.type === 'http') {
+      proxy['http-opts'] = {
+        path: data.path ? [data.path] : ['/'],
+        headers: {}
+      };
+      if (data.host) {
+        proxy['http-opts'].headers.Host = [data.host];
+      }
     }
 
     return proxy;

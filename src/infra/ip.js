@@ -1,12 +1,15 @@
 /**
  * -----------------------------------------------------------------------------
- * Core Layer: IP 地址分类纯工具 (IP Address Classification)
+ * Infra Layer: IP 地址与域名语法判定基元 (IP & Domain Primitives)
  * -----------------------------------------------------------------------------
- * 纯函数、无副作用、无 I/O。位于 Core 层是为了满足架构红线：
- * core / strategy 不得反向依赖 io 层（历史实现把这两个函数放在 io/ssrf.js，
- * 导致 core/security/dns-sanitizer.js 反向 require io 层）。
+ * 本模块属于 `src/infra/` 基础设施层：无状态纯函数、零副作用、零 I/O。
+ * 提供底层通用的 IPv4 / IPv6 分类、私网与保留网段判定、回环探测及规范 FQDN 语法校验，
+ * 供全仓各层（IO, Core, Strategy, Targets）按需直接引用，不依赖任何内部业务模块。
  *
- * io/ssrf.js 继续 re-export 本模块的两个函数，保持既有调用方不变。
+ * 分层契约：
+ *   1. 纯计算基元，无网络 I/O、无文件读写与环境探测；
+ *   2. 零内部依赖，仅依赖 npm 底层地址库 (ipaddr.js)；
+ *   3. 位于最底层（Layer 0），严禁反向引用任何业务分层。
  */
 
 'use strict';

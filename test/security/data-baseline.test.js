@@ -389,5 +389,23 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
         }
       }
     });
+
+    it('layer-rules - infra 层保持只读无状态基元、零业务反向依赖', () => {
+      const infraDir = path.join(__dirname, '..', '..', 'src', 'infra');
+      const files = fs.readdirSync(infraDir).filter(f => f.endsWith('.js'));
+      assert.ok(files.length >= 2, 'infra 层模块缺失');
+      const forbidden = [
+        /require\(\s*['"](?:node:)?(fs|http|https|net|dns|child_process|os)['"]\s*\)/,
+        /require\(\s*['"][^'"]*\/(?:io|pipeline|targets|core|strategy|config|data)\//,
+        /\bfetch\s*\(/,
+        /\bprocess\.env\b/
+      ];
+      for (const file of files) {
+        const src = fs.readFileSync(path.join(infraDir, file), 'utf8');
+        for (const re of forbidden) {
+          assert.ok(!re.test(src), `src/infra/${file} 命中分层红线: ${re}`);
+        }
+      }
+    });
   });
 });

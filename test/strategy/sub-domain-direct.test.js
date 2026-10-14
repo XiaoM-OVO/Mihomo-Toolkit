@@ -12,7 +12,7 @@ const {
   isIPv6,
   isValidDomain,
   isLoopbackOrUnspecified
-} = require('../../src/core/shared/ip');
+} = require('../../src/infra/ip');
 const { buildRoutingRules } = require('../../src/strategy/rules');
 const { applyDnsOverlay } = require('../../src/strategy/dns');
 const { createServiceRegistries } = require('../../src/strategy/registries');

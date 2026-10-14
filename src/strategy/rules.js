@@ -5,7 +5,7 @@
  */
 
 const { FIELDS_BY_KEY } = require('../data');
-const { isIPv4, isIPv6, normalizeSubDomains } = require('../core/shared/ip');
+const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
 
 function dedupe(arr) {
   return [...new Set(arr)];
@@ -70,6 +70,11 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     } else {
       routingRules.push(`DOMAIN,${item},DIRECT`);
     }
+  }
+
+  // 用户自定义私域分流规则（优先于内置规则集生效，确保自定义私域策略不被通用分流拦截）
+  if (Array.isArray(userConfig.customRules) && userConfig.customRules.length) {
+    routingRules.push(...userConfig.customRules);
   }
 
   // QUIC 分流拦截
@@ -233,9 +238,6 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   if (userConfig.enableIPv6) routingRules.push('IP-CIDR6,::/0,IPv6控制台,no-resolve');
   if (userConfig.enableTrafficAudit) {
     routingRules.push('DST-PORT,53/80/443,漏网之鱼', 'DST-PORT,1-65535,DIRECT');
-  }
-  if (Array.isArray(userConfig.customRules) && userConfig.customRules.length) {
-    routingRules.push(...userConfig.customRules);
   }
   routingRules.push('MATCH,漏网之鱼');
 

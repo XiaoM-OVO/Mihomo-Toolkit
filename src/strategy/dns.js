@@ -25,7 +25,7 @@ const {
   sanitizeHosts
 } = require('../core/security/dns-sanitizer');
 const { deriveFakeIpFilterAdditions } = require('../core/security/resolver-plan');
-const { isIPv4, isIPv6, normalizeSubDomains } = require('../core/shared/ip');
+const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
 const { FAKEIP_FILTER_BASELINE, effectiveProtectedDomains } = require('../data');
 
 function dedupe(arr) {

@@ -42,7 +42,7 @@ function parseTrojanUri(uri) {
       if (params.get('host')) proxy['ws-opts'].headers.Host = params.get('host');
     } else if (network === 'grpc') {
       proxy['grpc-opts'] = {
-        'grpc-service-name': params.get('serviceName') || ''
+        'grpc-service-name': params.get('serviceName') || params.get('service-name') || params.get('path') || ''
       };
     }
 
