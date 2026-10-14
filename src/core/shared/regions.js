@@ -147,9 +147,45 @@ function validateMapping() {
 // 默认免折叠主力大区清单 (即使节点数低于阈值也保证独立建组)
 const DEFAULT_CORE_REGIONS = ['cn', 'hk', 'tw', 'jp', 'kr', 'sg', 'us'];
 
+/**
+ * 从国旗 Emoji 动态派生 ISO 3166-1 alpha-2 国家/地区代码 (纯函数)
+ * @param {string} icon
+ * @returns {string|null}
+ */
+function countryCodeFromFlag(icon) {
+  if (!icon || typeof icon !== 'string') return null;
+  const chars = Array.from(icon);
+  if (chars.length !== 2) return null;
+  const cp0 = chars[0].codePointAt(0);
+  const cp1 = chars[1].codePointAt(0);
+  if (cp0 >= 0x1F1E6 && cp0 <= 0x1F1FF && cp1 >= 0x1F1E6 && cp1 <= 0x1F1FF) {
+    return String.fromCharCode(cp0 - 0x1F1E6 + 65, cp1 - 0x1F1E6 + 65);
+  }
+  return null;
+}
+
+/**
+ * 权威地区元数据事实源 (单一事实源 SSOT，派生自 REGION_DEFS_RAW)
+ * 映射标准地区名 -> { groupKey, countryCode, regionName }
+ */
+const REGION_METADATA_MAP = Object.freeze(
+  REGION_DEFS_RAW.reduce((acc, r) => {
+    const code = countryCodeFromFlag(r.icon);
+    const groupKey = r.id || (r.name === '英国' ? 'uk' : (code ? code.toLowerCase() : 'unknown'));
+    acc[r.name] = Object.freeze({
+      groupKey,
+      countryCode: code,
+      regionName: r.name
+    });
+    return acc;
+  }, {})
+);
+
 module.exports = {
   CONTINENT_DEFS,
   DEFAULT_CORE_REGIONS,
+  REGION_METADATA_MAP,
+  countryCodeFromFlag,
   getEnhancedRegionDefs,
   getRegionFlagLookup,
   validateMapping

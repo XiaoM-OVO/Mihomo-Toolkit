@@ -132,43 +132,6 @@ function renderTemplate(template, vars, proxy, cleaners) {
 }
 
 /**
- * 末端名称碰撞守护 (Collision Guard)
- * 纯函数：检查节点列表并消除同名冲突，为同名节点安全追加序号 (#2, #3...)
- * 确保提交给 Mihomo/Clash 内核的节点名称 100% 互斥唯一
- * @param {Array<object>} proxies 节点对象数组
- * @returns {Array<object>} 原数组 (名称碰撞已就地修正)
- */
-function resolveNameCollisions(proxies = []) {
-  if (!Array.isArray(proxies) || proxies.length <= 1) return proxies;
-  const seen = new Set();
-  const taken = new Set();
-  for (const p of proxies) {
-    if (p?.name) taken.add(p.name);
-  }
-
-  for (const p of proxies) {
-    if (!p) continue;
-    const originalName = p.name || '';
-    if (!seen.has(originalName)) {
-      seen.add(originalName);
-      continue;
-    }
-
-    let idx = 2;
-    let candidate = `${originalName} #${idx}`;
-    while (taken.has(candidate)) {
-      idx++;
-      candidate = `${originalName} #${idx}`;
-    }
-    p.name = candidate;
-    taken.add(candidate);
-    seen.add(candidate);
-  }
-
-  return proxies;
-}
-
-/**
  * 为已分类节点统一计算目标名称；保持计算阶段纯净，由调用方提交名称。
  */
 function getRenameTier(item) {
@@ -198,7 +161,9 @@ function buildRenamePlan(items = [], config = {}) {
   for (const item of items) {
     if (!item || item.skip || !item.proxy) continue;
     const tier = getRenameTier(item);
-    let intendedName = item.proxy.name || item.rawName || '';
+    let intendedName = (item.isSpecial && item.specialTargetName)
+      ? item.specialTargetName
+      : (item.proxy.name || item.rawName || '');
     if (tier === 2 || tier === 3) intendedName = item.rawName || intendedName;
     if (tier === 4 && config.renameTemplate && config.enableNodeRename !== false) {
     let features = '';
@@ -276,6 +241,5 @@ module.exports = {
   renderTemplate,
   buildRenamePlan,
   applyRenamePlan,
-  getRenameTier,
-  resolveNameCollisions
+  getRenameTier
 };

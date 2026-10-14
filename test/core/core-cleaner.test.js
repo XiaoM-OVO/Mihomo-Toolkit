@@ -405,14 +405,14 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     });
 
     it('synthetic 看板与 removeInfoNodes 行为矩阵', () => {
-      // synthetic 节点开启看板规范化为 127.0.0.1:80
+      // synthetic 节点开启看板保留为 1.0.0.1:80 (统一事实源)
       const synthOn = classifyNode(
         markTrustedSynthetic({ name: '剩余流量：100G', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
         { enableDashboard: true }
       );
       assert.equal(synthOn.isInfo, true);
       assert.equal(synthOn.isSyntheticInfo, true);
-      assert.equal(synthOn.proxy.server, '127.0.0.1');
+      assert.equal(synthOn.proxy.server, '1.0.0.1');
       assert.equal(synthOn.proxy.port, 80);
 
       // synthetic 节点关闭看板被跳过
@@ -578,6 +578,55 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
       assert.ok(filtered.some(n => n.isSyntheticInfo));
       assert.ok(filtered.some(n => n.name.includes('Netflix不可用')));
       assert.ok(filtered.some(n => n.name.includes('电报专线')));
+    });
+
+    it('纯函数零副作用：classifyNode 不得原地篡改入参对象的任何属性', () => {
+      // 1. 普通节点对象冻结校验
+      const normalProxy = Object.freeze({ name: '🇭🇰 香港 01', server: '1.2.3.4', port: 443, type: 'ss' });
+      const normalRes = classifyNode(normalProxy, {});
+      assert.equal(normalRes.skip, undefined);
+      assert.equal(normalRes.proxy, normalProxy);
+
+      // 2. 特殊重命名节点冻结校验 (specialNodeRules 携带 targetName 不得直接就地修改 proxy.name)
+      const specialProxy = Object.freeze({ name: '特殊自建节点', server: '1.2.3.4', port: 443, type: 'ss' });
+      const specialRes = classifyNode(specialProxy, {
+        specialNodeRules: [{ reg: /特殊/, targetName: '命名目标' }]
+      });
+      assert.equal(specialRes.isSpecial, true);
+      assert.equal(specialRes.specialTargetName, '命名目标');
+      assert.equal(specialProxy.name, '特殊自建节点', '原 proxy.name 不得被就地篡改');
+
+      // 3. 内部受信看板节点冻结校验 (不得就地篡改 server 或 port)
+      const synthProxy = markTrustedSynthetic(Object.freeze({
+        name: '📊 看板节点',
+        server: '1.0.0.1',
+        port: 80,
+        type: 'direct',
+        isSyntheticInfo: true
+      }));
+      const synthRes = classifyNode(synthProxy, { enableDashboard: true });
+      assert.equal(synthRes.isInfo, true);
+      assert.equal(synthRes.proxy.server, '1.0.0.1');
+    });
+
+    it('白名单关键词越权防护：订阅 Tag 命中白名单不得豁免整机场广告清洗', () => {
+      const cfg = {
+        whitelistKeywords: ['优质专线']
+      };
+
+      // 节点属于 Tag 为 '优质专线' 的机场，但节点自身是垃圾广告/通知
+      const adProxy = {
+        name: '官网 https://sub.example.com 优惠码88折',
+        server: '1.2.3.4',
+        port: 443,
+        _subTag: '优质专线'
+      };
+
+      const res = classifyNode(adProxy, cfg);
+      // 节点本身未包含 '优质专线'，不得因 _subTag 提权为 isSpecial，必须正常按广告词阻断
+      assert.equal(res.isSpecial, undefined);
+      assert.equal(res.skip, true);
+      assert.equal(res.blockReason, '广告词');
     });
   });
 });

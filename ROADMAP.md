@@ -61,14 +61,14 @@
   - [x] Shadowsocks 解析器修复：改用 `indexOf(':')` 提取密码（防密码包含冒号被截断），插件参数防等号截断并兼容 SIP003 内联插件；
   - [x] VMess 解析器修复：兼容 `tls: 1 / true` 多种真值形式，补齐 `net: tcp` 搭配 `type: http` 伪装头（Host/Path）提取；
   - [x] VLESS / Trojan 解析器修复：gRPC 路径兼容读取 `service-name` 与 `path` 别名。
-- [ ] **纯函数原则重塑与原地突变消除**：
-  - 消除 `cleaner.js:classifyNode` 中原地修改 `proxy.server / port / name` 的副作用；
-  - 消除 `kernel.js:applyCoreOptimize` 中原地修改代理节点属性的副作用；
-  - 修正机场订阅 Tag 隐式豁免广告清洗的逻辑越权缺陷（`subTagLower === k`）。
+- [x] **纯函数原则重塑与原地突变消除**：
+  - [x] 消除 `cleaner.js:classifyNode` 中原地修改 `proxy.server / port / name` 的副作用；
+  - [x] 消除 `kernel.js:applyCoreOptimize` 中原地修改代理节点属性的副作用；
+  - [x] 修正机场订阅 Tag 隐式豁免广告清洗的逻辑越权缺陷（`subTagLower === k`）。
 - [ ] **代码去重与死代码清理**：
-  - 消除 `ingestion.js` 中 `ingestSubscriptions` 与 `ingestUrls` 之间超 130 行的重复代码；
-  - 剔除 `rename.js` 中未被业务调用的遗留死代码 `resolveNameCollisions`；
-  - 统一 `metadata.js` 与 `regions.js` 的地区事实源，统一看板节点假 IP 定义（`1.0.0.1` vs `127.0.0.1`）。
+  - [ ] 消除 `ingestion.js` 中 `ingestSubscriptions` 与 `ingestUrls` 之间超 130 行的重复代码；
+  - [x] 剔除 `rename.js` 中未被业务调用的遗留死代码 `resolveNameCollisions`；
+  - [x] 统一 `metadata.js` 与 `regions.js` 的地区事实源，统一看板节点假 IP 定义（`1.0.0.1` vs `127.0.0.1`）。
 - [x] **安全隐私与凭证脱敏加固**：
   - [x] 补全终端 Logger 对 Hysteria 2 (`hy2://`)、TUIC (`tuic://`)、Socks 与 VMess 节点敏感凭据的脱敏正则。
 

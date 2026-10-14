@@ -2,7 +2,8 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { extractMetadata } = require('../../src/core/metadata');
+const { extractMetadata, REGION_METADATA_MAP } = require('../../src/core/metadata');
+const { getEnhancedRegionDefs } = require('../../src/core/shared/regions');
 
 describe('【Core】节点名称元数据只读旁路提取 (metadata)', () => {
   it('已知地区映射到正确的小写 groupKey、国家代码和显示名称', () => {
@@ -170,5 +171,18 @@ describe('【Core】节点名称元数据只读旁路提取 (metadata)', () => {
     const emptyMeta = extractMetadata('');
     assert.equal(emptyMeta.status, 'unknown');
     assert.ok(Object.isFrozen(emptyMeta));
+  });
+
+  it('REGION_METADATA_MAP 权威单一事实源：对象已冻结且与 regions.js 全量对齐', () => {
+    assert.ok(Object.isFrozen(REGION_METADATA_MAP), 'REGION_METADATA_MAP 必须被深度冻结');
+    const regionDefs = getEnhancedRegionDefs();
+    for (const r of regionDefs) {
+      const meta = REGION_METADATA_MAP[r.name];
+      assert.ok(meta, `REGION_METADATA_MAP 必须包含定义 ${r.name}`);
+      assert.equal(meta.regionName, r.name);
+      assert.ok(meta.groupKey, `${r.name} 必须包含有效 groupKey`);
+      assert.ok(meta.countryCode, `${r.name} 必须包含有效 ISO 国家代码`);
+      assert.ok(Object.isFrozen(meta), `${r.name} 元数据项必须已冻结`);
+    }
   });
 });

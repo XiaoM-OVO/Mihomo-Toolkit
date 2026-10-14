@@ -161,11 +161,11 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
       const errNode = createFetchErrorNode('机场B', 'fetch failed');
       assert.equal(isTrustedSynthetic(errNode), true, 'createFetchErrorNode 产物必须可信');
 
-      // 2.4 端到端：受信看板在 runNodesPipeline 中保留且不被重命名，地址规范为 127.0.0.1:80
+      // 2.4 端到端：受信看板在 runNodesPipeline 中保留且不被重命名，地址统一为 1.0.0.1:80
       const output = await runNodesPipeline([...synthNodes], { enableDashboard: true });
       assert.equal(output.length, synthNodes.length);
       output.forEach(node => {
-        assert.equal(node.server, '127.0.0.1');
+        assert.equal(node.server, '1.0.0.1');
         assert.equal(node.port, 80);
       });
 

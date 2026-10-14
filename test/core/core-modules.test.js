@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const { dedupeNodes, getNodeFingerprint } = require('../../src/core/dedupe');
 const { matchNodeRegion, extractCity } = require('../../src/core/geo');
-const { renderTemplate, createSeparatorCleaners, resolveNameCollisions } = require('../../src/core/rename');
+const { renderTemplate, createSeparatorCleaners, buildRenamePlan, applyRenamePlan } = require('../../src/core/rename');
 const { getEnhancedRegionDefs, validateMapping } = require('../../src/core/shared/regions');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../../src/core/shared/icons');
 const { isPrivateIp, isAllowedUrl } = require('../../src/io/ssrf');
@@ -97,29 +97,31 @@ describe('【Core】核心基础构件 (modules)', () => {
     assert.equal(fallbackName, 'RawProxy01');
   });
 
-  it('rename - 末端同名碰撞防护 (resolveNameCollisions)', () => {
-    const proxies = [
-      { name: '🇭🇰 香港 01' },
-      { name: '🇭🇰 香港 01' },
-      { name: '🇯🇵 日本 01' },
-      { name: '🇭🇰 香港 01' }
+  it('rename - 两阶段命名仲裁同名碰撞防护 (applyRenamePlan)', () => {
+    const items = [
+      { proxy: { name: '🇭🇰 香港 01' }, rawName: '🇭🇰 香港 01', isSpecial: true },
+      { proxy: { name: '🇭🇰 香港 01' }, rawName: '🇭🇰 香港 01', isSpecial: true },
+      { proxy: { name: '🇯🇵 日本 01' }, rawName: '🇯🇵 日本 01', isSpecial: true },
+      { proxy: { name: '🇭🇰 香港 01' }, rawName: '🇭🇰 香港 01', isSpecial: true }
     ];
-    resolveNameCollisions(proxies);
-    assert.equal(proxies[0].name, '🇭🇰 香港 01');
-    assert.equal(proxies[1].name, '🇭🇰 香港 01 #2');
-    assert.equal(proxies[2].name, '🇯🇵 日本 01');
-    assert.equal(proxies[3].name, '🇭🇰 香港 01 #3');
+    const plan = buildRenamePlan(items, {});
+    applyRenamePlan(items, plan);
+    assert.equal(items[0].proxy.name, '🇭🇰 香港 01');
+    assert.equal(items[1].proxy.name, '🇭🇰 香港 01 #2');
+    assert.equal(items[2].proxy.name, '🇯🇵 日本 01');
+    assert.equal(items[3].proxy.name, '🇭🇰 香港 01 #3');
 
     // 避免与列表中已存在的带序号节点产生二次撞车
     const preexisting = [
-      { name: '节点 A' },
-      { name: '节点 A' },
-      { name: '节点 A #2' }
+      { proxy: { name: '节点 A' }, rawName: '节点 A', isSpecial: true },
+      { proxy: { name: '节点 A' }, rawName: '节点 A', isSpecial: true },
+      { proxy: { name: '节点 A #2' }, rawName: '节点 A #2', isSpecial: true }
     ];
-    resolveNameCollisions(preexisting);
-    assert.equal(preexisting[0].name, '节点 A');
-    assert.equal(preexisting[1].name, '节点 A #3');
-    assert.equal(preexisting[2].name, '节点 A #2');
+    const prePlan = buildRenamePlan(preexisting, {});
+    applyRenamePlan(preexisting, prePlan);
+    assert.equal(preexisting[0].proxy.name, '节点 A');
+    assert.equal(preexisting[1].proxy.name, '节点 A #3');
+    assert.equal(preexisting[2].proxy.name, '节点 A #2');
   });
 
   it('ssrf - 基础私网 IP 与协议判定 (isPrivateIp / isAllowedUrl)', () => {
