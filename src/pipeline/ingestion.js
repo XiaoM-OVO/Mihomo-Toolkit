@@ -32,6 +32,102 @@ function isSubEnabled(s) {
   return s.enabled !== false;
 }
 
+/**
+ * 校验一次成功抓取的订阅响应：到期 / 流量耗尽 / 空节点 / 纯占位节点均视为异常并抛出带标记的错误。
+ * 多订阅与单 URL 两条路径共用，保证「异常响应」判定完全一致。
+ * @throws {Error} 带 isExpired / isQuotaExhausted / isPlaceholderOnly 标记
+ */
+function validateFetchedSubscription(rawResult) {
+  if (rawResult.subInfo) {
+    const info = parseSubscriptionInfo(rawResult.subInfo);
+    // 1. 本次响应明确已到期：绝不作为健康订阅，拒绝写入缓存
+    if (isExpiredNow(info.expire)) {
+      const err = new Error(`Subscription expired at ${new Date(info.expire * 1000).toISOString().split('T')[0]}`);
+      err.isExpired = true;
+      err.subInfo = rawResult.subInfo;
+      throw err;
+    }
+    // 2. 本次响应明确流量耗尽：绝不作为健康订阅
+    if (isQuotaExhausted(info)) {
+      const err = new Error('Subscription quota exhausted (upload + download >= total)');
+      err.isQuotaExhausted = true;
+      err.subInfo = rawResult.subInfo;
+      throw err;
+    }
+  }
+
+  const parsedProxies = sanitizeExternalProxies(parseContent(rawResult.content).proxies || []);
+  if (!rawResult.content || parsedProxies.length === 0) {
+    throw new Error('Subscription returned no nodes');
+  }
+  // 有效性检查：若返回的节点全部为无服务能力的占位/续费/提示节点，视为异常响应
+  if (hasOnlyPlaceholderNodes(parsedProxies)) {
+    const err = new Error('Subscription returned only placeholder/notice nodes');
+    err.isPlaceholderOnly = true;
+    throw err;
+  }
+}
+
+/**
+ * 抓取失败后的「终态失效判定 + 容灾降级决策」，多订阅与单 URL 两条路径共用。
+ *
+ * 终态失效（HTTP 401 / 本次到期 / 本次流量耗尽 / 旧缓存已过期）时安全淘汰旧缓存，
+ * 并给出是否允许回退旧缓存及拒绝原因。安全淘汰严格要求命中请求发起时捕获的旧条目，
+ * 防止误删并发新任务刚写入的健康条目。
+ *
+ * @returns {{ isTerminal: boolean, terminalReason: string, fallbackRejectReason: string, allowFallback: boolean, stale: object|null }}
+ */
+function evaluateStaleFallback(err, { subKey, initialStale, staleMaxAgeMs }) {
+  const stale = subStaleCache.get(subKey);
+
+  // ─── 阶段一：独立判定终态失效（不依赖旧缓存是否存在或是否超期） ───
+  let isTerminal = false;
+  let terminalReason = '';
+
+  const httpStatus = err?.statusCode || err?.status;
+  if (httpStatus === 401) {
+    isTerminal = true;
+    terminalReason = 'HTTP 401 凭据失效';
+  } else if (err?.isExpired) {
+    isTerminal = true;
+    terminalReason = '本次响应确认已到期';
+  } else if (err?.isQuotaExhausted) {
+    isTerminal = true;
+    terminalReason = '本次响应确认流量已耗尽';
+  } else if (stale) {
+    const staleParsedInfo = parseSubscriptionInfo(stale.subInfo);
+    if (staleParsedInfo && isExpiredNow(staleParsedInfo.expire)) {
+      isTerminal = true;
+      terminalReason = `旧缓存已于 ${new Date(staleParsedInfo.expire * 1000).toISOString().split('T')[0]} 到期`;
+    }
+  }
+
+  if (isTerminal) {
+    if (typeof subStaleCache.deleteIfMatch === 'function') {
+      subStaleCache.deleteIfMatch(subKey, initialStale);
+    } else if (initialStale && subStaleCache.get(subKey) === initialStale) {
+      subStaleCache.delete(subKey);
+    }
+  }
+
+  // ─── 阶段二：容灾决策检查（决定是否允许降级兜底） ───
+  let allowFallback = false;
+  let fallbackRejectReason = '';
+
+  if (isTerminal) {
+    fallbackRejectReason = `${terminalReason}，拒绝回退旧缓存`;
+  } else if (!stale) {
+    fallbackRejectReason = '无历史缓存';
+  } else if (Date.now() - stale.timestamp >= staleMaxAgeMs) {
+    fallbackRejectReason = '缓存超过保留期限 (fetchStaleTtl)';
+  } else {
+    // 网络超时、连接错误、5xx 或经论证的异常，允许降级
+    allowFallback = true;
+  }
+
+  return { isTerminal, terminalReason, fallbackRejectReason, allowFallback, stale };
+}
+
 /** 格式化控制面沙箱告警，去除内部枚举 ID 并以分级树形分支展示 */
 function formatControlPlaneWarning(report) {
   if (!report || !Array.isArray(report.hostile) || report.hostile.length === 0) return null;
@@ -373,94 +469,20 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
                 maxBytes: maxSubscriptionBytes
               });
 
-              // 检查本次成功响应附带的元信息（过期与流量检查）
-              if (rawResult.subInfo) {
-                const freshParsedInfo = parseSubscriptionInfo(rawResult.subInfo);
-                // 1. 本次响应明确已到期：绝不作为健康订阅，拒绝写入缓存
-                if (isExpiredNow(freshParsedInfo.expire)) {
-                  const expiredErr = new Error(`Subscription expired at ${new Date(freshParsedInfo.expire * 1000).toISOString().split('T')[0]}`);
-                  expiredErr.isExpired = true;
-                  expiredErr.subInfo = rawResult.subInfo;
-                  throw expiredErr;
-                }
-                // 2. 本次响应明确流量耗尽：绝不作为健康订阅
-                if (isQuotaExhausted(freshParsedInfo)) {
-                  const quotaErr = new Error('Subscription quota exhausted (upload + download >= total)');
-                  quotaErr.isQuotaExhausted = true;
-                  quotaErr.subInfo = rawResult.subInfo;
-                  throw quotaErr;
-                }
-              }
-
-              const parsedProxies = sanitizeExternalProxies(parseContent(rawResult.content).proxies || []);
-              if (!rawResult.content || parsedProxies.length === 0) {
-                throw new Error('Subscription returned no nodes');
-              }
-
-              // 有效性检查：若返回的节点全部为无服务能力的占位/续费/提示节点，视为异常响应
-              if (hasOnlyPlaceholderNodes(parsedProxies)) {
-                const placeholderErr = new Error('Subscription returned only placeholder/notice nodes');
-                placeholderErr.isPlaceholderOnly = true;
-                throw placeholderErr;
-              }
+              // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
+              validateFetchedSubscription(rawResult);
             } catch (e) {
-              const currentStale = subStaleCache.get(subKey);
-              const stale = currentStale;
+              const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs });
 
-              // ─── 阶段一：独立判定终态失效（不依赖旧缓存是否存在或是否超期） ───
-              let isTerminal = false;
-              let terminalReason = '';
+              // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号
+              if (decision.isTerminal) hasTerminalFailure = true;
 
-              const httpStatus = e?.statusCode || e?.status;
-              if (httpStatus === 401) {
-                isTerminal = true;
-                terminalReason = 'HTTP 401 凭据失效';
-              } else if (e?.isExpired) {
-                isTerminal = true;
-                terminalReason = '本次响应确认已到期';
-              } else if (e?.isQuotaExhausted) {
-                isTerminal = true;
-                terminalReason = '本次响应确认流量已耗尽';
-              } else if (currentStale) {
-                const staleParsedInfo = parseSubscriptionInfo(currentStale.subInfo);
-                if (staleParsedInfo && isExpiredNow(staleParsedInfo.expire)) {
-                  isTerminal = true;
-                  terminalReason = `旧缓存已于 ${new Date(staleParsedInfo.expire * 1000).toISOString().split('T')[0]} 到期`;
-                }
-              }
-
-              // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号；若旧缓存存在则安全淘汰
-              // 安全淘汰：只有当前缓存条目仍为发起请求时捕获的旧条目时才允许物理删除，防止误删并发新任务刚写入的健康条目
-              if (isTerminal) {
-                hasTerminalFailure = true;
-                if (typeof subStaleCache.deleteIfMatch === 'function') {
-                  subStaleCache.deleteIfMatch(subKey, initialStale);
-                } else if (initialStale && subStaleCache.get(subKey) === initialStale) {
-                  subStaleCache.delete(subKey);
-                }
-              }
-
-              // ─── 阶段二：容灾决策检查（决定是否允许降级兜底） ───
-              let allowFallback = false;
-              let fallbackRejectReason = '';
-
-              if (isTerminal) {
-                fallbackRejectReason = `${terminalReason}，拒绝回退旧缓存`;
-              } else if (!stale) {
-                fallbackRejectReason = '无历史缓存';
-              } else if (Date.now() - stale.timestamp >= staleMaxAgeMs) {
-                fallbackRejectReason = '缓存超过保留期限 (fetchStaleTtl)';
-              } else {
-                // 网络超时、连接错误、5xx 或经论证的异常，允许降级
-                allowFallback = true;
-              }
-
-              if (allowFallback) {
+              if (decision.allowFallback) {
                 logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
-                rawResult = { content: stale.content, subInfo: stale.subInfo, stale: true };
+                rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true };
               } else {
-                if (fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
-                  logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(sub.url, showFullUrl)}]: ${fallbackRejectReason}`);
+                if (decision.fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
+                  logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(sub.url, showFullUrl)}]: ${decision.fallbackRejectReason}`);
                 }
                 throw e;
               }
@@ -726,90 +748,20 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           maxBytes: maxSubscriptionBytes
         });
 
-        // 检查本次成功响应附带的元信息（过期与流量检查）
-        if (rawResult.subInfo) {
-          const freshParsedInfo = parseSubscriptionInfo(rawResult.subInfo);
-          // 1. 本次响应明确已到期：绝不作为健康订阅，拒绝写入缓存
-          if (isExpiredNow(freshParsedInfo.expire)) {
-            const expiredErr = new Error(`Subscription expired at ${new Date(freshParsedInfo.expire * 1000).toISOString().split('T')[0]}`);
-            expiredErr.isExpired = true;
-            expiredErr.subInfo = rawResult.subInfo;
-            throw expiredErr;
-          }
-          // 2. 本次响应明确流量耗尽：绝不作为健康订阅
-          if (isQuotaExhausted(freshParsedInfo)) {
-            const quotaErr = new Error('Subscription quota exhausted (upload + download >= total)');
-            quotaErr.isQuotaExhausted = true;
-            quotaErr.subInfo = rawResult.subInfo;
-            throw quotaErr;
-          }
-        }
-
-        const parsedProxies = sanitizeExternalProxies(parseContent(rawResult.content).proxies || []);
-        if (!rawResult.content || parsedProxies.length === 0) {
-          throw new Error('Subscription returned no nodes');
-        }
-
-        // 有效性检查：若返回的节点全部为无服务能力的占位/续费/提示节点，视为异常响应
-        if (hasOnlyPlaceholderNodes(parsedProxies)) {
-          const placeholderErr = new Error('Subscription returned only placeholder/notice nodes');
-          placeholderErr.isPlaceholderOnly = true;
-          throw placeholderErr;
-        }
+        // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
+        validateFetchedSubscription(rawResult);
       } catch (e) {
         fetchError = e;
-        const currentStale = subStaleCache.get(subKey);
-        const stale = currentStale;
+        const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs });
+        isTerminal = decision.isTerminal;
+        fallbackRejectReason = decision.fallbackRejectReason;
 
-        // ─── 阶段一：独立判定终态失效（不依赖旧缓存是否存在或是否超期） ───
-        let terminalReason = '';
+        // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号
+        if (isTerminal) hasTerminalFailure = true;
 
-        const httpStatus = e?.statusCode || e?.status;
-        if (httpStatus === 401) {
-          isTerminal = true;
-          terminalReason = 'HTTP 401 凭据失效';
-        } else if (e?.isExpired) {
-          isTerminal = true;
-          terminalReason = '本次响应确认已到期';
-        } else if (e?.isQuotaExhausted) {
-          isTerminal = true;
-          terminalReason = '本次响应确认流量已耗尽';
-        } else if (currentStale) {
-          const staleParsedInfo = parseSubscriptionInfo(currentStale.subInfo);
-          if (staleParsedInfo && isExpiredNow(staleParsedInfo.expire)) {
-            isTerminal = true;
-            terminalReason = `旧缓存已于 ${new Date(staleParsedInfo.expire * 1000).toISOString().split('T')[0]} 到期`;
-          }
-        }
-
-        // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号；若旧缓存存在则安全淘汰
-        // 安全淘汰：只有当前缓存条目仍为发起请求时捕获的旧条目时才允许物理删除，防止误删并发新任务刚写入的健康条目
-        if (isTerminal) {
-          hasTerminalFailure = true;
-          if (typeof subStaleCache.deleteIfMatch === 'function') {
-            subStaleCache.deleteIfMatch(subKey, initialStale);
-          } else if (initialStale && subStaleCache.get(subKey) === initialStale) {
-            subStaleCache.delete(subKey);
-          }
-        }
-
-        // ─── 阶段二：容灾决策检查（决定是否允许降级兜底） ───
-        let allowFallback = false;
-
-        if (isTerminal) {
-          fallbackRejectReason = `${terminalReason}，拒绝回退旧缓存`;
-        } else if (!stale) {
-          fallbackRejectReason = '无历史缓存';
-        } else if (Date.now() - stale.timestamp >= staleMaxAgeMs) {
-          fallbackRejectReason = '缓存超过保留期限 (fetchStaleTtl)';
-        } else {
-          // 网络超时、连接错误、5xx 或经论证的异常，允许降级
-          allowFallback = true;
-        }
-
-        if (allowFallback) {
+        if (decision.allowFallback) {
           logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
-          rawResult = { content: stale.content, subInfo: stale.subInfo, stale: true };
+          rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true };
           hasFailedSub = true;
         } else {
           hasFailedSub = true;
