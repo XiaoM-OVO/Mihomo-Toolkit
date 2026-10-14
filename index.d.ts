@@ -516,6 +516,12 @@ export function redactUrl(url: string): string;
 export function isAllowedUrl(urlString: string): boolean;
 
 /**
+ * 异步校验 URL 是否属于公网合法地址（在同步字面量校验之上补做 DNS 解析，防 DNS 指向内网的 SSRF 绕过）
+ * @param urlString 待校验的 URL
+ */
+export function isAllowedUrlAsync(urlString: string): Promise<boolean>;
+
+/**
  * 请求与资源配额（全部为可选，未配置项使用内置默认值）
  */
 export interface RequestLimits {

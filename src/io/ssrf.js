@@ -2,6 +2,12 @@
  * SSRF 安全防护与私网拦截
  *
  * 校验并拦截 IPv4/IPv6 私网、回环、CGNAT 及云元数据地址，防范服务端请求伪造。
+ *
+ * 两道防线：
+ *   - `isAllowedUrl`：同步字面量校验（协议 / 回环字面量 / 字面量 IP），零 I/O，供高频预筛；
+ *   - `isAllowedUrlAsync` / `validateUrlSsrf`：在其之上补做 DNS 解析，
+ *     拦截「域名本身合法、但解析结果指向内网」的绕过。凡是放行后要真实发起请求的
+ *     外部可控入口（server 参数化入口、fetcher 建连前）都必须过后者。
  */
 
 const { isPrivateIp, isPrivateIPv6 } = require('../infra/ip');
@@ -94,6 +100,26 @@ async function validateUrlSsrf(urlStr) {
   return true;
 }
 
+/**
+ * 异步 SSRF 预检：在 `isAllowedUrl` 的字面量校验之上补做 DNS 解析。
+ *
+ * `isAllowedUrl` 只看 URL 字面量，面对「域名合法但解析到 127.0.0.1 / 私网 / 云元数据」
+ * 完全放行；凡放行后会真实发起请求的外部可控入口，必须改用它。
+ * DNS 解析失败 / 超时按「无法证明其恶意」放行，与 fetcher 建连前的 gate 保持一致。
+ *
+ * @param {string} urlStr
+ * @returns {Promise<boolean>}
+ */
+async function isAllowedUrlAsync(urlStr) {
+  if (!isAllowedUrl(urlStr)) return false;
+  try {
+    await validateUrlSsrf(urlStr);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function redactUrl(url, showFull = false) {
   if (showFull) return url;
   try {
@@ -107,6 +133,7 @@ module.exports = {
   isPrivateIp,
   isPrivateIPv6,
   isAllowedUrl,
+  isAllowedUrlAsync,
   validateUrlSsrf,
   redactUrl
 };
