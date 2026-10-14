@@ -68,21 +68,23 @@ function applyAdditiveFields(merged, logger) {
 /**
  * 解析并生成最终生效的配置对象
  * @param {object} [userConfig={}] 用户自定义配置
- * @param {object} [options={}] 可选解析选项 (如 logger)
+ * @param {object} [options={}] 可选解析选项 (baseDir: 相对挂载路径基准目录, logger)
  * @returns {object} 合并后的最终配置
  */
 function resolveConfig(userConfig = {}, options = {}) {
   // 0. 先展开通用片段挂载（include）：主文件优先、数组并集去重、支持递归 include。
-  //    CLI / server 在读取配置文件现场已把挂载路径转成绝对路径，故此处以 cwd 为基准
-  //    只影响「SDK 直接传对象且写相对路径」的场景。
-  const expanded = expandIncludes(userConfig || {}, process.cwd());
+  //    相对路径的基准目录优先取调用方显式传入的 options.baseDir；SDK 跨目录调用**必须**显式传入，
+  //    否则回退到 cwd，相对路径片段会按错误的目录解析。CLI / server 在读取配置文件现场已把
+  //    挂载路径转成绝对路径（absolutizeMountPaths），此处不再受 cwd 影响。
+  const baseDir = options.baseDir || process.cwd();
+  const expanded = expandIncludes(userConfig || {}, baseDir);
 
   const merged = Object.assign({}, DEFAULT_CONFIG, expanded || {});
 
-  // 1. 处理外部服务配置文件挂载
+  // 1. 处理外部服务配置文件挂载（同上，基准目录与 include 保持一致）
   const externalFile = merged.servicesConfigFile;
   if (externalFile) {
-    const externalServices = loadExternalServicesConfig(externalFile);
+    const externalServices = loadExternalServicesConfig(externalFile, baseDir);
     merged.customServices = deepMerge(merged.customServices || {}, externalServices);
   }
 
