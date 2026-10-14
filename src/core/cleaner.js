@@ -352,8 +352,6 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     if (userConfig.enableDashboard === false) {
       return { skip: true, rawName, blockReason: '看板关闭' };
     }
-    proxy.server = '127.0.0.1';
-    proxy.port = 80;
     return { isInfo: true, isSyntheticInfo: true, proxy, rawName, groupKey: 'info' };
   }
 
@@ -367,13 +365,12 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 
   // 3.3 白名单与特殊节点判定
   const tempNameLower = rawName.toLowerCase();
-  const subTagLower = (proxy._subTag || '').toLowerCase();
   const whitelist = toArray(userConfig.whitelistKeywords).map(k => String(k).toLowerCase()).filter(Boolean);
 
   let isSpecial = false;
   let specialTargetName = '';
 
-  if (whitelist.some(k => tempNameLower.includes(k) || (subTagLower && subTagLower === k))) {
+  if (whitelist.some(k => tempNameLower.includes(k))) {
     isSpecial = true;
     specialTargetName = proxy.name;
   }
@@ -398,11 +395,11 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 
   // 若为通过硬结构校验的合法 special 节点，豁免广告拦截与模板重命名，直接交付
   if (isSpecial) {
-    proxy.name = specialTargetName || proxy.name;
     return {
       proxy,
       rawName,
       isSpecial: true,
+      specialTargetName: specialTargetName || proxy.name,
       groupKey: 'special',
       tags: [],
       featurePools: [],

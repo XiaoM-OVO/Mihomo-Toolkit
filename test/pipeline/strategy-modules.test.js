@@ -56,6 +56,14 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.equal(config['tcp-concurrent'], true);
     assert.equal(config.proxies[0]['client-fingerprint'], 'chrome');
     assert.equal(config.proxies[0].udp, true);
+
+    // 纯函数零副作用：被优化的原代理节点对象不得被就地篡改
+    const frozenTrojan = Object.freeze({ name: 'Trojan Node', type: 'trojan', tls: true, server: 't.example.com', port: 443 });
+    const cfgWithFrozen = { proxies: [frozenTrojan] };
+    applyCoreOptimize(cfgWithFrozen, DEFAULT_CONFIG);
+    assert.equal(cfgWithFrozen.proxies[0]['client-fingerprint'], 'chrome');
+    assert.equal(cfgWithFrozen.proxies[0].udp, true);
+    assert.equal(frozenTrojan['client-fingerprint'], undefined, '不得篡改原冻结对象属性');
   });
 
   it('rules - 路由分流与规则集组装 (buildRoutingRules)', () => {

@@ -61,16 +61,26 @@ function applyCoreOptimize(config, _userConfig) {
   config['keep-alive-interval'] = 15;
   config['find-process-mode'] = 'strict';
 
-  (config.proxies || []).forEach(p => {
-    const isTargetType = ['vless', 'vmess', 'trojan'].includes(p.type);
-    const isTlsEnabled = p.tls === true || (['ws', 'grpc'].includes(p.network) && p.tls !== false);
-    if (isTargetType && isTlsEnabled && !p['client-fingerprint']) {
-      p['client-fingerprint'] = 'chrome';
-    }
-    if (p.udp === undefined && p.type !== 'http') {
-      p.udp = true;
-    }
-  });
+  if (Array.isArray(config.proxies)) {
+    config.proxies = config.proxies.map(p => {
+      if (!p || typeof p !== 'object') return p;
+      const isTargetType = ['vless', 'vmess', 'trojan'].includes(p.type);
+      const isTlsEnabled = p.tls === true || (['ws', 'grpc'].includes(p.network) && p.tls !== false);
+      const needFingerprint = isTargetType && isTlsEnabled && !p['client-fingerprint'];
+      const needUdp = p.udp === undefined && p.type !== 'http';
+      if (!needFingerprint && !needUdp) {
+        return p;
+      }
+      const updated = { ...p };
+      if (needFingerprint) {
+        updated['client-fingerprint'] = 'chrome';
+      }
+      if (needUdp) {
+        updated.udp = true;
+      }
+      return updated;
+    });
+  }
 }
 
 module.exports = {
