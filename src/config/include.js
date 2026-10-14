@@ -108,13 +108,23 @@ function mergeConfig(low, high) {
  * @returns {object} 展开后的新配置对象
  * @throws {Error} 环路 / 深度超限 / 片段缺失 / 扩展名不支持 / 解析失败
  */
-/** 记录已完成展开的配置对象实例（零字段侵入、零内存泄漏） */
-const expandedConfigs = new WeakSet();
+/**
+ * 记录「已展开的配置对象实例 → 展开结果」的映射（零字段侵入、零内存泄漏）。
+ *
+ * 必须同时登记**输入对象**与**输出对象**两侧：
+ *   - 输入侧：同一个原始配置对象二次传入时直接命中，阻断二次读盘（`WeakSet` 只登记输出
+ *     对象，原始字面量二次传入仍会穿透并重读磁盘）；
+ *   - 输出侧：展开结果保留 `include` 键，若只登记输入侧，把结果再传回来会因 `include`
+ *     仍存在而重新展开，同样穿透。
+ * WeakMap 的键为弱引用，对象回收后条目自动消失，无手动清理负担。
+ */
+const expandedCache = new WeakMap();
 
 function expandIncludes(userConfig, baseDir, _stack, _depth) {
   // 严格幂等防重：已完成展开的配置对象不再重复读盘与二次解析（防止 cwd 漂移与重复 I/O）
-  if (userConfig && typeof userConfig === 'object' && expandedConfigs.has(userConfig)) {
-    return userConfig;
+  if (userConfig && typeof userConfig === 'object') {
+    const cached = expandedCache.get(userConfig);
+    if (cached !== undefined) return cached;
   }
 
   const cfg = isPlainObject(userConfig) ? userConfig : {};
@@ -154,7 +164,10 @@ function expandIncludes(userConfig, baseDir, _stack, _depth) {
 
   // 主对象最后覆盖，且其 `include` 键保留到结果里（与 servicesConfigFile 保留行为一致）
   const result = mergeConfig(merged, cfg);
-  expandedConfigs.add(result);
+  if (userConfig && typeof userConfig === 'object') {
+    expandedCache.set(userConfig, result);
+  }
+  expandedCache.set(result, result);
   return result;
 }
 
