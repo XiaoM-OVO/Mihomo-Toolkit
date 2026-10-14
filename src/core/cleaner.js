@@ -31,6 +31,7 @@ const {
   LINE_MAP,
   CARRIER_SHORT_MAP,
   CARRIER_COMBO_MAP,
+  SORTED_CARRIER_COMBOS,
   getLineQualityWeight,
   STATIC_FEATURE_RULES
 } = require('../data/cleaner-rules');
@@ -90,8 +91,7 @@ function compressLineArr(arr) {
   if (carrierItems.length === 0) return nonCarrierItems;
 
   const currentAtoms = new Set(carrierItems);
-  const sortedCombos = Object.entries(CARRIER_COMBO_MAP).sort((a, b) => b[1].size - a[1].size);
-  for (const [comboName, atomGroup] of sortedCombos) {
+  for (const [comboName, atomGroup] of SORTED_CARRIER_COMBOS) {
     if (Array.from(atomGroup).every(atom => currentAtoms.has(atom))) {
       return [comboName, ...nonCarrierItems];
     }
