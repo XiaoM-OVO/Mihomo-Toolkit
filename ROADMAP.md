@@ -124,8 +124,8 @@
 ### 1. 核心架构与功能性缺陷
 | 缺陷项 | 归属模块 | 严重级别 | 现状与治理方向 | 目标里程碑 |
 | :--- | :--- | :---: | :--- | :---: |
-| `IO -> Core` 反向引用 | `src/io/ssrf.js`, `parsers/index.js` | 🟡 中 | 依赖 Core 的基础工具函数，下沉公共基础模块 | M1 阶段 |
-| customRules 分流优先级倒挂 | `src/strategy/rules.js` | 🔴 高 | 文档声明最高但代码放在最后，自上而下首命中导致失效，需提至首位 | M1 阶段 |
+| `IO -> Core` 反向引用 (已修复) | `src/io/ssrf.js`, `parsers/index.js` | 🟡 中 | 依赖 Core 的基础工具函数，下沉公共基础模块 | M1 阶段 |
+| customRules 分流优先级倒挂 (已修复) | `src/strategy/rules.js` | 🔴 高 | 文档声明最高但代码放在最后，自上而下首命中导致失效，需提至首位 | M1 阶段 |
 | 策略组硬编码不可扩展 | `src/strategy/topology.js` | 🔴 高 | 无法自由建全新策略组，重构为声明式拓扑引擎 | M3 阶段 |
 | 服务配置双重声明 | `src/config/catalog.js` | 🟡 中 | 用户需在两个地方配置才能启用自定义服务 | M3 阶段 |
 | SSRF TOCTOU 窗口 | `src/io/ssrf.js` | 🟡 中 | 校验与连接使用两次 DNS，评估 IP Pinning 成本 | M3 阶段 |
@@ -146,15 +146,15 @@
 ### 3. Core 核心算法与安全沙箱层问题清单 (第 2 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
 | :--- | :--- | :---: | :--- | :---: |
-| 节点分类函数原地突变对象 | `src/core/cleaner.js` | 坏味道 | `classifyNode` 直接修改入参对象的 `server/port/name`，违背纯函数原则 | M1 阶段 |
-| 机场订阅 Tag 隐式豁免广告清洗 | `src/core/cleaner.js` | 逻辑缺陷 | 白名单包含 `subTagLower === k`，匹配时整机场节点被提权跳过清洗 | M1 阶段 |
-| 地区元数据双重事实源 | `src/core/metadata.js` | 冗余/漂移 | 手写 40+ 地区 `REGION_METADATA_MAP`，与 `regions.js` 并行存在易漂移 | M1 阶段 |
-| 废弃名称消歧函数残留死代码 | `src/core/rename.js` | 遗留代码 | `resolveNameCollisions` 已被命名计划取代，业务代码无调用点 | M1 阶段 |
-| 日志脱敏遗漏现代代理协议 | `src/core/logger.js` | 安全缺陷 | 仅脱敏 SS/VLESS/Trojan，遗漏 Hysteria2、TUIC、VMess 的密码凭证 | M1 阶段 |
+| 节点分类函数原地突变对象 (已修复) | `src/core/cleaner.js` | 坏味道 | `classifyNode` 直接修改入参对象的 `server/port/name`，违背纯函数原则 | M1 阶段 |
+| 机场订阅 Tag 隐式豁免广告清洗 (已修复) | `src/core/cleaner.js` | 逻辑缺陷 | 白名单包含 `subTagLower === k`，匹配时整机场节点被提权跳过清洗 | M1 阶段 |
+| 地区元数据双重事实源 (已修复) | `src/core/metadata.js` | 冗余/漂移 | 手写 40+ 地区 `REGION_METADATA_MAP`，与 `regions.js` 并行存在易漂移 | M1 阶段 |
+| 废弃名称消歧函数残留死代码 (已修复) | `src/core/rename.js` | 遗留代码 | `resolveNameCollisions` 已被命名计划取代，业务代码无调用点 | M1 阶段 |
+| 日志脱敏遗漏现代代理协议 (已修复) | `src/core/logger.js` | 安全缺陷 | 仅脱敏 SS/VLESS/Trojan，遗漏 Hysteria2、TUIC、VMess 的密码凭证 | M1 阶段 |
 | 简繁同步按逗号盲目替换组名 | `src/core/chinese-sync.js` | 坏味道 | 路由规则分词替换未限定在第 3 个字段，极端情况可能误伤同名参数 | M2 阶段 |
 | 弱引用信任凭据克隆易断裂 | `src/core/node-trust.js` | 设计脆弱性 | 节点受信基于 `WeakSet` 引用，深拷贝或序列化后凭证静默丢失 | M2 阶段 |
 | 简易根域推导规则覆盖有限 | `src/core/security/resolver-plan.js` | 边界局限 | `getRootDomain` 采用有限正则，缺少完整 PSL 支持，未知平台可能过度折叠 | M2 阶段 |
-| 基础网络/流量工具放置错层 | `src/core/shared/ip.js`, `sub-info.js` | 架构债务 | 纯基础工具错置于 Core 层，导致 `IO -> Core` 反向引用违规 | M1 阶段 |
+| 基础网络/流量工具放置错层 (已修复) | `src/core/shared/ip.js`, `sub-info.js` | 架构债务 | 纯基础工具错置于 Core 层，导致 `IO -> Core` 反向引用违规 | M1 阶段 |
 | 图标系统模型二义性与硬编码散落 | `src/strategy/presentation.js`, `catalog.js` | 设计坏味道 | `icon` 混用为国旗 Emoji、图片与 URL；骨架组硬编码在代码中无法配置 | M3 阶段 |
 
 ### 4. IO 边界层与协议解析器问题清单 (第 3 批审查)
@@ -176,9 +176,9 @@
 | 策略组目标模糊子串匹配风险 | `src/strategy/topology.js` | 逻辑隐患 | `customGroups` 匹配使用双向 `includes`，目标名为“节点”易错误注入 | M1 阶段 |
 | 哈希负载均衡组硬编码 Emoji 泄露 | `src/strategy/topology.js`, `presentation.js` | 规范缺陷 | `⚖️ 负载均衡-哈希` 组名硬编码带 Emoji，纯图标模式下无法剥离 | M1 阶段 |
 | TUN 路由排除缺少 IPv6 私网网段 | `src/strategy/kernel.js` | 规范缺陷 | 路由排除名单仅写死 IPv4 私网，未包含 `fc00::/7` 与 `fe80::/10` | M2 阶段 |
-| 内核优化阶段原地突变代理对象 | `src/strategy/kernel.js` | 坏味道 | 原地修改 `config.proxies` 节点的 `client-fingerprint` 与 `udp` 属性 | M1 阶段 |
+| 内核优化阶段原地突变代理对象 (已修复) | `src/strategy/kernel.js` | 坏味道 | 原地修改 `config.proxies` 节点的 `client-fingerprint` 与 `udp` 属性 | M1 阶段 |
 | 规则展示层盲目分词替换组名 | `src/strategy/presentation.js` | 坏味道 | 按逗号切分后的所有 token 盲目尝试替换 Emoji，未限定在 TARGET 字段 | M2 阶段 |
-| 看板虚拟节点服务 IP 定义冲突 | `src/strategy/dashboard.js`, `core/cleaner.js` | 冗余/漂移 | 看板创建时使用 `1.0.0.1`，而在 cleaner 中又硬编码为 `127.0.0.1` | M1 阶段 |
+| 看板虚拟节点服务 IP 定义冲突 (已修复) | `src/strategy/dashboard.js`, `core/cleaner.js` | 冗余/漂移 | 看板创建时使用 `1.0.0.1`，而在 cleaner 中又硬编码为 `127.0.0.1` | M1 阶段 |
 
 ### 6. Pipeline 编排与 Targets 宿主交付层问题清单 (第 5 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
