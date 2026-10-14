@@ -56,6 +56,10 @@ const FIELDS = [
     group: '基础全局配置', doc: '手动指定标签（逗号分隔），为空则自动正则检测' },
   { key: 'showFeatureIcon', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '特征图标：true(Emoji) / false(文字)' },
+  { key: 'include', type: 'string[]', default: [], merge: 'override', trust: 'local',
+    group: '基础全局配置', doc: '通用配置片段挂载：片段与主文件同一 schema，主文件优先、数组并集去重、支持递归 include（可读本地文件，仅可信来源可写）' },
+  { key: 'servicesConfigFile', type: 'string', default: '', merge: 'override', trust: 'local',
+    group: '基础全局配置', doc: '外部服务定义配置文件路径（可 require 本地代码，仅可信来源可写）' },
 
   // ── 【2. 节点清洗与处理】 ─────────────────────────────────────────────────
   { key: 'enableDedupe', type: 'boolean', default: false, merge: 'override', trust: 'any',
@@ -148,10 +152,6 @@ const FIELDS = [
     group: '核心分流开关', doc: '中国分流独立策略组' },
 
   // ── 【5. 扩展分流开关】 ───────────────────────────────────────────────────
-  { key: 'include', type: 'string[]', default: [], merge: 'override', trust: 'local',
-    group: '扩展分流开关', doc: '通用配置片段挂载：片段与主文件同一 schema，主文件优先、数组并集去重、支持递归 include（可读本地文件，仅可信来源可写）' },
-  { key: 'servicesConfigFile', type: 'string', default: '', merge: 'override', trust: 'local',
-    group: '扩展分流开关', doc: '外部服务定义配置文件路径（可 require 本地代码，仅可信来源可写）' },
   { key: 'customServices', type: 'object', default: {}, merge: 'override', trust: 'any',
     group: '扩展分流开关', doc: '行内自定义服务字典' },
   { key: 'aiServices', type: 'string[]', default: ['chatgpt', 'gemini', 'claude', 'copilot'],
@@ -168,14 +168,19 @@ const FIELDS = [
     merge: 'override', trust: 'any', group: '扩展分流开关', doc: '游戏平台服务清单' },
   { key: 'systemServices', type: 'string[]', default: ['microsoft', 'apple', 'google'],
     merge: 'override', trust: 'any', group: '扩展分流开关', doc: '操作系统云服务清单' },
+  { key: 'devServices', type: 'string[]', default: ['github', 'scholar'],
+    merge: 'override', trust: 'any', group: '扩展分流开关', doc: '开发者与学术服务清单' },
   { key: 'aiPreferredRegions', type: 'string[]', default: ['us', 'jp', 'tw', 'sg', 'kr', 'eu'],
     merge: 'override', trust: 'any', group: '扩展分流开关', doc: 'AI 策略组地区保底优先列表' },
   { key: 'enableAntiAD', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '扩展分流开关', doc: '激进广告拦截 (anti-AD)' },
+  // 注：GitHub / 学术 的启停以 devServices 为准，下述开关仅具备「关闭」语义
+  //     （置 false 可强制关闭，置 true 不会在 devServices 缺失该项时反向启用）。
+  //     本区域策略组将改为声明式拓扑，详见 ROADMAP M3「策略组硬编码不可扩展」。
   { key: 'enableGitHub', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '开发者选项分流' },
+    group: '扩展分流开关', doc: '开发者选项分流（仅关闭：需 devServices 含 github）' },
   { key: 'enableScholar', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '学术资源分流' },
+    group: '扩展分流开关', doc: '学术资源分流（仅关闭：需 devServices 含 scholar）' },
   { key: 'enableSocial', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '扩展分流开关', doc: '海外社交分流' },
   { key: 'enableCrypto', type: 'boolean', default: false, merge: 'override', trust: 'any',
@@ -258,9 +263,6 @@ const FIELDS = [
   { key: 'geoipRepo', type: 'string', default: 'MetaCubeX/meta-rules-dat@meta/geo/geoip',
     merge: 'override', trust: 'any', group: '规则集与图标仓库来源',
     doc: 'geoip 网段规则集仓库路径（配合 ruleProviderCDN 组成完整 URL）' },
-  { key: 'devServices', type: 'string[]', default: ['github', 'scholar'],
-    merge: 'override', trust: 'any', group: '规则集与图标仓库来源',
-    doc: 'dev 分类下启用的服务 key 列表（此前只能改代码，无法从配置控制）' },
 
   // ── 【11. 进程分流名单】（此前代码读取但从未登记） ────────────────────────
   { key: 'processDirectWin', type: 'string[]',

@@ -340,11 +340,25 @@ function buildProxyTopology({
   }
 
   // 专项应用分组
+  const devActive = Array.isArray(userConfig.devServices)
+    ? userConfig.devServices
+    : ['github', 'scholar'];
+  const isGitHubActive = Boolean(userConfig.enableGitHub !== false && devActive.includes('github'));
+  const isScholarActive = Boolean(userConfig.enableScholar !== false && devActive.includes('scholar'));
+
   if (userConfig.enableTelegram) appGroups.push(buildSelect('Telegram', [...standardOptions, 'DIRECT']));
-  if (userConfig.enableGitHub) appGroups.push(buildSelect('GitHub', [...standardOptions, 'DIRECT']));
-  if (userConfig.enableScholar) {
+  if (isGitHubActive) appGroups.push(buildSelect('GitHub', [...standardOptions, 'DIRECT']));
+  if (isScholarActive) {
     const scholarPref = ['美国节点', '欧洲节点', '日本节点', '新加坡节点', '台湾节点', '香港节点'];
     appGroups.push(buildSelect('学术网站', [...scholarPref, proxyTarget, 'DIRECT']));
+  }
+  if (effectiveRegistries.dev) {
+    const extraDevKeys = devActive.filter(k => k !== 'github' && k !== 'scholar' && effectiveRegistries.dev[k]);
+    extraDevKeys.forEach(key => {
+      const conf = effectiveRegistries.dev[key];
+      if (!conf) return;
+      appGroups.push(buildSelect(conf.name, [...standardOptions, 'DIRECT']));
+    });
   }
   if (userConfig.enableCrypto) {
     const cryptoPref = ['台湾节点', '日本节点', '欧洲节点'];

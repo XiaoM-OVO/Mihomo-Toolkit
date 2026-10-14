@@ -153,13 +153,30 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   }
 
   // 专项服务 (GitHub, 学术, 虚拟币, PayPal, WebRTC)
-  if (userConfig.enableScholar) {
+  const devActive = Array.isArray(userConfig.devServices)
+    ? userConfig.devServices
+    : ['github', 'scholar'];
+  const isGitHubActive = Boolean(userConfig.enableGitHub !== false && devActive.includes('github'));
+  const isScholarActive = Boolean(userConfig.enableScholar !== false && devActive.includes('scholar'));
+
+  if (isScholarActive) {
     providerBase['scholar'] = 'geosite/category-scholar-!cn';
     routingRules.push('DOMAIN-KEYWORD,sci-hub,学术网站', 'RULE-SET,scholar,学术网站');
   }
-  if (userConfig.enableGitHub) {
+  if (isGitHubActive) {
     providerBase['github'] = 'geosite/github';
     routingRules.push('RULE-SET,github,GitHub');
+  }
+
+  // 扩展 Dev 服务 (支持通过 customServices.dev 扩展)
+  if (effectiveRegistries.dev) {
+    const extraDevKeys = devActive.filter(k => k !== 'github' && k !== 'scholar' && effectiveRegistries.dev[k]);
+    extraDevKeys.forEach(key => {
+      const conf = effectiveRegistries.dev[key];
+      if (!conf) return;
+      providerBase[key] = conf.provider;
+      if (conf.rules) routingRules.push(...conf.rules);
+    });
   }
   if (userConfig.enableCrypto) {
     providerBase['crypto'] = 'geosite/category-cryptocurrency';

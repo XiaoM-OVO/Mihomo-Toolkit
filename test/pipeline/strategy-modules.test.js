@@ -6,6 +6,7 @@ const { applyDnsOverlay } = require('../../src/strategy/dns');
 const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../../src/strategy/kernel');
 const { createServiceRegistries } = require('../../src/strategy/registries');
 const { buildRoutingRules } = require('../../src/strategy/rules');
+const { runStrategyPipeline } = require('../../src/pipeline/strategy');
 
 describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
   it('config - 配置解析器与默认值补全 (resolveConfig)', () => {
@@ -101,5 +102,100 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.ok(customRule2Index > customRule1Index, 'customRules 内部保持顺序');
     assert.ok(customRule2Index < adsIndex, 'customRules 必须在广告拦截等业务规则之前');
     assert.ok(customRule2Index < matchIndex, 'customRules 必须在漏网之鱼之前');
+  });
+
+  it('config - 支持自定义 logger 注入且在 silent 模式下静默', () => {
+    const logs = [];
+    const customLogger = {
+      warn: (msg) => logs.push(msg)
+    };
+
+    // 1. 传入自定义 logger，非法条目触发 logger.warn 而非直接抛错或裸输出
+    resolveConfig({
+      protectedDomains: ['   ', 'valid.com']
+    }, { logger: customLogger });
+
+    assert.equal(logs.length, 1);
+    assert.ok(logs[0].includes('protectedDomains'));
+    assert.ok(logs[0].includes('格式非法、已忽略'));
+
+    // 2. logLevel 为 silent 时，且无外部 logger 时静默抑制输出
+    let consoleWarnCalled = false;
+    const origWarn = console.warn;
+    console.warn = () => { consoleWarnCalled = true; };
+    try {
+      resolveConfig({
+        logLevel: 'silent',
+        protectedDomains: ['   ']
+      });
+      assert.equal(consoleWarnCalled, false, 'silent 模式下不应触发 console.warn');
+    } finally {
+      console.warn = origWarn;
+    }
+  });
+
+  it('strategy - devServices 与 enableGitHub / enableScholar 动态开关联动', () => {
+    // 1. 默认状态：同时启用 GitHub 与 学术
+    const defaultCfg = resolveConfig({});
+    const defaultRes = buildRoutingRules(defaultCfg, defaultCfg.registries);
+    assert.ok(defaultRes.rules.includes('RULE-SET,github,GitHub'));
+    assert.ok(defaultRes.rules.includes('RULE-SET,scholar,学术网站'));
+
+    // 2. 仅启用 github
+    const ghOnlyCfg = resolveConfig({ devServices: ['github'] });
+    const ghOnlyRes = buildRoutingRules(ghOnlyCfg, ghOnlyCfg.registries);
+    assert.ok(ghOnlyRes.rules.includes('RULE-SET,github,GitHub'));
+    assert.ok(!ghOnlyRes.rules.includes('RULE-SET,scholar,学术网站'));
+
+    // 3. 清空 devServices
+    const noneCfg = resolveConfig({ devServices: [] });
+    const noneRes = buildRoutingRules(noneCfg, noneCfg.registries);
+    assert.ok(!noneRes.rules.includes('RULE-SET,github,GitHub'));
+    assert.ok(!noneRes.rules.includes('RULE-SET,scholar,学术网站'));
+
+    // 4. legacy 开关显式为 false 时即使 devServices 声明也生效关闭
+    const offGhCfg = resolveConfig({ enableGitHub: false, devServices: ['github', 'scholar'] });
+    const offGhRes = buildRoutingRules(offGhCfg, offGhCfg.registries);
+    assert.ok(!offGhRes.rules.includes('RULE-SET,github,GitHub'));
+    assert.ok(offGhRes.rules.includes('RULE-SET,scholar,学术网站'));
+
+    // 5. 支持 customServices.dev 扩展
+    const customDevCfg = resolveConfig({
+      devServices: ['github', 'huggingface'],
+      customServices: {
+        dev: {
+          huggingface: {
+            name: 'HuggingFace',
+            rules: 'huggingface'
+          }
+        }
+      }
+    });
+    const customRes = buildRoutingRules(customDevCfg, customDevCfg.registries);
+    assert.ok(customRes.rules.includes('RULE-SET,github,GitHub'));
+    assert.ok(customRes.rules.includes('RULE-SET,huggingface,HuggingFace'));
+    assert.equal(customRes.providers['huggingface'].behavior, 'domain');
+  });
+
+  it('config - 策略流水线将配置告警透传至注入 logger 而非裸 console.warn', () => {
+    const logs = [];
+    const logger = {
+      warn: (msg) => logs.push(msg),
+      child() { return this; },
+      isLevelEnabled() { return false; },
+      info() {}, debug() {}, success() {}, error() {}
+    };
+
+    let consoleWarnCalled = false;
+    const origWarn = console.warn;
+    console.warn = () => { consoleWarnCalled = true; };
+    try {
+      runStrategyPipeline({ proxies: [] }, { protectedDomains: ['   ', 'a.com'] }, { logger });
+    } finally {
+      console.warn = origWarn;
+    }
+
+    assert.ok(logs.some(m => m.includes('protectedDomains')), '策略流水线应将配置告警透传至注入 logger');
+    assert.equal(consoleWarnCalled, false, '注入 logger 时不应再触发裸 console.warn');
   });
 });

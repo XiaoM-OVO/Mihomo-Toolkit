@@ -454,6 +454,10 @@ class ServiceCatalog {
     const result = [];
 
     allowedKeys.forEach(key => {
+      if (category === 'dev') {
+        if (key === 'github' && cfg.enableGitHub === false) return;
+        if (key === 'scholar' && cfg.enableScholar === false) return;
+      }
       const s = catServices[key];
       if (s) {
         result.push({ key, category, service: s });
