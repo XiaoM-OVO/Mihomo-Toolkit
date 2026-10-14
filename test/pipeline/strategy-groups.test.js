@@ -239,6 +239,29 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(!tiktok.proxies.includes('香港节点') && !tiktok.proxies.includes('大陆节点'), 'TikTok 应准确排除香港与大陆节点');
   });
 
+  test('strategyMain - 哈希负载均衡组随 groupIconMode 渲染（icon 模式剥离 ⚖️ 并挂载图标）', () => {
+    const rawConfig = {
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇭🇰 香港 02', type: 'ss', server: 'hk2.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' }
+      ]
+    };
+    const base = { enableRegionHashLB: true, minorNodeThreshold: 1, iconRepoOrz: 'https://test-icon.com/' };
+
+    // emoji（默认）模式：纯净中文名由展示层追加 ⚖️ 徽标
+    const resEmoji = strategyMain(rawConfig, { ...base, groupIconMode: 'emoji' });
+    const emojiHash = resEmoji['proxy-groups'].find(g => g.name === '⚖️ 负载均衡-哈希 (香港)');
+    assert.ok(emojiHash, 'emoji 模式应为哈希组追加 ⚖️ 徽标');
+
+    // icon 模式：不得残留 Emoji，且挂载在线图标
+    const resIcon = strategyMain(rawConfig, { ...base, groupIconMode: 'icon' });
+    const iconHash = resIcon['proxy-groups'].find(g => g.name.includes('负载均衡-哈希'));
+    assert.ok(iconHash, 'icon 模式应保留哈希组');
+    assert.ok(!iconHash.name.includes('⚖️'), 'icon 模式下哈希组名不得残留 Emoji');
+    assert.equal(iconHash.name, '负载均衡-哈希 (香港)');
+    assert.ok(iconHash.icon && iconHash.icon.includes('Roundrobin.png'), 'icon 模式应为哈希组挂载在线图标');
+  });
+
   test('strategyMain - hideUnknownGroup 隐藏未知识别策略组', () => {
     const rawConfig = {
       proxies: [

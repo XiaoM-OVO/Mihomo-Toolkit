@@ -450,7 +450,9 @@ function buildProxyTopology({
     if (regionNodes && regionNodes.length > 0) {
       if (userConfig.enableRegionHashLB && regionNodes.length > 1) {
         const cleanRegionName = name.replace(/节点$/, '');
-        const hashGroupName = `⚖️ 负载均衡-哈希 (${cleanRegionName})`;
+        // 内部一律使用纯净中文名，Emoji 徽标由展示层 (presentation) 在终末统一渲染，
+        // 避免硬编码 ⚖️ 在 groupIconMode: "icon" 下无法剥离
+        const hashGroupName = `负载均衡-哈希 (${cleanRegionName})`;
         finalGroups.push({
           name: hashGroupName,
           type: 'load-balance',

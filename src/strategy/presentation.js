@@ -140,6 +140,25 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     }
   });
 
+  // 2.5 哈希负载均衡组（enableRegionHashLB 派生）
+  // 组名为「负载均衡-哈希 (地区)」，后缀随地区动态生成、无法被静态骨架字典命中，
+  // 故在此按地区元数据补登记：emoji/both 模式追加 ⚖️ 徽标，icon 模式剥离并挂载图标。
+  const hashLbSuffixes = new Set(['大陆']);
+  getEnhancedRegionDefs().forEach(r => {
+    if (r.id !== 'cn' && r.name !== '中国' && r.name) hashLbSuffixes.add(r.name);
+  });
+  CONTINENT_DEFS.forEach(c => {
+    if (c.name) hashLbSuffixes.add(c.name);
+  });
+  const hashLbIconUrl = resolveIconUrl('Roundrobin.png', 'orz', userConfig);
+  for (const suffix of hashLbSuffixes) {
+    const cleanName = `负载均衡-哈希 (${suffix})`;
+    const fullName = `⚖️ ${cleanName}`;
+    emojiMap[cleanName] = fullName;
+    iconMap[cleanName] = hashLbIconUrl;
+    iconMap[fullName] = hashLbIconUrl;
+  }
+
   // 3. 业务服务注册表 (AI, Streaming, Dev, System 等)
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
     ? registries
