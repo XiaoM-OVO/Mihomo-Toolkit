@@ -9,7 +9,7 @@
 
 - **当前版本**：`v2.0.0-alpha`
 - **真实研发完成度**：**约 40% ~ 45%**
-- **当前核心成果**：纯计算内核基本稳固（节点清洗、特征与线路提取、8 种协议指纹去重、两阶段命名仲裁、DAG 剪枝破环、430 个单元测试全绿）。
+- **当前核心成果**：纯计算内核基本稳固（节点清洗、特征与线路提取、8 种协议指纹去重、两阶段命名仲裁、DAG 剪枝破环、452 个单元测试全绿）。
 - **治理原则**：**先保稳定性与现有功能闭环，再做拓扑大重构**。在未彻底解决现存安全漏洞、逻辑倒挂、反向依赖和代码重复之前，不盲目推进大范围功能扩张。
 
 ---
@@ -140,7 +140,7 @@
 | 注册表兜底机制双轨制 | `src/data/field-registry.js` | 设计坏味道 | 存在 12 个 `default: undefined` 字段依赖代码内隐式兜底 | M2 阶段 |
 | include 原始对象二次传参穿透 (已修复) | `src/config/include.js` | 边界缺陷 | `WeakSet` 仅缓存展开后对象，二次传入同字面量无法阻断二次读盘 | M1 阶段 |
 | resolveConfig 浅拷贝覆盖风险 | `src/config/index.js` | 坏味道 | 顶层使用 `Object.assign` 浅合并，复杂嵌套配置存在子属性丢失风险 | M2 阶段 |
-| 外部配置装载隐式 cwd 依赖 | `src/config/index.js` | 环境敏感 | SDK 调用时默认回退至 `process.cwd()`，存在跨目录解析偏差 | M1 阶段 |
+| 外部配置装载隐式 cwd 依赖 (已修复) | `src/config/index.js` | 环境敏感 | SDK 调用时默认回退至 `process.cwd()`，存在跨目录解析偏差 | M1 阶段 |
 | 外部脚本未沙箱化执行 | `src/config/mounts.js` | 安全隐患 | `.js` / `.cjs` 配置文件通过 `require()` 直接执行，未做沙箱隔离 | M3 阶段 |
 
 ### 3. Core 核心算法与安全沙箱层问题清单 (第 2 批审查)
@@ -160,20 +160,20 @@
 ### 4. IO 边界层与协议解析器问题清单 (第 3 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
 | :--- | :--- | :---: | :--- | :---: |
-| 同步 isAllowedUrl 绕过 DNS 校验 | `src/io/ssrf.js`, `targets/server.js` | 安全隐患 | `isAllowedUrl` 为纯同步方法，面对解析至内网的域名时完全失效 | M1 阶段 |
+| 同步 isAllowedUrl 绕过 DNS 校验 (已修复) | `src/io/ssrf.js`, `targets/server.js` | 安全隐患 | `isAllowedUrl` 为纯同步方法，面对解析至内网的域名时完全失效 | M1 阶段 |
 | 域名并发解析无流控与排队池 | `src/io/dns-resolver.js` | 资源耗尽风险 | `resolveProxiesDomains` 全量并发，大订阅易耗尽套接字并触发 DNS 限流 | M2 阶段 |
 | DoH 查询不支持代理且串行阻塞 | `src/io/dns-resolver.js` | 健壮性缺陷 | `queryDoh` 裸调用全局 `fetch`，不走本地代理；且对 AliDNS 与 Google 串行兜底阻塞 | M2 阶段 |
-| Shadowsocks 密码与插件多值截断 | `src/io/parsers/shadowsocks.js` | 兼容性缺陷 | 明文凭证用 `split(':')`，密码含冒号被截断；插件参数用 `split('=')` 同理截断 | M1 阶段 |
+| Shadowsocks 密码与插件多值截断 (已修复) | `src/io/parsers/shadowsocks.js` | 兼容性缺陷 | 明文凭证用 `split(':')`，密码含冒号被截断；插件参数用 `split('=')` 同理截断 | M1 阶段 |
 | VMess 字段兼容狭窄与伪装头丢失 | `src/io/parsers/vmess.js` | 兼容性缺陷 | TLS 仅严格匹配字符串 `'tls'`；`tcp+http` 混淆伪装头时丢弃了 host/path | M1 阶段 |
-| gRPC 协议路径多别名兼容缺失 | `src/io/parsers/vless.js`, `trojan.js` | 兼容性缺陷 | 仅获取 `serviceName`，未兼容通用的 `service-name` 或 `path` 参数 | M1 阶段 |
-| HTTP 重试状态码一刀切判死 4xx | `src/io/fetcher.js` | 健壮性坏味道 | `err.retryable = res.status >= 500` 导致 HTTP 429 与 408 直接放弃重试 | M1 阶段 |
+| gRPC 协议路径多别名兼容缺失 (已修复) | `src/io/parsers/vless.js`, `trojan.js` | 兼容性缺陷 | 仅获取 `serviceName`，未兼容通用的 `service-name` 或 `path` 参数 | M1 阶段 |
+| HTTP 重试状态码一刀切判死 4xx (已修复) | `src/io/fetcher.js` | 健壮性坏味道 | `err.retryable = res.status >= 500` 导致 HTTP 429 与 408 直接放弃重试 | M1 阶段 |
 | 订阅内容 Base64 盲解码性能开销 | `src/io/parsers/index.js` | 性能坏味道 | 未做字符特征预检，对任意 Plain 文本直接调用解码，造成无效解析尝试 | M2 阶段 |
 | 订阅容灾与构建结果双轨缓存割裂 | `src/io/cache.js`, `fetcher.js` | 设计坏味道 | `ProfileCache` 与 `SubStaleCacheMap` 各自手写版本代际防护，机制重复割裂 | M2 阶段 |
 
 ### 5. Strategy 策略与拓扑生成层问题清单 (第 4 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
 | :--- | :--- | :---: | :--- | :---: |
-| 策略组目标模糊子串匹配风险 | `src/strategy/topology.js` | 逻辑隐患 | `customGroups` 匹配使用双向 `includes`，目标名为“节点”易错误注入 | M1 阶段 |
+| 策略组目标模糊子串匹配风险 (已修复) | `src/strategy/topology.js` | 逻辑隐患 | `customGroups` 匹配使用双向 `includes`，目标名为“节点”易错误注入 | M1 阶段 |
 | 哈希负载均衡组硬编码 Emoji 泄露 (已修复) | `src/strategy/topology.js`, `presentation.js` | 规范缺陷 | `⚖️ 负载均衡-哈希` 组名硬编码带 Emoji，纯图标模式下无法剥离 | M1 阶段 |
 | TUN 路由排除缺少 IPv6 私网网段 | `src/strategy/kernel.js` | 规范缺陷 | 路由排除名单仅写死 IPv4 私网，未包含 `fc00::/7` 与 `fe80::/10` | M2 阶段 |
 | 内核优化阶段原地突变代理对象 (已修复) | `src/strategy/kernel.js` | 坏味道 | 原地修改 `config.proxies` 节点的 `client-fingerprint` 与 `udp` 属性 | M1 阶段 |
@@ -188,5 +188,5 @@
 | 服务端缺少优雅退出与平滑停机 | `src/targets/server.js` | 生产级缺陷 | 未监听 `SIGTERM`/`SIGINT`，容器终止时直接强杀，无法等待请求排空 | M2 阶段 |
 | 配置文件热重载缺乏防抖并发保护 | `src/targets/server.js` | 健壮性坏味道 | 高并发下检测到变动时并发触发同步重读，遇编辑器中间态易报错回退 | M2 阶段 |
 | CLI 缺乏 dry-run 与诊断验证模式 | `src/targets/cli.js` | 运维缺陷 | 缺少在不写盘情况下测试语法、连通性与 DNS 不变式的诊断命令 | M2 阶段 |
-| include 展开默认基准目录隐式依赖 cwd | `src/pipeline/engine.js` | 环境敏感 | 展开 `expandIncludes` 时硬编码传入 `process.cwd()`，跨目录 SDK 调用有偏差 | M1 阶段 |
+| include 展开默认基准目录隐式依赖 cwd (已修复) | `src/pipeline/engine.js` | 环境敏感 | 展开 `expandIncludes` 时硬编码传入 `process.cwd()`，跨目录 SDK 调用有偏差 | M1 阶段 |
 | 健康检查端点监控指标粗糙 | `src/targets/server.js` | 运维缺陷 | `/healthz` 缺乏活跃构建数、缓存容量与异常订阅等运行时指标 | M2 阶段 |
