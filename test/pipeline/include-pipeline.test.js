@@ -11,6 +11,7 @@ const { execFileSync } = require('node:child_process');
 
 const { buildProfile } = require('../../src/index.js');
 const { expandIncludes } = require('../../src/config/include.js');
+const { resolveConfig } = require('../../src/config');
 
 const CLI_PATH = path.join(__dirname, '..', '..', 'src', 'targets', 'cli.js');
 
@@ -120,6 +121,37 @@ describe('【Pipeline】配置片段展开与链路一致性 (include-pipeline)'
       assert.equal(res.subscriptions[0].tag, 'A');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('buildProfile - SDK 显式 baseDir：跨目录相对 include 不再依赖 cwd', async () => {
+    const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-sdk-'));
+    try {
+      fs.writeFileSync(
+        path.join(cfgDir, 'fragment.yaml'),
+        `minorNodeThreshold: 1\nsubscriptions:\n  - uri: "${INLINE_URI}"\n    tag: FromFragment\n`
+      );
+
+      // 片段位于 cfgDir，而进程 cwd 是仓库根目录：只有显式传入 baseDir 才能正确解析
+      const { yamlStr } = await buildProfile({ include: ['./fragment.yaml'] }, {
+        mode: 'nodes',
+        noCache: true,
+        baseDir: cfgDir
+      });
+      assert.ok(yamlStr.includes('香港'), 'baseDir 指定的相对片段未被展开消费');
+    } finally {
+      fs.rmSync(cfgDir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolveConfig - options.baseDir 决定相对挂载路径的解析基准', () => {
+    const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-inc-resolve-'));
+    try {
+      fs.writeFileSync(path.join(cfgDir, 'fragment.yaml'), 'minorNodeThreshold: 1\n');
+      const cfg = resolveConfig({ include: ['./fragment.yaml'] }, { baseDir: cfgDir });
+      assert.equal(cfg.minorNodeThreshold, 1, 'resolveConfig 未按 options.baseDir 解析相对 include');
+    } finally {
+      fs.rmSync(cfgDir, { recursive: true, force: true });
     }
   });
 });

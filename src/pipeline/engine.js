@@ -18,7 +18,7 @@ const { validateRequestLimits } = require('../io/limits');
 const { profileCache, normalizeCacheDurations } = require('../io/cache');
 const { processSubscriptionSources, isSubEnabled } = require('./ingestion');
 const { chineseConvert } = require('../core/chinese-sync');
-const { computeMountDigest } = require('../config/mounts');
+const { computeMountDigest, absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
 const dashboard = require('../strategy/dashboard');
 const { createLogger } = require('../core/logger');
@@ -461,12 +461,15 @@ function triggerBackgroundRevalidate(userConfig, options, logger, cacheKey) {
 /**
  * 全流程流水线总调度入口 (Pipeline Engine)
  * @param {object} [userConfig={}] 用户全局配置
- * @param {object} [options={}] CLI 或运行时覆盖参数
+ * @param {object} [options={}] CLI 或运行时覆盖参数 (baseDir 可显式指定相对挂载路径基准目录)
  * @returns {Promise<object>} 构建交付结果
  */
 async function runPipelineEngine(userConfig = {}, options = {}) {
-  // 入口统一展开 include 片段
-  userConfig = expandIncludes(userConfig || {}, process.cwd());
+  // 入口统一兜底：与 CLI / server 装载现场保持同一套处理顺序（先 absolutize 挂载路径，再展开 include）。
+  // 基准目录优先取调用方显式传入的 options.baseDir —— SDK 跨目录调用时 cwd 不可信；
+  // 装载现场已转过绝对路径的配置在此为幂等空操作，行为不变。
+  const configBaseDir = options.baseDir || process.cwd();
+  userConfig = expandIncludes(absolutizeMountPaths(userConfig || {}, configBaseDir), configBaseDir);
 
   const isTest = isTestEnvironment();
   const envLogLevel = process.env.LOG_LEVEL || (process.env.DEBUG ? 'debug' : '');
