@@ -32,9 +32,9 @@ function parseSsUri(uri) {
       method = safeDecodeURIComponent(user).replace(/[\r\n\x00-\x1F]/g, '').trim();
       password = safeDecodeURIComponent(pass).replace(/[\r\n\x00-\x1F]/g, '').trim();
     } else if (user && user.includes(':')) {
-      [method, password] = user.split(':');
-      method = method.replace(/[\r\n\x00-\x1F]/g, '').trim();
-      password = safeDecodeURIComponent(password).replace(/[\r\n\x00-\x1F]/g, '').trim();
+      const firstColon = user.indexOf(':');
+      method = user.slice(0, firstColon).replace(/[\r\n\x00-\x1F]/g, '').trim();
+      password = safeDecodeURIComponent(user.slice(firstColon + 1)).replace(/[\r\n\x00-\x1F]/g, '').trim();
     } else {
       const decoded = decodeBase64UrlSafe(user);
       if (decoded && decoded.includes(':')) {
@@ -63,14 +63,29 @@ function parseSsUri(uri) {
       password
     };
 
-    const plugin = params.get('plugin');
+    let plugin = params.get('plugin');
     if (plugin) {
       const pluginOpts = {};
-      const pluginOptsStr = params.get('plugin-opts') || '';
-      pluginOptsStr.split(';').forEach(p => {
-        const [k, v] = p.split('=');
-        if (k) pluginOpts[k.trim()] = v ? safeDecodeURIComponent(v.trim()) : '';
-      });
+      let pluginOptsStr = params.get('plugin-opts') || '';
+      if (!pluginOptsStr && plugin.includes(';')) {
+        const parts = plugin.split(';');
+        plugin = parts[0];
+        pluginOptsStr = parts.slice(1).join(';');
+      }
+      if (pluginOptsStr) {
+        pluginOptsStr.split(';').forEach(p => {
+          if (!p) return;
+          const firstEq = p.indexOf('=');
+          if (firstEq === -1) {
+            const k = p.trim();
+            if (k) pluginOpts[k] = '';
+          } else {
+            const k = p.slice(0, firstEq).trim();
+            const v = p.slice(firstEq + 1).trim();
+            if (k) pluginOpts[k] = safeDecodeURIComponent(v);
+          }
+        });
+      }
       proxy.plugin = plugin;
       proxy['plugin-opts'] = pluginOpts;
     }

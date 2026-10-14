@@ -53,14 +53,14 @@
 > **阶段目标**：清理审查中发现的所有核心逻辑缺陷、协议解析边界问题与架构坏味道，确保内核纯净与稳定。
 
 - [ ] **高危逻辑与配置意图对齐**：
-  - 修复 `customRules` 分流优先级与文档倒挂（从末尾提前至匹配首位，确保自定义私域规则不被内置规则拦截）；
+  - [x] 修复 `customRules` 分流优先级与文档倒挂（从末尾提前至匹配首位，确保自定义私域规则不被内置规则拦截）；
   - 修复 `isAllowedUrl` 同步白名单绕过问题，服务端预检引入完整主机名与 IP 安全校验。
-- [ ] **架构分层反向依赖清理**：
-  - 下沉 `src/core/shared/ip.js` 与 `sub-info.js` 至独立基础设施/数据层，彻底解决 `scripts/verify-architecture.js` 报出的 `IO -> Core: ❌ 2` 违规。
-- [ ] **协议解析器健壮性与边界修复**：
-  - Shadowsocks 解析器修复：改用 `indexOf(':')` 提取密码（防密码包含冒号被截断），插件参数防等号截断；
-  - VMess 解析器修复：兼容 `tls: 1 / true`，补齐 `net: tcp` 搭配 `type: http` 伪装头（Host/Path）提取；
-  - VLESS / Trojan 解析器修复：gRPC 路径兼容读取 `service-name` 与 `path` 别名。
+- [x] **架构分层反向依赖清理**：
+  - [x] 下沉基础网络与流量工具至独立基础设施层 (`src/infra/`)，彻底解决 `scripts/verify-architecture.js` 报出的 `IO -> Core: ❌ 2` 违规。
+- [x] **协议解析器健壮性与边界修复**：
+  - [x] Shadowsocks 解析器修复：改用 `indexOf(':')` 提取密码（防密码包含冒号被截断），插件参数防等号截断并兼容 SIP003 内联插件；
+  - [x] VMess 解析器修复：兼容 `tls: 1 / true` 多种真值形式，补齐 `net: tcp` 搭配 `type: http` 伪装头（Host/Path）提取；
+  - [x] VLESS / Trojan 解析器修复：gRPC 路径兼容读取 `service-name` 与 `path` 别名。
 - [ ] **纯函数原则重塑与原地突变消除**：
   - 消除 `cleaner.js:classifyNode` 中原地修改 `proxy.server / port / name` 的副作用；
   - 消除 `kernel.js:applyCoreOptimize` 中原地修改代理节点属性的副作用；
@@ -69,8 +69,8 @@
   - 消除 `ingestion.js` 中 `ingestSubscriptions` 与 `ingestUrls` 之间超 130 行的重复代码；
   - 剔除 `rename.js` 中未被业务调用的遗留死代码 `resolveNameCollisions`；
   - 统一 `metadata.js` 与 `regions.js` 的地区事实源，统一看板节点假 IP 定义（`1.0.0.1` vs `127.0.0.1`）。
-- [ ] **安全隐私与凭证脱敏加固**：
-  - 补全终端 Logger 对 Hysteria 2 (`hy2://`)、TUIC (`tuic://`) 与 VMess 节点敏感凭据的脱敏正则。
+- [x] **安全隐私与凭证脱敏加固**：
+  - [x] 补全终端 Logger 对 Hysteria 2 (`hy2://`)、TUIC (`tuic://`)、Socks 与 VMess 节点敏感凭据的脱敏正则。
 
 ---
 

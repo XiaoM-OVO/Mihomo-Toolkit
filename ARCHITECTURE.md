@@ -23,7 +23,7 @@ Mihomo-Toolkit 是一个面向 Mihomo (Clash.Meta) 的代理节点清洗、重�
 
 ## 二、 模块分层与依赖拓扑
 
-系统逻辑上划分为 7 个层级，调用关系总体保持自顶向下：
+系统逻辑上划分为 8 个层级，调用关系总体保持自顶向下：
 
 ```text
 ┌────────────────────────────────────────────────────────┐
@@ -67,20 +67,26 @@ Mihomo-Toolkit 是一个面向 Mihomo (Clash.Meta) 的代理节点清洗、重�
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
-│ 7. Data (只读运行基础层 - 静态基线)                    │
+│ 7. Data (只读运行基础层 - 静态基线与字典)              │
 │    • field-registry.js (字段字典与信任元数据)          │
 │    • security-baselines.js (不可变安全基线与受保护域)  │
 │    • cleaner-rules.js (地区、线路、清洗正则词库)       │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ 8. Infra (基础设施无状态基元层 - 通用纯计算)           │
+│    • ip.js (IP/CIDR 分类与 FQDN 语法校验)              │
+│    • sub-info.js (订阅响应头元信息解析与换算)          │
 └────────────────────────────────────────────────────────┘
 ```
 
-### ⚠️ 已知架构分层债务 (Architectural Debt)
-当前全仓绝大多数模块满足单向 DAG 调用，但**仍存在 2 处反向依赖违规**：
-- `src/io/ssrf.js` 引用了 `src/core/shared/ip.js`；
-- `src/io/parsers/index.js` 引用了 `src/core/shared/sub-info.js`。
-
-**原因分析**：IP 验证与订阅流量解析工具最初被放置在 Core 层内，导致 IO 模块在处理底层网络和订阅响应时产生了跨层反向调用。  
-**后续改进方案**：将 `shared/ip.js` 和 `shared/sub-info.js` 下沉至基础设施层或 Data 层，使 IO 层不再反向依赖 Core。
+### 🛡️ 架构分层契约与零违规保证 (Architectural Invariants)
+全仓模块严格满足单向 DAG 调用，经由 `scripts/verify-architecture.js` 自动化静态检验：
+- `Core -> Config`:  ✅ 0 违规
+- `Core -> IO`:      ✅ 0 违规
+- `IO -> Core`:      ✅ 0 违规 (底层通信不反向依赖核心计算)
+- `Data -> Other`:   ✅ 0 违规 (数据基线只读无外引)
+- `Infra -> Other`:  ✅ 0 违规 (基础设施基元纯计算无内部依赖)
 
 ---
 
@@ -137,9 +143,7 @@ src/
 │   │   └── resolver-plan.js      # DNS 引导方案生成与 INV 不变式验证
 │   └── shared/                   # 核心共享数据与工具
 │       ├── regions.js            # 核心大区与地区代码字典
-│       ├── icons.js              # 策略组 Emoji 与图标常量映射
-│       ├── ip.js                 # [待下沉] IP 与 CIDR 工具库 (债务: 被 IO 反向引用)
-│       └── sub-info.js           # [待下沉] 订阅流量解析工具 (债务: 被 IO 反向引用)
+│       └── icons.js              # 策略组 Emoji 与图标常量映射
 │
 ├── 5. io/                        # 📡 Layer 5: 外部世界通信层 (唯一允许副作用的底层)
 │   ├── fetcher.js                # HTTP 请求调度与 Stale 容灾兜底缓存
@@ -168,11 +172,15 @@ src/
 │   ├── include.js                # 配置片段挂载 include (主文件优先/环路防护)
 │   └── mounts.js                 # 外挂文件载入与存在性校验
 │
-└── 7. data/                      # 📦 Layer 7: 只读运行基础层 (静态基线与规则库)
-    ├── index.js                  # 基础层统一导出
-    ├── field-registry.js         # 字段注册表 SSOT (定义/默认值/信任级别)
-    ├── security-baselines.js     # 安全基线 (受保护域名/豁免组/Fake-IP 保底)
-    └── cleaner-rules.js          # 节点清洗规则库 (地区/线路/阻断正则/权重)
+├── 7. data/                      # 📦 Layer 7: 只读运行基础层 (静态基线与字典)
+│   ├── index.js                  # 基础层统一导出
+│   ├── field-registry.js         # 字段注册表 SSOT (定义/默认值/信任级别)
+│   ├── security-baselines.js     # 安全基线 (受保护域名/豁免组/Fake-IP 保底)
+│   └── cleaner-rules.js          # 节点清洗规则库 (地区/线路/阻断正则/权重)
+│
+└── 8. infra/                     # 🧱 Layer 8: 基础设施层 (无状态纯计算基元)
+    ├── ip.js                     # IP/CIDR/域名语法校验与分类工具 (纯函数)
+    └── sub-info.js               # 订阅元信息解析与流量换算工具 (纯函数)
 ```
 
 ---

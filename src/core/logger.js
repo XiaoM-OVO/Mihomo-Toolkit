@@ -82,10 +82,10 @@ function redactText(text) {
     .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+/gi, '$1***')
     // Redact userinfo: http(s)://user:password@host
     .replace(/(https?:\/\/)([^:@\s]+:[^@\s]+@)/gi, '$1***@')
-    // Redact Proxy URIs: ss://xxx@, vless://xxx@, trojan://xxx@
-    .replace(/(ss:\/\/[^@\s]+@)/gi, 'ss://***@')
-    .replace(/(vless:\/\/[^@\s]+@)/gi, 'vless://***@')
-    .replace(/(trojan:\/\/[^@\s]+@)/gi, 'trojan://***@');
+    // Redact Proxy URIs: ss, vless, trojan, hy2, hysteria2, tuic, socks, socks5
+    .replace(/((?:ss|vless|trojan|hysteria2|hy2|tuic|socks5|socks):\/\/)[^@\s]+@/gi, '$1***@')
+    // Redact VMess Base64 payload
+    .replace(/(vmess:\/\/)[A-Za-z0-9+/=_-]{10,}/gi, '$1***');
 }
 
 class Logger {

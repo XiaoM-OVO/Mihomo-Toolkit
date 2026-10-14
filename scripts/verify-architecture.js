@@ -76,7 +76,7 @@ function getLayer(filePath) {
   const parts = filePath.split('/');
   if (parts[0] === 'src') {
     if (parts.length === 2) return 'facade'; // src/index.js
-    return parts[1]; // config, core, data, io, pipeline, strategy, targets
+    return parts[1]; // config, core, data, infra, io, pipeline, strategy, targets
   }
   return 'root';
 }
@@ -119,8 +119,10 @@ const coreToConfig = edges.filter(e => getLayer(e.from) === 'core' && getLayer(e
 const coreToIo = edges.filter(e => getLayer(e.from) === 'core' && getLayer(e.to) === 'io');
 const ioToCore = edges.filter(e => getLayer(e.from) === 'io' && getLayer(e.to) === 'core');
 const dataOut = edges.filter(e => getLayer(e.from) === 'data' && getLayer(e.to) !== 'data');
+const infraOut = edges.filter(e => getLayer(e.from) === 'infra' && getLayer(e.to) !== 'infra');
 
-console.log(`• Core -> Config: ${coreToConfig.length === 0 ? '✅ 0 违规' : '❌ ' + coreToConfig.length + ' 违规'}`);
-console.log(`• Core -> IO:     ${coreToIo.length === 0 ? '✅ 0 违规' : '❌ ' + coreToIo.length + ' 违规'}`);
-console.log(`• IO -> Core:     ${ioToCore.length === 0 ? '✅ 0 违规 (底层通信不反向依赖核心)' : '❌ ' + ioToCore.length + ' 条 (需关注)'}`);
-console.log(`• Data -> Other:  ${dataOut.length === 0 ? '✅ 0 违规 (数据基线只读无外引)' : '❌ ' + dataOut.length + ' 违规'}`);
+console.log(`• Core -> Config:  ${coreToConfig.length === 0 ? '✅ 0 违规' : '❌ ' + coreToConfig.length + ' 违规'}`);
+console.log(`• Core -> IO:      ${coreToIo.length === 0 ? '✅ 0 违规' : '❌ ' + coreToIo.length + ' 违规'}`);
+console.log(`• IO -> Core:      ${ioToCore.length === 0 ? '✅ 0 违规 (底层通信不反向依赖核心)' : '❌ ' + ioToCore.length + ' 条 (需关注)'}`);
+console.log(`• Data -> Other:   ${dataOut.length === 0 ? '✅ 0 违规 (数据基线只读无外引)' : '❌ ' + dataOut.length + ' 违规'}`);
+console.log(`• Infra -> Other:  ${infraOut.length === 0 ? '✅ 0 违规 (基础设施基元无外引)' : '❌ ' + infraOut.length + ' 违规'}`);

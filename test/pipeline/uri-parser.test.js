@@ -1,4 +1,4 @@
-﻿const { test, describe } = require('node:test');
+const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   parseVlessUri,
@@ -254,5 +254,84 @@ trojan://pass3@trojan.example.com:443#Trojan-Node
     assert.equal(res.proxies.length, 2);
     assert.equal(res.proxies[0].name, 'Hy2-B64');
     assert.equal(res.proxies[1].name, 'TUIC-B64');
+  });
+
+  describe('协议解析边界鲁棒性加固 (M1 Milestone)', () => {
+    test('parseSsUri - 密码包含冒号不被截断', () => {
+      // 未 base64 编码的 user:password，密码含多个冒号
+      const uri = 'ss://aes-256-gcm:my:complex:pass:word@ss.example.com:8388#SS-ColonPass';
+      const proxy = parseSsUri(uri);
+      assert.notEqual(proxy, null);
+      assert.equal(proxy.cipher, 'aes-256-gcm');
+      assert.equal(proxy.password, 'my:complex:pass:word');
+    });
+
+    test('parseSsUri - 插件参数防等号截断与 SIP003 内联插件解析', () => {
+      // plugin-opts 参数值包含等号（如 base64 或复杂的 token）
+      const uri = 'ss://aes-256-gcm:pass@ss.example.com:8388?plugin=obfs-local&plugin-opts=obfs=tls;obfs-host=example.com;token=abc=123==#SS-Plugin';
+      const proxy = parseSsUri(uri);
+      assert.notEqual(proxy, null);
+      assert.equal(proxy.plugin, 'obfs-local');
+      assert.equal(proxy['plugin-opts'].obfs, 'tls');
+      assert.equal(proxy['plugin-opts']['obfs-host'], 'example.com');
+      assert.equal(proxy['plugin-opts'].token, 'abc=123==');
+
+      // SIP003 内联插件
+      const uriInline = 'ss://aes-256-gcm:pass@ss.example.com:8388?plugin=v2ray-plugin;mode=websocket;path=/ws#SS-Inline';
+      const proxyInline = parseSsUri(uriInline);
+      assert.notEqual(proxyInline, null);
+      assert.equal(proxyInline.plugin, 'v2ray-plugin');
+      assert.equal(proxyInline['plugin-opts'].mode, 'websocket');
+      assert.equal(proxyInline['plugin-opts'].path, '/ws');
+    });
+
+    test('parseVmessUri - 兼容 tls: 1 / true 多种真值形式', () => {
+      const vmess1 = Buffer.from(JSON.stringify({
+        v: "2", ps: "VMess-TLS-1", add: "example.com", port: "443", id: "uuid-1", tls: 1
+      })).toString('base64');
+      const proxy1 = parseVmessUri(`vmess://${vmess1}`);
+      assert.equal(proxy1.tls, true);
+
+      const vmessTrue = Buffer.from(JSON.stringify({
+        v: "2", ps: "VMess-TLS-True", add: "example.com", port: "443", id: "uuid-2", tls: true
+      })).toString('base64');
+      const proxyTrue = parseVmessUri(`vmess://${vmessTrue}`);
+      assert.equal(proxyTrue.tls, true);
+    });
+
+    test('parseVmessUri - 提取 TCP + HTTP 伪装头 (type: http)', () => {
+      const vmessHttp = Buffer.from(JSON.stringify({
+        v: "2", ps: "VMess-TCP-HTTP", add: "example.com", port: "80", id: "uuid-3",
+        net: "tcp", type: "http", host: "fake.domain.com", path: "/index.html"
+      })).toString('base64');
+      const proxy = parseVmessUri(`vmess://${vmessHttp}`);
+      assert.notEqual(proxy, null);
+      assert.equal(proxy.network, 'tcp');
+      assert.ok(proxy['http-opts']);
+      assert.deepStrictEqual(proxy['http-opts'].path, ['/index.html']);
+      assert.deepStrictEqual(proxy['http-opts'].headers.Host, ['fake.domain.com']);
+    });
+
+    test('parseVlessUri & parseTrojanUri - gRPC 路径兼容 service-name 与 path 别名', () => {
+      // VLESS service-name 别名
+      const vlessUri1 = 'vless://uuid-test@example.com:443?type=grpc&service-name=my-grpc-service#Vless-Grpc';
+      const vlessProxy1 = parseVlessUri(vlessUri1);
+      assert.equal(vlessProxy1['grpc-opts']['grpc-service-name'], 'my-grpc-service');
+
+      // VLESS path 别名
+      const vlessUri2 = 'vless://uuid-test@example.com:443?type=grpc&path=my-grpc-path#Vless-Grpc-Path';
+      const vlessProxy2 = parseVlessUri(vlessUri2);
+      assert.equal(vlessProxy2['grpc-opts']['grpc-service-name'], 'my-grpc-path');
+
+      // Trojan service-name 别名
+      const trojanUri1 = 'trojan://pass@example.com:443?type=grpc&service-name=trojan-service#Trojan-Grpc';
+      const trojanProxy1 = parseTrojanUri(trojanUri1);
+      assert.equal(trojanProxy1['grpc-opts']['grpc-service-name'], 'trojan-service');
+
+      // Trojan path 别名
+      const trojanUri2 = 'trojan://pass@example.com:443?type=grpc&path=trojan-path#Trojan-Grpc-Path';
+      const trojanProxy2 = parseTrojanUri(trojanUri2);
+      assert.equal(trojanProxy2['grpc-opts']['grpc-service-name'], 'trojan-path');
+    });
   });
 });

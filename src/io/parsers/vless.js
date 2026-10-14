@@ -59,7 +59,7 @@ function parseVlessUri(uri) {
       if (params.get('host')) proxy['ws-opts'].headers.Host = params.get('host');
     } else if (network === 'grpc') {
       proxy['grpc-opts'] = {
-        'grpc-service-name': params.get('serviceName') || ''
+        'grpc-service-name': params.get('serviceName') || params.get('service-name') || params.get('path') || ''
       };
       if (params.get('mode')) proxy['grpc-opts'].mode = params.get('mode');
     } else if (network === 'h2' || network === 'http') {
