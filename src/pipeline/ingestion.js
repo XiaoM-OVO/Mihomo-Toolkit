@@ -21,6 +21,13 @@ const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
 const { effectiveProtectedDomains } = require('../data');
+const {
+  isDirectNodeSub,
+  buildDirectProxy,
+  resolveDialerProxy,
+  resolveShouldKeepName,
+  resolveSubType
+} = require('./direct-node');
 
 // 统一解耦 Strategy 层看板逻辑：遵循洋葱模型，由上层 Pipeline 显式注入依赖，杜绝反向 require
 function getDashboard(injected) {
@@ -443,10 +450,13 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       if (!isSubEnabled(sub)) {
         return { sub, rawResult: null, error: null, disabled: true };
       }
-      if (!sub.url && !sub.uri) return { sub, rawResult: null, error: null };
+      const isDirectNode = isDirectNodeSub(sub);
+      if (!sub.url && !sub.uri && !isDirectNode) return { sub, rawResult: null, error: null };
       try {
         let rawResult;
-        if (sub.uri) {
+        if (isDirectNode) {
+          rawResult = { directProxies: [buildDirectProxy(sub)], subInfo: null };
+        } else if (sub.uri) {
           rawResult = { content: sub.uri, subInfo: null };
         } else {
           const subKey = sub.url;
@@ -504,29 +514,52 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     const subSummaries = [];
 
     for (const { sub, rawResult, error, disabled } of fetchedResults) {
+      const isDirect = isDirectNodeSub(sub) || Boolean(sub?.uri);
+      const subType = resolveSubType(sub);
       if (disabled) {
         const tag = sub.tag || (sub.url ? redactUrl(sub.url, showFullUrl) : (sub.name || '自建'));
-        subSummaries.push({ disabled: true, tag, type: sub.uri ? 'uri' : 'url' });
+        subSummaries.push({ disabled: true, tag, type: subType });
         continue;
       }
       if (!rawResult && !error) continue;
       try {
         if (error) throw error;
         recordSubInfo(rawResult.subInfo, sub.tag);
-        const subConfig = parseContent(rawResult.content);
-        let subProxies = sanitizeExternalProxies(subConfig.proxies || []);
+        let subConfig = { proxies: [] };
+        let subProxies = [];
+        if (rawResult.directProxies) {
+          subProxies = sanitizeExternalProxies(rawResult.directProxies);
+          subConfig = { proxies: subProxies };
+        } else {
+          subConfig = parseContent(rawResult.content);
+          subProxies = sanitizeExternalProxies(subConfig.proxies || []);
+        }
 
         if (sub.name && subProxies.length === 1) {
           subProxies[0].name = sub.name;
         }
 
-        if (sub.uri) {
+        // 覆盖/指定单节点类型 (如配置了 type: 'http')
+        if (sub.type && subProxies.length === 1) {
+          subProxies[0].type = String(sub.type).toLowerCase();
+        }
+
+        // 注入链式代理 (dialerProxy / dialer-proxy)
+        const dialerProxyTarget = resolveDialerProxy(sub);
+        if (dialerProxyTarget) {
+          subProxies.forEach(p => {
+            p['dialer-proxy'] = dialerProxyTarget;
+          });
+        }
+
+        if (isDirect) {
           const nameHint = subProxies[0] ? subProxies[0].name : '未知';
-          logger.debug(`📌 解析 URI 节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
+          logger.debug(`📌 摄入单节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
         }
 
         // 注入 keepName 与 customGroups 特殊属性
-        if (sub.keepName) {
+        const shouldKeepName = resolveShouldKeepName(sub);
+        if (shouldKeepName) {
           subProxies.forEach(p => { p._keepName = true; });
         }
         if (Array.isArray(sub.groups) && sub.groups.length > 0) {
@@ -625,10 +658,10 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         sourceSkeleton.proxies = sourceSkeleton.proxies.concat(subProxies);
 
         const nodeCount = subProxies.length;
-        perSubCounts[sub.uri ? `uri:${sub.tag || effectiveTag}` : String(sub.url)] = nodeCount;
+        perSubCounts[isDirect ? `direct:${sub.tag || effectiveTag}` : String(sub.url)] = nodeCount;
         subSummaries.push({
-          type: sub.uri ? 'uri' : 'url',
-          nameHint: sub.uri ? (subProxies[0] ? subProxies[0].name : '未知') : '',
+          type: subType,
+          nameHint: isDirect ? (subProxies[0] ? subProxies[0].name : '未知') : '',
           tag: sub.tag || effectiveTag,
           total: nodeCount,
           filtered: filteredCount,
@@ -636,7 +669,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           stripped: strippedCount
         });
       } catch (e) {
-        const subId = sub.uri ? 'direct-uri' : redactUrl(sub.url, showFullUrl);
+        const subId = isDirect ? (sub.name || sub.tag || 'direct-node') : redactUrl(sub.url, showFullUrl);
         logger.error(`❌ 订阅解析异常 [${subId}]: ${e.message}`);
 
         let effectiveTag = sub.tag;
@@ -663,7 +696,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         }
 
         subSummaries.push({
-          type: sub.uri ? 'uri' : 'url',
+          type: subType,
           nameHint: '',
           tag: effectiveTag,
           total: 0,

@@ -111,4 +111,26 @@ describe('【Pipeline】命名计划与节点身份闭环 (rename-closure)', () 
     assert.ok(logs.some(l => l.includes('「🇭🇰 香港 A」 → 「🇭🇰 香港」')), '日志应记录首个节点目标名称');
     assert.ok(logs.some(l => l.includes('「🇭🇰 香港 B」 → 「🇭🇰 香港 #2」')), '日志应准确记录发生碰撞仲裁后的 #2 目标名称');
   });
+
+  it('applyRenamePlan - 链式代理 dialer-proxy 目标重命名时级联同步', () => {
+    const upstream = item('Upstream-Raw', 4);
+    const downstream = item('Downstream-Node', 4, {
+      proxy: {
+        name: 'Downstream-Node',
+        type: 'http',
+        server: '198.51.100.1',
+        port: 443,
+        'dialer-proxy': 'Upstream-Raw'
+      }
+    });
+
+    applyRenamePlan([upstream, downstream], [
+      { item: upstream, tier: 4, intendedName: '🇭🇰 香港 01' },
+      { item: downstream, tier: 4, intendedName: '🇺🇸 美国 原生IP' }
+    ]);
+
+    assert.equal(upstream.proxy.name, '🇭🇰 香港 01');
+    assert.equal(downstream.proxy.name, '🇺🇸 美国 原生IP');
+    assert.equal(downstream.proxy['dialer-proxy'], '🇭🇰 香港 01');
+  });
 });

@@ -140,4 +140,82 @@ describe('【Pipeline】核心流水线装配与交付形态 (pipeline)', () => 
     assert.ok(customGroup);
     assert.ok(customGroup.proxies.includes('🇯🇵 专线·我的直连节点'));
   });
+
+  it('buildProfile - 支持 subscriptions 中直接声明结构化单节点与 dialerProxy 链式代理', async () => {
+    const { buildProfile } = require('../../src/pipeline/engine');
+    const cfg = {
+      subscriptions: [
+        {
+          type: 'http',
+          server: '198.51.100.1',
+          port: 443,
+          username: 'mockuser',
+          password: 'mockpassword',
+          name: '🇺🇸 美国 原生IP',
+          tag: '原生ip',
+          keepName: true,
+          dialerProxy: '🇭🇰 香港节点'
+        }
+      ],
+      minorNodeThreshold: 1
+    };
+
+    const res = await buildProfile(cfg, { mode: 'config', noCache: true });
+    const proxies = res.outputData.proxies || [];
+
+    assert.equal(proxies.length, 1);
+    assert.equal(proxies[0].name, '🇺🇸 美国 原生IP');
+    assert.equal(proxies[0].type, 'http');
+    assert.equal(proxies[0].server, '198.51.100.1');
+    assert.equal(proxies[0].port, 443);
+    assert.equal(proxies[0].username, 'mockuser');
+    assert.equal(proxies[0].password, 'mockpassword');
+    assert.equal(proxies[0]['dialer-proxy'], '🇭🇰 香港节点');
+  });
+
+  it('buildProfile - 结构化单节点未配置 keepName 但显式声明 name 时默认保留该名称', async () => {
+    const { buildProfile } = require('../../src/pipeline/engine');
+    const cfg = {
+      subscriptions: [
+        {
+          type: 'socks5',
+          server: '198.51.100.2',
+          port: 1080,
+          name: '🇺🇸 美国 专用直连'
+        }
+      ],
+      minorNodeThreshold: 1,
+      renameTemplate: '[{tag}] {region} {index}'
+    };
+
+    const res = await buildProfile(cfg, { mode: 'config', noCache: true });
+    const proxies = res.outputData.proxies || [];
+
+    assert.equal(proxies.length, 1);
+    assert.equal(proxies[0].name, '🇺🇸 美国 专用直连');
+  });
+
+  it('buildProfile - 结构化单节点显式 keepName: false 时允许模板统一重命名', async () => {
+    const { buildProfile } = require('../../src/pipeline/engine');
+    const cfg = {
+      subscriptions: [
+        {
+          type: 'socks5',
+          server: '198.51.100.3',
+          port: 1080,
+          name: '🇺🇸 美国 临时命名',
+          tag: '自建',
+          keepName: false
+        }
+      ],
+      minorNodeThreshold: 1,
+      renameTemplate: '[{tag}] {icon} {region} {index}'
+    };
+
+    const res = await buildProfile(cfg, { mode: 'config', noCache: true });
+    const proxies = res.outputData.proxies || [];
+
+    assert.equal(proxies.length, 1);
+    assert.equal(proxies[0].name, '[自建] 🇺🇸 美国');
+  });
 });
