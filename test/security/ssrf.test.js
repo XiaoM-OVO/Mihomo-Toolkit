@@ -186,4 +186,58 @@ describe('【Security】SSRF fail-closed 与分模式严格度 (ssrf-strict)', (
       (err) => err.ssrfBlocked === 'unverified' && err.retryable === undefined
     );
   });
+
+  it('strict - c-ares 整体失败时回退 OS 解析器 (getaddrinfo)，可解析则放行', async () => {
+    const origin = { r4: dnsPromises.resolve4, r6: dnsPromises.resolve6, lookup: dnsPromises.lookup };
+    try {
+      const refused = () => { throw Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' }); };
+      dnsPromises.resolve4 = async () => refused();
+      dnsPromises.resolve6 = async () => refused();
+      dnsPromises.lookup = async (_host, opts) => {
+        assert.equal(opts && opts.all, true, 'OS 解析器应以 all:true 调用以取全部候选地址');
+        return [{ address: '93.184.216.34', family: 4 }];
+      };
+      assert.equal(await validateUrlSsrf('http://os-fallback-ok.example/sub'), true);
+    } finally {
+      dnsPromises.resolve4 = origin.r4;
+      dnsPromises.resolve6 = origin.r6;
+      dnsPromises.lookup = origin.lookup;
+    }
+  });
+
+  it('strict - 回退 OS 解析器后仍逐地址拦截私网/回环', async () => {
+    const origin = { r4: dnsPromises.resolve4, r6: dnsPromises.resolve6, lookup: dnsPromises.lookup };
+    try {
+      const refused = () => { throw Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' }); };
+      dnsPromises.resolve4 = async () => refused();
+      dnsPromises.resolve6 = async () => refused();
+      dnsPromises.lookup = async () => [{ address: '10.0.0.7', family: 4 }];
+      await assert.rejects(
+        async () => { await validateUrlSsrf('http://os-fallback-private.example/sub'); },
+        /resolved to private IP 10\.0\.0\.7/
+      );
+    } finally {
+      dnsPromises.resolve4 = origin.r4;
+      dnsPromises.resolve6 = origin.r6;
+      dnsPromises.lookup = origin.lookup;
+    }
+  });
+
+  it('strict - c-ares 与 OS 解析器均失败时仍 fail-closed 拒绝', async () => {
+    const origin = { r4: dnsPromises.resolve4, r6: dnsPromises.resolve6, lookup: dnsPromises.lookup };
+    try {
+      const refused = () => { throw Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' }); };
+      dnsPromises.resolve4 = async () => refused();
+      dnsPromises.resolve6 = async () => refused();
+      dnsPromises.lookup = async () => { throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }); };
+      await assert.rejects(
+        async () => { await validateUrlSsrf('http://os-fallback-fail.example/sub'); },
+        (err) => err.ssrfBlocked === 'unverified' && err.retryable !== false
+      );
+    } finally {
+      dnsPromises.resolve4 = origin.r4;
+      dnsPromises.resolve6 = origin.r6;
+      dnsPromises.lookup = origin.lookup;
+    }
+  });
 });
