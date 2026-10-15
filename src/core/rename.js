@@ -116,7 +116,7 @@ function renderTemplate(template, vars, proxy, cleaners) {
   }
 
   let finalName = template.replace(
-    /{(airport|icon|region|index|features|protocol|city|line|in|multi|transport|ip_stack)}/g,
+    /{(airport|tag|icon|region|index|features|protocol|city|line|in|multi|transport|ip_stack)}/g,
     (match, key) => vars[key] || ''
   );
 
@@ -174,6 +174,7 @@ function buildRenamePlan(items = [], config = {}) {
     }
     const vars = {
       airport: item.airportTag || '',
+      tag: item.airportTag || '',
       icon: item.regionInfo.icon || '',
       region: item.regionInfo.name || '',
       index: indexMap.get(item) || '',
@@ -228,10 +229,28 @@ function applyRenamePlan(items = [], renamePlan = []) {
     }
   }
 
+  const renameMap = new Map();
   for (const item of items) {
+    const oldName = item?.proxy?.name;
     const name = finalNames.get(item);
-    if (name !== undefined && item?.proxy) item.proxy.name = name;
+    if (name !== undefined && item?.proxy) {
+      if (oldName && oldName !== name) {
+        renameMap.set(oldName, name);
+      }
+      item.proxy.name = name;
+    }
   }
+
+  // 联动更新 dialer-proxy (链式代理依赖追踪：当被引用的前置节点重命名后，自动同步引用名)
+  if (renameMap.size > 0) {
+    for (const item of items) {
+      const dp = item?.proxy?.['dialer-proxy'];
+      if (dp && renameMap.has(dp)) {
+        item.proxy['dialer-proxy'] = renameMap.get(dp);
+      }
+    }
+  }
+
   return finalNames;
 }
 

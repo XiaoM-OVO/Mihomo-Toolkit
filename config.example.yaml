@@ -33,6 +33,11 @@ fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失
 # expireAggregation: "min"    # 多订阅到期聚合策略：min=最早到期预警(推荐) / max=最晚 / first=首项
 
 # 订阅清单（支持多订阅并行抓取；url 为远程链接或本地 YAML 路径）
+# 订阅正文格式自动识别，无需额外配置：
+#   • 多协议 URI 列表 (vless:// vmess:// trojan:// ss:// hysteria2:// tuic:// socks:// http://)
+#   • Base64 编码的 URI 列表 / YAML
+#   • 标准 YAML 订阅 (顶层 proxies: 数组)
+#   • 结构化单节点声明（直接在 subscriptions 列表中书写 type/server/port 等对象）
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "订阅A"
@@ -59,6 +64,17 @@ subscriptions:
   #   groups:                     # 定向投放到哪些策略组（支持现有组如 ChatGPT，也支持自定义新组名）
   #     - "🤖 ChatGPT"
   #     - "📍 手动选择"
+  #
+  # 方式 3：结构化字段单节点（支持链式代理 dialerProxy 与原生字段）：
+  # - type: socks5               # 支持 socks5 / http / ss / vless / vmess / trojan 等
+  #   server: "198.51.100.1"
+  #   port: 1080
+  #   username: "myuser"
+  #   password: "mypassword"
+  #   name: "🇺🇸 自建专线"        # 自定义名称（有 name 时默认保持该名，无需担心被自动模版改名）
+  #   tag: "自建"
+  #   keepName: true             # 主动决定：true=保留原名 / false=强制交由模版重命名
+  #   dialerProxy: "🇭🇰 香港前置" # 链式代理：指定前置出口代理节点或策略组（前置节点被重命名会自动级联更新）
 
 
 # ─────────────────────────────────────────────────────────────────────
