@@ -61,8 +61,37 @@ function withTimeout(promise, ms) {
 }
 
 /**
+ * OS 解析器兜底：getaddrinfo（`dns.lookup`）。
+ *
+ * `dns.resolve4/6` 是 c-ares 直查**系统配置的 DNS 服务器**；当该服务器拒连
+ * （如网卡 DNS 指向的网关 ECONNREFUSED）时整机 c-ares 不可用，但 fetch/socket
+ * 建连实际走的是 getaddrinfo，仍可解析 → 会形成「预检失败、实际连得上」的假阳性拦截。
+ * 此处回退到与实际建连一致的解析路径；结果仍交由调用方逐地址做私网/回环拦截。
+ * 解析失败返回空结果（fail-closed 判定留给调用方）。
+ * @param {string} host
+ * @returns {Promise<{ v4: string[], v6: string[] }>}
+ */
+async function lookupViaOsResolver(host) {
+  if (!dns || typeof dns.lookup !== 'function') return { v4: [], v6: [] };
+  try {
+    const all = await dns.lookup(host, { all: true, verbatim: true });
+    const v4 = [];
+    const v6 = [];
+    for (const entry of all) {
+      if (entry.family === 4) v4.push(entry.address);
+      else if (entry.family === 6) v6.push(entry.address);
+    }
+    return { v4, v6 };
+  } catch {
+    return { v4: [], v6: [] };
+  }
+}
+
+/**
  * 默认域名解析器：并发查询 A/AAAA 并缓存成功结果。
- * 解析失败 / 超时一律 reject（由调用方按 `strict` 决定拒绝还是放行）。
+ *
+ * c-ares 两条查询均失败时，回退 OS 解析器（getaddrinfo，即实际建连路径）再定夺；
+ * 两条路径都无法解析才向上传播（由调用方按 `strict` 决定拒绝还是放行）。
  * @param {string} host
  * @param {4|6} family
  * @returns {Promise<string[]>}
@@ -77,12 +106,20 @@ function defaultResolver(host, family) {
 
   const work = (async () => {
     const [r4, r6] = await Promise.allSettled([dns.resolve4(host), dns.resolve6(host)]);
-    // A 与 AAAA 查询均失败（NXDOMAIN / 网络不可用）→ 无法证明目标安全，向上传播
+    let v4 = r4.status === 'fulfilled' ? r4.value : [];
+    let v6 = r6.status === 'fulfilled' ? r6.value : [];
+
+    // c-ares 整体失败（NXDOMAIN / 服务器拒连 / 网络不可用）→ 回退 OS 解析器
     if (r4.status === 'rejected' && r6.status === 'rejected') {
-      throw new Error(`DNS resolution failed: ${host}`);
+      const viaOs = await lookupViaOsResolver(host);
+      v4 = viaOs.v4;
+      v6 = viaOs.v6;
+      // 两条路径均无记录 → 无法证明目标安全，向上传播
+      if (v4.length === 0 && v6.length === 0) {
+        throw new Error(`DNS resolution failed: ${host}`);
+      }
     }
-    const v4 = r4.status === 'fulfilled' ? r4.value : [];
-    const v6 = r6.status === 'fulfilled' ? r6.value : [];
+
     if (v4.length > 0 || v6.length > 0) {
       if (dnsCache.size >= DNS_CACHE_MAX) dnsCache.delete(dnsCache.keys().next().value);
       dnsCache.set(host, { v4, v6, expireAt: Date.now() + DNS_CACHE_TTL_MS });
