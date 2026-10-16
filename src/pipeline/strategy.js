@@ -8,7 +8,7 @@ const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode, matchUserBlacklist, getFeatureRules } = require('../core/cleaner');
 const { buildRenamePlan, applyRenamePlan } = require('../core/rename');
-const { isTrustedCleanedNode, isTrustedSynthetic, markTrustedCleanedNode, restoreTrustedProxyMetadata, sanitizeExternalProxy } = require('../core/node-trust');
+const { isTrustedCleanedNode, isTrustedSynthetic, markTrustedCleanedNode, getTrustedProxyMetadata, restoreTrustedProxyMetadata, sanitizeExternalProxy } = require('../core/node-trust');
 const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 // Name rendering and feature variables are owned by core/rename.
@@ -46,7 +46,7 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
       const trustedCleaned = isTrustedCleanedNode(rawProxy);
       const trustedInternal = trustedCleaned || isTrustedSynthetic(rawProxy);
       const proxy = trustedInternal ? rawProxy : restoreTrustedProxyMetadata(rawProxy, sanitizeExternalProxy(rawProxy));
-      const rawName = proxy._rawName || proxy.name || '';
+      const rawName = getTrustedProxyMetadata(proxy, 'rawName') || proxy._rawName || proxy.name || '';
       if (matchUserBlacklist(proxy, rawName, userConfig)) return;
       entries.push({ proxy, trustedCleaned, index });
     });
@@ -78,7 +78,7 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
 
     const existingItems = classifiedEntries
       .filter(entry => entry.trustedCleaned)
-      .map(entry => ({ ...entry.item, _preserveExistingName: true }));
+      .map(entry => ({ ...entry.item, preserveExistingName: true }));
     let newItems = classifiedEntries.filter(entry => !entry.trustedCleaned).map(entry => entry.item);
     if (userConfig.enableNodeSort && newItems.length > 1) {
       newItems = sortNodes(newItems, userConfig);
@@ -88,7 +88,6 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     const renamePlan = buildRenamePlan(classifiedNodes, userConfig);
     applyRenamePlan(classifiedNodes, renamePlan);
     for (const item of classifiedNodes) {
-      item.proxy._cleaned = true;
       markTrustedCleanedNode(item.proxy);
     }
     sourceSkeleton.proxies = classifiedNodes.map(item => item.proxy);

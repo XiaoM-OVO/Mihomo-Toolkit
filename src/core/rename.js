@@ -11,6 +11,7 @@
 const { FIELDS_BY_KEY } = require('../data');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('./shared/icons');
 const { getIsolationBucket } = require('./isolation');
+const { getTrustedProxyMetadata } = require('./node-trust');
 
 /** 悬空分隔符默认清单：取自字段注册表（单一真相源，避免与配置默认值漂移） */
 const DEFAULT_SEPARATORS = FIELDS_BY_KEY.renameSeparators.default;
@@ -58,7 +59,7 @@ function computeNodeIndices(items = [], options = {}) {
     if (!item || item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
     const regionKey = item.regionInfo.id || item.regionInfo.name;
     const tag = item.airportTag || '';
-    const prefix = item.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
+    const prefix = item.indexPrefix || getTrustedProxyMetadata(item.proxy, 'indexPrefix') || item.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
     const isoBucket = item.isolateBucket !== undefined ? item.isolateBucket : getIsolationBucket(item, options);
     const trackKey = [regionKey, prefix, isoBucket].filter(Boolean).join('__');
     const regionGroupKey = isoBucket ? `${regionKey}__${isoBucket}` : regionKey;
@@ -78,7 +79,7 @@ function computeNodeIndices(items = [], options = {}) {
     }
     const regionKey = item.regionInfo.id || item.regionInfo.name;
     const tag = item.airportTag || '';
-    const prefix = item.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
+    const prefix = item.indexPrefix || getTrustedProxyMetadata(item.proxy, 'indexPrefix') || item.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
     const isoBucket = item.isolateBucket !== undefined ? item.isolateBucket : getIsolationBucket(item, options);
     const trackKey = [regionKey, prefix, isoBucket].filter(Boolean).join('__');
     const regionGroupKey = isoBucket ? `${regionKey}__${isoBucket}` : regionKey;
@@ -135,7 +136,7 @@ function renderTemplate(template, vars, proxy, cleaners) {
  * 为已分类节点统一计算目标名称；保持计算阶段纯净，由调用方提交名称。
  */
 function getRenameTier(item) {
-  if (item?._preserveExistingName) return 1;
+  if (item?.preserveExistingName || item?._preserveExistingName) return 1;
   if (item?.isSpecial || item?.keepName) return 1;
   if (item?.isInfo) return 2;
   if (!item?.regionInfo || item.regionInfo.isUnknown || item?.isUnknownRegion) return 3;

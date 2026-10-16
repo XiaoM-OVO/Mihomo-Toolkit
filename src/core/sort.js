@@ -21,7 +21,7 @@
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { getIsolationBucket } = require('./isolation');
 const { ISOLATION_SORT_ORDER } = require('../data/cleaner-rules');
-const { isTrustedSynthetic } = require('./node-trust');
+const { isTrustedSynthetic, getTrustedProxyMetadata } = require('./node-trust');
 
 let cachedRegionOrder = null;
 
@@ -87,15 +87,15 @@ function compareNodes(a, b, options = {}) {
   }
 
   // 3. 同大区同隔离类别内：订阅源/机场与序号前缀聚拢 (airportTag / subTag / indexPrefix)
-  const tagA = a.airportTag || a.proxy?._subTag || '';
-  const tagB = b.airportTag || b.proxy?._subTag || '';
+  const tagA = a.airportTag || getTrustedProxyMetadata(a.proxy, 'subTag') || a.proxy?._subTag || '';
+  const tagB = b.airportTag || getTrustedProxyMetadata(b.proxy, 'subTag') || b.proxy?._subTag || '';
   if (tagA !== tagB) {
     const cmp = tagA.localeCompare(tagB, 'zh-CN');
     if (cmp !== 0) return cmp;
   }
 
-  const prefixA = a.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tagA]) || '';
-  const prefixB = b.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tagB]) || '';
+  const prefixA = a.indexPrefix || getTrustedProxyMetadata(a.proxy, 'indexPrefix') || a.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tagA]) || '';
+  const prefixB = b.indexPrefix || getTrustedProxyMetadata(b.proxy, 'indexPrefix') || b.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tagB]) || '';
   if (prefixA !== prefixB) {
     const cmp = prefixA.localeCompare(prefixB, 'zh-CN');
     if (cmp !== 0) return cmp;

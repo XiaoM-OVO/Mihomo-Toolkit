@@ -85,17 +85,17 @@ describe('【Core】节点多维智能排序 (sort)', () => {
 
   it('sortNodes - 同大区内独立计数前缀聚拢 (indexPrefix / indexPrefixMap)', () => {
     const items = [
-      { rawName: '🇭🇰 香港 01', regionInfo: { id: 'hk', name: '香港' }, proxy: { _indexPrefix: 'B' } },
-      { rawName: '🇭🇰 香港 02', regionInfo: { id: 'hk', name: '香港' }, proxy: { _indexPrefix: 'A' } },
-      { rawName: '🇭🇰 香港 03', regionInfo: { id: 'hk', name: '香港' }, proxy: { _indexPrefix: 'B' } },
-      { rawName: '🇭🇰 香港 04', regionInfo: { id: 'hk', name: '香港' }, proxy: { _indexPrefix: 'A' } }
+      { rawName: '🇭🇰 香港 01', regionInfo: { id: 'hk', name: '香港' }, indexPrefix: 'B', proxy: { name: '01' } },
+      { rawName: '🇭🇰 香港 02', regionInfo: { id: 'hk', name: '香港' }, indexPrefix: 'A', proxy: { name: '02' } },
+      { rawName: '🇭🇰 香港 03', regionInfo: { id: 'hk', name: '香港' }, indexPrefix: 'B', proxy: { name: '03' } },
+      { rawName: '🇭🇰 香港 04', regionInfo: { id: 'hk', name: '香港' }, indexPrefix: 'A', proxy: { name: '04' } }
     ];
 
     const sorted = sortNodes(items);
-    assert.equal(sorted[0].proxy._indexPrefix, 'A');
-    assert.equal(sorted[1].proxy._indexPrefix, 'A');
-    assert.equal(sorted[2].proxy._indexPrefix, 'B');
-    assert.equal(sorted[3].proxy._indexPrefix, 'B');
+    assert.equal(sorted[0].indexPrefix, 'A');
+    assert.equal(sorted[1].indexPrefix, 'A');
+    assert.equal(sorted[2].indexPrefix, 'B');
+    assert.equal(sorted[3].indexPrefix, 'B');
   });
 
   it('sortNodes - 线路质量梯队 (IEPL ➔ GIA ➔ 专线 ➔ BGP ➔ 兜底)', () => {

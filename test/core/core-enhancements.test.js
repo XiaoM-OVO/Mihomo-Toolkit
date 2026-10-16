@@ -29,7 +29,7 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     assert.equal(expanded[0].server, '1.1.1.1');
     assert.equal(expanded[0].servername, 'hk.example.com');
     assert.equal(expanded[1].server, '1.1.1.2');
-    assert.equal(expanded[1]._isFission, true);
+    assert.equal(expanded[1].name, '🇭🇰 香港 01 #2');
     assert.equal(expanded[2].server, '[2606:4700:4700::1111]');
 
     // 验证批量纯函数 fissionNodes

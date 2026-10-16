@@ -7,7 +7,7 @@
 const { matchNodeRegion, extractCity } = require('./geo');
 const { getEnhancedRegionDefs } = require('./shared/regions');
 const { getTransportType } = require('./transport');
-const { isTrustedSynthetic } = require('./node-trust');
+const { isTrustedSynthetic, getTrustedProxyMetadata } = require('./node-trust');
 const { getIsolationBucket } = require('./isolation');
 const { isNoticeNode } = require('./notice');
 const { compressCarrierLines } = require('./metadata');
@@ -202,22 +202,26 @@ function checkNodeBlockReason(proxy, rawName, _userConfig = {}, options = {}) {
     || REGEX_FAKE_IPV4.test(server)
     || REGEX_FAKE_IPV6.test(server);
 
+  const keepName = options.keepName != null
+    ? Boolean(options.keepName)
+    : (getTrustedProxyMetadata(proxy, 'keepName') ?? Boolean(proxy?._keepName));
+
   if (isFakeIp) {
-    // 仅在显式声明 _keepName 且 server 真实解析为合法的局域网/私网/回环地址时放行自建内网节点
-    if (!proxy?._keepName || !isPrivateOrLoopbackServer(server)) {
+    // 仅在显式声明 keepName 且 server 真实解析为合法的局域网/私网/回环地址时放行自建内网节点
+    if (!keepName || !isPrivateOrLoopbackServer(server)) {
       return '假IP';
     }
   }
 
   // 3. 弱口令 / 虚拟占位鉴权判定
-  // normal、special 与 _keepName 均必须满足非占位弱口令要求，绝无豁免
+  // normal、special 与 keepName 均必须满足非占位弱口令要求，绝无豁免
   const isDummyAuth = REGEX_DUMMY_AUTH.test(proxy?.uuid || proxy?.password || '');
   if (isDummyAuth) {
     return '假密码';
   }
 
   // 白名单/特殊节点或 keepName 节点已通过上述硬结构校验，豁免后续广告词检查
-  if (options.isSpecial || proxy?._keepName) {
+  if (options.isSpecial || keepName) {
     return '';
   }
 
@@ -311,7 +315,8 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   if (!proxy || typeof proxy !== 'object' || Array.isArray(proxy)) {
     return { skip: true, rawName: '', blockReason: '无效节点数据' };
   }
-  const rawName = proxy._rawName || proxy.name || '';
+  const meta = getTrustedProxyMetadata(proxy);
+  const rawName = options.rawName || meta.rawName || proxy?._rawName || proxy.name || '';
   const defs = options.regionDefs || getEnhancedRegionDefs();
 
   // 2. 检查用户显式黑名单 (最高优先级，任何节点类型包括 synthetic/notice/whitelist 均不得豁免)
@@ -358,10 +363,14 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   }
 
   // 4. 差异化校验：normal 与 special 均必须满足硬结构校验
+  const keepName = options.keepName != null
+    ? Boolean(options.keepName)
+    : (meta.keepName ?? Boolean(proxy?._keepName));
   const blockReason = checkNodeBlockReason(proxy, rawName, userConfig, {
     regionDefs: defs,
     featureRules: options.featureRules,
-    isSpecial
+    isSpecial,
+    keepName
   });
   if (blockReason) {
     return { skip: true, rawName, blockReason };
@@ -459,9 +468,10 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     groupKey,
     isolateBucket,
     isUnknownRegion,
-    keepName: !!proxy?._keepName,
-    customGroups: Array.isArray(proxy?._customGroups) ? proxy._customGroups : [],
-    airportTag: proxy?._subTag || userConfig.airportTag || ''
+    keepName,
+    customGroups: options.customGroups || meta.customGroups || (Array.isArray(proxy?._customGroups) ? proxy._customGroups : []),
+    airportTag: options.airportTag || meta.subTag || proxy?._subTag || userConfig.airportTag || '',
+    indexPrefix: options.indexPrefix || meta.indexPrefix || proxy?._indexPrefix || ''
   };
 }
 

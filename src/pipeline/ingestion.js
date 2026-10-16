@@ -557,14 +557,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           logger.debug(`📌 摄入单节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
         }
 
-        // 注入 keepName 与 customGroups 特殊属性
+        // 记录内部属性到元数据存储（不污染 proxy 节点对象）
         const shouldKeepName = resolveShouldKeepName(sub);
-        if (shouldKeepName) {
-          subProxies.forEach(p => { p._keepName = true; });
-        }
-        if (Array.isArray(sub.groups) && sub.groups.length > 0) {
-          subProxies.forEach(p => { p._customGroups = [...sub.groups]; });
-        }
+        const effectiveCustomGroups = (Array.isArray(sub.groups) && sub.groups.length > 0) ? [...sub.groups] : [];
 
         let effectiveTag = sub.tag;
         const effectiveIndexPrefix = sub.indexPrefix;
@@ -599,25 +594,14 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         }
         const filteredCount = rawCount - subProxies.length;
 
-        if (sub.tag) {
-          subProxies.forEach(p => {
-            if (!p._subTag) p._subTag = sub.tag;
-          });
-        }
-
-
-        if (effectiveIndexPrefix) {
-          subProxies.forEach(p => { p._indexPrefix = effectiveIndexPrefix; });
-        }
-
-        // Record only metadata assigned by this trusted subscription processor.
-        // The strategy boundary can then strip caller-forged private fields and restore these values.
+        // Record only metadata assigned by this trusted subscription processor into WeakMap.
+        // Node objects remain 100% pure Mihomo schema without property pollution.
         subProxies.forEach(p => markTrustedProxyMetadata(p, {
-          _subTag: p._subTag,
-          _indexPrefix: p._indexPrefix,
-          _keepName: p._keepName,
-          _customGroups: p._customGroups,
-          _rawName: p._rawName
+          subTag: sub.tag || effectiveTag,
+          indexPrefix: effectiveIndexPrefix || '',
+          keepName: shouldKeepName,
+          customGroups: effectiveCustomGroups,
+          rawName: p.name || ''
         }));
 
         const { nodes: synthNodes, expireDays } = enableDashboard
