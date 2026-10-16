@@ -11,7 +11,7 @@ function parseHttpUri(uri) {
     const trimmed = uri.trim();
     const isHttps = /^https:\/\//i.test(trimmed);
     const url = new URL(trimmed);
-    let server = cleanHostname(url.hostname);
+    const server = cleanHostname(url.hostname);
     const defaultPort = isHttps ? 443 : 80;
     const port = parseInt(url.port) || defaultPort;
     const name = safeDecodeURIComponent(url.hash.slice(1)) || `${server}:${port}`;

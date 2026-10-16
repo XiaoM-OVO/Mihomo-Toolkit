@@ -4,12 +4,10 @@ const assert = require('node:assert/strict');
 const {
   markTrustedSynthetic,
   isTrustedSynthetic,
-  sanitizeExternalProxy,
-  sanitizeExternalProxies
+  sanitizeExternalProxy
 } = require('../../src/core/node-trust');
 const {
   classifyNode,
-  checkNodeBlockReason,
   matchUserBlacklist
 } = require('../../src/core/cleaner');
 const {
@@ -22,8 +20,7 @@ const { runNodesPipeline } = require('../../src/pipeline/nodes');
 const {
   generateInfoNodes,
   buildGlobalDashboardNodes,
-  createFetchErrorNode,
-  filterRawInfoNodes
+  createFetchErrorNode
 } = require('../../src/strategy/dashboard');
 
 describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单顺序重构', () => {

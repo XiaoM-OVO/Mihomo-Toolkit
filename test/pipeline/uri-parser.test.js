@@ -212,7 +212,7 @@ describe('【Pipeline】URI 节点协议解析与编解码 (uri-parser)', () => 
     assert.ok(getRegisteredSchemes().includes('vmess'));
 
     // 自定义 Mock 协议动态注册
-    registerParser('mockproto', (uri) => {
+    registerParser('mockproto', (_uri) => {
       return {
         name: 'Mock-Node',
         type: 'mock',

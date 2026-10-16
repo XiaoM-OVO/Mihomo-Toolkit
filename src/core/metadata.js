@@ -334,5 +334,6 @@ function extractMetadata(rawName) {
 
 module.exports = {
   extractMetadata,
-  REGION_METADATA_MAP
+  REGION_METADATA_MAP,
+  compressCarrierLines
 };

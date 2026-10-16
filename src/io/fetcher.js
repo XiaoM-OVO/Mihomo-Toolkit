@@ -274,7 +274,10 @@ function resolveFetchPlan({ strategy, perSubProxy }) {
 
 function checkPortReachable(port, host = '127.0.0.1', timeoutMs = 300) {
   return new Promise((resolve) => {
-    if (!port || port <= 0 || port > 65535) return resolve(false);
+    if (!port || port <= 0 || port > 65535) {
+      resolve(false);
+      return;
+    }
     const socket = new net.Socket();
     let settled = false;
 
@@ -381,7 +384,7 @@ async function fetchNodes(url, options = {}) {
         if (i < attempts - 1) {
           const via = (p && proxyUrl) ? ` (经代理 ${proxyUrl.replace('http://', '')})` : '';
           if (logger) logger.warn(`🔄 订阅拉取失败，第 ${i + 1}/${attempts - 1} 次重试${via}: ${err.message}`);
-          await new Promise(r => setTimeout(r, 500 * (i + 1)));
+          await new Promise((r) => { setTimeout(r, 500 * (i + 1)); });
         }
       }
     }

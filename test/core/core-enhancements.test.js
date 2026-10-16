@@ -1,8 +1,8 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { fissionNode, fissionNodes, looksLikeDomain } = require('../../src/core/fission');
-const { computeNodeIndices, renderTemplate, createSeparatorCleaners } = require('../../src/core/rename');
+const { fissionNode, fissionNodes } = require('../../src/core/fission');
+const { computeNodeIndices } = require('../../src/core/rename');
 const { classifyNode, getFeatureRules } = require('../../src/core/cleaner');
 const { resolveConfig } = require('../../src/config');
 const { buildServiceCatalog } = require('../../src/config/catalog');

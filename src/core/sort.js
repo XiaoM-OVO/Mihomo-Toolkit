@@ -171,7 +171,5 @@ function sortNodes(items = [], options = {}) {
 }
 
 module.exports = {
-  sortNodes,
-  compareNodes,
-  getRegionOrderMap
+  sortNodes
 };

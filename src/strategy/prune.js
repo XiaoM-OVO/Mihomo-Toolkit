@@ -169,7 +169,7 @@ function pruneEmptyGroups({
 
   // 阶段 1：豁免组保活与第一轮可达性收敛
   // 1.1 先行推导当前可达性
-  let reachable = computeReachableGroups(groupMap);
+  const reachable = computeReachableGroups(groupMap);
 
   // 1.2 保护豁免组：若骨架组无法通过自身路径抵达任何生产性汇点，强制注入 DIRECT 保证自持
   for (const [name, group] of groupMap.entries()) {
@@ -267,7 +267,7 @@ function pruneEmptyGroups({
 
   // 阶段 3：破环后二次可达性收敛 (Post-Break Reachability)
   // 剪断回边后，某些普通组可能失去了通向生产性汇点的唯一通路变成死路
-  let postReachable = computeReachableGroups(groupMap);
+  const postReachable = computeReachableGroups(groupMap);
 
   for (const name of Array.from(groupMap.keys())) {
     const group = groupMap.get(name);

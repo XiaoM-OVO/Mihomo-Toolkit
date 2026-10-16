@@ -28,9 +28,6 @@ function escapeRegex(str) {
 const REGEX_FAKE_IPV4 = /^(?:0\.|127\.|10\.|192\.168\.|169\.254\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.|(?:1\.1\.1\.1|1\.0\.0\.1|8\.8\.8\.8|8\.8\.4\.4|9\.9\.9\.9|114\.114\.114\.114|255\.255\.255\.255)(?:$|:))/;
 const REGEX_FAKE_IPV6 = /^(?:\[?(?:::1?|0*(?::0*)*:0*1)\]?(?:$|:)|\[?f[cd][0-9a-f]{2}:|\[?fe80:)/i;
 
-// 私网、局域网与回环 IP 判定 (用于 _keepName 显式自建节点放行校验)
-const REGEX_PRIVATE_OR_LOOPBACK = /^(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|169\.254\.|localhost$|\[?(?:::1|fe80:|f[cd][0-9a-f]{2}:))/i;
-
 // 弱口令 / 虚拟占位鉴权判定
 const REGEX_DUMMY_AUTH = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i;
 
@@ -136,9 +133,7 @@ const ARCH_AVOID_SET = new Set(['64', '86', '32']);
 
 // 识别线路类型与营销标识 (CMIN2 优先于 CMI，AS9929 优先于 9929)
 const REGEX_TECH_LINE = /(IEPL|IPLC|BGP|CN2|GIA|CMIN2|CMI|CUG|PCCW|AS9929|9929|AS4837|4837|AWS|GCP|Oracle|Azure|Hinet|Zenlayer|三网|电联|移联|电移|移动|联通|电信|CTCUCM|CTCUM|CTCU|CUCT|CMCU|CUCM|CTCM|CMCT|专线|中转|隧道)/gi;
-const REGEX_TECH_LINE_TEST = new RegExp(REGEX_TECH_LINE.source, 'i');
 const REGEX_FLUFF_LINE = /(高速|极速|优化|起飞|VIP|Premium|Pro|Plus|标准|基础|高级|节点)/gi;
-const REGEX_FLUFF_LINE_TEST = new RegExp(REGEX_FLUFF_LINE.source, 'i');
 
 // 复合运营商代码映射
 const LINE_MAP = {
@@ -275,7 +270,6 @@ module.exports = {
   // 虚假 IP 与安全拦截
   REGEX_FAKE_IPV4,
   REGEX_FAKE_IPV6,
-  REGEX_PRIVATE_OR_LOOPBACK,
   REGEX_DUMMY_AUTH,
   REGEX_EXPLICIT_NOTICE,
   REGEX_INFO_NODE,
@@ -283,7 +277,6 @@ module.exports = {
   REGEX_AD_TYPO,
   REGEX_AD_PROMO,
   REGEX_AD_PRICE,
-  REGEX_FORBID_DL_STR,
   REGEX_FORBID_DL,
   REGEX_CLEANUP,
   // 入口与落地
@@ -297,12 +290,9 @@ module.exports = {
   ARCH_AVOID_SET,
   // 线路与运营商
   REGEX_TECH_LINE,
-  REGEX_TECH_LINE_TEST,
   REGEX_FLUFF_LINE,
-  REGEX_FLUFF_LINE_TEST,
   LINE_MAP,
   CARRIER_SHORT_MAP,
-  CARRIER_COMBO_MAP,
   SORTED_CARRIER_COMBOS,
   LINE_QUALITY_TIERS,
   getLineQualityWeight,

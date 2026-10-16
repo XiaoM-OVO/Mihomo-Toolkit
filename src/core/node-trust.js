@@ -135,7 +135,6 @@ module.exports = {
   isTrustedCleanedNode,
   markTrustedProxyMetadata,
   restoreTrustedProxyMetadata,
-  RESERVED_INTERNAL_FIELDS,
   sanitizeExternalProxy,
   sanitizeExternalProxies
 };

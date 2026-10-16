@@ -259,6 +259,5 @@ module.exports = {
   computeNodeIndices,
   renderTemplate,
   buildRenamePlan,
-  applyRenamePlan,
-  getRenameTier
+  applyRenamePlan
 };

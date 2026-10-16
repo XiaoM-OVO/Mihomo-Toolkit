@@ -177,7 +177,6 @@ module.exports = {
   SKELETON_EXEMPT_GROUPS,
   FAKEIP_FILTER_BASELINE,
   ENTRY_NORMALIZERS,
-  normalizeDomainEntry,
   normalizeDomainList,
   mergeBaseline,
   effectiveProtectedDomains,

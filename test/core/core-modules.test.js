@@ -1,13 +1,12 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { dedupeNodes, getNodeFingerprint } = require('../../src/core/dedupe');
+const { dedupeNodes } = require('../../src/core/dedupe');
 const { matchNodeRegion, extractCity } = require('../../src/core/geo');
 const { renderTemplate, createSeparatorCleaners, buildRenamePlan, applyRenamePlan } = require('../../src/core/rename');
 const { getEnhancedRegionDefs, validateMapping } = require('../../src/core/shared/regions');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../../src/core/shared/icons');
 const { isPrivateIp, isAllowedUrl } = require('../../src/io/ssrf');
-const { parseContent, parseVlessUri } = require('../../src/io/parsers');
 const { formatBytes, calcResetDays } = require('../../src/strategy/dashboard');
 
 describe('【Core】核心基础构件 (modules)', () => {

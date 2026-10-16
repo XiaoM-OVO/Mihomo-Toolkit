@@ -10,7 +10,6 @@ const path = require('node:path');
 const { DEFAULT_CONFIG, resolveConfig } = require('../../src/config');
 const {
   FIELDS,
-  ADDITIVE_FIELDS,
   REMOTE_DENIED_FIELDS,
   PROTECTED_DOMAINS,
   SKELETON_EXEMPT_GROUPS,

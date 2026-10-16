@@ -9,7 +9,7 @@ const { safeDecodeURIComponent, cleanHostname } = require('./base64');
 function parseTuicUri(uri) {
   try {
     const url = new URL(uri.trim());
-    let server = cleanHostname(url.hostname);
+    const server = cleanHostname(url.hostname);
     const port = parseInt(url.port) || 8443;
     const name = safeDecodeURIComponent(url.hash.slice(1)) || `${server}:${port}`;
     const params = url.searchParams;

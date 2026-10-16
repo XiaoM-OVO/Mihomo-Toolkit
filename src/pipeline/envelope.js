@@ -190,6 +190,5 @@ module.exports = {
   getEnvelopes,
   clearEnvelopes,
   resetEnvelopeStore,
-  createEnvelopesBypass,
-  deepCloneAndFreeze
+  createEnvelopesBypass
 };
