@@ -9,6 +9,7 @@
  */
 
 const { injectTransportHost } = require('./transport');
+const { copyTrustedProxyMetadata } = require('./node-trust');
 
 function looksLikeDomain(server) {
   if (!server || typeof server !== 'string') return false;
@@ -45,7 +46,7 @@ function fissionNode(proxy, ips = [], options = {}) {
   // 第一个 IP 原地修改作为主力节点
   const firstIp = availableIps[0];
   const originalProxy = { ...proxy };
-  originalProxy._rawName = proxy._rawName || proxy.name || '';
+  copyTrustedProxyMetadata(proxy, originalProxy);
   originalProxy.server = firstIp.includes(':') && !firstIp.startsWith('[') ? `[${firstIp}]` : firstIp;
   injectTransportHost(originalProxy, server);
   result.push(originalProxy);
@@ -54,11 +55,10 @@ function fissionNode(proxy, ips = [], options = {}) {
   for (let i = 1; i < availableIps.length; i++) {
     const cloneIp = availableIps[i];
     const cloned = JSON.parse(JSON.stringify(proxy));
-    cloned._rawName = proxy._rawName || proxy.name || '';
+    copyTrustedProxyMetadata(proxy, cloned);
     cloned.name = `${proxy.name || ''} #${i + 1}`;
     cloned.server = cloneIp.includes(':') && !cloneIp.startsWith('[') ? `[${cloneIp}]` : cloneIp;
     injectTransportHost(cloned, server);
-    cloned._isFission = true;
     result.push(cloned);
   }
 

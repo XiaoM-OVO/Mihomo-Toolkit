@@ -8,7 +8,7 @@ const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode, matchUserBlacklist, getFeatureRules } = require('../core/cleaner');
 const { buildRenamePlan, applyRenamePlan } = require('../core/rename');
-const { markTrustedCleanedNode } = require('../core/node-trust');
+const { markTrustedCleanedNode, getTrustedProxyMetadata } = require('../core/node-trust');
 const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 // Name rendering and feature variables are owned by core/rename.
@@ -52,7 +52,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       if (logger) logger.debug(`🗑️ [阻断] 无效节点数据`);
       continue;
     }
-    const rawName = p._rawName || p.name || '';
+    const rawName = getTrustedProxyMetadata(p, 'rawName') || p._rawName || p.name || '';
     const blacklistReason = matchUserBlacklist(p, rawName, config);
     if (blacklistReason) {
       discardedCount++;
@@ -86,7 +86,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   if (fissionCount > 0) {
     const postFissionProxies = [];
     for (const p of currentProxies) {
-      const rawName = p._rawName || p.name || '';
+      const rawName = getTrustedProxyMetadata(p, 'rawName') || p._rawName || p.name || '';
       const blacklistReason = matchUserBlacklist(p, rawName, config);
       if (blacklistReason) {
         discardedCount++;
@@ -216,7 +216,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       }
     }
 
-    item.proxy._cleaned = true;
+    markTrustedCleanedNode(item.proxy);
     return item.proxy;
   });
 

@@ -14,7 +14,18 @@
 const TRUSTED_SYNTHETICS = new WeakSet();
 const TRUSTED_CLEANED_NODES = new WeakSet();
 const TRUSTED_PROXY_METADATA = new WeakMap();
-const TRUSTABLE_PROXY_METADATA_FIELDS = new Set(['_rawName', '_subTag', '_indexPrefix', '_keepName', '_customGroups']);
+const TRUSTABLE_PROXY_METADATA_FIELDS = new Set([
+  'rawName',
+  'subTag',
+  'indexPrefix',
+  'keepName',
+  'customGroups',
+  '_rawName',
+  '_subTag',
+  '_indexPrefix',
+  '_keepName',
+  '_customGroups'
+]);
 
 /**
  * Toolkit 内部控制与调度保留字段列表
@@ -72,19 +83,58 @@ function isTrustedCleanedNode(proxy) {
 /** Store internal per-node metadata without granting trust to caller-controlled fields. */
 function markTrustedProxyMetadata(proxy, fields = {}) {
   if (!proxy || typeof proxy !== 'object' || Array.isArray(proxy)) return proxy;
-  const trusted = TRUSTED_PROXY_METADATA.get(proxy) || new Map();
-  for (const [key, value] of Object.entries(fields)) {
-    if (TRUSTABLE_PROXY_METADATA_FIELDS.has(key)) trusted.set(key, value);
+  let trusted = TRUSTED_PROXY_METADATA.get(proxy);
+  if (!trusted) {
+    trusted = new Map();
+    TRUSTED_PROXY_METADATA.set(proxy, trusted);
   }
-  TRUSTED_PROXY_METADATA.set(proxy, trusted);
+  for (const [key, value] of Object.entries(fields)) {
+    const canonicalKey = key.startsWith('_') ? key.slice(1) : key;
+    if (TRUSTABLE_PROXY_METADATA_FIELDS.has(key) || TRUSTABLE_PROXY_METADATA_FIELDS.has(canonicalKey)) {
+      trusted.set(canonicalKey, value);
+    }
+  }
   return proxy;
+}
+
+/** Get internal trusted metadata for a proxy node. */
+function getTrustedProxyMetadata(proxy, key) {
+  if (!proxy || typeof proxy !== 'object') return key ? undefined : {};
+  const trusted = TRUSTED_PROXY_METADATA.get(proxy);
+  if (!trusted) return key ? undefined : {};
+  if (key) {
+    const canonicalKey = key.startsWith('_') ? key.slice(1) : key;
+    return trusted.get(canonicalKey);
+  }
+  const result = {};
+  for (const [k, v] of trusted.entries()) {
+    result[k] = v;
+  }
+  return result;
+}
+
+/** Copy all trusted metadata from source proxy to target proxy. */
+function copyTrustedProxyMetadata(source, target) {
+  if (!source || typeof source !== 'object' || !target || typeof target !== 'object') return target;
+  const sourceMeta = TRUSTED_PROXY_METADATA.get(source);
+  if (sourceMeta) {
+    const targetMeta = TRUSTED_PROXY_METADATA.get(target) || new Map();
+    for (const [k, v] of sourceMeta.entries()) {
+      targetMeta.set(k, v);
+    }
+    TRUSTED_PROXY_METADATA.set(target, targetMeta);
+  }
+  return target;
 }
 
 /** Restore only metadata explicitly registered by an in-process trusted producer. */
 function restoreTrustedProxyMetadata(source, target) {
   const trusted = source && typeof source === 'object' ? TRUSTED_PROXY_METADATA.get(source) : null;
   if (!trusted || !target || typeof target !== 'object') return target;
-  for (const [key, value] of trusted) target[key] = value;
+  for (const [key, value] of trusted) {
+    target[key] = value;
+    target[`_${key}`] = value;
+  }
   return target;
 }
 
@@ -134,6 +184,8 @@ module.exports = {
   markTrustedCleanedNode,
   isTrustedCleanedNode,
   markTrustedProxyMetadata,
+  getTrustedProxyMetadata,
+  copyTrustedProxyMetadata,
   restoreTrustedProxyMetadata,
   sanitizeExternalProxy,
   sanitizeExternalProxies

@@ -11,7 +11,7 @@
 
 const { parseSubscriptionInfo, isExpiredNow } = require('../infra/sub-info');
 const { isNoticeNode } = require('../core/notice');
-const { markTrustedSynthetic, isTrustedSynthetic } = require('../core/node-trust');
+const { markTrustedSynthetic, isTrustedSynthetic, getTrustedProxyMetadata } = require('../core/node-trust');
 
 function formatBytes(bytes, fractionDigits = 2) {
   const units = ['MB', 'GB', 'TB', 'PB'];
@@ -132,7 +132,7 @@ function filterRawInfoNodes(proxies = [], logger) {
     if (!p || typeof p !== 'object') return false;
     if (isTrustedSynthetic(p)) return true;
     if (isNoticeNode(p)) {
-      if (logger) logger.debug(`🗑️ [说明过滤] 「${p.name || p._rawName}」`);
+      if (logger) logger.debug(`🗑️ [说明过滤] 「${p.name || getTrustedProxyMetadata(p, 'rawName') || p._rawName}」`);
       return false;
     }
     return true;
