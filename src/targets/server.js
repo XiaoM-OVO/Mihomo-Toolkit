@@ -89,6 +89,17 @@ function startServer(options = {}) {
   const CONFIG_PATH = options.configPath || process.env.CONFIG_PATH || path.resolve(process.cwd(), 'config.yaml');
 
   /**
+   * 解析配置文件内容并展开包含片段与挂载路径
+   */
+  function parseConfigContent(content, configPath) {
+    const parsed = (configPath.endsWith('.yaml') || configPath.endsWith('.yml'))
+      ? (yaml.parse(content) || {})
+      : JSON.parse(content);
+    const absolutized = absolutizeMountPaths(parsed, path.dirname(configPath));
+    return expandIncludes(absolutized, path.dirname(configPath));
+  }
+
+  /**
    * 读取本地配置文件。
    *
    * 两点与旧行为不同：
@@ -100,14 +111,7 @@ function startServer(options = {}) {
   function readLocalConfig() {
     if (!fs.existsSync(CONFIG_PATH)) return {};
     const content = fs.readFileSync(CONFIG_PATH, 'utf-8');
-    const parsed = (CONFIG_PATH.endsWith('.yaml') || CONFIG_PATH.endsWith('.yml'))
-      ? (yaml.parse(content) || {})
-      : JSON.parse(content);
-    const absolutized = absolutizeMountPaths(parsed, path.dirname(CONFIG_PATH));
-    // 与 CLI 对齐：在装载现场展开 include 片段，使 server 自身在 buildProfile 之前读取的
-    // authToken / maxConcurrentBuilds / security / logLevel 等字段也能来自片段。
-    // engine 入口还有一次幂等兜底展开。基准目录 = 配置文件所在目录。
-    return expandIncludes(absolutized, path.dirname(CONFIG_PATH));
+    return parseConfigContent(content, CONFIG_PATH);
   }
 
   let localConfig = {};
@@ -126,6 +130,90 @@ function startServer(options = {}) {
       }
       throw e;
     }
+  }
+
+  let reloadFlight = null;
+
+  /**
+   * 安全获取或热重载配置文件。
+   * 包含：
+   * 1. 单飞并发控制 (Single-flight)：并发请求共享重载 Promise，避免重复读盘与解析；
+   * 2. 防抖与写盘中间态容错：对 0 字节、未写完的内容进行微小延迟重试 (最多 2 次，每次 60ms)；
+   * 3. 稳健降级：重试耗尽后若依然无法解析，保留上一份正常配置并记录错误日志。
+   */
+  async function getOrReloadConfig() {
+    if (!fs.existsSync(CONFIG_PATH)) {
+      return localConfig;
+    }
+
+    let stat;
+    try {
+      stat = await fs.promises.stat(CONFIG_PATH);
+    } catch {
+      return localConfig;
+    }
+
+    if (stat.mtimeMs === lastConfigMtime) {
+      return localConfig;
+    }
+
+    if (reloadFlight) {
+      return reloadFlight;
+    }
+
+    reloadFlight = (async () => {
+      const MAX_RETRIES = 2;
+      const RETRY_DELAY_MS = 60;
+      let lastErr = null;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const statNow = await fs.promises.stat(CONFIG_PATH);
+          // 0 字节防抖：若原配置非空但当前文件大小为 0，大概率是编辑器清空重写阶段
+          if (statNow.size === 0 && localConfig && Object.keys(localConfig).length > 0) {
+            throw new Error('配置文件大小为 0 字节 (疑似编辑器正在写入中)');
+          }
+
+          const raw = await fs.promises.readFile(CONFIG_PATH, 'utf-8');
+          if (!raw.trim() && localConfig && Object.keys(localConfig).length > 0) {
+            throw new Error('配置文件内容为空 (疑似未写完)');
+          }
+
+          const parsed = parseConfigContent(raw, CONFIG_PATH);
+
+          // 结构完整性防御：如果原配置包含 subscriptions，但解析结果完全无 subscriptions 且文件极短
+          if (Array.isArray(localConfig.subscriptions) && localConfig.subscriptions.length > 0 &&
+              (!parsed.subscriptions || (Array.isArray(parsed.subscriptions) && parsed.subscriptions.length === 0 && statNow.size < 60))) {
+            if (attempt < MAX_RETRIES) {
+              throw new Error('配置文件 subscriptions 结构疑似未写完');
+            }
+          }
+
+          localConfig = parsed;
+          lastConfigMtime = statNow.mtimeMs;
+          serverLogger.info(`🔄 配置文件变动检测：已平滑重载最新配置 (mtime: ${statNow.mtimeMs})`);
+          return localConfig;
+        } catch (err) {
+          lastErr = err;
+          if (attempt < MAX_RETRIES) {
+            await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+          }
+        }
+      }
+
+      // 重试耗尽后仍无法正常解析：更新 mtime 避免后续每个请求都反复进入重试延时
+      try {
+        const fallbackStat = await fs.promises.stat(CONFIG_PATH);
+        lastConfigMtime = fallbackStat.mtimeMs;
+      } catch (_) {}
+
+      serverLogger.error(`❌ 配置文件热重载失败 (已保留上一份有效配置): ${lastErr?.message || lastErr}`);
+      return localConfig;
+    })().finally(() => {
+      reloadFlight = null;
+    });
+
+    return reloadFlight;
   }
 
   const isTest = (
@@ -178,7 +266,8 @@ function startServer(options = {}) {
       let published = false;
       let hasFailedSub = false;
 
-      await buildProfile(localConfig, {
+      const currentConfig = await getOrReloadConfig();
+      await buildProfile(currentConfig, {
         production: true,
         forceRefresh: true,
         logger: taskLogger,
@@ -214,42 +303,47 @@ function startServer(options = {}) {
     }
   }
 
+  let isShuttingDown = false;
+  let shutdownPromise = null;
+
   const server = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
 
     if (reqUrl.pathname === '/healthz' || reqUrl.pathname === '/ping') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({
-        status: 'ok',
+        status: isShuttingDown ? 'shutting_down' : 'ok',
         service: 'Mihomo-Toolkit',
         version: pkg.version,
-        uptime: Math.floor(process.uptime())
+        uptime: Math.floor(process.uptime()),
+        activeBuilds,
+        maxConcurrentBuilds: Number(localConfig.maxConcurrentBuilds) > 0
+          ? Number(localConfig.maxConcurrentBuilds)
+          : MAX_CONCURRENT_BUILDS
       }));
       return;
     }
 
     if (reqUrl.pathname === '/sub' || reqUrl.pathname === '/') {
+      if (isShuttingDown) {
+        res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Connection': 'close' });
+        res.end('Service Unavailable: server is shutting down.');
+        return;
+      }
+
+      const effectiveMaxConcurrent = Number(localConfig.maxConcurrentBuilds) > 0
+        ? Number(localConfig.maxConcurrentBuilds)
+        : MAX_CONCURRENT_BUILDS;
+
       // 并发上限：单次构建会触发多个外部抓取与全量拓扑计算，不设限可被轻易打满
-      if (activeBuilds >= MAX_CONCURRENT_BUILDS) {
+      if (activeBuilds >= effectiveMaxConcurrent) {
         res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' });
         res.end('Service Unavailable: too many concurrent builds, please retry later.');
         return;
       }
       activeBuilds++;
       try {
-        // 允许实时读取配置文件热重载（基于 mtime 校验，避免无变更时反复全量解析 YAML）；
-        // 解析失败时保住上一份有效配置并显式告警
-        if (fs.existsSync(CONFIG_PATH)) {
-          try {
-            const stat = fs.statSync(CONFIG_PATH);
-            if (stat.mtimeMs !== lastConfigMtime) {
-              localConfig = readLocalConfig();
-              lastConfigMtime = stat.mtimeMs;
-            }
-          } catch (e) {
-            serverLogger.error(`❌ 配置文件热重载失败，继续使用上一份有效配置: ${e.message}`);
-          }
-        }
+        localConfig = await getOrReloadConfig();
 
         const clientIp = getClientIp(req);
         const userAgent = (req.headers && req.headers['user-agent']) || 'unknown';
@@ -446,6 +540,98 @@ function startServer(options = {}) {
 
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end(`Mihomo-Toolkit v${pkg.version} Server is running.\n\nUsage:\n  /sub?url=<subscription_url>\n  /sub?config=<remote_config_url>\n`);
+  });
+
+  /**
+   * 平滑退出与连接排空 (Graceful Shutdown)
+   * 1. 标记 isShuttingDown 并停止接入新连接
+   * 2. 清理闲置 keep-alive 连接
+   * 3. 轮询等待进行中的构建任务 (activeBuilds) 彻底排空
+   * 4. 若超过最大宽限期 (timeoutMs)，强制排空并关闭所有剩余连接
+   */
+  server.closeGracefully = function closeGracefully(timeoutMs = 10000) {
+    if (shutdownPromise) return shutdownPromise;
+    isShuttingDown = true;
+    serverLogger.info('🛑 收到停止信号，正在平滑关闭服务 (等待处理中的请求排空)...');
+
+    shutdownPromise = new Promise((resolve) => {
+      let resolved = false;
+      const doResolve = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      };
+
+      if (server.listening) {
+        try {
+          server.close(() => {
+            doResolve();
+          });
+        } catch (_) {
+          doResolve();
+        }
+      } else {
+        doResolve();
+      }
+
+      if (typeof server.closeIdleConnections === 'function') {
+        server.closeIdleConnections();
+      }
+
+      const startTime = Date.now();
+      const checkDrain = () => {
+        if (activeBuilds <= 0) {
+          serverLogger.info('👋 服务已安全关闭，所有任务已排空');
+          if (typeof server.closeAllConnections === 'function') {
+            server.closeAllConnections();
+          }
+          doResolve();
+        } else if (Date.now() - startTime >= timeoutMs) {
+          serverLogger.warn(`⚠️ 平滑退出超时 (${timeoutMs}ms)，仍有 ${activeBuilds} 个任务未结束，强制关闭连接`);
+          if (typeof server.closeAllConnections === 'function') {
+            server.closeAllConnections();
+          }
+          doResolve();
+        } else {
+          setTimeout(checkDrain, 50).unref?.();
+        }
+      };
+
+      checkDrain();
+    });
+
+    return shutdownPromise;
+  };
+
+  const handleSignal = async (signal) => {
+    serverLogger.info(`🛑 捕获到 ${signal} 信号，启动平滑退出流程...`);
+    try {
+      await server.closeGracefully(options.shutdownTimeoutMs || 10000);
+    } catch (err) {
+      serverLogger.error(`❌ 平滑关闭过程发生异常: ${err.message}`);
+    }
+    if (require.main === module || options.exitOnSignal) {
+      process.exit(0);
+    }
+  };
+
+  let signalListenersRegistered = false;
+  const onSigTerm = () => { handleSignal('SIGTERM'); };
+  const onSigInt = () => { handleSignal('SIGINT'); };
+
+  if (options.registerSignalHandlers !== false && (require.main === module || options.handleSignals)) {
+    process.on('SIGTERM', onSigTerm);
+    process.on('SIGINT', onSigInt);
+    signalListenersRegistered = true;
+  }
+
+  server.on('close', () => {
+    if (signalListenersRegistered) {
+      process.removeListener('SIGTERM', onSigTerm);
+      process.removeListener('SIGINT', onSigInt);
+      signalListenersRegistered = false;
+    }
   });
 
   server.listen(PORT, HOST, () => {
