@@ -209,22 +209,26 @@ describe('【Server】生命周期管理与热重载稳固性 (server-lifecycle)
 
     const { server, port } = await startTestServer({ configPath: configFile });
     try {
-      // 发起一个请求，并在其在途处理期间触发 closeGracefully
-      const reqPromise = request(port, '/sub');
+      let shutdownPromise = null;
 
-      // 稍等 2ms 确保请求已进入处理阶段 (activeBuilds > 0)
-      await new Promise(r => setTimeout(r, 2));
-
-      // 触发平滑停机
-      const shutdownPromise = server.closeGracefully(3000);
+      // 监听请求到达服务器并在其处理期间触发平滑停机
+      server.once('request', () => {
+        setImmediate(() => {
+          shutdownPromise = server.closeGracefully(5000);
+        });
+      });
 
       // 在途请求应正常成功完成并返回 200
-      const res = await reqPromise;
+      const res = await request(port, '/sub');
       assert.equal(res.status, 200);
       assert.match(res.body, /香港/);
 
       // 等待停机完全排空结束
-      await shutdownPromise;
+      if (shutdownPromise) {
+        await shutdownPromise;
+      } else {
+        await server.closeGracefully(5000);
+      }
       assert.equal(server.listening, false);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });

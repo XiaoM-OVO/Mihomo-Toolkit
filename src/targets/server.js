@@ -196,7 +196,7 @@ function startServer(options = {}) {
         } catch (err) {
           lastErr = err;
           if (attempt < MAX_RETRIES) {
-            await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+            await new Promise(r => { setTimeout(r, RETRY_DELAY_MS); });
           }
         }
       }
