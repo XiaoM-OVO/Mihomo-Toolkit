@@ -8,6 +8,9 @@
     "mihomo-toolkit": "src/targets/cli.js"
   },
   "scripts": {
+    "verify:arch": "node scripts/verify-architecture.js",
+    "verify:docs": "node scripts/verify-docs.js",
+    "lint": "eslint .",
     "start": "node src/targets/server.js",
     "test": "node --test --test-reporter=spec",
     "test:core": "node --test --test-reporter=spec test/core/*.test.js",
@@ -34,7 +37,7 @@
   "license": "MIT",
   "type": "commonjs",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "bugs": {
     "url": "https://github.com/XiaoM-OVO/Mihomo-Toolkit/issues"
@@ -49,5 +52,8 @@
   },
   "optionalDependencies": {
     "opencc-js": "^1.4.2"
+  },
+  "devDependencies": {
+    "eslint": "^10.12.0"
   }
 }
