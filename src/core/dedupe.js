@@ -103,7 +103,7 @@ function normalizeStructure(val) {
  * 区分连接身份字段与展示/策略字段：
  * - 连接身份字段：Server, Port, Type, Network, Auth, TLS/SNI/ALPN, Transport-opts (ws/grpc/h2/httpupgrade/reality/plugin)
  * - 协议专有身份字段：VLESS flow, Hysteria2 obfs, TUIC congestion controller / udp relay mode, SS plugin & opts, gRPC service name / mode
- * - 严格排除非连接属性：name, _rawName, _keepName, _subTag, _indexPrefix, _customGroups, _cleaned, udp, tfo 等
+ * - 严格排除非连接属性：name, udp, tfo 等展示/策略属性
  * @param {object} proxy
  * @returns {string}
  */

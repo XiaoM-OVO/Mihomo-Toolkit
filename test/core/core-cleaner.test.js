@@ -11,7 +11,7 @@ const {
   isNoticePlaceholderNode,
   hasOnlyPlaceholderNodes
 } = require('../../src/core/notice');
-const { markTrustedSynthetic } = require('../../src/core/node-trust');
+const { markTrustedSynthetic, markTrustedProxyMetadata } = require('../../src/core/node-trust');
 const { buildServiceCatalog } = require('../../src/config/catalog');
 
 describe('【Core】节点清洗与属性提取 (cleaner)', () => {
@@ -299,9 +299,9 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 70000 }, 'Normal'), '假IP');
     assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: -1 }, 'Normal'), '假IP');
 
-    // 5. _keepName 自建内网节点放行 (局域网/Tailscale IP)
-    assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890, _keepName: true }, 'LAN'), '');
-    assert.equal(checkNodeBlockReason({ server: '100.64.0.1', port: 443, _keepName: true }, 'Tailscale'), '');
+    // 5. keepName 自建内网节点放行 (局域网/Tailscale IP)
+    assert.equal(checkNodeBlockReason(markTrustedProxyMetadata({ server: '192.168.1.1', port: 7890 }, { keepName: true }), 'LAN'), '');
+    assert.equal(checkNodeBlockReason(markTrustedProxyMetadata({ server: '100.64.0.1', port: 443 }, { keepName: true }), 'Tailscale'), '');
     // 未开启 keepName 时仍受假IP规则保护
     assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890 }, 'LAN'), '假IP');
 
@@ -526,38 +526,40 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
       );
     });
 
-    it('_keepName 自建内网节点与私网/占位 IP 边界', () => {
-      // 1. 局域网与 Tailscale 必须真实解析为私网地址才凭借 _keepName 放行
-      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890, _keepName: true }, 'LAN'), '');
-      assert.equal(checkNodeBlockReason({ server: '10.0.0.1', port: 7890, _keepName: true }, 'LAN'), '');
-      assert.equal(checkNodeBlockReason({ server: '100.64.0.1', port: 443, _keepName: true }, 'Tailscale'), '');
-      assert.equal(checkNodeBlockReason({ server: '127.0.0.1', port: 1080, _keepName: true }, 'Loopback'), '');
-      assert.equal(checkNodeBlockReason({ server: 'localhost', port: 1080, _keepName: true }, 'Localhost'), '');
-      assert.equal(checkNodeBlockReason({ server: '[fc00::1]', port: 443, _keepName: true }, 'IPv6ULA'), '');
-      assert.equal(checkNodeBlockReason({ server: '[fe80::1]', port: 443, _keepName: true }, 'IPv6LinkLocal'), '');
+    it('keepName 自建内网节点与私网/占位 IP 边界', () => {
+      const keep = (p) => markTrustedProxyMetadata(p, { keepName: true });
 
-      // 2. 伪装私网前缀的非法格式即便带有 _keepName 也予以拒绝 (必须验证 IP 真实解析)
-      assert.equal(checkNodeBlockReason({ server: '192.168.bad.ip', port: 7890, _keepName: true }, 'BadLan'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '192.168.999.999', port: 7890, _keepName: true }, 'BadLan2'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '10.256.1.1', port: 7890, _keepName: true }, 'BadLan3'), '假IP');
+      // 1. 局域网与 Tailscale 必须真实解析为私网地址才凭借 keepName 放行
+      assert.equal(checkNodeBlockReason(keep({ server: '192.168.1.1', port: 7890 }), 'LAN'), '');
+      assert.equal(checkNodeBlockReason(keep({ server: '10.0.0.1', port: 7890 }), 'LAN'), '');
+      assert.equal(checkNodeBlockReason(keep({ server: '100.64.0.1', port: 443 }), 'Tailscale'), '');
+      assert.equal(checkNodeBlockReason(keep({ server: '127.0.0.1', port: 1080 }), 'Loopback'), '');
+      assert.equal(checkNodeBlockReason(keep({ server: 'localhost', port: 1080 }), 'Localhost'), '');
+      assert.equal(checkNodeBlockReason(keep({ server: '[fc00::1]', port: 443 }), 'IPv6ULA'), '');
+      assert.equal(checkNodeBlockReason(keep({ server: '[fe80::1]', port: 443 }), 'IPv6LinkLocal'), '');
 
-      // 3. 公网占位 IP 即便带有 _keepName 也不予放行
-      assert.equal(checkNodeBlockReason({ server: '0.0.0.0', port: 443, _keepName: true }, 'Zero'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '1.1.1.1', port: 443, _keepName: true }, 'DNS'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '8.8.8.8', port: 443, _keepName: true }, 'DNS2'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '255.255.255.255', port: 443, _keepName: true }, 'Broadcast'), '假IP');
+      // 2. 伪装私网前缀的非法格式即便带有 keepName 也予以拒绝 (必须验证 IP 真实解析)
+      assert.equal(checkNodeBlockReason(keep({ server: '192.168.bad.ip', port: 7890 }), 'BadLan'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '192.168.999.999', port: 7890 }), 'BadLan2'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '10.256.1.1', port: 7890 }), 'BadLan3'), '假IP');
 
-      // 4. 空服务与非法/缺少端口即便带有 _keepName 也会被拦截
-      assert.equal(checkNodeBlockReason({ server: '', port: 443, _keepName: true }, 'Empty'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', _keepName: true }, 'MissingPort'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: null, _keepName: true }, 'NullPort'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 0, _keepName: true }, 'ZeroPort'), '假IP');
-      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 70000, _keepName: true }, 'OverflowPort'), '假IP');
+      // 3. 公网占位 IP 即便带有 keepName 也不予放行
+      assert.equal(checkNodeBlockReason(keep({ server: '0.0.0.0', port: 443 }), 'Zero'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '1.1.1.1', port: 443 }), 'DNS'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '8.8.8.8', port: 443 }), 'DNS2'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '255.255.255.255', port: 443 }), 'Broadcast'), '假IP');
 
-      // 5. _keepName 不豁免占位弱口令 (password、123456、全零 UUID 依然阻断)
-      assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 443, password: 'password', _keepName: true }, 'KeepDummyPass'), '假密码');
-      assert.equal(checkNodeBlockReason({ server: '192.168.1.1', port: 7890, password: '123456', _keepName: true }, 'KeepDummyPass2'), '假密码');
-      assert.equal(checkNodeBlockReason({ server: '1.2.3.4', port: 443, uuid: '00000000-0000-0000-0000-000000000000', _keepName: true }, 'KeepDummyUUID'), '假密码');
+      // 4. 空服务与非法/缺少端口即便带有 keepName 也会被拦截
+      assert.equal(checkNodeBlockReason(keep({ server: '', port: 443 }), 'Empty'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '192.168.1.1' }), 'MissingPort'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '192.168.1.1', port: null }), 'NullPort'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '192.168.1.1', port: 0 }), 'ZeroPort'), '假IP');
+      assert.equal(checkNodeBlockReason(keep({ server: '192.168.1.1', port: 70000 }), 'OverflowPort'), '假IP');
+
+      // 5. keepName 不豁免占位弱口令 (password、123456、全零 UUID 依然阻断)
+      assert.equal(checkNodeBlockReason(keep({ server: '1.2.3.4', port: 443, password: 'password' }), 'KeepDummyPass'), '假密码');
+      assert.equal(checkNodeBlockReason(keep({ server: '192.168.1.1', port: 7890, password: '123456' }), 'KeepDummyPass2'), '假密码');
+      assert.equal(checkNodeBlockReason(keep({ server: '1.2.3.4', port: 443, uuid: '00000000-0000-0000-0000-000000000000' }), 'KeepDummyUUID'), '假密码');
     });
 
     it('filterRawInfoNodes 权威复用 isNoticeNode，不误伤真实节点与合成看板', () => {

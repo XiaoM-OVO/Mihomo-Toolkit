@@ -45,7 +45,7 @@ function isFakeServerAddress(server, port) {
 function isNoticeNode(proxy, rawName) {
   if (!proxy || typeof proxy !== 'object') return false;
   if (isTrustedSynthetic(proxy)) return false;
-  const name = rawName || getTrustedProxyMetadata(proxy, 'rawName') || proxy?._rawName || proxy.name || '';
+  const name = rawName || getTrustedProxyMetadata(proxy, 'rawName') || proxy.name || '';
   if (!name) return false;
 
   // 1. 明确的纯流量/到期横幅标题 (无论挂在什么 server/port 下均判定为说明)
@@ -68,7 +68,7 @@ function isNoticeNode(proxy, rawName) {
 function isNoticePlaceholderNode(proxy) {
   if (!proxy || typeof proxy !== 'object') return false;
   if (isTrustedSynthetic(proxy)) return false;
-  const rawName = getTrustedProxyMetadata(proxy, 'rawName') || proxy?._rawName || proxy.name || '';
+  const rawName = getTrustedProxyMetadata(proxy, 'rawName') || proxy.name || '';
   const isFakeServer = isFakeServerAddress(proxy.server, proxy.port);
   const isNoticeName = REGEX_EXPLICIT_NOTICE.test(rawName)
     || REGEX_INFO_NODE.test(rawName)

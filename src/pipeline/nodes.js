@@ -52,7 +52,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       if (logger) logger.debug(`🗑️ [阻断] 无效节点数据`);
       continue;
     }
-    const rawName = getTrustedProxyMetadata(p, 'rawName') || p._rawName || p.name || '';
+    const rawName = getTrustedProxyMetadata(p, 'rawName') || p.name || '';
     const blacklistReason = matchUserBlacklist(p, rawName, config);
     if (blacklistReason) {
       discardedCount++;
@@ -86,7 +86,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   if (fissionCount > 0) {
     const postFissionProxies = [];
     for (const p of currentProxies) {
-      const rawName = getTrustedProxyMetadata(p, 'rawName') || p._rawName || p.name || '';
+      const rawName = getTrustedProxyMetadata(p, 'rawName') || p.name || '';
       const blacklistReason = matchUserBlacklist(p, rawName, config);
       if (blacklistReason) {
         discardedCount++;

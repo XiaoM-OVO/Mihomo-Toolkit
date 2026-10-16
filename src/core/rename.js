@@ -59,7 +59,7 @@ function computeNodeIndices(items = [], options = {}) {
     if (!item || item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
     const regionKey = item.regionInfo.id || item.regionInfo.name;
     const tag = item.airportTag || '';
-    const prefix = item.indexPrefix || getTrustedProxyMetadata(item.proxy, 'indexPrefix') || item.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
+    const prefix = item.indexPrefix || getTrustedProxyMetadata(item.proxy, 'indexPrefix') || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
     const isoBucket = item.isolateBucket !== undefined ? item.isolateBucket : getIsolationBucket(item, options);
     const trackKey = [regionKey, prefix, isoBucket].filter(Boolean).join('__');
     const regionGroupKey = isoBucket ? `${regionKey}__${isoBucket}` : regionKey;
@@ -79,7 +79,7 @@ function computeNodeIndices(items = [], options = {}) {
     }
     const regionKey = item.regionInfo.id || item.regionInfo.name;
     const tag = item.airportTag || '';
-    const prefix = item.indexPrefix || getTrustedProxyMetadata(item.proxy, 'indexPrefix') || item.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
+    const prefix = item.indexPrefix || getTrustedProxyMetadata(item.proxy, 'indexPrefix') || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
     const isoBucket = item.isolateBucket !== undefined ? item.isolateBucket : getIsolationBucket(item, options);
     const trackKey = [regionKey, prefix, isoBucket].filter(Boolean).join('__');
     const regionGroupKey = isoBucket ? `${regionKey}__${isoBucket}` : regionKey;

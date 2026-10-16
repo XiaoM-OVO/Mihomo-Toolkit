@@ -204,7 +204,7 @@ function checkNodeBlockReason(proxy, rawName, _userConfig = {}, options = {}) {
 
   const keepName = options.keepName != null
     ? Boolean(options.keepName)
-    : (getTrustedProxyMetadata(proxy, 'keepName') ?? Boolean(proxy?._keepName));
+    : Boolean(getTrustedProxyMetadata(proxy, 'keepName'));
 
   if (isFakeIp) {
     // 仅在显式声明 keepName 且 server 真实解析为合法的局域网/私网/回环地址时放行自建内网节点
@@ -316,7 +316,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     return { skip: true, rawName: '', blockReason: '无效节点数据' };
   }
   const meta = getTrustedProxyMetadata(proxy);
-  const rawName = options.rawName || meta.rawName || proxy?._rawName || proxy.name || '';
+  const rawName = options.rawName || meta.rawName || proxy.name || '';
   const defs = options.regionDefs || getEnhancedRegionDefs();
 
   // 2. 检查用户显式黑名单 (最高优先级，任何节点类型包括 synthetic/notice/whitelist 均不得豁免)
@@ -365,7 +365,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   // 4. 差异化校验：normal 与 special 均必须满足硬结构校验
   const keepName = options.keepName != null
     ? Boolean(options.keepName)
-    : (meta.keepName ?? Boolean(proxy?._keepName));
+    : Boolean(meta.keepName);
   const blockReason = checkNodeBlockReason(proxy, rawName, userConfig, {
     regionDefs: defs,
     featureRules: options.featureRules,
@@ -469,9 +469,9 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     isolateBucket,
     isUnknownRegion,
     keepName,
-    customGroups: options.customGroups || meta.customGroups || (Array.isArray(proxy?._customGroups) ? proxy._customGroups : []),
-    airportTag: options.airportTag || meta.subTag || proxy?._subTag || userConfig.airportTag || '',
-    indexPrefix: options.indexPrefix || meta.indexPrefix || proxy?._indexPrefix || ''
+    customGroups: options.customGroups || meta.customGroups || [],
+    airportTag: options.airportTag || meta.subTag || userConfig.airportTag || '',
+    indexPrefix: options.indexPrefix || meta.indexPrefix || ''
   };
 }
 

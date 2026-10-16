@@ -583,8 +583,8 @@ function startServer(options = {}) {
       const checkDrain = () => {
         if (activeBuilds <= 0) {
           serverLogger.info('👋 服务已安全关闭，所有任务已排空');
-          if (typeof server.closeAllConnections === 'function') {
-            server.closeAllConnections();
+          if (typeof server.closeIdleConnections === 'function') {
+            server.closeIdleConnections();
           }
           doResolve();
         } else if (Date.now() - startTime >= timeoutMs) {

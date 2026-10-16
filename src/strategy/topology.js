@@ -110,7 +110,7 @@ function buildProxyTopology({
     }
 
     // 2.2 节点专属策略组声明 (保持现有语义：customGroups 专用于目标定制组，不随大流进入常规地区桶与主力标准池)
-    const customGroups = item.customGroups || getTrustedProxyMetadata(item.proxy, 'customGroups') || item.proxy?._customGroups;
+    const customGroups = item.customGroups || getTrustedProxyMetadata(item.proxy, 'customGroups');
     const hasCustomGroups = Array.isArray(customGroups) && customGroups.length > 0;
     if (hasCustomGroups) {
       return;
@@ -518,7 +518,7 @@ function buildProxyTopology({
   // 节点专属策略组注入 (来自 subscriptions 中的 groups 声明)
   classifiedNodes.forEach(item => {
     if (item.skip || item.isInfo) return;
-    const customGroups = item.customGroups || getTrustedProxyMetadata(item.proxy, 'customGroups') || item.proxy?._customGroups;
+    const customGroups = item.customGroups || getTrustedProxyMetadata(item.proxy, 'customGroups');
     if (!Array.isArray(customGroups) || customGroups.length === 0) return;
     const nodeName = item.proxy?.name || item.rawName;
 
