@@ -8,7 +8,6 @@ const {
   classifyNode
 } = require('../../src/core/cleaner');
 const {
-  isNoticeNode,
   isNoticePlaceholderNode,
   hasOnlyPlaceholderNodes
 } = require('../../src/core/notice');
@@ -27,7 +26,7 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
   });
 
   it('extractNodeAttributes - 属性提取 (倍率 / 线路 / 入口)', () => {
-    const { attrs, cleanName } = extractNodeAttributes('深-港 IEPL x2.0 电信 联通');
+    const { attrs } = extractNodeAttributes('深-港 IEPL x2.0 电信 联通');
     assert.equal(attrs.multiNum, 2.0);
     assert.equal(attrs.multiStr, 'x2');
     assert.equal(attrs.entryStr, '深');

@@ -14,7 +14,7 @@ function parseSocksUri(uri) {
     }
 
     const url = new URL(normalized);
-    let server = cleanHostname(url.hostname);
+    const server = cleanHostname(url.hostname);
     const port = parseInt(url.port) || 1080;
     const name = safeDecodeURIComponent(url.hash.slice(1)) || `${server}:${port}`;
     const params = url.searchParams;

@@ -614,7 +614,7 @@ function buildServiceCatalog(userConfig = {}) {
   };
 
   // 2. 初始化服务字典（深拷贝内置默认基准）
-  let mergedServices = {};
+  const mergedServices = {};
   for (const [cat, sMap] of Object.entries(BUILTIN_SERVICES)) {
     mergedServices[cat] = {};
     for (const [k, v] of Object.entries(sMap)) {

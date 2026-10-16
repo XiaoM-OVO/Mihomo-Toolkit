@@ -683,11 +683,9 @@ proxies:
       // 5. 模拟普通网络故障：验证 Task 2 留下的新订阅缓存能够正常提供容灾降级
       globalThis.fetch = async () => { throw new TypeError('Network timeout'); };
       // 通过 forceRefresh: true 穿透 Profile 缓存，强制拉取网络以检验 subStaleCache 容灾降级
-      let fallbackOutcome = null;
       const fallbackRes = await buildProfile(cfg, {
         mode: 'config',
-        forceRefresh: true,
-        onBuildOutcome: (o) => { fallbackOutcome = o; }
+        forceRefresh: true
       });
 
       assert.ok(fallbackRes.yamlStr.includes('香港'), '网络故障时必须成功由 Task 2 留下的 subStaleCache 容灾兜底');

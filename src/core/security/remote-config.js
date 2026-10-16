@@ -75,6 +75,5 @@ function hardenRemoteConfig(rawConfig) {
 
 module.exports = {
   REMOTE_CONFIG_FORBIDDEN_KEYS,
-  REMOTE_CONFIG_ALLOWED_KEYS,
   hardenRemoteConfig
 };

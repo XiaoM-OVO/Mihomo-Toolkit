@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { createLogger, Logger, redactText } = require('../../src/core/logger');
+const { createLogger, redactText } = require('../../src/core/logger');
 
 describe('【Core】统一分级终端 Logger (logger)', () => {
   it('filter - silent 模式完全静默', () => {

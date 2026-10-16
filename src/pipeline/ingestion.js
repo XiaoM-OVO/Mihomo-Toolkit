@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseContent, parseSubscriptionInfo, isExpiredNow, isQuotaExhausted } = require('../io/parsers');
 const { hasOnlyPlaceholderNodes } = require('../core/notice');
-const { markTrustedSynthetic, markTrustedProxyMetadata, sanitizeExternalProxy, sanitizeExternalProxies } = require('../core/node-trust');
+const { markTrustedSynthetic, markTrustedProxyMetadata, sanitizeExternalProxies } = require('../core/node-trust');
 const { redactUrl } = require('../io/ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache } = require('../io/fetcher');
 const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
@@ -567,7 +567,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         }
 
         let effectiveTag = sub.tag;
-        let effectiveIndexPrefix = sub.indexPrefix;
+        const effectiveIndexPrefix = sub.indexPrefix;
         if (!effectiveTag) {
           const reg = /^\[([^\]]{1,12})\]/i;
           const tagCounts = {};

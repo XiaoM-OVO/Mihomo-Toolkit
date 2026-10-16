@@ -92,7 +92,6 @@ function extractCity(name, regionDef) {
 }
 
 module.exports = {
-  REGEX_UNKNOWN_FLAG,
   escapeRegex,
   matchNodeRegion,
   extractCity

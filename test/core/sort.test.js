@@ -1,7 +1,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { sortNodes, compareNodes, getRegionOrderMap } = require('../../src/core/sort');
+const { sortNodes } = require('../../src/core/sort');
 const { runNodesPipeline } = require('../../src/pipeline/nodes');
 const { markTrustedSynthetic } = require('../../src/core/node-trust');
 

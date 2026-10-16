@@ -8,7 +8,6 @@ const { resolveConfig } = require('../../src/config');
 const { buildServiceCatalog, compileRegex } = require('../../src/config/catalog');
 const { runNodesPipeline } = require('../../src/pipeline/nodes');
 const { runStrategyPipeline } = require('../../src/pipeline/strategy');
-const { buildProxyTopology } = require('../../src/strategy/topology');
 
 describe('【Pipeline】服务编目引擎与特征装配 (catalog-services)', () => {
   it('compileRegex - 正则安全编译器', () => {

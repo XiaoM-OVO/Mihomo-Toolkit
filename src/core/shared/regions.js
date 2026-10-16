@@ -185,7 +185,6 @@ module.exports = {
   CONTINENT_DEFS,
   DEFAULT_CORE_REGIONS,
   REGION_METADATA_MAP,
-  countryCodeFromFlag,
   getEnhancedRegionDefs,
   getRegionFlagLookup,
   validateMapping

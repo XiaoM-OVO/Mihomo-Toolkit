@@ -6,18 +6,17 @@
 
 const { matchNodeRegion, extractCity } = require('./geo');
 const { getEnhancedRegionDefs } = require('./shared/regions');
-const { looksLikeDomain } = require('./fission');
 const { getTransportType } = require('./transport');
 const { isTrustedSynthetic } = require('./node-trust');
 const { getIsolationBucket } = require('./isolation');
 const { isNoticeNode } = require('./notice');
+const { compressCarrierLines } = require('./metadata');
 const ipaddr = require('ipaddr.js');
 const {
   REGEX_FORBID_DL,
   REGEX_CLEANUP,
   REGEX_FAKE_IPV4,
   REGEX_FAKE_IPV6,
-  REGEX_PRIVATE_OR_LOOPBACK,
   REGEX_DUMMY_AUTH,
   REGEX_AD_TYPO,
   REGEX_AD_PROMO,
@@ -30,8 +29,6 @@ const {
   REGEX_FLUFF_LINE,
   LINE_MAP,
   CARRIER_SHORT_MAP,
-  CARRIER_COMBO_MAP,
-  SORTED_CARRIER_COMBOS,
   getLineQualityWeight,
   STATIC_FEATURE_RULES
 } = require('../data/cleaner-rules');
@@ -70,34 +67,11 @@ function sanitizeNodeName(rawName) {
 }
 
 /**
- * 三网/两网运营商压缩
+ * 三网/两网运营商压缩 (复用 metadata.js 纯函数实现，消除代码重复)
  * @param {Array<string>} arr
  * @returns {Array<string>}
  */
-function compressLineArr(arr) {
-  const deduped = dedupe(arr);
-  const carrierItems = [];
-  const nonCarrierItems = [];
-  const carrierAtoms = new Set(Object.values(CARRIER_SHORT_MAP));
-
-  for (const item of deduped) {
-    if (CARRIER_SHORT_MAP[item] || carrierAtoms.has(item)) {
-      carrierItems.push(CARRIER_SHORT_MAP[item] || item);
-    } else {
-      nonCarrierItems.push(item);
-    }
-  }
-
-  if (carrierItems.length === 0) return nonCarrierItems;
-
-  const currentAtoms = new Set(carrierItems);
-  for (const [comboName, atomGroup] of SORTED_CARRIER_COMBOS) {
-    if (Array.from(atomGroup).every(atom => currentAtoms.has(atom))) {
-      return [comboName, ...nonCarrierItems];
-    }
-  }
-  return [...carrierItems, ...nonCarrierItems];
-}
+const compressLineArr = compressCarrierLines;
 
 /**
  * 提取节点属性 (倍率、入口城市、线路特征与质量权重)
@@ -215,7 +189,7 @@ function isPrivateOrLoopbackServer(server) {
  * @param {object} [options={}]
  * @returns {string} 拦截原因或空字符串
  */
-function checkNodeBlockReason(proxy, rawName, userConfig = {}, options = {}) {
+function checkNodeBlockReason(proxy, rawName, _userConfig = {}, options = {}) {
   const server = String(proxy?.server || '').trim();
   const portNum = proxy?.port != null && proxy?.port !== '' ? Number(proxy.port) : null;
   const isFakePort = portNum === null || !Number.isInteger(portNum) || portNum <= 0 || portNum > 65535;
@@ -497,6 +471,5 @@ module.exports = {
   checkNodeBlockReason,
   getFeatureRules,
   classifyNode,
-  isPrivateOrLoopbackServer,
   matchUserBlacklist
 };

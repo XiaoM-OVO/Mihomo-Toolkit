@@ -456,7 +456,7 @@ function buildProxyTopology({
     finalGroups.push(buildSelect('IPv6控制台', ['REJECT', '手动选择', 'DIRECT']));
   }
 
-  let fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', '下载策略'];
+  const fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', '下载策略'];
   if (proxyTarget !== 'DIRECT') {
     if (userConfig.proxyFirst) {
       fallbackProxies.push('DIRECT');
