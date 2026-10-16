@@ -42,9 +42,9 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
 
   it('rename - computeNodeIndices 动态补零与多前缀对齐', () => {
     const items = [
-      { regionInfo: { id: 'hk', name: '香港' }, proxy: { _indexPrefix: 'L' }, airportTag: 'LX' },
-      { regionInfo: { id: 'hk', name: '香港' }, proxy: { _indexPrefix: 'L' }, airportTag: 'LX' },
-      { regionInfo: { id: 'hk', name: '香港' }, proxy: { _indexPrefix: 'I' }, airportTag: 'IK' },
+      { regionInfo: { id: 'hk', name: '香港' }, indexPrefix: 'L', proxy: {}, airportTag: 'LX' },
+      { regionInfo: { id: 'hk', name: '香港' }, indexPrefix: 'L', proxy: {}, airportTag: 'LX' },
+      { regionInfo: { id: 'hk', name: '香港' }, indexPrefix: 'I', proxy: {}, airportTag: 'IK' },
       { regionInfo: { id: 'jp', name: '日本' }, proxy: {}, airportTag: 'Single' } // 单节点大区无前缀
     ];
 
@@ -196,7 +196,8 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
   });
 
   it('rename - 机场标签从来源传递至统一重命名计划', async () => {
-    const classified = classifyNode({ name: '🇭🇰 香港 01', _subTag: 'A', _indexPrefix: 'X', server: '1.2.3.4', port: 443 });
+    const rawP = markTrustedProxyMetadata({ name: '🇭🇰 香港 01', server: '1.2.3.4', port: 443 }, { subTag: 'A', indexPrefix: 'X' });
+    const classified = classifyNode(rawP);
     assert.equal(classified.airportTag, 'A');
     const fallback = classifyNode({ name: '🇭🇰 香港 02', server: '1.2.3.5', port: 443 }, { airportTag: 'Global' });
     assert.equal(fallback.airportTag, 'Global');
@@ -207,8 +208,8 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
       renameTemplate: '[{airport}] {icon} {region} {index}'
     };
     const nodeOutput = await runNodesPipeline([
-      { name: '🇭🇰 香港 01', _subTag: 'A', server: '1.2.3.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
-      { name: '🇭🇰 香港 02', _subTag: 'A', server: '1.2.3.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+      markTrustedProxyMetadata({ name: '🇭🇰 香港 01', server: '1.2.3.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }, { subTag: 'A' }),
+      markTrustedProxyMetadata({ name: '🇭🇰 香港 02', server: '1.2.3.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }, { subTag: 'A' })
     ], config);
     assert.ok(nodeOutput[0].name.startsWith('[A]'));
     assert.ok(nodeOutput[0].name.includes('A01'));
@@ -226,10 +227,9 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     assert.ok(profile.outputData.proxies[0].name.startsWith('[Air-A]'));
 
     const strategyProxies = [
-      { name: '🇭🇰 香港 01', _subTag: 'A', server: '1.2.3.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' },
-      { name: '🇭🇰 香港 02', _subTag: 'A', server: '1.2.3.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }
+      markTrustedProxyMetadata({ name: '🇭🇰 香港 01', server: '1.2.3.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }, { subTag: 'A' }),
+      markTrustedProxyMetadata({ name: '🇭🇰 香港 02', server: '1.2.3.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p' }, { subTag: 'A' })
     ];
-    strategyProxies.forEach(p => markTrustedProxyMetadata(p, { _subTag: 'A' }));
     const strategyConfig = { proxies: strategyProxies };
     const strategyOutput = require('../../src/pipeline/strategy').runStrategyPipeline(strategyConfig, config);
     assert.ok(strategyOutput.proxies[0].name.startsWith('[A]'));

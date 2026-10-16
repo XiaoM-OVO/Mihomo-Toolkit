@@ -96,16 +96,7 @@ function runConfigPipeline({
   // 4. 简繁中文四路同步
   outputData = syncChineseConvert(outputData, userConfig, logger);
 
-  // 5. 清除内部私有字段（_ 前缀）
-  if (Array.isArray(outputData.proxies)) {
-    for (const p of outputData.proxies) {
-      if (p && typeof p === 'object') {
-        for (const key of Object.keys(p)) {
-          if (key.startsWith('_')) delete p[key];
-        }
-      }
-    }
-  }
+  // 5. 清除顶层内部私有临时字段（_ 前缀）
   for (const key of Object.keys(outputData)) {
     if (key.startsWith('_')) delete outputData[key];
   }

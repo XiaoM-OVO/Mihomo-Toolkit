@@ -87,15 +87,15 @@ function compareNodes(a, b, options = {}) {
   }
 
   // 3. 同大区同隔离类别内：订阅源/机场与序号前缀聚拢 (airportTag / subTag / indexPrefix)
-  const tagA = a.airportTag || getTrustedProxyMetadata(a.proxy, 'subTag') || a.proxy?._subTag || '';
-  const tagB = b.airportTag || getTrustedProxyMetadata(b.proxy, 'subTag') || b.proxy?._subTag || '';
+  const tagA = a.airportTag || getTrustedProxyMetadata(a.proxy, 'subTag') || '';
+  const tagB = b.airportTag || getTrustedProxyMetadata(b.proxy, 'subTag') || '';
   if (tagA !== tagB) {
     const cmp = tagA.localeCompare(tagB, 'zh-CN');
     if (cmp !== 0) return cmp;
   }
 
-  const prefixA = a.indexPrefix || getTrustedProxyMetadata(a.proxy, 'indexPrefix') || a.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tagA]) || '';
-  const prefixB = b.indexPrefix || getTrustedProxyMetadata(b.proxy, 'indexPrefix') || b.proxy?._indexPrefix || (options.indexPrefixMap && options.indexPrefixMap[tagB]) || '';
+  const prefixA = a.indexPrefix || getTrustedProxyMetadata(a.proxy, 'indexPrefix') || (options.indexPrefixMap && options.indexPrefixMap[tagA]) || '';
+  const prefixB = b.indexPrefix || getTrustedProxyMetadata(b.proxy, 'indexPrefix') || (options.indexPrefixMap && options.indexPrefixMap[tagB]) || '';
   if (prefixA !== prefixB) {
     const cmp = prefixA.localeCompare(prefixB, 'zh-CN');
     if (cmp !== 0) return cmp;

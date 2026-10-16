@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const { sortNodes } = require('../../src/core/sort');
 const { runNodesPipeline } = require('../../src/pipeline/nodes');
-const { markTrustedSynthetic } = require('../../src/core/node-trust');
+const { markTrustedSynthetic, markTrustedProxyMetadata } = require('../../src/core/node-trust');
 
 describe('【Core】节点多维智能排序 (sort)', () => {
   it('sortNodes - 基础边界与零副作用防守', () => {
@@ -180,14 +180,18 @@ describe('【Core】节点多维智能排序 (sort)', () => {
     // 订阅 A (prefix: A): 2 个普通, 2 个家宽
     // 订阅 B (prefix: B): 1 个普通, 1 个家宽
     // 订阅 C (prefix: C): 1 个家宽
+    const p = (name, server, prefix) => markTrustedProxyMetadata({
+      name, server, port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p'
+    }, { indexPrefix: prefix });
+
     const proxies = [
-      { name: '🇭🇰 香港 普通 01', server: '210.1.1.1', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p', _indexPrefix: 'A' },
-      { name: '🇭🇰 香港 家宽 01', server: '210.1.1.2', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p', _indexPrefix: 'A' },
-      { name: '🇭🇰 香港 普通 02', server: '210.1.1.3', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p', _indexPrefix: 'A' },
-      { name: '🇭🇰 香港 家宽 02', server: '210.1.1.4', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p', _indexPrefix: 'A' },
-      { name: '🇭🇰 香港 普通 03', server: '210.1.1.5', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p', _indexPrefix: 'B' },
-      { name: '🇭🇰 香港 家宽 03', server: '210.1.1.6', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p', _indexPrefix: 'B' },
-      { name: '🇭🇰 香港 家宽 04', server: '210.1.1.7', port: 443, type: 'ss', cipher: 'aes-128-gcm', password: 'p', _indexPrefix: 'C' }
+      p('🇭🇰 香港 普通 01', '210.1.1.1', 'A'),
+      p('🇭🇰 香港 家宽 01', '210.1.1.2', 'A'),
+      p('🇭🇰 香港 普通 02', '210.1.1.3', 'A'),
+      p('🇭🇰 香港 家宽 02', '210.1.1.4', 'A'),
+      p('🇭🇰 香港 普通 03', '210.1.1.5', 'B'),
+      p('🇭🇰 香港 家宽 03', '210.1.1.6', 'B'),
+      p('🇭🇰 香港 家宽 04', '210.1.1.7', 'C')
     ];
 
     const config = {

@@ -165,6 +165,7 @@ function sanitizeExternalProxy(proxy) {
   for (const field of RESERVED_INTERNAL_FIELDS) {
     delete clean[field];
   }
+  copyTrustedProxyMetadata(proxy, clean);
   return clean;
 }
 
