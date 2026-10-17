@@ -12,7 +12,7 @@ const {
   resolveMountPath
 } = require('../../src/config/mounts');
 const { expandIncludes } = require('../../src/config/include');
-const { resolveConfig } = require('../../src/config');
+const { resolveConfig, DEFAULT_CONFIG } = require('../../src/config');
 const { buildProfileCacheKey } = require('../../src/pipeline/engine');
 const { hardenRemoteConfig } = require('../../src/core/security/remote-config');
 
@@ -304,6 +304,26 @@ it('🛡️ 远程配置 — include 属本地资源，?config= 无法借它读�
   assert.equal(hardened.ok, true);
   assert.equal(hardened.config.include, undefined, 'include 未被远程剥离');
   assert.ok(hardened.strippedKeys.includes('include'));
+});
+
+it('🛡️ 出厂默认不可被污染 — resolveConfig 结果与 DEFAULT_CONFIG 完全断链', () => {
+  // 浅拷贝（Object.assign）会让返回结果与出厂默认共享同一份数组/对象引用，
+  // 下游任何原地突变都会污染全局 DEFAULT_CONFIG，并在后续调用间泄漏。
+  const a = resolveConfig({});
+  assert.notStrictEqual(a.aiServices, DEFAULT_CONFIG.aiServices, '数组字段仍与出厂默认共享引用');
+  assert.deepStrictEqual(a.aiServices, DEFAULT_CONFIG.aiServices, '断链不应改变取值');
+  assert.notStrictEqual(a.customNodeGroups, DEFAULT_CONFIG.customNodeGroups, '对象字段仍与出厂默认共享引用');
+
+  // 故意污染本次结果
+  a.aiServices.push('__polluted__');
+  a.customNodeGroups.__polluted__ = true;
+
+  // 出厂默认与下一次调用都必须干净
+  assert.ok(!DEFAULT_CONFIG.aiServices.includes('__polluted__'), '出厂默认被下游突变污染');
+  assert.ok(!('__polluted__' in DEFAULT_CONFIG.customNodeGroups), '出厂默认对象被下游突变污染');
+  const b = resolveConfig({});
+  assert.ok(!b.aiServices.includes('__polluted__'), '污染跨调用泄漏到后续结果');
+  assert.ok(!('__polluted__' in b.customNodeGroups), '污染跨调用泄漏到后续结果');
 });
 
 });
