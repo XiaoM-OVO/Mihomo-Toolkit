@@ -6,12 +6,12 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/Version-v2.0.0--alpha-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-479%20Passed-brightgreen)](test/)
+[![Version](https://img.shields.io/badge/Version-v4.0.0--alpha-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
+[![Tests](https://img.shields.io/badge/Tests-497%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底** 」
 
-> ⚠️ **开发中版本 · `v2.0.0-alpha`**：本项目当前处于核心稳定性加固与债务清零阶段（Milestone 1），接口与配置可能随时微调，暂不建议直接用于生产环境。开发进展与演进规划请参阅 [开发路线图 (ROADMAP.md)](ROADMAP.md)。
+> ⚠️ **开发中版本 · `v4.0.0-alpha`**：本项目当前处于下一代统一内核构建阶段（Milestone 1 与 2 生产级稳固与债务清零已闭环，进行中 Milestone 3 拓扑 DSL 重构），接口与配置可能微调，暂不建议直接用于生产环境。开发进展与演进规划请参阅 [开发路线图 (ROADMAP.md)](ROADMAP.md)。
 
 </div>
 
