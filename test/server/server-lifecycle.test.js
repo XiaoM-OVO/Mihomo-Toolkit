@@ -234,4 +234,39 @@ describe('【Server】生命周期管理与热重载稳固性 (server-lifecycle)
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('graceful-shutdown - 等待后台预热刷新排空后再关闭（不因无入站连接被提前 resolve）', async () => {
+    const tmpDir = makeTmpDir();
+    const configFile = path.join(tmpDir, 'config.yaml');
+    fs.writeFileSync(configFile, yaml.stringify({
+      subscriptions: [{ url: 'https://1.1.1.1/sub' }],
+      enableWarmup: true
+    }));
+
+    // 合成「慢速订阅响应」：字面量公网 IP 直接过 SSRF 校验、无需 DNS，全程零真实出网。
+    // 400ms 延迟保证停机发起时后台预热仍处于 in-flight。
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      await new Promise(r => setTimeout(r, 400));
+      const body = Buffer.from('ss://YWVzLTI1Ni1nY206cA@198.51.100.1:443#HK').toString('base64');
+      return new Response(body, { status: 200 });
+    };
+
+    const { server } = await startTestServer({ configPath: configFile, logLevel: 'silent' });
+    try {
+      // 让监听回调触发的 setImmediate 预热真正进入 in-flight 状态
+      await new Promise(r => setImmediate(r));
+
+      const start = Date.now();
+      await server.closeGracefully(5000);
+      const elapsed = Date.now() - start;
+
+      // 若无入站连接时 server.close 回调直接 resolve，会绕过后台刷新排空 → elapsed≈0
+      assert.ok(elapsed >= 200, `停机未等待后台刷新排空 (elapsed=${elapsed}ms)`);
+      assert.equal(server.listening, false);
+    } finally {
+      globalThis.fetch = origFetch;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
