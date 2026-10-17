@@ -17,6 +17,9 @@ try {
 
 const { isPrivateIp, isPrivateIPv6 } = require('./ssrf');
 
+/** 域名批量解析的并发上限：防止大订阅裂变瞬间数百并发查询耗尽套接字 / 触发 DNS 限流 */
+const DNS_QUERY_CONCURRENCY = 16;
+
 function withTimeout(promise, ms = 3000) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -25,6 +28,29 @@ function withTimeout(promise, ms = 3000) {
   return Promise.race([promise, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+/**
+ * 以固定并发上限批量执行异步映射（信号量模式，零外部依赖）。
+ * 与 `Promise.all` 语义一致地收集全部结果，但任一时刻在途任务数不超过 `limit`。
+ * @template T,R
+ * @param {T[]} items
+ * @param {number} limit
+ * @param {(item: T, index: number) => Promise<R>} worker
+ * @returns {Promise<R[]>}
+ */
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  const cap = Math.max(1, Math.min(limit, items.length));
+  let next = 0;
+  const runners = new Array(cap).fill(null).map(async () => {
+    while (next < items.length) {
+      const idx = next++;
+      results[idx] = await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+  return results;
 }
 
 function looksLikeDomain(server) {
@@ -36,31 +62,50 @@ function looksLikeDomain(server) {
 }
 
 /**
- * 发起 DoH 查询 (Alidns 与 Google DNS 双路并发/竞速兜底)
+ * 发起 DoH 查询 (Alidns 与 Google DNS 双路**并发竞速**)。
+ *
+ * 竞速语义：两路上游同时发起，**首个返回非空记录者胜出**；先返回空结果/失败的一路
+ * 不会阻塞另一路。全部失败或全空则返回 []。相比旧实现的「先 AliDNS 再串行 Google」，
+ * 消除了被墙上游把整个查询拖满两轮超时的串行卡顿。
  * @param {string} domain
  * @param {string} type "A" | "AAAA"
  * @param {number} [timeoutMs=3000]
  * @returns {Promise<string[]>}
  */
-async function queryDoh(domain, type, timeoutMs = 3000) {
+function queryDoh(domain, type, timeoutMs = 3000) {
   const urls = [
     `https://dns.alidns.com/resolve?name=${encodeURIComponent(domain)}&type=${type}`,
     `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`
   ];
+  const targetTypeNum = type === 'A' ? 1 : 28;
 
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const targetTypeNum = type === 'A' ? 1 : 28;
-      const records = (data?.Answer || [])
-        .filter(r => r.type === targetTypeNum && typeof r.data === 'string')
-        .map(r => r.data.trim());
-      if (records.length > 0) return records;
-    } catch {}
-  }
-  return [];
+  const queryOne = async (url) => {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return (data?.Answer || [])
+      .filter(r => r.type === targetTypeNum && typeof r.data === 'string')
+      .map(r => r.data.trim());
+  };
+
+  // 失败/被拦一律归一为空结果，交给竞速逻辑统一判定
+  const attempts = urls.map((url) => queryOne(url).catch(() => []));
+
+  return new Promise((resolve) => {
+    let pending = attempts.length;
+    let settled = false;
+    const finish = (records) => {
+      if (settled) return;
+      settled = true;
+      resolve(records);
+    };
+    const onSettled = (records) => {
+      pending--;
+      if (records.length > 0) finish(records);
+      else if (pending === 0) finish([]);
+    };
+    attempts.forEach((p) => { p.then(onSettled); });
+  });
 }
 
 /**
@@ -140,17 +185,17 @@ async function resolveProxiesDomains(proxies = [], options = {}) {
   const domainIpsMap = new Map();
   const domains = Array.from(domainMap.keys());
 
-  await Promise.all(
-    domains.map(async domain => {
-      const ips = await resolveDomainIps(domain, stack);
-      domainIpsMap.set(domain, ips);
-    })
-  );
+  // 并发上限排队：每个域名会扇出系统 DNS(A/AAAA) 与 DoH 兜底，全量并发会瞬间打爆套接字。
+  await mapWithConcurrency(domains, DNS_QUERY_CONCURRENCY, async (domain) => {
+    const ips = await resolveDomainIps(domain, stack);
+    domainIpsMap.set(domain, ips);
+  });
 
   return domainIpsMap;
 }
 
 module.exports = {
   looksLikeDomain,
-  resolveProxiesDomains
+  resolveProxiesDomains,
+  DNS_QUERY_CONCURRENCY
 };
