@@ -4,6 +4,11 @@ const assert = require('node:assert/strict');
 const {
   markTrustedSynthetic,
   isTrustedSynthetic,
+  markTrustedCleanedNode,
+  isTrustedCleanedNode,
+  markTrustedProxyMetadata,
+  getTrustedProxyMetadata,
+  copyTrustedProxy,
   sanitizeExternalProxy
 } = require('../../src/core/node-trust');
 const {
@@ -421,5 +426,26 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
       ];
       assert.equal(hasOnlyPlaceholderNodes(trustedSynth), false, '内部受信看板节点不属于原生占位');
     });
+
+    it('copyTrustedProxy - 浅拷贝与克隆节点完整继承 synthetic、cleaned 及元数据凭证', () => {
+      const original = { name: 'Node-1', server: '1.2.3.4', port: 443 };
+      markTrustedSynthetic(original);
+      markTrustedCleanedNode(original);
+      markTrustedProxyMetadata(original, { rawName: 'Raw-Node-1', subTag: 'AirportA' });
+
+      // 验证未拷贝凭证的新对象是不可信的
+      const clone = { ...original };
+      assert.equal(isTrustedSynthetic(clone), false, '未执行 copyTrustedProxy 时克隆体不得默认受信');
+      assert.equal(isTrustedCleanedNode(clone), false);
+      assert.equal(getTrustedProxyMetadata(clone, 'rawName'), undefined);
+
+      // 执行 copyTrustedProxy 后凭证完整继承
+      copyTrustedProxy(original, clone);
+      assert.equal(isTrustedSynthetic(clone), true, '克隆体应继承 synthetic 标记');
+      assert.equal(isTrustedCleanedNode(clone), true, '克隆体应继承 cleaned 标记');
+      assert.equal(getTrustedProxyMetadata(clone, 'rawName'), 'Raw-Node-1');
+      assert.equal(getTrustedProxyMetadata(clone, 'subTag'), 'AirportA');
+    });
   });
 });
+

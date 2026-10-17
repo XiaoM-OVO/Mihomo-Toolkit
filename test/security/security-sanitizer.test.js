@@ -343,7 +343,11 @@ describe('【Security】控制面净化与 DNS 消毒沙箱 (sanitizer)', () => 
       assert.strictEqual(getRootDomain('aws-link1.lxyun.xyz'), 'lxyun.xyz');
       assert.strictEqual(getRootDomain('w1hwbf8-g04.jp01-nn-vm0.entry.fr0528.art'), 'fr0528.art');
       assert.strictEqual(getRootDomain('node1.airport.com.cn'), 'airport.com.cn');
+      assert.strictEqual(getRootDomain('node1.airport.co.uk'), 'airport.co.uk');
+      assert.strictEqual(getRootDomain('node1.airport.bj.cn'), 'airport.bj.cn');
       assert.strictEqual(getRootDomain('my-sub.workers.dev'), 'my-sub.workers.dev');
+      assert.strictEqual(getRootDomain('my-sub.fly.dev'), 'my-sub.fly.dev');
+      assert.strictEqual(getRootDomain('home.duckdns.org'), 'home.duckdns.org');
 
       const proxies = [
         { name: '1', server: 'aws-link1.lxyun.xyz', sni: 'fastcdn.hoyoverse.com' },

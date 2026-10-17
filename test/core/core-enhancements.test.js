@@ -317,6 +317,34 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     assert.ok(rules[1].includes('🍎 蘋果服務'));
   });
 
+  it('chinese-sync - replaceRuleTarget 精准替换 TARGET 字段，同名参数与复合条件不误伤', () => {
+    const { replaceRuleTarget, splitRuleTokens } = require('../../src/core/chinese-sync');
+
+    // 1. 同名参数/关键字场景：DOMAIN-KEYWORD,节点选择,节点选择
+    // 只有第 3 个字段（TARGET）应当被替换，第 2 字段（KEYWORD）绝不应被篡改
+    const rule1 = 'DOMAIN-KEYWORD,节点选择,节点选择';
+    const res1 = replaceRuleTarget(rule1, { '节点选择': '🚀 节点选择' });
+    assert.equal(res1, 'DOMAIN-KEYWORD,节点选择,🚀 节点选择');
+
+    // 2. 修饰参数场景：DOMAIN-SUFFIX,google.com,自动选择,no-resolve
+    const rule2 = 'DOMAIN-SUFFIX,google.com,自动选择,no-resolve';
+    const res2 = replaceRuleTarget(rule2, { '自动选择': '🚀 自动选择' });
+    assert.equal(res2, 'DOMAIN-SUFFIX,google.com,🚀 自动选择,no-resolve');
+
+    // 3. MATCH 规则（两段式）：MATCH,漏网之鱼
+    const rule3 = 'MATCH,漏网之鱼';
+    const res3 = replaceRuleTarget(rule3, { '漏网之鱼': '🐟 漏网之鱼' });
+    assert.equal(res3, 'MATCH,🐟 漏网之鱼');
+
+    // 4. 括号嵌套复合规则：AND,((NETWORK,UDP),(DST-PORT,443)),自动选择
+    const rule4 = 'AND,((NETWORK,UDP),(DST-PORT,443)),自动选择';
+    const tokens = splitRuleTokens(rule4);
+    assert.equal(tokens.length, 3);
+    assert.equal(tokens[1], '((NETWORK,UDP),(DST-PORT,443))');
+    const res4 = replaceRuleTarget(rule4, { '自动选择': '🚀 自动选择' });
+    assert.equal(res4, 'AND,((NETWORK,UDP),(DST-PORT,443)),🚀 自动选择');
+  });
+
   it('strategy - runStrategyPipeline 安全接收非对象参数', () => {
     const { runStrategyPipeline } = require('../../src/pipeline/strategy');
     const config = {

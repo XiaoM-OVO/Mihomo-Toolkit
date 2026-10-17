@@ -109,18 +109,29 @@ function checkInvariants(dns = {}, options = {}) {
 }
 
 /**
- * 常见多租户公共托管与动态 DNS 服务商域名
- * 此类域名若粗暴折叠到根域（如 +.workers.dev），会导致平台其他公用资产一并丧失 Fake-IP。
- * 对此类域名，保留其注册子域。
+ * 常见多租户公共托管、PaaS 与动态 DNS 服务商域名
+ * 此类域名若粗暴折叠到顶级托管域（如 +.workers.dev），会导致平台其他公用资产一并丧失 Fake-IP。
+ * 对此类域名，保留其租户专属二级/三级注册子域。
  */
 const MULTI_TENANT_SUFFIXES = new Set([
+  // Cloud / Serverless / Static Hosting PaaS
   'workers.dev', 'pages.dev', 'github.io', 'gitlab.io',
-  'vercel.app', 'netlify.app', 'herokuapp.com',
+  'vercel.app', 'netlify.app', 'herokuapp.com', 'fly.dev',
+  'onrender.com', 'render.com', 'glitch.me', 'deno.dev',
+  'azurewebsites.net', 'appspot.com', 'cloudfront.net',
+  's3.amazonaws.com', 'myshopify.com',
+
+  // Dynamic DNS (DDNS) 动态域名服务
   'duckdns.org', 'ddns.net', 'no-ip.com', 'no-ip.org',
-  'zapto.org', 'bounceme.net'
+  'zapto.org', 'bounceme.net', 'myfritz.net', 'dynu.net',
+  'afraid.org', 'freedns.org', 'changeip.com', 'dynv6.net'
 ]);
 
-const COMPOUND_TLD_REGEX = /(?:com|net|org|gov|edu|co|ne|or|ac|idv)\.[a-z]{2,3}$/i;
+/**
+ * 常见国家/地区复合公共后缀二级类别：
+ * 如 .com.cn, .co.uk, .com.hk, .org.au, .ne.jp, .edu.tw 等
+ */
+const COMPOUND_TLD_REGEX = /(?:com|net|org|gov|edu|co|ne|or|ac|idv|nom|biz|info|mil|ltd|asn|sch|pe|re|dev|app)\.[a-z]{2,3}$/i;
 
 /**
  * 提取合法域名的主域名（注册域），用于安全泛化聚合。
@@ -134,7 +145,7 @@ function getRootDomain(domain) {
   if (parts.length <= 1) return clean;
   if (parts.length === 2) return clean;
 
-  // 1. 检查是否属于多租户平台域 (如 foo.workers.dev)
+  // 1. 检查是否属于多租户平台域 (如 foo.workers.dev, test.duckdns.org)
   for (const tenant of MULTI_TENANT_SUFFIXES) {
     if (clean === tenant || clean.endsWith('.' + tenant)) {
       const tenantParts = tenant.split('.');
@@ -146,9 +157,11 @@ function getRootDomain(domain) {
     }
   }
 
-  // 2. 检查复合二段 TLD (如 .com.cn, .co.jp)
+  // 2. 检查复合二段 TLD (如 .com.cn, .co.jp, .bj.cn)
   const lastTwo = parts.slice(-2).join('.');
-  if (COMPOUND_TLD_REGEX.test(lastTwo) && parts.length >= 3) {
+  const isCompoundTld = COMPOUND_TLD_REGEX.test(lastTwo) ||
+    (parts[parts.length - 1] === 'cn' && /^[a-z]{2}$/i.test(parts[parts.length - 2]));
+  if (isCompoundTld && parts.length >= 3) {
     return parts.slice(-3).join('.');
   }
 

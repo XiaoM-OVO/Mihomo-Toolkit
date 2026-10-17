@@ -256,6 +256,34 @@ trojan://pass3@trojan.example.com:443#Trojan-Node
     assert.equal(res.proxies[1].name, 'TUIC-B64');
   });
 
+  test('isLikelyBase64 - 字符特征预检精确区分明文与 Base64 编码', () => {
+    const { isLikelyBase64 } = require('../../src/io/parsers/index.js');
+    assert.equal(isLikelyBase64('proxies:\n - name: HK'), false);
+    assert.equal(isLikelyBase64('{"proxies": [{"name": "HK"}]}'), false);
+    assert.equal(isLikelyBase64('<html>502 Bad Gateway</html>'), false);
+    assert.equal(isLikelyBase64('short'), false);
+
+    const validB64 = Buffer.from('vmess://dummy').toString('base64');
+    assert.equal(isLikelyBase64(validB64), true);
+    assert.equal(isLikelyBase64('YWVzLTI1Ni1nY206cGFzc3dvcmQ='), true);
+  });
+
+  test('parseContent - 原生 Plain YAML / JSON 优先解析，不盲目调用 Base64', () => {
+    const plainYaml = `
+proxies:
+  - name: YAML-Node
+    type: ss
+    server: 1.2.3.4
+    port: 443
+    cipher: aes-256-gcm
+    password: pass
+    `;
+    const res = parseContent(plainYaml);
+    assert.notEqual(res, null);
+    assert.equal(res.proxies.length, 1);
+    assert.equal(res.proxies[0].name, 'YAML-Node');
+  });
+
   describe('协议解析边界鲁棒性加固 (M1 Milestone)', () => {
     test('parseSsUri - 密码包含冒号不被截断', () => {
       // 未 base64 编码的 user:password，密码含多个冒号

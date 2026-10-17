@@ -72,6 +72,21 @@ function startsWithRegisteredScheme(text) {
 }
 
 /**
+ * 字符特征预检：判断文本是否具备 Base64 编码特征。
+ * - 机场 Base64 订阅纯粹由 Base64 字符（大小写字母、数字、+、/、=，或 URL-Safe 的 -、_）与空白换行构成；
+ * - 若包含冒号(:)、花括号({})、方括号([])、引号、井号(#)、尖括号(<>)等字符，必然为明文（YAML/JSON/URI/HTML），
+ *   直接跳过 Base64 尝试，消除 Node Buffer 盲解码及随后引发的二次解析异常开销。
+ * @param {string} str
+ * @returns {boolean}
+ */
+function isLikelyBase64(str) {
+  if (!str || typeof str !== 'string') return false;
+  const s = str.trim();
+  if (s.length < 8) return false;
+  return !/[^A-Za-z0-9+/=\r\n\t _-]/.test(s);
+}
+
+/**
  * 自动识别并解析订阅正文内容 (支持 Plain URI, Base64 URI, Plain YAML, Base64 YAML)
  * @param {string} content
  * @returns {{ proxies: object[], [key: string]: any }}
@@ -88,34 +103,52 @@ function parseContent(content) {
     } catch {}
   }
 
-  // 2. Base64 编码路径：绝大多数机场订阅采用 base64 封装
-  try {
-    const decoded = decodeBase64(trimmed);
-    if (decoded) {
-      const decodedTrimmed = decoded.trim();
-      // 2.1 尝试 Base64 内层为 YAML
-      try {
-        const data = yaml.parse(decodedTrimmed);
-        if (data && data.proxies && Array.isArray(data.proxies)) {
-          return data;
-        }
-      } catch {}
+  // 2. 结构化明文优先：若显式具备 JSON 或 YAML 典型头部特征，优先按 Plain YAML 解析
+  const isStructuredPlain = trimmed.startsWith('{') ||
+    trimmed.startsWith('---') ||
+    /^(?:proxies|proxy-groups|rules|payload|port|mixed-port):/m.test(trimmed);
 
-      // 2.2 尝试 Base64 内层为 URI 列表
-      const uriResult = parseUriList(decodedTrimmed);
-      if (uriResult) return uriResult;
-    }
-  } catch {}
+  if (isStructuredPlain) {
+    try {
+      const data = yaml.parse(trimmed);
+      if (data && data.proxies && Array.isArray(data.proxies)) {
+        return data;
+      }
+    } catch {}
+  }
 
-  // 3. 原生 Plain YAML 配置解析
-  try {
-    const data = yaml.parse(trimmed);
-    if (data && data.proxies && Array.isArray(data.proxies)) {
-      return data;
-    }
-  } catch {}
+  // 3. Base64 编码路径：预检字符特征，仅对合规 Base64 串发起解码
+  if (isLikelyBase64(trimmed)) {
+    try {
+      const decoded = decodeBase64(trimmed);
+      if (decoded) {
+        const decodedTrimmed = decoded.trim();
+        // 3.1 尝试 Base64 内层为 YAML
+        try {
+          const data = yaml.parse(decodedTrimmed);
+          if (data && data.proxies && Array.isArray(data.proxies)) {
+            return data;
+          }
+        } catch {}
 
-  // 4. 原生 Plain URI 列表容错解析 (可能前几行存在注释或空白)
+        // 3.2 尝试 Base64 内层为 URI 列表
+        const uriResult = parseUriList(decodedTrimmed);
+        if (uriResult) return uriResult;
+      }
+    } catch {}
+  }
+
+  // 4. 原生 Plain YAML 配置解析（非典型头部但合法 YAML 的保底兜底）
+  if (!isStructuredPlain) {
+    try {
+      const data = yaml.parse(trimmed);
+      if (data && data.proxies && Array.isArray(data.proxies)) {
+        return data;
+      }
+    } catch {}
+  }
+
+  // 5. 原生 Plain URI 列表容错解析 (可能前几行存在注释或空白)
   try {
     const uriResult = parseUriList(trimmed);
     if (uriResult) return uriResult;
@@ -146,6 +179,7 @@ module.exports = {
   // 批量与复合解析
   parseUriList,
   parseContent,
+  isLikelyBase64,
 
   // 订阅元信息
   parseSubscriptionInfo,

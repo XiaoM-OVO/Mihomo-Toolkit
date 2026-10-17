@@ -64,12 +64,9 @@ function syncChineseConvert(outputData, userConfig = {}, logger) {
     }
   }
 
-  // 3. 转换 rules 中的策略组名引用（精确按逗号分隔符匹配，杜绝误伤域名或规则类型）
+  // 3. 转换 rules 中的策略组名引用（精准限定在 TARGET 字段，杜绝误伤规则类型、参数或域名关键字）
   if (Array.isArray(outputData.rules) && Object.keys(groupRenameMap).length > 0) {
-    outputData.rules = outputData.rules.map(rule => {
-      if (typeof rule !== 'string') return rule;
-      return rule.split(',').map(token => groupRenameMap[token.trim()] || token).join(',');
-    });
+    outputData.rules = outputData.rules.map(rule => replaceRuleTarget(rule, groupRenameMap));
   }
 
   // 4. 转换 rule-providers 中的代理组引用
@@ -84,7 +81,61 @@ function syncChineseConvert(outputData, userConfig = {}, logger) {
   return outputData;
 }
 
+/**
+ * 括号感知的分词器：按逗号切分规则字段，但忽略括号内部逗号（如 AND/OR 条件嵌套）
+ * @param {string} rule
+ * @returns {string[]}
+ */
+function splitRuleTokens(rule) {
+  const tokens = [];
+  let current = '';
+  let depth = 0;
+  for (let i = 0; i < rule.length; i++) {
+    const ch = rule[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      tokens.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  tokens.push(current);
+  return tokens;
+}
+
+/**
+ * 路由规则 TARGET 字段精准替换：
+ * - MATCH,TARGET: TARGET 位于第 2 字段（索引 1）
+ * - TYPE,PAYLOAD,TARGET[,OPTIONS...]: TARGET 位于第 3 字段（索引 2）
+ * 严格杜绝盲目切分逗号全量替换导致的规则类型、参数或域名关键字误伤。
+ * @param {string} rule 规则字符串
+ * @param {Record<string, string>} renameMap 旧名 -> 新名 映射表
+ * @returns {string} 替换后的规则
+ */
+function replaceRuleTarget(rule, renameMap) {
+  if (typeof rule !== 'string' || !renameMap) return rule;
+  const tokens = splitRuleTokens(rule);
+  if (tokens.length < 2) return rule;
+
+  const type = tokens[0].trim().toUpperCase();
+  const targetIndex = type === 'MATCH' ? 1 : (tokens.length >= 3 ? 2 : -1);
+  if (targetIndex === -1 || targetIndex >= tokens.length) return rule;
+
+  const rawToken = tokens[targetIndex];
+  const trimmed = rawToken.trim();
+  if (renameMap[trimmed] && renameMap[trimmed] !== trimmed) {
+    tokens[targetIndex] = rawToken.replace(trimmed, renameMap[trimmed]);
+    return tokens.join(',');
+  }
+  return rule;
+}
+
 module.exports = {
   chineseConvert,
-  syncChineseConvert
+  syncChineseConvert,
+  splitRuleTokens,
+  replaceRuleTarget
 };
+
