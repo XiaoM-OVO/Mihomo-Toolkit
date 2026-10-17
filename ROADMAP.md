@@ -79,10 +79,11 @@
 
 - [x] **生产级 HTTP 服务平滑退出与并发保护**：
   - [x] 注册 `process.on('SIGTERM')` 与 `SIGINT` 信号监听，实现 Graceful Shutdown，等待进行中任务排空后再关闭；
+  - [x] 停机退出条件收敛为「连接已全部关闭 ∧ 任务已全部排空」，补齐后台预热/定时刷新的排空等待（避免 `server.close` 回调在无入站连接时提前 resolve，令后台刷新写缓存中途被 kill）；
   - [x] 配置文件热重载增加防抖与并发读写保护，避免多请求并发解析或读取到编辑器未写完的中间态。
 - [ ] **资源流控与并发限制**：
-  - `dns-resolver.js` 引入并发限制队列（如 p-limit / 信号量），解决域名裂变瞬间并发数百 DNS 查询导致套接字耗尽的问题；
-  - DoH 查询增加代理支持与并发竞速，消除 AliDNS 与 Google DNS 串行超时卡顿。
+  - [x] `dns-resolver.js` 引入并发限制队列（自实现信号量，零外部依赖，上限 16），解决域名裂变瞬间并发数百 DNS 查询导致套接字耗尽的问题；
+  - [ ] DoH 查询增加代理支持（残余待办）与并发竞速（已实现：AliDNS 与 Google DNS 双路并发，首个非空结果胜出，消除串行超时卡顿）。
 - [ ] **运维诊断与监控增强**：
   - CLI 新增 `--dry-run` / `--validate` 模式：仅测试配置语法、订阅连通性与 DNS 不变式，不写入磁盘；
   - 完善 `/healthz` 监控端点：输出当前 `activeBuilds`、Profile 缓存命中率与各订阅健康度。
@@ -166,7 +167,7 @@
 | 字段注册表元数据分类错位 (已修复) | `src/data/field-registry.js` | 规范/遗留 | `include` 归入基础配置挂载；`devServices` 归入扩展分流开关并支持自定义 dev 服务 | M1 阶段 |
 | 注册表兜底机制双轨制 | `src/data/field-registry.js` | 设计坏味道 | 存在 12 个 `default: undefined` 字段依赖代码内隐式兜底 | M2 阶段 |
 | include 原始对象二次传参穿透 (已修复) | `src/config/include.js` | 边界缺陷 | `WeakSet` 仅缓存展开后对象，二次传入同字面量无法阻断二次读盘 | M1 阶段 |
-| resolveConfig 浅拷贝覆盖风险 | `src/config/index.js` | 坏味道 | 顶层使用 `Object.assign` 浅合并，复杂嵌套配置存在子属性丢失风险 | M2 阶段 |
+| resolveConfig 浅拷贝覆盖风险 (已修复) | `src/config/index.js` | 坏味道 | 改用 `deepMerge` 深合并 + `structuredClone` 断链出厂默认引用，杜绝嵌套子属性丢失与跨调用突变污染 | M2 阶段 |
 | 外部配置装载隐式 cwd 依赖 (已修复) | `src/config/index.js` | 环境敏感 | SDK 调用时默认回退至 `process.cwd()`，存在跨目录解析偏差 | M1 阶段 |
 | 外部脚本未沙箱化执行 | `src/config/mounts.js` | 安全隐患 | `.js` / `.cjs` 配置文件通过 `require()` 直接执行，未做沙箱隔离 | M3 阶段 |
 
@@ -188,8 +189,8 @@
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
 | :--- | :--- | :---: | :--- | :---: |
 | 同步 isAllowedUrl 绕过 DNS 校验 (已修复) | `src/io/ssrf.js`, `targets/server.js` | 安全隐患 | `isAllowedUrl` 为纯同步方法，面对解析至内网的域名时完全失效 | M1 阶段 |
-| 域名并发解析无流控与排队池 | `src/io/dns-resolver.js` | 资源耗尽风险 | `resolveProxiesDomains` 全量并发，大订阅易耗尽套接字并触发 DNS 限流 | M2 阶段 |
-| DoH 查询不支持代理且串行阻塞 | `src/io/dns-resolver.js` | 健壮性缺陷 | `queryDoh` 裸调用全局 `fetch`，不走本地代理；且对 AliDNS 与 Google 串行兜底阻塞 | M2 阶段 |
+| 域名并发解析无流控与排队池 (已修复) | `src/io/dns-resolver.js` | 资源耗尽风险 | `resolveProxiesDomains` 引入自实现信号量（上限 16）以固定并发批量解析，消除全量并发打爆套接字 | M2 阶段 |
+| DoH 查询不支持代理且串行阻塞 (并发竞速已修复) | `src/io/dns-resolver.js` | 健壮性缺陷 | `queryDoh` 改为 AliDNS 与 Google 双路并发竞速（首个非空胜出），消除串行兜底卡顿；代理支持仍待办 | M2 阶段 |
 | Shadowsocks 密码与插件多值截断 (已修复) | `src/io/parsers/shadowsocks.js` | 兼容性缺陷 | 明文凭证用 `split(':')`，密码含冒号被截断；插件参数用 `split('=')` 同理截断 | M1 阶段 |
 | VMess 字段兼容狭窄与伪装头丢失 (已修复) | `src/io/parsers/vmess.js` | 兼容性缺陷 | TLS 仅严格匹配字符串 `'tls'`；`tcp+http` 混淆伪装头时丢弃了 host/path | M1 阶段 |
 | gRPC 协议路径多别名兼容缺失 (已修复) | `src/io/parsers/vless.js`, `trojan.js` | 兼容性缺陷 | 仅获取 `serviceName`，未兼容通用的 `service-name` 或 `path` 参数 | M1 阶段 |
