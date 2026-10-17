@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const yaml = require('yaml');
-const { buildProfile, normalizeOutputMode } = require('../pipeline/engine');
+const { buildProfile, normalizeOutputMode, getProfileCacheStats } = require('../pipeline/engine');
 const { createLogger } = require('../core/logger');
 const { safeFetchText } = require('../io/fetcher');
 const { isAllowedUrlAsync, redactUrl } = require('../io/ssrf');
@@ -244,6 +244,20 @@ function startServer(options = {}) {
   let activeBuilds = 0;
   const lastRefreshTimes = new Map();
 
+  // 最近一次构建的订阅健康快照：供 /healthz 输出订阅连通度（避免暴露逐条 URL 明文与错误细节）
+  const buildHealth = {
+    lastBuildAt: 0,
+    lastBuildOk: false,
+    hasFailedSub: false,
+    hasTerminalFailure: false
+  };
+  const recordBuildHealth = (outcome = {}) => {
+    buildHealth.lastBuildAt = Date.now();
+    buildHealth.hasFailedSub = outcome.hasFailedSub === true;
+    buildHealth.hasTerminalFailure = outcome.hasTerminalFailure === true;
+    buildHealth.lastBuildOk = !buildHealth.hasFailedSub && !buildHealth.hasTerminalFailure;
+  };
+
   // 共享刷新锁：防止后台预热与后台定时轮询任务重叠或相互踩踏
   let isBackgroundRefreshing = false;
 
@@ -274,6 +288,7 @@ function startServer(options = {}) {
         onBuildOutcome: (outcome) => {
           published = !!outcome?.published;
           hasFailedSub = !!outcome?.hasFailedSub;
+          recordBuildHealth(outcome);
         }
       });
 
@@ -310,6 +325,9 @@ function startServer(options = {}) {
     const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
 
     if (reqUrl.pathname === '/healthz' || reqUrl.pathname === '/ping') {
+      const enabledSubs = Array.isArray(localConfig.subscriptions)
+        ? localConfig.subscriptions.filter(s => s && s.enabled !== false).length
+        : 0;
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({
         status: isShuttingDown ? 'shutting_down' : 'ok',
@@ -319,7 +337,17 @@ function startServer(options = {}) {
         activeBuilds,
         maxConcurrentBuilds: Number(localConfig.maxConcurrentBuilds) > 0
           ? Number(localConfig.maxConcurrentBuilds)
-          : MAX_CONCURRENT_BUILDS
+          : MAX_CONCURRENT_BUILDS,
+        // Profile SWR 缓存命中率（进程生命周期累计）
+        cache: getProfileCacheStats(),
+        // 订阅健康度（聚合视图，不暴露逐条 URL 明文与上游错误细节）
+        subscriptions: {
+          enabled: enabledSubs,
+          lastBuildAt: buildHealth.lastBuildAt ? new Date(buildHealth.lastBuildAt).toISOString() : null,
+          lastBuildOk: buildHealth.lastBuildOk,
+          hasFailedSub: buildHealth.hasFailedSub,
+          hasTerminalFailure: buildHealth.hasTerminalFailure
+        }
       }));
       return;
     }
@@ -508,6 +536,9 @@ function startServer(options = {}) {
           logger: buildLogger,
           onCacheStatus: (status) => {
             actualCacheStatus = status;
+          },
+          onBuildOutcome: (outcome) => {
+            recordBuildHealth(outcome);
           }
         });
         const { yamlStr, userInfo } = result;
