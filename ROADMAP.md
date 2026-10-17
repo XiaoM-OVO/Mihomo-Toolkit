@@ -84,9 +84,9 @@
 - [ ] **资源流控与并发限制**：
   - [x] `dns-resolver.js` 引入并发限制队列（自实现信号量，零外部依赖，上限 16），解决域名裂变瞬间并发数百 DNS 查询导致套接字耗尽的问题；
   - [ ] DoH 查询增加代理支持（残余待办）与并发竞速（已实现：AliDNS 与 Google DNS 双路并发，首个非空结果胜出，消除串行超时卡顿）。
-- [ ] **运维诊断与监控增强**：
-  - CLI 新增 `--dry-run` / `--validate` 模式：仅测试配置语法、订阅连通性与 DNS 不变式，不写入磁盘；
-  - 完善 `/healthz` 监控端点：输出当前 `activeBuilds`、Profile 缓存命中率与各订阅健康度。
+- [x] **运维诊断与监控增强**：
+  - [x] CLI 新增 `--dry-run` / `--validate` 模式：完整校验配置语法、订阅连通性与 DNS 不变式，且绝不写入任何磁盘产物；存在 DNS 不变式违规或订阅全部不可用时以退出码 1 失败关闭（可直接接入 CI）；
+  - [x] 完善 `/healthz` 监控端点：在原有 `activeBuilds` / `maxConcurrentBuilds` 基础上新增 Profile SWR 缓存命中率（hits/misses/hitRate）与订阅健康度聚合视图（enabled / lastBuildAt / lastBuildOk / hasFailedSub / hasTerminalFailure）；逐条订阅明细留待 ingestion→engine 贯通为后续增强。
 - [ ] **运行环境与基准兼容**：
   - [x] 消除 `engine.js` 展开 include 时硬编码依赖 `process.cwd()` 的缺陷，支持 SDK 跨目录配置传递；
   - [ ] 抽象并统一 `ProfileCache` 与 `SubStaleCacheMap` 的版本淘汰时序逻辑。
