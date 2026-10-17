@@ -25,6 +25,7 @@ const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../
  * @param {object} sourceSkeleton 原始 Mihomo 配置骨架 (包含 proxies 列表)
  * @param {object} [userConfigOrProfile={}] 用户外部配置参数
  * @param {object} [pipelineContext={}] 流水线上下文
+ * @param {object} [pipelineContext.dnsAssets] 订阅携带的 DNS 资产闭包（显式值通道，仅 overwriteDns 时消费）
  * @returns {object} 构建完毕的 Mihomo 配置
  */
 function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipelineContext = {}) {
@@ -129,7 +130,7 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
 
   // 7. 内核层高级配置覆写
   if (userConfig.overwriteDns) {
-    applyDnsOverlay(sourceSkeleton, userConfig, { logger });
+    applyDnsOverlay(sourceSkeleton, userConfig, { logger, dnsAssets: pipelineContext.dnsAssets });
   }
   if (userConfig.overwriteTun) {
     applyTunOverlay(sourceSkeleton, userConfig);
@@ -141,20 +142,10 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     applyCoreOptimize(sourceSkeleton, userConfig);
   }
 
-  // 8. 独立运行收尾：若非上游总调度驱动（如由 Clash Verge 独立调用），执行简繁同步与私有字段清理
+  // 8. 独立运行收尾：若非上游总调度驱动（如由 Clash Verge 独立调用），执行简繁同步
   if (!pipelineContext.classifiedNodes) {
     const { syncChineseConvert } = require('../core/chinese-sync');
     syncChineseConvert(sourceSkeleton, userConfig);
-
-    if (Array.isArray(sourceSkeleton.proxies)) {
-      for (const p of sourceSkeleton.proxies) {
-        if (p && typeof p === 'object') {
-          for (const key of Object.keys(p)) {
-            if (key.startsWith('_')) delete p[key];
-          }
-        }
-      }
-    }
   }
 
   return sourceSkeleton;
