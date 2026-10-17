@@ -89,7 +89,7 @@
   - [x] 完善 `/healthz` 监控端点：在原有 `activeBuilds` / `maxConcurrentBuilds` 基础上新增 Profile SWR 缓存命中率（hits/misses/hitRate）与订阅健康度聚合视图（enabled / lastBuildAt / lastBuildOk / hasFailedSub / hasTerminalFailure）；逐条订阅明细留待 ingestion→engine 贯通为后续增强。
 - [ ] **运行环境与基准兼容**：
   - [x] 消除 `engine.js` 展开 include 时硬编码依赖 `process.cwd()` 的缺陷，支持 SDK 跨目录配置传递；
-  - [ ] 抽象并统一 `ProfileCache` 与 `SubStaleCacheMap` 的版本淘汰时序逻辑。
+  - [x] 抽象并统一 `ProfileCache` 与 `SubStaleCacheMap` 的版本淘汰时序逻辑：抽出共享原语 `src/io/generation.js`（`GenerationSource` 单调递增序号源 + `isSuperseded` 超越判定），收敛两处手写代际机制与分叉的溢出策略（统一为超限抛错、杜绝回绕重号）。
 
 ---
 
