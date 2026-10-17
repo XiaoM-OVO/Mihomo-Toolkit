@@ -72,6 +72,9 @@ class ProfileCache {
     this.maxEntries = options.maxEntries || 100;
     this.cacheMap = new Map();
     this._generationCounter = 0;
+    // SWR 命中率观测计数（进程生命周期内累计，供 /healthz 监控端点消费）
+    this._hits = 0;
+    this._misses = 0;
   }
 
   /**
@@ -124,6 +127,7 @@ class ProfileCache {
    */
   getWithStatus(key, durations = {}) {
     if (!key || !this.cacheMap.has(key)) {
+      this._misses++;
       return { status: 'miss', result: null, remainingSec: 0, entryCreatedAt: 0, generation: 0 };
     }
 
@@ -134,8 +138,11 @@ class ProfileCache {
 
     // 1. 超过最大总年龄：进入淘汰/不可用区间 (Miss)
     if (totalAgeMs > staleMaxAgeMs) {
+      this._misses++;
       return { status: 'miss', result: null, remainingSec: 0, entryCreatedAt: entry.timestamp, generation: entry.generation };
     }
+
+    this._hits++;
 
     // 刷新访问顺序 (LRU: 先删后插移动到 Map 末尾)
     this.cacheMap.delete(key);
@@ -231,6 +238,22 @@ class ProfileCache {
 
   clear() {
     this.cacheMap.clear();
+  }
+
+  /**
+   * 导出 SWR 缓存运行指标（进程生命周期累计），供 /healthz 监控消费
+   * @returns {{ hits: number, misses: number, lookups: number, hitRate: number, size: number, maxEntries: number }}
+   */
+  getStats() {
+    const lookups = this._hits + this._misses;
+    return {
+      hits: this._hits,
+      misses: this._misses,
+      lookups,
+      hitRate: lookups > 0 ? Number((this._hits / lookups).toFixed(4)) : 0,
+      size: this.cacheMap.size,
+      maxEntries: this.maxEntries
+    };
   }
 
   get size() {
