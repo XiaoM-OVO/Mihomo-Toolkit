@@ -242,4 +242,48 @@ describe('【Server】Profile 内存缓存与 SWR 状态机 (profile-cache)', ()
       assert.equal(resZeroStr.staleMaxAgeMs, 120000);
     });
   });
+
+  describe('stats - SWR 命中率运行指标（/healthz 消费）', () => {
+    it('getStats - 空缓存命中率为 0，不产生除零错误', () => {
+      const cache = new ProfileCache({ maxEntries: 10 });
+      const stats = cache.getStats();
+      assert.equal(stats.hits, 0);
+      assert.equal(stats.misses, 0);
+      assert.equal(stats.lookups, 0);
+      assert.equal(stats.hitRate, 0);
+      assert.equal(stats.size, 0);
+      assert.equal(stats.maxEntries, 10);
+    });
+
+    it('getStats - 命中/未命中分别计数并换算命中率', () => {
+      const cache = new ProfileCache({ maxEntries: 10 });
+      const durations = { freshTtlMs: 5000, staleMaxAgeMs: 10000 };
+      cache.set('hit-key', { yamlStr: 'x' });
+
+      cache.getWithStatus('hit-key', durations);   // hit
+      cache.getWithStatus('hit-key', durations);   // hit
+      cache.getWithStatus('missing-key', durations); // miss
+
+      const stats = cache.getStats();
+      assert.equal(stats.hits, 2);
+      assert.equal(stats.misses, 1);
+      assert.equal(stats.lookups, 3);
+      assert.equal(stats.hitRate, Number((2 / 3).toFixed(4)));
+      assert.equal(stats.size, 1);
+    });
+
+    it('getStats - 超过最大总寿命的过期查询计为 miss', () => {
+      const cache = new ProfileCache({ maxEntries: 10 });
+      cache.set('expired-key', { yamlStr: 'x' });
+      // 人工把时间戳拨回过去，令总年龄超过 staleMaxAge
+      cache.cacheMap.get('expired-key').timestamp -= 20000;
+
+      cache.getWithStatus('expired-key', { freshTtlMs: 1000, staleMaxAgeMs: 5000 });
+
+      const stats = cache.getStats();
+      assert.equal(stats.hits, 0);
+      assert.equal(stats.misses, 1);
+      assert.equal(stats.hitRate, 0);
+    });
+  });
 });

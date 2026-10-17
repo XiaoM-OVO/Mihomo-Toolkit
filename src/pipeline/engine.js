@@ -587,6 +587,8 @@ module.exports = {
   runPipelineEngine,
   buildProfile: runPipelineEngine,
   buildProfileCacheKey: getCacheKey,
+  /** 导出全局 Profile SWR 缓存运行指标（hits/misses/hitRate），供 targets 层 /healthz 监控消费 */
+  getProfileCacheStats: () => profileCache.getStats(),
   normalizeOutputMode,
   createLogger,
   safeErrorMessage,
