@@ -10,6 +10,7 @@
  */
 
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
+const { replaceRuleTarget } = require('../core/chinese-sync');
 const { FIELDS_BY_KEY } = require('../data');
 
 const REGION_ICON_FILES = {
@@ -219,15 +220,9 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
     }
   });
 
-  // 2. 规则组按逗号精准分词替换
+  // 2. 规则组按 TARGET 字段精准替换（杜绝误伤规则类型、参数或域名关键字）
   if (Array.isArray(config.rules)) {
-    config.rules = config.rules.map(rule => {
-      if (typeof rule !== 'string') return rule;
-      return rule.split(',').map(token => {
-        const trimmed = token.trim();
-        return emojiMap[trimmed] || token;
-      }).join(',');
-    });
+    config.rules = config.rules.map(rule => replaceRuleTarget(rule, emojiMap));
   }
 
   // 3. Rule-Providers 的 proxy 引用更新

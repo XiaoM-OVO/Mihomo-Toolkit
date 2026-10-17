@@ -5,13 +5,7 @@
  */
 
 const { resolveConfig } = require('../config');
-const { dedupeNodes } = require('../core/dedupe');
-const { classifyNode, matchUserBlacklist, getFeatureRules } = require('../core/cleaner');
-const { buildRenamePlan, applyRenamePlan } = require('../core/rename');
-const { isTrustedCleanedNode, isTrustedSynthetic, markTrustedCleanedNode, getTrustedProxyMetadata, sanitizeExternalProxy } = require('../core/node-trust');
-const { sortNodes } = require('../core/sort');
-const { getEnhancedRegionDefs } = require('../core/shared/regions');
-// Name rendering and feature variables are owned by core/rename.
+const { cleanAndClassifyNodesSync } = require('./nodes');
 const { createServiceRegistries } = require('../strategy/registries');
 const { buildProxyTopology } = require('../strategy/topology');
 const { buildRoutingRules } = require('../strategy/rules');
@@ -35,64 +29,11 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
 
   let classifiedNodes = pipelineContext.classifiedNodes;
 
-  // 若上游流水线未提供已分类打标的节点（如 Clash Verge 独立脚本入口），则在本地执行打标与格式化
+  // 若上游流水线未提供已分类打标的节点（如独立脚本入口），统一复用 nodes 同步清洗打标流水线
   if (!classifiedNodes) {
     const rawProxies = Array.isArray(sourceSkeleton.proxies) ? sourceSkeleton.proxies : [];
-    const regionDefs = getEnhancedRegionDefs();
-    const entries = [];
-
-    // Trust comes from the private in-process WeakSet, never from a caller supplied _cleaned field.
-    rawProxies.forEach((rawProxy, index) => {
-      if (!rawProxy || typeof rawProxy !== 'object' || Array.isArray(rawProxy)) return;
-      const trustedCleaned = isTrustedCleanedNode(rawProxy);
-      const trustedInternal = trustedCleaned || isTrustedSynthetic(rawProxy);
-      const proxy = trustedInternal ? rawProxy : sanitizeExternalProxy(rawProxy);
-      const rawName = getTrustedProxyMetadata(proxy, 'rawName') || proxy.name || '';
-      if (matchUserBlacklist(proxy, rawName, userConfig)) return;
-      entries.push({ proxy, trustedCleaned, index });
-    });
-
-    // Existing in-process pipeline output wins physical duplicates; raw additions are deduped against it.
-    if (userConfig.enableDedupe && entries.some(entry => !entry.trustedCleaned)) {
-      const preferred = [
-        ...entries.filter(entry => entry.trustedCleaned),
-        ...entries.filter(entry => !entry.trustedCleaned)
-      ];
-      const deduped = dedupeNodes(preferred.map(entry => entry.proxy));
-      const counts = new Map();
-      for (const proxy of deduped) counts.set(proxy, (counts.get(proxy) || 0) + 1);
-      const kept = new Set(deduped);
-      const used = new Map();
-      for (let i = entries.length - 1; i >= 0; i--) {
-        const proxy = entries[i].proxy;
-        const count = used.get(proxy) || 0;
-        if (!kept.has(proxy) || count >= (counts.get(proxy) || 0)) entries.splice(i, 1);
-        else used.set(proxy, count + 1);
-      }
-    }
-
-    const featureRules = getFeatureRules(userConfig);
-    const classifiedEntries = entries.map(entry => ({
-      ...entry,
-      item: classifyNode(entry.proxy, userConfig, { regionDefs, featureRules })
-    })).filter(entry => !entry.item.skip);
-
-    const existingItems = classifiedEntries
-      .filter(entry => entry.trustedCleaned)
-      .map(entry => ({ ...entry.item, preserveExistingName: true }));
-    let newItems = classifiedEntries.filter(entry => !entry.trustedCleaned).map(entry => entry.item);
-    if (userConfig.enableNodeSort && newItems.length > 1) {
-      newItems = sortNodes(newItems, userConfig);
-    }
-    classifiedNodes = [...existingItems, ...newItems];
-
-    const renamePlan = buildRenamePlan(classifiedNodes, userConfig);
-    applyRenamePlan(classifiedNodes, renamePlan);
-    for (const item of classifiedNodes) {
-      markTrustedCleanedNode(item.proxy);
-    }
+    classifiedNodes = cleanAndClassifyNodesSync(rawProxies, userConfig);
     sourceSkeleton.proxies = classifiedNodes.map(item => item.proxy);
-
   }
 
   // 4. 组装服务注册表与策略拓扑

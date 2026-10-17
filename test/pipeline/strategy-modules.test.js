@@ -48,6 +48,9 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.equal(config.tun.stack, 'system');
     assert.equal(config.tun.device, 'Mihomo');
     assert.deepStrictEqual(config.tun['dns-hijack'], ['any:53', 'tcp://any:53']);
+    assert.deepStrictEqual(config.tun['route-exclude-address'], [
+      '192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12', 'fc00::/7', 'fe80::/10'
+    ]);
 
     applySnifferOverlay(config, DEFAULT_CONFIG);
     assert.equal(config.sniffer.enable, true);

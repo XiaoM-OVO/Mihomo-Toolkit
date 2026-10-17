@@ -120,6 +120,25 @@ function copyTrustedProxyMetadata(source, target) {
   return target;
 }
 
+/**
+ * 将源节点的全部内部信任凭证（可信清洗标记、可信合成节点标记及内部元数据）完整复制给目标克隆节点。
+ * 解决浅拷贝 / 派生克隆后 WeakSet/WeakMap 凭据静默断裂的问题。
+ * @param {object} source 源节点
+ * @param {object} target 目标克隆节点
+ * @returns {object} target
+ */
+function copyTrustedProxy(source, target) {
+  if (!source || typeof source !== 'object' || !target || typeof target !== 'object') return target;
+  if (TRUSTED_SYNTHETICS.has(source)) {
+    TRUSTED_SYNTHETICS.add(target);
+  }
+  if (TRUSTED_CLEANED_NODES.has(source)) {
+    TRUSTED_CLEANED_NODES.add(target);
+  }
+  copyTrustedProxyMetadata(source, target);
+  return target;
+}
+
 /** Restore only metadata explicitly registered by an in-process trusted producer. */
 function restoreTrustedProxyMetadata(source, target) {
   const trusted = source && typeof source === 'object' ? TRUSTED_PROXY_METADATA.get(source) : null;
@@ -158,7 +177,7 @@ function sanitizeExternalProxy(proxy) {
   for (const field of RESERVED_INTERNAL_FIELDS) {
     delete clean[field];
   }
-  copyTrustedProxyMetadata(proxy, clean);
+  copyTrustedProxy(proxy, clean);
   return clean;
 }
 
@@ -180,7 +199,9 @@ module.exports = {
   markTrustedProxyMetadata,
   getTrustedProxyMetadata,
   copyTrustedProxyMetadata,
+  copyTrustedProxy,
   restoreTrustedProxyMetadata,
   sanitizeExternalProxy,
   sanitizeExternalProxies
 };
+

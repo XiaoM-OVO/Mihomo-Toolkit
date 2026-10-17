@@ -8,7 +8,13 @@ const { resolveConfig } = require('../config');
 const { dedupeNodes } = require('../core/dedupe');
 const { classifyNode, matchUserBlacklist, getFeatureRules } = require('../core/cleaner');
 const { buildRenamePlan, applyRenamePlan } = require('../core/rename');
-const { markTrustedCleanedNode, getTrustedProxyMetadata } = require('../core/node-trust');
+const {
+  markTrustedCleanedNode,
+  getTrustedProxyMetadata,
+  isTrustedCleanedNode,
+  isTrustedSynthetic,
+  sanitizeExternalProxy
+} = require('../core/node-trust');
 const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 // Name rendering and feature variables are owned by core/rename.
@@ -245,6 +251,73 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   return resultProxies;
 }
 
+/**
+ * 同步节点清洗与打标流水线（供无异步 I/O 要求的场景或独立脚本使用）
+ * 消除 strategy.js 中对清洗、去重、排序、重命名的重复实现。
+ * @param {Array<object>} rawProxies 原始节点数组
+ * @param {object} [userConfig={}] 用户配置参数
+ * @returns {Array<object>} classifiedNodes (含已清洗的 proxy 引用)
+ */
+function cleanAndClassifyNodesSync(rawProxies = [], userConfig = {}) {
+  const config = userConfig;
+  const entries = [];
+
+  rawProxies.forEach((rawProxy, index) => {
+    if (!rawProxy || typeof rawProxy !== 'object' || Array.isArray(rawProxy)) return;
+    const trustedCleaned = isTrustedCleanedNode(rawProxy);
+    const trustedInternal = trustedCleaned || isTrustedSynthetic(rawProxy);
+    const proxy = trustedInternal ? rawProxy : sanitizeExternalProxy(rawProxy);
+    const rawName = getTrustedProxyMetadata(proxy, 'rawName') || proxy.name || '';
+    if (matchUserBlacklist(proxy, rawName, config)) return;
+    entries.push({ proxy, trustedCleaned, index });
+  });
+
+  if (config.enableDedupe && entries.some(entry => !entry.trustedCleaned)) {
+    const preferred = [
+      ...entries.filter(entry => entry.trustedCleaned),
+      ...entries.filter(entry => !entry.trustedCleaned)
+    ];
+    const deduped = dedupeNodes(preferred.map(entry => entry.proxy));
+    const counts = new Map();
+    for (const proxy of deduped) counts.set(proxy, (counts.get(proxy) || 0) + 1);
+    const kept = new Set(deduped);
+    const used = new Map();
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const proxy = entries[i].proxy;
+      const count = used.get(proxy) || 0;
+      if (!kept.has(proxy) || count >= (counts.get(proxy) || 0)) entries.splice(i, 1);
+      else used.set(proxy, count + 1);
+    }
+  }
+
+  const regionDefs = getEnhancedRegionDefs();
+  const featureRules = getFeatureRules(config);
+  const classifiedEntries = entries.map(entry => ({
+    ...entry,
+    item: classifyNode(entry.proxy, config, { regionDefs, featureRules })
+  })).filter(entry => !entry.item.skip);
+
+  const existingItems = classifiedEntries
+    .filter(entry => entry.trustedCleaned)
+    .map(entry => ({ ...entry.item, preserveExistingName: true }));
+  let newItems = classifiedEntries.filter(entry => !entry.trustedCleaned).map(entry => entry.item);
+  if (config.enableNodeSort && newItems.length > 1) {
+    newItems = sortNodes(newItems, config);
+  }
+  const classifiedNodes = [...existingItems, ...newItems];
+
+  const isRenameEnabled = config.enableNodeRename !== false;
+  const renamePlan = buildRenamePlan(classifiedNodes, isRenameEnabled ? config : { ...config, enableNodeRename: false });
+  applyRenamePlan(classifiedNodes, renamePlan);
+  for (const item of classifiedNodes) {
+    markTrustedCleanedNode(item.proxy);
+  }
+
+  return classifiedNodes;
+}
+
 module.exports = {
-  runNodesPipeline
+  runNodesPipeline,
+  cleanAndClassifyNodesSync
 };
+
