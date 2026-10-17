@@ -2,6 +2,7 @@ const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const dns = require('dns').promises;
 const { runNodesPipeline } = require('../../src/pipeline/nodes');
+const { resolveProxiesDomains, DNS_QUERY_CONCURRENCY } = require('../../src/io/dns-resolver');
 
 describe('【Core】节点域名裂变算法 (fission)', () => {
   let origResolve4;
@@ -63,5 +64,40 @@ describe('【Core】节点域名裂变算法 (fission)', () => {
 
     // 命中黑名单关键字时跳过裂变，节点数应仍为 1
     assert.equal(cleanProxies.length, 1);
+  });
+
+  it('fission - 域名批量解析受并发上限约束（信号量流控）', async () => {
+    const domainCount = DNS_QUERY_CONCURRENCY * 4; // 远超上限，制造并发压力
+    const proxies = Array.from({ length: domainCount }, (_, i) => ({
+      name: `node-${i}`,
+      type: 'ss',
+      server: `host-${i}.example.com`,
+      port: 443,
+      cipher: 'aes-256-gcm',
+      password: 'p'
+    }));
+
+    let inflight = 0;
+    let maxInflight = 0;
+    dns.resolve4 = async () => {
+      inflight++;
+      maxInflight = Math.max(maxInflight, inflight);
+      await new Promise(r => setTimeout(r, 5));
+      inflight--;
+      return ['93.184.216.34']; // 公网 IP，命中即跳过 DoH 兜底，全程零真实出网
+    };
+    dns.resolve6 = async () => {
+      await new Promise(r => setTimeout(r, 5));
+      return [];
+    };
+
+    const map = await resolveProxiesDomains(proxies, {});
+
+    assert.equal(map.size, domainCount, '域名解析结果数量不符');
+    assert.ok(
+      maxInflight <= DNS_QUERY_CONCURRENCY,
+      `并发流控失效：峰值 ${maxInflight} 超过上限 ${DNS_QUERY_CONCURRENCY}`
+    );
+    assert.ok(maxInflight >= 2, `未观测到并发（峰值 ${maxInflight}），可能退化为串行`);
   });
 });
