@@ -100,4 +100,46 @@ describe('【Core】节点域名裂变算法 (fission)', () => {
     );
     assert.ok(maxInflight >= 2, `未观测到并发（峰值 ${maxInflight}），可能退化为串行`);
   });
+
+  it('doh-proxy - 配置代理出口时 DoH 兜底经本地回环代理转发', async () => {
+    const savedFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url: String(url), opts });
+      return new Response(JSON.stringify({ Answer: [{ type: 1, data: '1.2.3.4' }] }), { status: 200 });
+    };
+    try {
+      const proxies = [
+        { name: 'node', type: 'ss', server: 'doh-via-proxy.example.com', port: 443, cipher: 'aes-256-gcm', password: 'p' }
+      ];
+      const map = await resolveProxiesDomains(proxies, { dohProxyUrl: 'http://127.0.0.1:7890' });
+
+      assert.ok(calls.length > 0, '系统 DNS 无结果时应触发 DoH 兜底查询');
+      assert.ok(calls.every(c => c.opts && c.opts.dispatcher), '每路 DoH 请求都必须携带本地代理 dispatcher');
+      assert.deepEqual(map.get('doh-via-proxy.example.com'), ['1.2.3.4']);
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  });
+
+  it('doh-direct - 未配置代理出口时 DoH 直连（不携带 dispatcher）', async () => {
+    const savedFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url: String(url), opts });
+      return new Response(JSON.stringify({ Answer: [{ type: 1, data: '1.2.3.5' }] }), { status: 200 });
+    };
+    try {
+      const proxies = [
+        { name: 'node', type: 'ss', server: 'doh-direct.example.com', port: 443, cipher: 'aes-256-gcm', password: 'p' }
+      ];
+      const map = await resolveProxiesDomains(proxies, {});
+
+      assert.ok(calls.length > 0, '系统 DNS 无结果时应触发 DoH 兜底查询');
+      assert.ok(calls.every(c => c.opts && !c.opts.dispatcher), '直连模式下 DoH 请求不得携带 dispatcher');
+      assert.deepEqual(map.get('doh-direct.example.com'), ['1.2.3.5']);
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  });
 });
