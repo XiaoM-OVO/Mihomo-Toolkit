@@ -546,8 +546,12 @@ function startServer(options = {}) {
    * 平滑退出与连接排空 (Graceful Shutdown)
    * 1. 标记 isShuttingDown 并停止接入新连接
    * 2. 清理闲置 keep-alive 连接
-   * 3. 轮询等待进行中的构建任务 (activeBuilds) 彻底排空
+   * 3. 排空进行中的构建任务 (activeBuilds) **与后台预热/定时刷新** (isBackgroundRefreshing)
    * 4. 若超过最大宽限期 (timeoutMs)，强制排空并关闭所有剩余连接
+   *
+   * 关键边界：`server.close()` 的回调在「无在途连接」时会**立即触发**——若单靠它 resolve，
+   * 则会绕过后台刷新排空直接退出（后台刷新写缓存写到一半被 kill）。因此退出条件是
+   * **「连接已全部关闭」 ∧ 「任务已全部排空」** 二者同时满足，任一方先到都只能触发重估、不能直接退出。
    */
   server.closeGracefully = function closeGracefully(timeoutMs = 10000) {
     if (shutdownPromise) return shutdownPromise;
@@ -556,6 +560,8 @@ function startServer(options = {}) {
 
     shutdownPromise = new Promise((resolve) => {
       let resolved = false;
+      let connectionClosed = false;
+
       const doResolve = () => {
         if (!resolved) {
           resolved = true;
@@ -563,16 +569,23 @@ function startServer(options = {}) {
         }
       };
 
+      // 排空判定：构建任务清零 **且** 后台刷新结束
+      const isDrained = () => activeBuilds <= 0 && !isBackgroundRefreshing;
+      const maybeResolve = () => {
+        if (connectionClosed && isDrained()) doResolve();
+      };
+
       if (server.listening) {
         try {
           server.close(() => {
-            doResolve();
+            connectionClosed = true;
+            maybeResolve();
           });
         } catch (_) {
-          doResolve();
+          connectionClosed = true;
         }
       } else {
-        doResolve();
+        connectionClosed = true;
       }
 
       if (typeof server.closeIdleConnections === 'function') {
@@ -581,20 +594,23 @@ function startServer(options = {}) {
 
       const startTime = Date.now();
       const checkDrain = () => {
-        if (activeBuilds <= 0) {
+        if (resolved) return;
+        if (isDrained() && connectionClosed) {
           serverLogger.info('👋 服务已安全关闭，所有任务已排空');
           if (typeof server.closeIdleConnections === 'function') {
             server.closeIdleConnections();
           }
           doResolve();
         } else if (Date.now() - startTime >= timeoutMs) {
-          serverLogger.warn(`⚠️ 平滑退出超时 (${timeoutMs}ms)，仍有 ${activeBuilds} 个任务未结束，强制关闭连接`);
+          const stillRefreshing = isBackgroundRefreshing ? ' (后台刷新进行中)' : '';
+          serverLogger.warn(`⚠️ 平滑退出超时 (${timeoutMs}ms)，仍有 ${activeBuilds} 个任务未结束${stillRefreshing}，强制关闭连接`);
           if (typeof server.closeAllConnections === 'function') {
             server.closeAllConnections();
           }
+          connectionClosed = true;
           doResolve();
         } else {
-          setTimeout(checkDrain, 50).unref?.();
+          setTimeout(checkDrain, 50);
         }
       };
 
