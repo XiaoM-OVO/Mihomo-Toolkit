@@ -81,9 +81,9 @@
   - [x] 注册 `process.on('SIGTERM')` 与 `SIGINT` 信号监听，实现 Graceful Shutdown，等待进行中任务排空后再关闭；
   - [x] 停机退出条件收敛为「连接已全部关闭 ∧ 任务已全部排空」，补齐后台预热/定时刷新的排空等待（避免 `server.close` 回调在无入站连接时提前 resolve，令后台刷新写缓存中途被 kill）；
   - [x] 配置文件热重载增加防抖与并发读写保护，避免多请求并发解析或读取到编辑器未写完的中间态。
-- [ ] **资源流控与并发限制**：
+- [x] **资源流控与并发限制**：
   - [x] `dns-resolver.js` 引入并发限制队列（自实现信号量，零外部依赖，上限 16），解决域名裂变瞬间并发数百 DNS 查询导致套接字耗尽的问题；
-  - [ ] DoH 查询增加代理支持（残余待办）与并发竞速（已实现：AliDNS 与 Google DNS 双路并发，首个非空结果胜出，消除串行超时卡顿）。
+  - [x] DoH 查询增加代理支持（复用 `fetchProxyPort` / `fetchProxyStrategy` 出口策略，经本地回环代理转发；与订阅抓取共用 `fetch-proxy.js` 的回环校验与分发器缓存）与并发竞速（已实现：AliDNS 与 Google DNS 双路并发，首个非空结果胜出，消除串行超时卡顿）。
 - [x] **运维诊断与监控增强**：
   - [x] CLI 新增 `--dry-run` / `--validate` 模式：完整校验配置语法、订阅连通性与 DNS 不变式，且绝不写入任何磁盘产物；存在 DNS 不变式违规或订阅全部不可用时以退出码 1 失败关闭（可直接接入 CI）；
   - [x] 完善 `/healthz` 监控端点：在原有 `activeBuilds` / `maxConcurrentBuilds` 基础上新增 Profile SWR 缓存命中率（hits/misses/hitRate）与订阅健康度聚合视图（enabled / lastBuildAt / lastBuildOk / hasFailedSub / hasTerminalFailure）；逐条订阅明细留待 ingestion→engine 贯通为后续增强。

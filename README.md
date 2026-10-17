@@ -195,7 +195,7 @@ output: "./dist/config.yaml"    # 输出路径
 
 # 2. 抓取与容灾
 fetchProxyPort: 7890            # 抓取代理端口（留空直连）
-fetchProxyStrategy: "auto"      # direct (直连) | proxy (代理) | auto (失败自动走代理重试)
+fetchProxyStrategy: "auto"      # direct (直连) | proxy (代理) | auto (失败自动走代理重试)；同时决定节点裂变 DoH 兜底的出口
 fetchRetry: 2                   # 失败重试次数 (5xx/超时重试，4xx快速失败)
 fetchStaleTtl: 24               # 网络故障时复用旧缓存兜底时长 (小时)
 
