@@ -155,7 +155,7 @@ function matchUserBlacklist(proxy, rawName, userConfig = {}) {
 }
 
 /**
- * 解析并判定主机地址是否为合法的私网、局域网或回环地址 (用于 _keepName 放行校验)
+ * 解析并判定主机地址是否为合法的私网、局域网或回环地址 (用于 keepName 元数据放行校验)
  * 必须解析为有效 IP 且属于受限网段，格式错误的非法前缀坚决拒绝
  * @param {string} server
  * @returns {boolean}

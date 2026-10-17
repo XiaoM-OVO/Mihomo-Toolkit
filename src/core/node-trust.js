@@ -19,12 +19,7 @@ const TRUSTABLE_PROXY_METADATA_FIELDS = new Set([
   'subTag',
   'indexPrefix',
   'keepName',
-  'customGroups',
-  '_rawName',
-  '_subTag',
-  '_indexPrefix',
-  '_keepName',
-  '_customGroups'
+  'customGroups'
 ]);
 
 /**
@@ -89,9 +84,8 @@ function markTrustedProxyMetadata(proxy, fields = {}) {
     TRUSTED_PROXY_METADATA.set(proxy, trusted);
   }
   for (const [key, value] of Object.entries(fields)) {
-    const canonicalKey = key.startsWith('_') ? key.slice(1) : key;
-    if (TRUSTABLE_PROXY_METADATA_FIELDS.has(key) || TRUSTABLE_PROXY_METADATA_FIELDS.has(canonicalKey)) {
-      trusted.set(canonicalKey, value);
+    if (TRUSTABLE_PROXY_METADATA_FIELDS.has(key)) {
+      trusted.set(key, value);
     }
   }
   return proxy;
@@ -103,8 +97,7 @@ function getTrustedProxyMetadata(proxy, key) {
   const trusted = TRUSTED_PROXY_METADATA.get(proxy);
   if (!trusted) return key ? undefined : {};
   if (key) {
-    const canonicalKey = key.startsWith('_') ? key.slice(1) : key;
-    return trusted.get(canonicalKey);
+    return trusted.get(key);
   }
   const result = {};
   for (const [k, v] of trusted.entries()) {
