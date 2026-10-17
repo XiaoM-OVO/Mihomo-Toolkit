@@ -74,6 +74,7 @@ const DEFAULT_SCRIPT_FILTERS = [...FAKEIP_FILTER_BASELINE];
  * @param {object} userConfig 用户配置参数
  * @param {object} [options={}] 运行期依赖注入
  * @param {object} [options.logger] 日志器（用于输出净化告警）
+ * @param {object} [options.dnsAssets] 订阅携带的节点专属 DNS 资产闭包 { hosts, policies, fakeIpFilters }
  * @returns {{ findings: Array<object>, listen: string }} 安全审计发现与最终监听地址
  */
 function applyDnsOverlay(config, userConfig = {}, options = {}) {
@@ -120,8 +121,9 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   // 2. 节点域名自动避环：动态推导节点资产域名注入 fake-ip-filter (支持 smart 聚合泛化 / exact 精确 / off 关闭)
   const fakeIpFilterMode = userConfig.fakeIpFilterNodes !== undefined ? userConfig.fakeIpFilterNodes : 'smart';
   const nodeFilters = deriveFakeIpFilterAdditions(config.proxies || [], { mode: fakeIpFilterMode });
-  const assetFilters = (fakeIpFilterMode !== 'off' && fakeIpFilterMode !== false && Array.isArray(config._assetFakeIpFilters))
-    ? config._assetFakeIpFilters
+  const assetFakeIpFilters = options.dnsAssets?.fakeIpFilters;
+  const assetFilters = (fakeIpFilterMode !== 'off' && fakeIpFilterMode !== false && Array.isArray(assetFakeIpFilters))
+    ? assetFakeIpFilters
     : [];
   const userFilters = Array.isArray(userConfig.fakeIpFilter) ? userConfig.fakeIpFilter : [];
   const subDomainFilters = normalizeSubDomains(userConfig.subDomain).filter(d => !isIPv4(d) && !isIPv6(d));
@@ -161,7 +163,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   //    用户 Policy 同样过净化沙箱：保留键 (rule-set:cn-domain / rule-set:non-cn) 不可被覆盖，
   //    危险修饰符被剥离，私网解析器默认拒绝。
   const scriptPolicy = { 'rule-set:cn-domain': safeDirectNs, 'rule-set:non-cn': safeMainNs };
-  const assetPolicy = config._assetPolicies || {};
+  const assetPolicy = options.dnsAssets?.policies || {};
   const { policy: safeUserPolicy, findings: userPolicyFindings } = sanitizeNameserverPolicy(
     userConfig.nameserverPolicy || {},
     { trustedSource: true, ...privateOpts }
@@ -172,7 +174,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   // 6. Hosts 安全挂载：节点专属优选 IP + 用户自定义 Hosts
   //    用户 Hosts 同样过消毒沙箱：受保护域名（github/paypal/银行等）与内网重定向默认拒绝，
   //    确需豁免可用 trustedHostDomains 显式声明（治「远程配置写 hosts 劫持任意域名」）。
-  const assetHosts = config._assetHosts || {};
+  const assetHosts = options.dnsAssets?.hosts || {};
   const userHosts = userConfig.hosts || {};
   const { hosts: safeUserHosts, findings: userHostFindings } = sanitizeHosts(userHosts, {
     allowInternal: userConfig.allowInternalHosts === true,
@@ -203,12 +205,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     'nameserver-policy': mergedPolicy
   };
 
-  // 8. 擦除中间层私有属性
-  delete config._assetHosts;
-  delete config._assetPolicies;
-  delete config._assetFakeIpFilters;
-
-  // 9. 安全审计输出
+  // 8. 安全审计输出
   if (findings.length > 0 && logger && typeof logger.warn === 'function') {
     const lines = ['🛡️ DNS 净化沙箱: 已拦截或修正以下不安全解析配置:'];
     findings.forEach((f, idx) => {

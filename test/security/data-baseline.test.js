@@ -257,23 +257,21 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.equal((config.hosts || {})['github.com'], undefined, '空清单不得绕过受保护域名');
       assert.equal(config.hosts['keep.example'], '1.2.3.4');
 
-      const target = {};
-      applySubscriptionGuards(target, { hosts: { 'evil.example': '6.6.6.6' } }, {
+      const evilResult = applySubscriptionGuards({ hosts: { 'evil.example': '6.6.6.6' } }, {
         proxies: [{ name: 'A', server: 'evil.example' }],
         subUrl: 'https://evil.example/sub',
         assetClosureMode: 'standard',
         protectedDomains: ['evil.example']
       });
-      assert.deepStrictEqual(target._assetHosts, undefined, '资产闭包通道绕过了用户追加的受保护域名');
+      assert.deepStrictEqual(evilResult.assets.hosts, {}, '资产闭包通道绕过了用户追加的受保护域名');
 
-      const control = {};
-      applySubscriptionGuards(control, { hosts: { 'good.example': '6.6.6.6' } }, {
+      const controlResult = applySubscriptionGuards({ hosts: { 'good.example': '6.6.6.6' } }, {
         proxies: [{ name: 'A', server: 'good.example' }],
         subUrl: 'https://good.example/sub',
         assetClosureMode: 'standard',
         protectedDomains: ['evil.example']
       });
-      assert.deepStrictEqual(control._assetHosts, { 'good.example': '6.6.6.6' });
+      assert.deepStrictEqual(controlResult.assets.hosts, { 'good.example': '6.6.6.6' });
 
       const directSanitize = sanitizeHosts(
         { 'github.com': '6.6.6.6', 'paypal.com': '7.7.7.7', 'safe.org': '1.2.3.4' },

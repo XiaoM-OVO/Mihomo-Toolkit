@@ -225,11 +225,11 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  *
  *   1. 控制面净化审计：报告并记录夺权/开放入站/隧道注入等越权字段（产物侧再由交付契约收口）；
  *   2. 节点专属资产闭包提取 (Dependency Tracing)：只把「指向自身节点资产域」的
- *      Hosts / Nameserver-Policy / Fake-IP-Filter 收编进目标配置，其余一律丢弃。
+ *      Hosts / Nameserver-Policy / Fake-IP-Filter 收编，其余一律丢弃。
  *
- * 本函数只做「审计与提取」，不负责删除目标配置的顶层键 —— 那是交付契约白名单的职责。
+ * 本函数只做「审计与提取」，提取结果以**返回值**交给调用方，
+ * 绝不挂载到配置对象上 —— 配置对象是产物，不应兼作跨模块的隐式消息通道。
  *
- * @param {object} target 目标配置对象 (sourceSkeleton)，原地写入 _asset* 私有键
  * @param {object} subConfig 订阅源解析出的原始配置对象
  * @param {object} [options={}]
  * @param {Array}   [options.proxies=[]] 该订阅的节点列表（用于推导资产域）
@@ -245,18 +245,25 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  * @param {string}  [options.outputMode='config'] 交付形态 (config | nodes | report)；
  *                  assets 仅在 config 模式由 src/strategy/dns.js 消费，nodes 模式下会被丢弃，
  *                  此时对已提取的资产改为告警而非静默继承
- * @returns {{ strippedCount: number, hosts: string[], policies: string[], fakeIpFilters: string[] }}
+ * @returns {{ strippedCount: number, hosts: string[], policies: string[], fakeIpFilters: string[],
+ *            assets: { hosts: object, policies: object, fakeIpFilters: string[] } }}
+ *          hosts/policies/fakeIpFilters 为键名清单（供审计日志），assets 为实体载荷（供装配阶段合并）
  */
-function applySubscriptionGuards(target, subConfig, options = {}) {
+function applySubscriptionGuards(subConfig, options = {}) {
   const {
     proxies = [], subUrl = '', tag = '', logger,
     assetClosureMode = 'standard', assetDomainAllowlist = [], protectedDomains = [],
     outputMode = 'config'
   } = options;
-  const result = { strippedCount: 0, hosts: [], policies: [], fakeIpFilters: [] };
+  const result = {
+    strippedCount: 0,
+    hosts: [],
+    policies: [],
+    fakeIpFilters: [],
+    assets: { hosts: {}, policies: {}, fakeIpFilters: [] }
+  };
 
   if (!subConfig || typeof subConfig !== 'object') return result;
-  if (!target || typeof target !== 'object') return result;
 
   // 1. 控制面净化审计（记录越权字段，供日志与审计统计使用）
   const { report } = partitionControlPlane(subConfig, { tag });
@@ -299,7 +306,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
       protectedDomains: effectiveProtectedDomains(protectedDomains)
     });
     if (cleanHosts && Object.keys(cleanHosts).length > 0) {
-      target._assetHosts = { ...target._assetHosts, ...cleanHosts };
+      result.assets.hosts = { ...result.assets.hosts, ...cleanHosts };
       result.hosts = Object.keys(cleanHosts);
     }
   }
@@ -315,7 +322,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
     }
     const { policy: cleanPolicy } = sanitizeNameserverPolicy(scopedPolicy, { trustedSource: true });
     if (cleanPolicy && Object.keys(cleanPolicy).length > 0) {
-      target._assetPolicies = { ...target._assetPolicies, ...cleanPolicy };
+      result.assets.policies = { ...result.assets.policies, ...cleanPolicy };
       result.policies = Object.keys(cleanPolicy);
     }
   }
@@ -328,8 +335,7 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
       if (typeof f === 'string' && isInheritable(f)) kept.push(f);
     }
     if (kept.length > 0) {
-      target._assetFakeIpFilters = target._assetFakeIpFilters || [];
-      target._assetFakeIpFilters.push(...kept);
+      result.assets.fakeIpFilters.push(...kept);
       result.fakeIpFilters = kept;
     }
   }
@@ -364,6 +370,14 @@ function applySubscriptionGuards(target, subConfig, options = {}) {
   return result;
 }
 
+/** 合并单个订阅提取出的 DNS 资产闭包到累积容器（多订阅 / 单 URL 两条路径共用） */
+function mergeDnsAssets(into, from) {
+  Object.assign(into.hosts, from.hosts);
+  Object.assign(into.policies, from.policies);
+  into.fakeIpFilters.push(...from.fakeIpFilters);
+  return into;
+}
+
 /**
  * 处理所有订阅源或单 URL，并完成前置解析与看板合成
  */
@@ -385,6 +399,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     : DEFAULT_REQUEST_LIMITS.maxSubscriptionBytes;
 
   let sourceSkeleton = { proxies: [] };
+  /** 订阅携带的节点专属 DNS 资产闭包累积容器（显式值通道，最终由 strategy 层消费） */
+  const dnsAssets = { hosts: {}, policies: {}, fakeIpFilters: [] };
   let hasInjectedTag = false;
   let hasFailedSub = false;
   let hasTerminalFailure = false;
@@ -628,7 +644,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         }
 
         // 统一安全网关：控制面净化审计 + 节点专属资产闭包提取（详见 applySubscriptionGuards）
-        const { strippedCount } = applySubscriptionGuards(sourceSkeleton, subConfig, {
+        const { strippedCount, assets } = applySubscriptionGuards(subConfig, {
           proxies: subProxies,
           subUrl: sub.url,
           tag: sub.tag || effectiveTag,
@@ -638,6 +654,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           outputMode,
           logger
         });
+        mergeDnsAssets(dnsAssets, assets);
 
         sourceSkeleton.proxies = sourceSkeleton.proxies.concat(subProxies);
 
@@ -816,7 +833,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     sourceSkeleton = { proxies: singleProxies };
 
     // 与多订阅路径共用同一套控制面净化审计 + 节点专属资产闭包（保持两条路径行为一致）
-    applySubscriptionGuards(sourceSkeleton, rawSubConfig, {
+    const { assets } = applySubscriptionGuards(rawSubConfig, {
       proxies: singleProxies,
       subUrl: /^https?:\/\//i.test(url) ? url : '',
       tag: /^https?:\/\//i.test(url) ? redactUrl(url, showFullUrl) : String(url),
@@ -826,6 +843,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       outputMode,
       logger
     });
+    mergeDnsAssets(dnsAssets, assets);
     perSubCounts[String(url)] = singleProxies.length;
 
     const nodeCount = sourceSkeleton.proxies.length;
@@ -848,6 +866,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
   return {
     sourceSkeleton,
+    dnsAssets,
     collectedSubInfos,
     hasFailedSub,
     hasTerminalFailure,

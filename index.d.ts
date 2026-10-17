@@ -631,6 +631,7 @@ export function runConfigPipeline(params: {
   classifiedNodes?: any[];
   collectedSubInfos?: any[];
   userConfig?: UserConfig;
+  dnsAssets?: Record<string, any>;
   logger?: any;
 }): {
   yamlStr: string;

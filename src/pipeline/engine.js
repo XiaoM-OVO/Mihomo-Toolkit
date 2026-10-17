@@ -221,6 +221,7 @@ async function executeBuildPipeline({
   // 4. Step 1: 订阅抓取与预处理网关 (IO 阶段)
   const {
     sourceSkeleton,
+    dnsAssets,
     collectedSubInfos,
     hasFailedSub,
     hasTerminalFailure,
@@ -302,6 +303,7 @@ async function executeBuildPipeline({
   // ─── 🛑 Checkpoint 3: 交付完整配置 (config 模式跑完全程) ───
   const { yamlStr, outputData, userInfo, invariantViolations } = runConfigPipeline({
     sourceSkeleton,
+    dnsAssets,
     cleanProxies,
     classifiedNodes,
     collectedSubInfos,

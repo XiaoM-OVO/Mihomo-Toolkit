@@ -24,6 +24,7 @@ const { isTrustedSynthetic } = require('../core/node-trust');
  * @param {Array<object>} [params.classifiedNodes] 节点分类信息（直接复用，避免二次打标）
  * @param {Array<object>} [params.collectedSubInfos] 订阅流量与到期信息列表
  * @param {object} [params.userConfig={}] 用户配置对象
+ * @param {object} [params.dnsAssets=null] 订阅携带的 DNS 资产闭包（显式值通道，交 strategy 层消费）
  * @param {object} [params.logger] 日志记录器
  * @returns {object} { yamlStr, outputData, userInfo }
  */
@@ -33,6 +34,7 @@ function runConfigPipeline({
   classifiedNodes = null,
   collectedSubInfos = [],
   userConfig = {},
+  dnsAssets = null,
   logger
 }) {
   let outputData;
@@ -52,7 +54,7 @@ function runConfigPipeline({
   sourceSkeleton.proxies = cleanProxies;
   outputData = sourceSkeleton;
 
-  outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes, logger });
+  outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes, dnsAssets, logger });
 
   const groups = outputData['proxy-groups'] || [];
   const proxies = outputData.proxies || [];
@@ -95,11 +97,6 @@ function runConfigPipeline({
 
   // 4. 简繁中文四路同步
   outputData = syncChineseConvert(outputData, userConfig, logger);
-
-  // 5. 清除顶层内部私有临时字段（_ 前缀）
-  for (const key of Object.keys(outputData)) {
-    if (key.startsWith('_')) delete outputData[key];
-  }
 
   // 5. 交付契约收口：仅放行工具自有顶层键 (fail-closed)
   //    即使上游某条路径遗漏了净化，产物也不允许出现任何非工具自有字段。
