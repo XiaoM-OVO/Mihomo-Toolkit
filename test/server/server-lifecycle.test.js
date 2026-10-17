@@ -269,4 +269,38 @@ describe('【Server】生命周期管理与热重载稳固性 (server-lifecycle)
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('healthz - 输出 Profile 缓存命中率与订阅健康度指标', async () => {
+    const tmpDir = makeTmpDir();
+    const configFile = path.join(tmpDir, 'config.yaml');
+    fs.writeFileSync(configFile, yaml.stringify({
+      subscriptions: [BASE_PROXY_1, BASE_PROXY_2]
+    }));
+
+    const { server, port } = await startTestServer({ configPath: configFile });
+    try {
+      const res = await request(port, '/healthz');
+      assert.equal(res.status, 200);
+      const json = JSON.parse(res.body);
+      assert.equal(json.status, 'ok');
+      assert.equal(typeof json.activeBuilds, 'number');
+      assert.equal(typeof json.maxConcurrentBuilds, 'number');
+
+      // Profile SWR 缓存命中率指标
+      assert.ok(json.cache, '缺少 cache 指标');
+      assert.equal(typeof json.cache.hits, 'number');
+      assert.equal(typeof json.cache.misses, 'number');
+      assert.equal(typeof json.cache.hitRate, 'number');
+      assert.equal(typeof json.cache.size, 'number');
+
+      // 订阅健康度（聚合视图，不泄漏逐条 URL）
+      assert.ok(json.subscriptions, '缺少 subscriptions 指标');
+      assert.equal(json.subscriptions.enabled, 2, '应统计到 2 个启用的订阅');
+      assert.equal(json.subscriptions.lastBuildAt, null, '未发生构建时 lastBuildAt 应为 null');
+      assert.equal(json.subscriptions.lastBuildOk, false);
+    } finally {
+      await server.closeGracefully(2000);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
