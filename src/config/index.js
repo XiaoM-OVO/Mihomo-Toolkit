@@ -79,7 +79,11 @@ function resolveConfig(userConfig = {}, options = {}) {
   const baseDir = options.baseDir || process.cwd();
   const expanded = expandIncludes(userConfig || {}, baseDir);
 
-  const merged = Object.assign({}, DEFAULT_CONFIG, expanded || {});
+  // 深层合并出厂默认与用户配置：
+  //   - 深合并：嵌套子对象**递归**合并，避免浅拷贝把默认值里的子属性整体覆盖丢失；
+  //   - structuredClone：先断开出厂默认的数组/对象引用，避免下游原地突变污染全局 DEFAULT_CONFIG
+  //     （DEFAULT_CONFIG 由模块加载时构建一次，浅拷贝会让每次 resolveConfig 共享同一份嵌套引用）。
+  const merged = deepMerge(structuredClone(DEFAULT_CONFIG), expanded || {});
 
   // 1. 处理外部服务配置文件挂载（同上，基准目录与 include 保持一致）
   const externalFile = merged.servicesConfigFile;
