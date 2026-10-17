@@ -26,6 +26,8 @@ function run(argv = process.argv) {
     .option('-m, --mode <mode>', 'Output mode: "config" (default), "nodes" (clean proxies only), or "report" (audit JSON)', 'config')
     .option('-c, --config <path>', 'User config JSON/YAML file path (optional)')
     .option('-r, --report <path>', 'Save extra audit report to a JSON file (optional)')
+    .option('--dry-run', '诊断模式：执行完整流水线校验配置语法、订阅连通性与 DNS 不变式，但不写入任何磁盘产物')
+    .option('--validate', '同 --dry-run：仅校验不落盘')
     .option('--prod', 'Simulate production environment (enables security locks)')
     .option('--debug', 'Enable debug output (verbose fetch logs, intermediate snapshots)')
     .option('-q, --quiet', 'Suppress logging output (same as --silent)')
@@ -37,6 +39,9 @@ function run(argv = process.argv) {
 
   // 模式归一化
   const mode = normalizeOutputMode(options.mode);
+
+  // 诊断模式：--dry-run 与 --validate 等价，仅校验不落盘
+  const dryRun = Boolean(options.dryRun || options.validate);
 
   // 1. 预读取配置文件（探测 logLevel 并修正时序，避免在静默/告警级别下泄露启动标头）
   let userConfig = {};
@@ -103,15 +108,54 @@ function run(argv = process.argv) {
       }
 
       logger.info(`🚀 开始执行配置流水线 (交付模式: ${mode})`);
+      let buildOutcome = null;
       const buildOptions = {
         ...options,
         mode,
         production: !!options.prod,
         logger
       };
+      if (dryRun) {
+        // 诊断模式：绕过缓存强制现场构建（真实验证订阅连通性），且不写缓存、不落盘
+        buildOptions.noCache = true;
+        buildOptions.onBuildOutcome = (outcome) => { buildOutcome = outcome; };
+      }
 
       const result = await buildProfile(userConfig, buildOptions);
       const { yamlStr, meta } = result;
+
+      // 0. 诊断模式：完成全部校验后直接返回，绝不写入任何磁盘产物
+      if (dryRun) {
+        const violations = result.invariantViolations || [];
+        const hasFailedSub = !!buildOutcome?.hasFailedSub;
+        const hasTerminal = !!buildOutcome?.hasTerminalFailure;
+        const subState = hasTerminal ? '❌ 全部订阅不可用' : (hasFailedSub ? '⚠️ 部分订阅不可用' : '✅ 连通正常');
+        const lines = [
+          '🧪 诊断模式 (--dry-run)：不写入任何磁盘产物',
+          '├── 配置语法: ✅ 通过',
+          `├── 订阅连通性: ${subState}`
+        ];
+        if (meta?.stats) {
+          lines.push(`├── 节点规模: 总计 ${meta.stats.total} ➔ 有效交付 ${meta.stats.outputCount}`);
+        }
+        lines.push(`└── DNS 不变式: ${violations.length === 0 ? '✅ 无违规' : `❌ ${violations.length} 项违规`}`);
+        logger.info(lines.join('\n'));
+
+        if (violations.length > 0 && logger.isLevelEnabled('warn')) {
+          const vLines = ['⚠️ DNS 不变式明细:'];
+          violations.forEach((v, idx) => {
+            vLines.push(`${idx === violations.length - 1 ? '└──' : '├──'} [${v.id}] ${v.detail}`);
+          });
+          logger.warn(vLines.join('\n'));
+        }
+
+        if (violations.length > 0 || hasTerminal) {
+          logger.error('❌ 诊断未通过：存在 DNS 不变式违规或订阅全部不可用');
+          process.exit(1);
+        }
+        logger.success('✅ 诊断通过：配置语法、订阅连通性与 DNS 不变式均正常');
+        return;
+      }
 
       // 1. Report 模式：专门输出结构化健康与审计报告
       if (mode === 'report') {
