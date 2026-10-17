@@ -7,6 +7,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { ProfileCache, normalizeCacheDurations } = require('../../src/io/cache');
+const { GenerationSource, isSuperseded } = require('../../src/io/generation');
 
 describe('【Server】Profile 内存缓存与 SWR 状态机 (profile-cache)', () => {
   describe('compatibility - 基础读取与向后兼容', () => {
@@ -105,7 +106,7 @@ describe('【Server】Profile 内存缓存与 SWR 状态机 (profile-cache)', ()
 
     it('nextGeneration - 普通递增不回绕，超上限抛出安全异常', () => {
       const cache = new ProfileCache({ maxEntries: 10 });
-      cache._generationCounter = Number.MAX_SAFE_INTEGER - 1;
+      cache._generation._counter = Number.MAX_SAFE_INTEGER - 1;
 
       const g1 = cache.nextGeneration();
       assert.equal(g1, Number.MAX_SAFE_INTEGER);
@@ -141,6 +142,36 @@ describe('【Server】Profile 内存缓存与 SWR 状态机 (profile-cache)', ()
       cache.set('unconditional', { v: 1 }, { generation: 8 });
       assert.equal(cache.delete('unconditional'), true, '未传 maxGeneration 执行无条件删除');
       assert.equal(cache.has('unconditional'), false);
+    });
+  });
+
+  describe('generation-primitive - 共享代际原语 (GenerationSource / isSuperseded)', () => {
+    it('GenerationSource - 严格单调递增，读取 current 不推进计数', () => {
+      const src = new GenerationSource('test');
+      assert.equal(src.current, 0);
+      assert.equal(src.next(), 1);
+      assert.equal(src.next(), 2);
+      assert.equal(src.current, 2);
+      assert.equal(src.next(), 3);
+    });
+
+    it('GenerationSource - 达到安全上限即时抛错且不回绕', () => {
+      const src = new GenerationSource('test');
+      src._counter = Number.MAX_SAFE_INTEGER - 1;
+      assert.equal(src.next(), Number.MAX_SAFE_INTEGER);
+      assert.throws(() => src.next(), /test: generation counter exceeded Number\.MAX_SAFE_INTEGER/);
+      // 抛错后计数保持在上限，绝不回绕重发历史号码
+      assert.equal(src.current, Number.MAX_SAFE_INTEGER);
+    });
+
+    it('isSuperseded - 判定捕获代际是否已被更新写入超越', () => {
+      assert.equal(isSuperseded(5, 3), true, '条目代际更新（5 > 3）时必须拦截落后方');
+      assert.equal(isSuperseded(5, 5), false, '代际相等边界不得拦截');
+      assert.equal(isSuperseded(3, 5), false, '条目代际落后于捕获代际时放行');
+      assert.equal(isSuperseded(0, 5), false, '条目无代际号时不拦截');
+      assert.equal(isSuperseded(5, 0), false, '任务无捕获代际号时不拦截');
+      assert.equal(isSuperseded(undefined, 5), false, '条目代际缺失时不拦截');
+      assert.equal(isSuperseded(5, undefined), false, '捕获代际缺失时不拦截');
     });
   });
 
