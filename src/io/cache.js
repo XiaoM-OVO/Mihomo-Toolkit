@@ -12,6 +12,8 @@
 
 'use strict';
 
+const { GenerationSource, isSuperseded } = require('./generation');
+
 /**
  * 安全解析正整数或零的持续时间参数（秒）
  * 严格防御 JavaScript 隐式类型转换陷阱（如 null ➔ 0, '' ➔ 0, false ➔ 0, true ➔ 1）
@@ -71,7 +73,8 @@ class ProfileCache {
   constructor(options = {}) {
     this.maxEntries = options.maxEntries || 100;
     this.cacheMap = new Map();
-    this._generationCounter = 0;
+    // 共享单调递增代际序号源（超限抛错，杜绝回绕重号）
+    this._generation = new GenerationSource('ProfileCache');
     // SWR 命中率观测计数（进程生命周期内累计，供 /healthz 监控端点消费）
     this._hits = 0;
     this._misses = 0;
@@ -82,11 +85,7 @@ class ProfileCache {
    * @returns {number}
    */
   nextGeneration() {
-    if (this._generationCounter >= Number.MAX_SAFE_INTEGER) {
-      throw new Error('ProfileCache: generation counter exceeded Number.MAX_SAFE_INTEGER');
-    }
-    this._generationCounter += 1;
-    return this._generationCounter;
+    return this._generation.next();
   }
 
   /**
@@ -188,7 +187,7 @@ class ProfileCache {
     const existing = this.cacheMap.get(key);
 
     // 时序代际防护：若已有条目的代际号大于本次任务代际号，说明已被更新的任务覆写，忽略本次落后写入
-    if (existing && existing.generation && taskGeneration && existing.generation > taskGeneration) {
+    if (existing && isSuperseded(existing.generation, taskGeneration)) {
       return false;
     }
 
@@ -229,7 +228,7 @@ class ProfileCache {
     if (!key || !this.cacheMap.has(key)) return false;
     if (typeof maxGeneration === 'number' && maxGeneration > 0) {
       const existing = this.cacheMap.get(key);
-      if (existing && existing.generation && existing.generation > maxGeneration) {
+      if (isSuperseded(existing && existing.generation, maxGeneration)) {
         return false;
       }
     }

@@ -19,6 +19,7 @@ const net = require('net');
 const os = require('os');
 const { safeDecodeURIComponent } = require('./parsers/base64');
 const { validateUrlSsrf, redactUrl } = require('./ssrf');
+const { GenerationSource } = require('./generation');
 
 let undici = { ProxyAgent: null };
 try {
@@ -35,18 +36,15 @@ const proxyAgentCache = new Map();
 class SubStaleCacheMap extends Map {
   constructor() {
     super();
-    this._versionCounter = 0;
+    this._generation = new GenerationSource('SubStaleCacheMap');
     this._versions = new Map();
   }
 
   set(key, value) {
-    if (this._versionCounter >= Number.MAX_SAFE_INTEGER) {
-      this._versionCounter = 0;
-    }
-    this._versionCounter += 1;
-    this._versions.set(key, this._versionCounter);
+    const version = this._generation.next();
+    this._versions.set(key, version);
     if (value && typeof value === 'object') {
-      value.version = this._versionCounter;
+      value.version = version;
     }
     return super.set(key, value);
   }
