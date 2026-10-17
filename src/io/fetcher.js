@@ -21,13 +21,11 @@ const { safeDecodeURIComponent } = require('./parsers/base64');
 const { validateUrlSsrf, redactUrl } = require('./ssrf');
 const { GenerationSource } = require('./generation');
 
-let undici = { ProxyAgent: null };
+let fetchProxy = { resolveLocalProxyDispatcher: null };
 try {
-  undici = require('./fetch-proxy');
+  fetchProxy = require('./fetch-proxy');
 } catch {}
-const { ProxyAgent } = undici;
-
-const proxyAgentCache = new Map();
+const { resolveLocalProxyDispatcher } = fetchProxy;
 
 // 订阅抓取容灾：保留每个订阅最近一次成功抓取的内容，抓取失败时降级复用
 /**
@@ -188,13 +186,8 @@ async function safeFetchText(url, options = {}) {
 
   let proxyDispatcher = null;
   if (proxyUrl) {
-    if (!ProxyAgent) throw new Error('Proxy support unavailable (undici not loaded)');
-    const pUrl = new URL(proxyUrl);
-    const isLocalTrusted = pUrl.hostname === '127.0.0.1' || pUrl.hostname === 'localhost' || pUrl.hostname === '::1';
-    if (!isLocalTrusted) throw new Error(`SSRF blocked: proxy must be local, got ${pUrl.hostname}`);
-    const cached = proxyAgentCache.get(proxyUrl);
-    proxyDispatcher = cached || new ProxyAgent(proxyUrl);
-    proxyAgentCache.set(proxyUrl, proxyDispatcher);
+    if (typeof resolveLocalProxyDispatcher !== 'function') throw new Error('Proxy support unavailable (undici not loaded)');
+    proxyDispatcher = resolveLocalProxyDispatcher(proxyUrl);
   }
 
   // SSRF 严格度随模式变化：

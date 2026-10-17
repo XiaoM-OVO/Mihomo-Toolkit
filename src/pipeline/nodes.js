@@ -14,6 +14,7 @@ const { getEnhancedRegionDefs } = require('../core/shared/regions');
 // Name rendering and feature variables are owned by core/rename.
 const { FEATURE_TEXT_MAP } = require('../core/shared/icons');
 const { resolveProxiesDomains } = require('../io/dns-resolver');
+const { resolveProxyUrl } = require('../io/fetcher');
 const { fissionNodes } = require('../core/fission');
 const { createEnvelopesBypass } = require('./envelope');
 
@@ -77,7 +78,10 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   // 3. 域名多 IP 节点裂变 (I/O 解析域名 -> Core 纯函数裂变)
   if (config.enableFission) {
     const beforeFission = currentProxies.length;
-    const domainIpsMap = await resolveProxiesDomains(currentProxies, config);
+    // DoH 兜底与订阅抓取保持同一出口策略：仅当选择 proxy/auto 出口时经本地回环代理
+    const proxyStrategy = config.fetchProxyStrategy || 'direct';
+    const dohProxyUrl = (proxyStrategy === 'proxy' || proxyStrategy === 'auto') ? resolveProxyUrl(config) : '';
+    const domainIpsMap = await resolveProxiesDomains(currentProxies, { ...config, dohProxyUrl });
     currentProxies = fissionNodes(currentProxies, domainIpsMap, config);
     fissionCount = Math.max(0, currentProxies.length - beforeFission);
   }
