@@ -136,7 +136,7 @@ function renderTemplate(template, vars, proxy, cleaners) {
  * 为已分类节点统一计算目标名称；保持计算阶段纯净，由调用方提交名称。
  */
 function getRenameTier(item) {
-  if (item?.preserveExistingName || item?._preserveExistingName) return 1;
+  if (item?.preserveExistingName) return 1;
   if (item?.isSpecial || item?.keepName) return 1;
   if (item?.isInfo) return 2;
   if (!item?.regionInfo || item.regionInfo.isUnknown || item?.isUnknownRegion) return 3;
