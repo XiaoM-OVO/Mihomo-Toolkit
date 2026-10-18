@@ -6,7 +6,10 @@
 
 const { getEnhancedRegionDefs, CONTINENT_DEFS, DEFAULT_CORE_REGIONS } = require('../core/shared/regions');
 const { getTrustedProxyMetadata } = require('../core/node-trust');
-const { evaluateCustomTopology, evaluateGroupDefinition } = require('./topology-engine');
+const { FIELDS_BY_KEY } = require('../data');
+const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
+// 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
+const { stripGroupDecoration } = require('./presentation');
 
 const HIGH_MULTI_GROUP = '高倍率优选';
 const EXPERIMENTAL_GROUP = '实验节点';
@@ -31,15 +34,9 @@ const buildSelect = (name, proxies, hidden = false) => ({
   hidden
 });
 
-// 目标组名归一化：剥离书写时的前导 Emoji / 符号装饰，仅保留名称本体。
-// 用于精确比对——既兼容「🤖 ChatGPT」这类带图标前缀的书写习惯，
-// 又杜绝「节点」这类短目标名通过子串匹配误命中「香港节点」等多个无关策略组。
-const GROUP_DECORATION_PREFIX = /^[^\p{L}\p{N}]+/u;
-
-function stripGroupDecoration(rawName) {
-  const stripped = String(rawName || '').replace(GROUP_DECORATION_PREFIX, '').trim();
-  return stripped || String(rawName || '').trim();
-}
+// 目标组名归一化：剥离前导 Emoji / 符号装饰后精确比对（既兼容「🤖 ChatGPT」这类带图标前缀的书写习惯，
+// 又杜绝「节点」这类短目标名通过子串匹配误命中「香港节点」等多个无关策略组）。
+// 具体实现 stripGroupDecoration 由展示层 (presentation) 提供，两处共用同一规则，避免漂移。
 
 /**
  * 按「归一化精确匹配」解析目标策略组，禁止子串模糊命中。
@@ -61,7 +58,6 @@ function resolveTargetGroup(groups, rawTarget) {
  * @param {object} params.regionNames
  * @param {Array<string>} params.activeRegionGroups
  * @param {object} params.buckets
- * @param {string} params.proxyTarget
  * @returns {Array<object>} 声明式策略组配方列表
  */
 function buildBuiltinAppRecipes({
@@ -69,8 +65,7 @@ function buildBuiltinAppRecipes({
   effectiveRegistries = {},
   regionNames = {},
   activeRegionGroups = [],
-  buckets = {},
-  proxyTarget = '自动选择'
+  buckets = {}
 }) {
   const recipes = [];
 
@@ -533,8 +528,7 @@ function buildProxyTopology({
   }
 
   const resiPrefix = (userConfig.enableResidential && buckets.residential.length) ? ['家宽优选'] : [];
-  const modeMap = { auto: '自动选择', manual: '手动选择', fallback: '故障转移', direct: 'DIRECT', reject: 'REJECT' };
-  const proxyTarget = modeMap[userConfig.defaultProxyMode] || '自动选择';
+  const proxyTarget = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
 
   const highMultiRef = (userConfig.isolateHighMulti && buckets.highMulti.length > 0) ? [HIGH_MULTI_GROUP] : [];
   const experimentalRef = (userConfig.isolateExperimental && buckets.experimental.length > 0) ? [EXPERIMENTAL_GROUP] : [];
@@ -543,9 +537,9 @@ function buildProxyTopology({
   const standardOptions = dedupe([proxyTarget, ...baseOptions]);
   const coreSelectProxies = ['自动选择', '故障转移', ...resiPrefix, ...highMultiRef, ...experimentalRef, ...buckets.special, ...activeRegionGroups, 'DIRECT'];
 
-  const testURL = userConfig.testURL || 'https://cp.cloudflare.com/generate_204';
-  const testInterval = userConfig.testInterval || 300;
-  const testTolerance = userConfig.testTolerance || 50;
+  const testURL = userConfig.testURL || FIELDS_BY_KEY.testURL.default;
+  const testInterval = userConfig.testInterval || FIELDS_BY_KEY.testInterval.default;
+  const testTolerance = userConfig.testTolerance || FIELDS_BY_KEY.testTolerance.default;
 
   const buildRegionGroup = (id, name, proxies) => {
     let type = userConfig.regionGroupType || 'url-test';
@@ -571,8 +565,7 @@ function buildProxyTopology({
     effectiveRegistries,
     regionNames,
     activeRegionGroups,
-    buckets,
-    proxyTarget
+    buckets
   });
 
   const appGroups = appRecipes

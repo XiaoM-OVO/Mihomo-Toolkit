@@ -9,9 +9,6 @@ const {
   compileProtocolMatcher,
   compileAirportMatcher,
   compileFeaturePoolMatcher,
-  compileRule,
-  compileMatch,
-  compileExclude,
   createNodePredicate,
   filterNodes
 } = require('../../src/strategy/matcher');

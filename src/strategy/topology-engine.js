@@ -12,11 +12,14 @@
  */
 
 const { filterNodes } = require('./matcher');
+const { FIELDS_BY_KEY } = require('../data');
 
 const SUPPORTED_GROUP_TYPES = new Set(['select', 'url-test', 'fallback', 'load-balance']);
-const DEFAULT_TEST_URL = 'https://cp.cloudflare.com/generate_204';
-const DEFAULT_INTERVAL = 300;
-const DEFAULT_TOLERANCE = 50;
+
+/** 默认测速参数取自字段注册表（单一真相源，避免与配置默认值多处漂移） */
+const DEFAULT_TEST_URL = FIELDS_BY_KEY.testURL.default;
+const DEFAULT_INTERVAL = FIELDS_BY_KEY.testInterval.default;
+const DEFAULT_TOLERANCE = FIELDS_BY_KEY.testTolerance.default;
 
 /**
  * 模式与默认代理目标映射表
@@ -273,14 +276,11 @@ function evaluateGroupDefinition(groupDef, context = {}) {
   }
 
   // 7. 其它原生布尔与扩展字段透传
+  //    注：icon / emoji / rules 一律不透传——icon 与 emoji 由展示层 (presentation) 统一解析渲染，
+  //    rules 由分流流水线读取 userConfig.customGroups 原始声明；禁止在策略组对象上挂 _ 前缀隐式通道。
   if (typeof groupDef.hidden === 'boolean') result.hidden = groupDef.hidden;
   if (groupDef.filter) result.filter = groupDef.filter;
   if (groupDef['exclude-filter']) result['exclude-filter'] = groupDef['exclude-filter'];
-  if (groupDef.icon) result.icon = groupDef.icon;
-
-  // 8. 附加元数据 (供下游 rules 与 presentation 消费)
-  if (groupDef.rules) result._rules = groupDef.rules;
-  if (groupDef.emoji) result._emoji = groupDef.emoji;
 
   return result;
 }

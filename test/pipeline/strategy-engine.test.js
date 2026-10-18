@@ -212,21 +212,19 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       assert.equal(lb.strategy, 'round-robin');
     });
 
-    it('扩展属性与元数据保存 (_rules, _emoji, hidden, icon)', () => {
+    it('原生扩展字段透传 (hidden, filter, exclude-filter)', () => {
       const groupDef = {
         name: '专属ChatGPT',
         type: 'select',
-        emoji: '🧠',
-        icon: 'https://example.com/icon.png',
         hidden: true,
-        rules: ['GEOSITE,openai']
+        filter: '(?i)openai',
+        'exclude-filter': '(?i)free'
       };
 
       const result = evaluateGroupDefinition(groupDef);
       assert.equal(result.hidden, true);
-      assert.equal(result.icon, 'https://example.com/icon.png');
-      assert.equal(result._emoji, '🧠');
-      assert.deepEqual(result._rules, ['GEOSITE,openai']);
+      assert.equal(result.filter, '(?i)openai');
+      assert.equal(result['exclude-filter'], '(?i)free');
     });
 
     it('无名称或空对象安全返回 null', () => {

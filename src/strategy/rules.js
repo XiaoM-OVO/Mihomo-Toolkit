@@ -6,6 +6,7 @@
 
 const { FIELDS_BY_KEY } = require('../data');
 const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
+const { DEFAULT_MODE_MAP } = require('./topology-engine');
 
 function dedupe(arr) {
   return [...new Set(arr)];
@@ -20,14 +21,7 @@ function dedupe(arr) {
  * @returns {object} { rules, providers }
  */
 function buildRoutingRules(userConfig, registries, options = {}) {
-  const modeMap = {
-    auto: '自动选择',
-    manual: '手动选择',
-    fallback: '故障转移',
-    direct: 'DIRECT',
-    reject: 'REJECT'
-  };
-  const effectiveProxyTarget = options.proxyTarget || modeMap[userConfig.defaultProxyMode] || '自动选择';
+  const effectiveProxyTarget = options.proxyTarget || DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
     ? registries
     : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});

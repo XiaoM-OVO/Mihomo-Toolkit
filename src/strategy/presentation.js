@@ -291,7 +291,7 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
     if (emojiMap[rawName]) {
       g.name = emojiMap[rawName];
     }
-    const shouldMount = needIcons || (explicitIcons && explicitIcons.has(clean));
+    const shouldMount = needIcons || (explicitIcons && (explicitIcons.has(clean) || explicitIcons.has(rawName)));
     if (shouldMount && (iconMap[g.name] || iconMap[rawName]) && !g.icon) {
       g.icon = iconMap[g.name] || iconMap[rawName];
     }
