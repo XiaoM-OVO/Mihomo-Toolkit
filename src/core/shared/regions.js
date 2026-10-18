@@ -2,6 +2,17 @@
  * 地区识别字典与大洲分组 (Region SSOT)
  *
  * 维护标准地区元数据、国旗 Emoji、图标资源、落地城市及匹配正则。
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 贡献新国家/大区 Checklist：
+ * 1. 查找同大区条目复制对象，保证必填字段齐全：
+ *    { id, code, name, groupName, continent, subGroup, foldGroup, icon, iconFile, reg }
+ * 2. 两字母代码若为英文常用词（如 IT/IS/IN/MY/AT/BE/PT），必须通过 codeReg 配置严格大写匹配，
+ *    禁止直接并入忽略大小写的 reg，防止与节点名常用英文单词产生误匹配；
+ * 3. city 城市名需确保尽量全局唯一，避免跨洲撞名；
+ * 4. 大洲/次大区扩展只需在 CONTINENT_DEFS 或 SUB_REGION_DEFS 声明 aliases，别名表自动派生；
+ * 5. 运行 npm test 验证 validateMapping() 契约自检通过。
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 'use strict';
@@ -563,17 +574,25 @@ const REGION_DEFS_RAW = [
   }
 ];
 
-// 七大洲与次大区折叠组定义
+// 七大洲与次大区折叠组定义 (作为策略组大区折叠桶存在)
 const CONTINENT_DEFS = [
-  { id: "eu",  icon: "🇪🇺", name: "欧洲",   groupName: "欧洲节点",   iconFile: "EU.png",      continent: "europe",   subGroup: "eu",  foldGroup: "eu" },
-  { id: "sea", icon: "🏝️", name: "东南亚", groupName: "东南亚节点", iconFile: "Global.png",  continent: "asia",     subGroup: "sea", foldGroup: "sea" },
+  { id: "eu",  target: "europe",   icon: "🇪🇺", name: "欧洲",   groupName: "欧洲节点",   iconFile: "EU.png",      continent: "europe",   subGroup: "eu",  foldGroup: "eu",  aliases: ["eu", "europe", "欧洲"] },
+  { id: "sea", target: "sea",      icon: "🏝️", name: "东南亚", groupName: "东南亚节点", iconFile: "Global.png",  continent: "asia",     subGroup: "sea", foldGroup: "sea", aliases: ["sea", "southeast-asia", "southeastasia", "东南亚"] },
   // 说明：am 为美洲大区统一折叠组 (Americas)。具体国家按次大区细分为 na (北美) 与 latam (拉美)。
-  { id: "am",  icon: "🌵", name: "美洲",   groupName: "美洲节点",   iconFile: "America.png", continent: "americas", subGroup: "am",  foldGroup: "am" },
+  { id: "am",  target: "americas", icon: "🌵", name: "美洲",   groupName: "美洲节点",   iconFile: "America.png", continent: "americas", subGroup: "am",  foldGroup: "am",  aliases: ["am", "america", "americas", "美洲"] },
   // 说明：南亚次大区代号统一采用 sas (South Asia Subregion)，与沙特国家代码 sa (Saudi Arabia) 解耦脱敏
-  { id: "sas", icon: "🍛", name: "南亚",   groupName: "南亚节点",   iconFile: "Global.png",  continent: "asia",     subGroup: "sas", foldGroup: "sas" },
-  { id: "me",  icon: "🐪", name: "中东",   groupName: "中东节点",   iconFile: "Global.png",  continent: "asia",     subGroup: "me",  foldGroup: "me" },
-  { id: "af",  icon: "🦁", name: "非洲",   groupName: "非洲节点",   iconFile: "Global.png",  continent: "africa",   subGroup: "af",  foldGroup: "af" },
-  { id: "oc",  icon: "🦘", name: "大洋洲", groupName: "大洋洲节点", iconFile: "AU.png",       continent: "oceania",  subGroup: "oc",  foldGroup: "oc" }
+  { id: "sas", target: "sas",      icon: "🍛", name: "南亚",   groupName: "南亚节点",   iconFile: "Global.png",  continent: "asia",     subGroup: "sas", foldGroup: "sas", aliases: ["sas", "south-asia", "southasia", "南亚"] },
+  { id: "me",  target: "me",       icon: "🐪", name: "中东",   groupName: "中东节点",   iconFile: "Global.png",  continent: "asia",     subGroup: "me",  foldGroup: "me",  aliases: ["me", "middle-east", "middleeast", "中东", "西亚"] },
+  { id: "af",  target: "africa",   icon: "🦁", name: "非洲",   groupName: "非洲节点",   iconFile: "Global.png",  continent: "africa",   subGroup: "af",  foldGroup: "af",  aliases: ["af", "africa", "非洲"] },
+  { id: "oc",  target: "oceania",  icon: "🦘", name: "大洋洲", groupName: "大洋洲节点", iconFile: "AU.png",       continent: "oceania",  subGroup: "oc",  foldGroup: "oc",  aliases: ["oc", "oceania", "大洋洲", "澳洲"] }
+];
+
+// 次大区与基础大洲定义（未独立建折叠组的大区别名元数据）
+const SUB_REGION_DEFS = [
+  { id: "asia",  target: "asia",  aliases: ["asia", "亚洲"] },
+  { id: "ea",    target: "ea",    aliases: ["ea", "east-asia", "eastasia", "东亚"] },
+  { id: "na",    target: "na",    aliases: ["na", "north-america", "northamerica", "北美"] },
+  { id: "latam", target: "latam", aliases: ["latam", "south-america", "southamerica", "南美", "拉美"] }
 ];
 
 /**
@@ -625,22 +644,21 @@ function getEnhancedRegionDefs() {
 function validateMapping() {
   const mismatches = [];
   const seenIds = new Set();
+  const REQUIRED_REGION_FIELDS = ['id', 'name', 'groupName', 'continent', 'icon', 'iconFile', 'reg'];
 
   for (const r of REGION_DEFS_RAW) {
-    if (!r.id || typeof r.id !== 'string') {
-      mismatches.push(`${r.name || '未知'}: 缺少合法的 id 字段`);
-    } else if (seenIds.has(r.id)) {
+    for (const field of REQUIRED_REGION_FIELDS) {
+      if (!r[field]) {
+        mismatches.push(`${r.id || r.name || '未知'}: 缺少合法的 ${field} 字段`);
+      }
+    }
+    if (seenIds.has(r.id)) {
       mismatches.push(`${r.name}: 存在重复的地区 id "${r.id}"`);
     } else {
       seenIds.add(r.id);
     }
 
-    if (!r.name) mismatches.push(`${r.id}: 缺少 name 字段`);
-    if (!r.groupName) mismatches.push(`${r.id}: 缺少 groupName 字段`);
-    if (!r.continent) mismatches.push(`${r.id}: 缺少 continent 字段`);
-    if (!r.icon) mismatches.push(`${r.id}: 缺少 icon 字段`);
-    if (!r.iconFile) mismatches.push(`${r.id}: 缺少 iconFile 字段`);
-    if (!(r.reg instanceof RegExp)) mismatches.push(`${r.id}: reg 必须为 RegExp 实例`);
+    if (r.reg && !(r.reg instanceof RegExp)) mismatches.push(`${r.id}: reg 必须为 RegExp 实例`);
     if (r.codeReg && !(r.codeReg instanceof RegExp)) mismatches.push(`${r.id}: codeReg 必须为 RegExp 实例`);
   }
 
@@ -656,9 +674,6 @@ function validateMapping() {
   }
   return true;
 }
-
-// 默认免折叠主力大区清单 (即使节点数低于阈值也保证独立建组)
-const DEFAULT_CORE_REGIONS = ['cn', 'hk', 'tw', 'jp', 'kr', 'sg', 'us'];
 
 /**
  * 从国旗 Emoji 动态派生 ISO 3166-1 alpha-2 国家/地区代码 (纯函数)
@@ -698,64 +713,17 @@ const REGION_METADATA_MAP = Object.freeze(
 );
 
 /**
- * 洲级与次大区标准代号映射 (归一化别名表)
+ * 洲级与次大区标准代号映射 (单一事实源自派生，杜绝手动维护漂移)
  */
-const CONTINENT_ALIAS_MAP = Object.freeze({
-  // 亚洲
-  asia: 'asia',
-  亚洲: 'asia',
-  // 欧洲
-  europe: 'europe',
-  eu: 'europe',
-  欧洲: 'europe',
-  // 美洲
-  americas: 'americas',
-  america: 'americas',
-  am: 'americas',
-  美洲: 'americas',
-  // 大洋洲
-  oceania: 'oceania',
-  oc: 'oceania',
-  大洋洲: 'oceania',
-  澳洲: 'oceania',
-  // 非洲
-  africa: 'africa',
-  af: 'africa',
-  非洲: 'africa',
-
-  // 次大区 (Sub-regions)
-  sea: 'sea',
-  'southeast-asia': 'sea',
-  southeastasia: 'sea',
-  东南亚: 'sea',
-
-  sas: 'sas',
-  'south-asia': 'sas',
-  southasia: 'sas',
-  南亚: 'sas',
-
-  me: 'me',
-  'middle-east': 'me',
-  middleeast: 'me',
-  中东: 'me',
-  西亚: 'me',
-
-  na: 'na',
-  'north-america': 'na',
-  northamerica: 'na',
-  北美: 'na',
-
-  latam: 'latam',
-  'south-america': 'latam',
-  southamerica: 'latam',
-  南美: 'latam',
-  拉美: 'latam',
-
-  ea: 'ea',
-  'east-asia': 'ea',
-  eastasia: 'ea',
-  东亚: 'ea'
-});
+const CONTINENT_ALIAS_MAP = Object.freeze(
+  [...CONTINENT_DEFS, ...SUB_REGION_DEFS].reduce((map, item) => {
+    const target = item.target || item.id;
+    for (const alias of (item.aliases || [])) {
+      map[alias.toLowerCase()] = target;
+    }
+    return map;
+  }, {})
+);
 
 /**
  * 判断指定地区元数据是否属于特定大洲/次大区
@@ -816,8 +784,8 @@ function filterRegionsByContinent(groupNames = [], continentToken) {
 
 module.exports = {
   CONTINENT_DEFS,
+  SUB_REGION_DEFS,
   CONTINENT_ALIAS_MAP,
-  DEFAULT_CORE_REGIONS,
   REGION_METADATA_MAP,
   isRegionInContinent,
   filterRegionsByContinent,

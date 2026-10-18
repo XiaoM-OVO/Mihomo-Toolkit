@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { dedupeNodes } = require('../../src/core/dedupe');
 const { matchNodeRegion, extractCity } = require('../../src/core/geo');
 const { renderTemplate, createSeparatorCleaners, buildRenamePlan, applyRenamePlan } = require('../../src/core/rename');
-const { getEnhancedRegionDefs, validateMapping, isRegionInContinent, filterRegionsByContinent } = require('../../src/core/shared/regions');
+const { getEnhancedRegionDefs, validateMapping, isRegionInContinent, filterRegionsByContinent, CONTINENT_ALIAS_MAP, SUB_REGION_DEFS } = require('../../src/core/shared/regions');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../../src/core/shared/icons');
 const { isPrivateIp, isAllowedUrl } = require('../../src/io/ssrf');
 const { formatBytes, calcResetDays } = require('../../src/strategy/dashboard');
@@ -17,6 +17,17 @@ describe('【Core】核心基础构件 (modules)', () => {
     // 验证不可变单例缓存，零重复编译
     assert.equal(getEnhancedRegionDefs(), defs);
     assert.ok(Object.isFrozen(defs));
+
+    // 验证大区与次大区别名表全量自派生
+    assert.ok(Array.isArray(SUB_REGION_DEFS) && SUB_REGION_DEFS.length >= 4);
+    assert.equal(CONTINENT_ALIAS_MAP['东南亚'], 'sea');
+    assert.equal(CONTINENT_ALIAS_MAP['southeast-asia'], 'sea');
+    assert.equal(CONTINENT_ALIAS_MAP['south-asia'], 'sas');
+    assert.equal(CONTINENT_ALIAS_MAP['南亚'], 'sas');
+    assert.equal(CONTINENT_ALIAS_MAP['北美'], 'na');
+    assert.equal(CONTINENT_ALIAS_MAP['拉美'], 'latam');
+    assert.equal(CONTINENT_ALIAS_MAP['欧洲'], 'europe');
+    assert.equal(CONTINENT_ALIAS_MAP['eu'], 'europe');
 
     assert.equal(PROTOCOL_ICONS.vless, '🛸');
     assert.equal(FEATURE_ICONS.game, '🎮');

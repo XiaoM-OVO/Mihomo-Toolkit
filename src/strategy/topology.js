@@ -4,7 +4,7 @@
  * 负责大区智能折叠、功能策略组构建（AI、流媒体、游戏等）、节点入桶路由以及自定义分组注入。
  */
 
-const { getEnhancedRegionDefs, CONTINENT_DEFS, DEFAULT_CORE_REGIONS } = require('../core/shared/regions');
+const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
 const { getTrustedProxyMetadata } = require('../core/node-trust');
 const { FIELDS_BY_KEY } = require('../data');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
@@ -391,7 +391,8 @@ function buildProxyTopology({
   });
 
   // 3. 处理小众地区与大洲折叠
-  const rawCoreList = Array.isArray(userConfig.coreRegions) ? userConfig.coreRegions : DEFAULT_CORE_REGIONS;
+  const defaultCoreList = FIELDS_BY_KEY.coreRegions ? FIELDS_BY_KEY.coreRegions.default : ['cn', 'hk', 'tw', 'jp', 'kr', 'sg', 'us'];
+  const rawCoreList = Array.isArray(userConfig.coreRegions) ? userConfig.coreRegions : defaultCoreList;
   const coreRegionIds = new Set(rawCoreList.map(k => String(k).toLowerCase()));
 
   const regionNames = {};
