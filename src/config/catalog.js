@@ -129,6 +129,7 @@ const BUILTIN_SERVICES = {
       pool: 'tiktok',
       reg: /\b(?:TikTok|抖音海外|TT)\b/i,
       rules: 'tiktok',
+      proxies: ['@matchedNodes', '@nonCnRegions', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'koolson', file: 'TikTok.png' }
     },
     spotify: {
@@ -146,6 +147,7 @@ const BUILTIN_SERVICES = {
       pool: 'bahamut',
       preferredRegions: ['tw', 'hk'],
       rules: 'bahamut',
+      proxies: ['台湾节点', '香港节点', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Bahamut.png' }
     },
     pixiv: {
@@ -169,6 +171,7 @@ const BUILTIN_SERVICES = {
       pool: 'bilibili',
       preferredRegions: ['cn', 'tw', 'mo', 'hk'],
       rules: 'bilibili',
+      proxies: ['@domesticGroup', '台湾节点', '澳门节点', '香港节点', 'DIRECT'],
       icon: { repo: 'orz', file: 'Bili.png' }
     }
   },
@@ -294,6 +297,7 @@ const BUILTIN_SERVICES = {
       name: 'GitHub',
       emoji: '🐱',
       rules: 'github',
+      proxies: ['@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'GitHub.png' }
     },
     scholar: {
@@ -314,18 +318,21 @@ const BUILTIN_SERVICES = {
       name: 'Google',
       emoji: '🔍',
       rules: 'google',
+      proxies: ['@standardOptions', 'DIRECT'],
       icon: { repo: 'orz', file: 'Google.png' }
     },
     apple: {
       name: 'Apple',
       emoji: '🍎',
       rules: 'apple',
+      proxies: ['DIRECT', '@standardOptions'],
       icon: { repo: 'orz', file: 'Apple.png' }
     },
     microsoft: {
       name: 'Microsoft',
       emoji: '🪟',
       rules: 'microsoft',
+      proxies: ['DIRECT', '@standardOptions'],
       icon: { repo: 'orz', file: 'Microsoft.png' }
     }
   }
@@ -587,6 +594,7 @@ class ServiceCatalog {
           ruleSet: s.ruleSet || ruleSetName,
           pool: s.pool || key,
           rules: rulesArr,
+          proxies: s.proxies ? [...s.proxies] : undefined,
           preferredRegions: s.preferredRegions || CATEGORY_DEFAULTS[cat]?.preferredRegions || []
         };
       }

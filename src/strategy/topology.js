@@ -104,51 +104,16 @@ function buildBuiltinAppRecipes({
       const st = effectiveRegistries.streaming[key];
       if (!st) return;
 
-      let proxies = [];
-      if (st.proxies) {
-        proxies = st.proxies;
-      } else {
-        switch (key) {
-          case 'tiktok': {
-            const tiktokRegions = activeRegionGroups.filter(g => !['香港节点', '大陆节点', '中国节点', '未知识别'].includes(g));
-            proxies = [
-              ...(buckets.tiktok || buckets.tk || []),
-              ...tiktokRegions,
-              '@defaultProxy',
-              'DIRECT'
-            ];
-            break;
-          }
-          case 'bahamut': {
-            const bahamutPref = (st.preferredRegions || ['tw', 'hk'])
-              .map(id => regionNames[id])
-              .filter(Boolean);
-            proxies = [...bahamutPref, '@defaultProxy', 'DIRECT'];
-            break;
-          }
-          case 'bilibili': {
-            proxies = userConfig.enableDomesticGroup
-              ? ['中国分流', '台湾节点', '澳门节点', '香港节点', 'DIRECT']
-              : ['DIRECT', '台湾节点', '澳门节点', '香港节点'];
-            break;
-          }
-          default: {
-            const matched = buckets[st.pool] || buckets[st.tag] || [];
-            if (st.preferredRegions && st.preferredRegions.length > 0) {
-              const pref = st.preferredRegions.map(id => regionNames[id]).filter(Boolean);
-              proxies = [...matched, ...pref, '@standardOptions', 'DIRECT'];
-            } else {
-              proxies = [...matched, '@standardOptions', 'DIRECT'];
-            }
-            break;
-          }
-        }
-      }
+      const matched = buckets[st.pool] || buckets[st.tag] || [];
+      const pref = (st.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
+      const defaultProxies = [...matched, ...pref, '@standardOptions', 'DIRECT'];
 
       recipes.push({
         name: st.name,
         type: 'select',
-        proxies
+        pool: st.pool,
+        tag: st.tag,
+        proxies: st.proxies || defaultProxies
       });
     });
   }
@@ -203,12 +168,6 @@ function buildBuiltinAppRecipes({
   }
 
   // 5. 专项应用分组
-  const devActive = Array.isArray(userConfig.devServices)
-    ? userConfig.devServices
-    : ['github', 'scholar'];
-  const isGitHubActive = Boolean(userConfig.enableGitHub !== false && devActive.includes('github'));
-  const isScholarActive = Boolean(userConfig.enableScholar !== false && devActive.includes('scholar'));
-
   if (userConfig.enableTelegram) {
     recipes.push({
       name: 'Telegram',
@@ -217,34 +176,29 @@ function buildBuiltinAppRecipes({
     });
   }
 
-  if (isGitHubActive) {
-    recipes.push({
-      name: 'GitHub',
-      type: 'select',
-      proxies: ['@standardOptions', 'DIRECT']
-    });
-  }
-
-  if (isScholarActive) {
-    const scholarPref = (effectiveRegistries.dev?.scholar?.preferredRegions || ['us', 'eu', 'jp', 'sg', 'tw', 'hk'])
-      .map(id => regionNames[id])
-      .filter(Boolean);
-    recipes.push({
-      name: '学术网站',
-      type: 'select',
-      proxies: [...scholarPref, '@defaultProxy', 'DIRECT']
-    });
-  }
-
   if (effectiveRegistries.dev) {
-    const extraDevKeys = devActive.filter(k => k !== 'github' && k !== 'scholar' && effectiveRegistries.dev[k]);
-    extraDevKeys.forEach(key => {
+    const devActive = Array.isArray(userConfig.devServices)
+      ? userConfig.devServices
+      : ['github', 'scholar'];
+
+    devActive.forEach(key => {
+      if (key === 'github' && userConfig.enableGitHub === false) return;
+      if (key === 'scholar' && userConfig.enableScholar === false) return;
+
       const conf = effectiveRegistries.dev[key];
       if (!conf) return;
+
+      const pref = (conf.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
+      const defaultProxies = pref.length > 0
+        ? [...pref, '@defaultProxy', 'DIRECT']
+        : ['@standardOptions', 'DIRECT'];
+
       recipes.push({
         name: conf.name,
         type: 'select',
-        proxies: conf.proxies || ['@standardOptions', 'DIRECT']
+        pool: conf.pool,
+        tag: conf.tag,
+        proxies: conf.proxies || defaultProxies
       });
     });
   }
@@ -284,13 +238,10 @@ function buildBuiltinAppRecipes({
     systemServices.forEach(key => {
       const sys = effectiveRegistries.system[key];
       if (sys) {
-        const pList = key === 'google'
-          ? ['@standardOptions', 'DIRECT']
-          : ['DIRECT', '@standardOptions'];
         recipes.push({
           name: sys.name,
           type: 'select',
-          proxies: sys.proxies || pList
+          proxies: sys.proxies || ['DIRECT', '@standardOptions']
         });
       }
     });
@@ -557,7 +508,9 @@ function buildProxyTopology({
     userConfig,
     activeRegionGroups,
     standardOptions,
-    residentialGroup: resiPrefix
+    residentialGroup: resiPrefix,
+    domesticGroup: userConfig.enableDomesticGroup ? ['中国分流'] : ['DIRECT'],
+    nonCnRegions: activeRegionGroups.filter(g => !['香港节点', '大陆节点', '中国节点', '未知识别'].includes(g))
   };
 
   const appRecipes = buildBuiltinAppRecipes({

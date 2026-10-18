@@ -174,6 +174,17 @@ function resolveGroupProxies({ declaredProxies = [], matchedNodeNames = [], macr
         resolved.push(...(macroContext.standardOptions || []));
         break;
 
+      case '@domesticgroup':
+      case '@domestic':
+        resolved.push(...(macroContext.domesticGroup || []));
+        break;
+
+      case '@noncnregions':
+      case '@noncn':
+      case '@tiktokregions':
+        resolved.push(...(macroContext.nonCnRegions || []));
+        break;
+
       default:
         resolved.push(token);
         break;
@@ -218,11 +229,18 @@ function evaluateGroupDefinition(groupDef, context = {}) {
       includeSpecial: groupDef.includeSpecial !== false
     });
     matchedNodeNames = matched.map(item => item.proxy?.name || item.rawName).filter(Boolean);
+  } else if (groupDef.pool || groupDef.tag) {
+    const poolNodes = buckets[groupDef.pool] || [];
+    const tagNodes = buckets[groupDef.tag] || [];
+    matchedNodeNames = dedupe([...poolNodes, ...tagNodes]);
   }
 
   // 3. 构建宏上下文
   const defaultProxy = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
   const resiGroup = context.residentialGroup || ((userConfig.enableResidential && buckets.residential?.length) ? ['家宽优选'] : []);
+  const domesticGroup = context.domesticGroup || (userConfig.enableDomesticGroup ? ['中国分流'] : ['DIRECT']);
+  const nonCnRegions = context.nonCnRegions || activeRegionGroups.filter(g => !['香港节点', '大陆节点', '中国节点', '未知识别'].includes(g));
+
   const macroContext = {
     residential: buckets.residential || [],
     residentialGroup: resiGroup,
@@ -231,7 +249,9 @@ function evaluateGroupDefinition(groupDef, context = {}) {
     special: buckets.special || [],
     activeRegions: activeRegionGroups || [],
     defaultProxy,
-    standardOptions: context.standardOptions || []
+    standardOptions: context.standardOptions || [],
+    domesticGroup,
+    nonCnRegions
   };
 
   // 4. 组装并去重 proxies
@@ -314,13 +334,18 @@ function evaluateCustomTopology({
     .map(g => g.name)
     .filter(name => name.endsWith('节点'));
 
+  const domesticGroup = userConfig.enableDomesticGroup ? ['中国分流'] : ['DIRECT'];
+  const nonCnRegions = activeRegionGroups.filter(g => !['香港节点', '大陆节点', '中国节点', '未知识别'].includes(g));
+
   const context = {
     classifiedNodes,
     buckets,
     userConfig,
     activeRegionGroups,
     standardOptions,
-    residentialGroup
+    residentialGroup,
+    domesticGroup,
+    nonCnRegions
   };
 
   const evaluatedGroups = [];
