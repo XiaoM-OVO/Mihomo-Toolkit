@@ -39,7 +39,6 @@
   ],
   "whitelistKeywords": [],
   "specialNodeRules": [],
-  "customNodeGroups": {},
   "indexPrefixMap": {},
   "enableNodeRename": true,
   "strictRegionMatch": false,

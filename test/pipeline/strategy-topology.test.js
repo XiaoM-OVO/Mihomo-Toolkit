@@ -101,34 +101,6 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.ok(names.includes(EXPERIMENTAL_GROUP));
   });
 
-  it('buildProxyTopology - 自定义节点分组注入 (customNodeGroups)', () => {
-    const registries = createServiceRegistries(DEFAULT_CONFIG);
-    const classifiedNodes = [
-      {
-        proxy: { name: '我的自建香港专线' },
-        rawName: '我的自建香港专线',
-        isSpecial: true,
-        groupKey: 'special',
-        tags: []
-      }
-    ];
-
-    const { proxyGroups } = buildProxyTopology({
-      classifiedNodes,
-      userConfig: {
-        ...DEFAULT_CONFIG,
-        customNodeGroups: {
-          '自建香港': ['🤖 ChatGPT', '🐱 GitHub']
-        }
-      },
-      registries
-    });
-
-    const gptGroup = proxyGroups.find(g => g.name === 'ChatGPT');
-    assert.ok(gptGroup);
-    assert.ok(gptGroup.proxies.includes('我的自建香港专线'));
-  });
-
   it('buildProxyTopology - 地区哈希负载均衡 (enableRegionHashLB)', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
     const classifiedNodes = [

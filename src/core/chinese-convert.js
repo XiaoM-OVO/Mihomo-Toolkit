@@ -45,7 +45,7 @@ function deepConvertStrings(obj, convertFn) {
 
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
-      // 键和值都转换（customNodeGroups 等配置的 key 是匹配关键词，也必须转）
+      // 键和值都转换（对象的 key 若为匹配关键词或服务名，也必须转）
       const convertedKey = convertFn(key);
       const convertedValue = deepConvertStrings(value, convertFn);
 

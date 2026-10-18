@@ -178,8 +178,6 @@ export interface SpecialNodeRule {
 }
 
 export interface ToolkitConfig {
-  /** 注入节点分组：关键词 -> 目标应用策略组名称数组 */
-  customNodeGroups?: Record<string, string[]>;
   /** 注入节点重命名规则列表 */
   specialNodeRules?: SpecialNodeRule[];
   /** 外部服务配置文件路径 (.js / .yaml / .json) */

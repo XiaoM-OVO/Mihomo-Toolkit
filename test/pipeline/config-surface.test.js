@@ -312,18 +312,18 @@ it('🛡️ 出厂默认不可被污染 — resolveConfig 结果与 DEFAULT_CONF
   const a = resolveConfig({});
   assert.notStrictEqual(a.aiServices, DEFAULT_CONFIG.aiServices, '数组字段仍与出厂默认共享引用');
   assert.deepStrictEqual(a.aiServices, DEFAULT_CONFIG.aiServices, '断链不应改变取值');
-  assert.notStrictEqual(a.customNodeGroups, DEFAULT_CONFIG.customNodeGroups, '对象字段仍与出厂默认共享引用');
+  assert.notStrictEqual(a.indexPrefixMap, DEFAULT_CONFIG.indexPrefixMap, '对象字段仍与出厂默认共享引用');
 
   // 故意污染本次结果
   a.aiServices.push('__polluted__');
-  a.customNodeGroups.__polluted__ = true;
+  a.indexPrefixMap.__polluted__ = true;
 
   // 出厂默认与下一次调用都必须干净
   assert.ok(!DEFAULT_CONFIG.aiServices.includes('__polluted__'), '出厂默认被下游突变污染');
-  assert.ok(!('__polluted__' in DEFAULT_CONFIG.customNodeGroups), '出厂默认对象被下游突变污染');
+  assert.ok(!('__polluted__' in DEFAULT_CONFIG.indexPrefixMap), '出厂默认对象被下游突变污染');
   const b = resolveConfig({});
   assert.ok(!b.aiServices.includes('__polluted__'), '污染跨调用泄漏到后续结果');
-  assert.ok(!('__polluted__' in b.customNodeGroups), '污染跨调用泄漏到后续结果');
+  assert.ok(!('__polluted__' in b.indexPrefixMap), '污染跨调用泄漏到后续结果');
 });
 
 });

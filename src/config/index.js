@@ -99,9 +99,6 @@ function resolveConfig(userConfig = {}, options = {}) {
   if (!Array.isArray(merged.specialNodeRules)) {
     merged.specialNodeRules = [];
   }
-  if (!merged.customNodeGroups || typeof merged.customNodeGroups !== 'object') {
-    merged.customNodeGroups = {};
-  }
   if (!merged.indexPrefixMap || typeof merged.indexPrefixMap !== 'object') {
     merged.indexPrefixMap = {};
   }

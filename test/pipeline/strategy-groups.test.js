@@ -85,32 +85,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(!hkGroup.proxies.some(p => p.includes('🧪')), '普通香港组不应包含实验节点');
   });
 
-  test('strategyMain - 自定义分组 (customNodeGroups) 注入测试', () => {
-    const rawConfig = {
-      proxies: [
-        { name: '自建专线-Xray', type: 'ss', server: 'xray.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword1' },
-        { name: '🇭🇰 普通香港', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword2' }
-      ]
-    };
-
-    const userConfig = {
-      whitelistKeywords: ['Xray'],
-      customNodeGroups: {
-        'Xray': ['🤖 ChatGPT', '🐱 GitHub']
-      },
-      enableAI: true,
-      minorNodeThreshold: 1
-    };
-
-    const result = strategyMain(rawConfig, userConfig);
-    const groups = result['proxy-groups'];
-    const chatGptGroup = groups.find(g => g.name === '🤖 ChatGPT');
-
-    // 验证自建节点被注入到目标策略组
-    assert.ok(chatGptGroup !== undefined);
-    assert.ok(chatGptGroup.proxies.includes('自建专线-Xray'));
-  });
-
   test('strategyMain - 家宽节点注入测试 (residentialNodeGroups)', () => {
     const rawConfig = {
       proxies: [

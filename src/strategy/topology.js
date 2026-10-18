@@ -520,23 +520,6 @@ function buildProxyTopology({
     }
   }
 
-  // 自定义节点分组注入
-  if (userConfig.customNodeGroups && buckets.special.length > 0) {
-    for (const [keyword, targetGroups] of Object.entries(userConfig.customNodeGroups)) {
-      if (!keyword || !Array.isArray(targetGroups)) continue;
-      const kw = keyword.toLowerCase();
-      const matched = buckets.special.filter(n => n.toLowerCase().includes(kw));
-      if (!matched.length) continue;
-      for (const tName of targetGroups) {
-        const group = resolveTargetGroup(finalGroups, tName);
-        if (group && group.proxies) {
-          const s = new Set(group.proxies);
-          matched.forEach(n => { if (!s.has(n)) group.proxies.push(n); });
-        }
-      }
-    }
-  }
-
   // 节点专属策略组注入 (来自 subscriptions 中的 groups 声明)
   classifiedNodes.forEach(item => {
     if (item.skip || item.isInfo) return;

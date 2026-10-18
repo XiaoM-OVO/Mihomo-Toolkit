@@ -88,8 +88,6 @@ const FIELDS = [
     group: '节点清洗与处理', doc: '黑名单服务器: server 字段包含即拦截（优先于白名单）' },
   { key: 'specialNodeRules', type: 'object[]', default: [], merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '自定义重命名规则: { reg, targetName }' },
-  { key: 'customNodeGroups', type: 'object', default: {}, merge: 'override', trust: 'any',
-    group: '节点清洗与处理', doc: '自定义节点分组: 指定节点进入哪些应用组' },
   { key: 'indexPrefixMap', type: 'object', default: {}, merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '序号前缀映射: 键=订阅标签, 值=前缀' },
   { key: 'enableNodeRename', type: 'boolean', default: true, merge: 'override', trust: 'any',
