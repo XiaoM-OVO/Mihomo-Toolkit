@@ -42,6 +42,78 @@ export interface SubscriptionConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 自定义策略组 DSL 配置项 (customGroups)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CustomGroupRecipe {
+  /** 地区代码、名称或大洲 (如 'hk', ['hk', 'tw'], '!cn', 'asia') */
+  region?: string | string[];
+  /** 节点标签 (如 'streaming', ['chatgpt', 'gemini'], '!download') */
+  tags?: string | string[] | { any?: string[]; all?: string[] };
+  /** 节点倍率区间或比较式 (如 '<= 1.5', '> 2.0', [0, 1.5]) */
+  multi?: string | number | [number, number];
+  /** 节点名称子串或正则 (如 '专线', '/(?:专线|iepl)/i') */
+  pattern?: string | RegExp | (string | RegExp)[];
+  /** 节点名称别名 (等同于 pattern) */
+  name?: string | RegExp | (string | RegExp)[];
+  /** 协议类型 (如 'ss', ['vless', 'hysteria2'], '!http') */
+  protocol?: string | string[];
+  /** 协议类型别名 (等同于 protocol) */
+  type?: string | string[];
+  /** 机场订阅标签 */
+  airport?: string | string[];
+  /** 机场订阅标签别名 (等同于 airport) */
+  subTag?: string | string[];
+  /** 业务特征池 (如 'ai', 'streaming') */
+  featurePools?: string | string[];
+  /** 业务特征池别名 (等同于 featurePools) */
+  pool?: string | string[];
+  /** 是否为特殊节点 */
+  isSpecial?: boolean;
+  /** 是否为未知识别地区节点 */
+  isUnknownRegion?: boolean;
+  /** 复合条件求值模式：all (必须全部满足，默认) | any (任一满足即可) */
+  mode?: 'all' | 'any';
+  /** 自定义 JS 谓词函数 */
+  custom?: (node: any) => boolean;
+}
+
+export interface CustomGroupConfig {
+  /** 策略组名称 */
+  name: string;
+  /** 策略组类型：select (默认) | url-test | fallback | load-balance */
+  type?: 'select' | 'url-test' | 'fallback' | 'load-balance';
+  /** 健康检查/测速 URL (默认使用全局 testURL) */
+  url?: string;
+  /** 测速间隔 (秒，默认使用全局 testInterval) */
+  interval?: number;
+  /** 容差 (毫秒，url-test 专用，默认使用全局 testTolerance) */
+  tolerance?: number;
+  /** 是否启用懒加载健康检查 (默认 true) */
+  lazy?: boolean;
+  /** 负载均衡策略：consistent-hashing (默认) | round-robin */
+  strategy?: 'consistent-hashing' | 'round-robin';
+  /** 策略组图标 URL 或本地配置 */
+  icon?: string | { repo: string; file: string };
+  /** 策略组 Emoji 徽标 */
+  emoji?: string;
+  /** 是否在前端界面中隐藏该策略组 */
+  hidden?: boolean;
+  /** Mihomo 原生正则过滤表达式 */
+  filter?: string;
+  /** Mihomo 原生正则排除表达式 */
+  'exclude-filter'?: string;
+  /** 动态挑人配方 (单个规则或规则数组) */
+  match?: CustomGroupRecipe | CustomGroupRecipe[];
+  /** 黑名单排除配方 (单个规则或规则数组，任一命中即排除) */
+  exclude?: CustomGroupRecipe | CustomGroupRecipe[];
+  /** 显式声明的成员节点或策略组引用 (支持宏: @matchedNodes, @residential, @allStandard, @defaultProxy) */
+  proxies?: string[];
+  /** 绑定的分流规则或规则集名称 (自动挂载至 rules 流水线) */
+  rules?: string | string[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 节点清洗模块配置 (pure-nodes)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -286,6 +358,8 @@ export interface ToolkitConfig {
   customRules?: string[];
   /** 自定义 Rule-Provider 定义（name → { type, behavior, url, path… }） */
   customRuleProviders?: Record<string, any>;
+  /** 声明式自定义策略组 DSL 清单（支持 match/exclude 配方、宏引用与原生字段透传） */
+  customGroups?: CustomGroupConfig[];
   /**
    * 订阅服务域名或 IP（自动注入为最前列直连规则与 fake-ip-filter，防止客户端拉取订阅走代理循环或延迟叠加）。
    * 支持单个域名/IP 字符串，或域名/IP 数组。常驻服务端亦会自动自适应提取请求 Host。

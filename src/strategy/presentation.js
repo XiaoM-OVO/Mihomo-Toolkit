@@ -181,6 +181,31 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     }
   }
 
+  // 4. 自定义策略组 DSL (customGroups) 图标与 Emoji 注册
+  if (Array.isArray(userConfig.customGroups)) {
+    for (const g of userConfig.customGroups) {
+      if (!g || !g.name) continue;
+      const cleanName = g.name;
+      const emoji = g.emoji || '';
+      const fullName = emoji ? `${emoji} ${cleanName}` : cleanName;
+      if (emoji) {
+        emojiMap[cleanName] = fullName;
+      }
+      if (g.icon) {
+        let iconUrl = '';
+        if (typeof g.icon === 'string') {
+          iconUrl = g.icon.startsWith('http') ? g.icon : resolveIconUrl(g.icon, 'koolson', userConfig);
+        } else if (typeof g.icon === 'object' && g.icon.file) {
+          iconUrl = resolveIconUrl(g.icon.file, g.icon.repo || 'koolson', userConfig);
+        }
+        if (iconUrl) {
+          iconMap[cleanName] = iconUrl;
+          iconMap[fullName] = iconUrl;
+        }
+      }
+    }
+  }
+
   return { emojiMap, iconMap };
 }
 

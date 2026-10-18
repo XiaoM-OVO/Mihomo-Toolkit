@@ -278,4 +278,52 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(hiddenUnknown);
     assert.equal(hiddenUnknown.hidden, true);
   });
+
+  test('strategyMain - customGroups 策略组、分流规则与图标全链路端到端闭环', () => {
+    const rawConfig = {
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇺🇸 美国 01', type: 'ss', server: 'us1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' }
+      ]
+    };
+
+    const userConfig = {
+      minorNodeThreshold: 1,
+      groupIconMode: 'both',
+      customGroups: [
+        {
+          name: '奈飞专线',
+          type: 'url-test',
+          emoji: '🍿',
+          icon: 'Netflix.png',
+          match: { region: 'hk' },
+          rules: [
+            'netflix',
+            'DOMAIN-SUFFIX,netflix.com'
+          ]
+        }
+      ]
+    };
+
+    const result = strategyMain(rawConfig, userConfig);
+    const groups = result['proxy-groups'];
+    const netflixGroup = groups.find(g => g.name.includes('奈飞专线'));
+
+    // 1. 策略组与展示层 Emoji / Icon 渲染
+    assert.ok(netflixGroup, '应成功生成奈飞专线策略组');
+    assert.equal(netflixGroup.name, '🍿 奈飞专线');
+    assert.ok(netflixGroup.icon && netflixGroup.icon.includes('Netflix.png'), '应正确挂载在线图标');
+    assert.deepEqual(netflixGroup.proxies, ['🇭🇰 香港']);
+
+    // 2. 路由分流规则 (rules) 自动挂载且目标组名与展示层同步
+    const rules = result.rules;
+    assert.ok(rules.some(r => r === 'RULE-SET,netflix,🍿 奈飞专线'), '简写规则集应自动挂载并对齐组名');
+    assert.ok(rules.some(r => r === 'DOMAIN-SUFFIX,netflix.com,🍿 奈飞专线'), '域名规则应自动补齐目标组');
+
+    // 3. Rule-Providers 自动登记
+    const providers = result['rule-providers'];
+    assert.ok(providers['netflix'], '应自动登记 netflix rule-provider');
+    assert.ok(providers['netflix'].url.includes('geosite/netflix'), 'provider URL 应正确拼接');
+  });
 });
+

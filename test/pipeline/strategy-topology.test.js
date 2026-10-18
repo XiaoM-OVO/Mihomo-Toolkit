@@ -319,4 +319,77 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.ok(!customGroupNames.includes('香港节点'), '香港被移出主力且不足3个被折叠');
     assert.ok(resCustom.buckets.other.includes('🇭🇰 香港 01'), '香港节点应折叠进 other 桶');
   });
+
+  it('buildProxyTopology - customGroups 声明式自定义策略组装配与覆写', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const classifiedNodes = [
+      {
+        proxy: { name: '🇭🇰 香港 IEPL 01' },
+        rawName: '🇭🇰 香港 IEPL 01',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['streaming'],
+        attrs: { multiNum: 1.0 },
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇯🇵 日本 普通 01' },
+        rawName: '🇯🇵 日本 普通 01',
+        regionInfo: { id: 'jp', name: '日本' },
+        tags: ['download'],
+        attrs: { multiNum: 0.5 },
+        groupKey: 'jp'
+      },
+      {
+        proxy: { name: '🇺🇸 美国 家宽 01' },
+        rawName: '🇺🇸 美国 家宽 01',
+        regionInfo: { id: 'us', name: '美国' },
+        tags: ['residential'],
+        attrs: { multiNum: 1.0 },
+        groupKey: 'us'
+      }
+    ];
+
+    const { proxyGroups } = buildProxyTopology({
+      classifiedNodes,
+      userConfig: {
+        ...DEFAULT_CONFIG,
+        enableResidential: true,
+        customGroups: [
+          {
+            name: '🎬 我的专属流媒体',
+            type: 'url-test',
+            url: 'https://www.youtube.com/generate_204',
+            interval: 180,
+            tolerance: 30,
+            match: {
+              region: ['hk'],
+              tags: ['streaming']
+            },
+            proxies: ['@matchedNodes', 'DIRECT']
+          },
+          {
+            name: '自动选择',
+            type: 'url-test',
+            proxies: ['@residential', '🇭🇰 香港 IEPL 01']
+          }
+        ]
+      },
+      registries
+    });
+
+    // 1. 验证全新策略组注入
+    const myStreaming = proxyGroups.find(g => g.name === '🎬 我的专属流媒体');
+    assert.ok(myStreaming, '应该成功构建全新策略组');
+    assert.equal(myStreaming.type, 'url-test');
+    assert.equal(myStreaming.url, 'https://www.youtube.com/generate_204');
+    assert.equal(myStreaming.interval, 180);
+    assert.equal(myStreaming.tolerance, 30);
+    assert.deepEqual(myStreaming.proxies, ['🇭🇰 香港 IEPL 01', 'DIRECT']);
+
+    // 2. 验证同名骨架组覆盖
+    const autoSelect = proxyGroups.find(g => g.name === '自动选择');
+    assert.ok(autoSelect);
+    assert.deepEqual(autoSelect.proxies, ['🇺🇸 美国 家宽 01', '🇭🇰 香港 IEPL 01']);
+  });
 });
+

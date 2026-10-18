@@ -335,6 +335,30 @@ systemServices:
 #   "all": ["🤖 ChatGPT", "♊ Gemini"]
 #   "hk": ["🤖 ChatGPT"]
 
+# ─────────────────────────────────────────────────────────────────────
+# ⑩-B 声明式自定义策略组 DSL (customGroups)
+# ─────────────────────────────────────────────────────────────────────
+# 支持声明全新策略组或覆写现有策略组；Mihomo 原生字段完全透传，支持动态配方 match / exclude 与宏引用
+# customGroups:
+#   - name: "🎬 专属流媒体"
+#     type: url-test               # select | url-test | fallback | load-balance
+#     url: "https://www.youtube.com/generate_204"
+#     interval: 300
+#     tolerance: 50
+#     match:
+#       region: ["hk", "tw", "jp"] # 支持大区代码或名称，支持 !cn 排除
+#       tags: ["streaming"]        # 标签要求
+#       multi: "<= 1.5"            # 倍率要求 (<=, <, >=, >, ==, [0, 1.5])
+#       pattern: "专线"             # 正则或名称子串
+#     exclude:
+#       tags: ["download"]         # 黑名单排除
+#     proxies:
+#       - "@matchedNodes"          # 宏变量：上述 match/exclude 筛选出的节点
+#       - "@residential"           # 宏变量：家宽优选节点
+#       - "自动选择"                # 策略组引用
+#       - "DIRECT"                 # 原生保留字
+
+
 
 # ─────────────────────────────────────────────────────────────────────
 # ⑪ 进程级分流名单与自定义分流规则

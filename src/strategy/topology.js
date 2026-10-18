@@ -6,6 +6,7 @@
 
 const { getEnhancedRegionDefs, CONTINENT_DEFS, DEFAULT_CORE_REGIONS } = require('../core/shared/regions');
 const { getTrustedProxyMetadata } = require('../core/node-trust');
+const { evaluateCustomTopology } = require('./topology-engine');
 
 const HIGH_MULTI_GROUP = '高倍率优选';
 const EXPERIMENTAL_GROUP = '实验节点';
@@ -497,6 +498,27 @@ function buildProxyTopology({
     buildSelect('其他节点', buckets.other),
     buildSelect('未知识别', buckets.unknown, userConfig.hideUnknownGroup)
   );
+
+  // 声明式自定义策略组装配 (customGroups DSL 引擎)
+  if (Array.isArray(userConfig.customGroups) && userConfig.customGroups.length > 0) {
+    const { evaluatedGroups } = evaluateCustomTopology({
+      customGroups: userConfig.customGroups,
+      existingGroups: finalGroups,
+      classifiedNodes,
+      buckets,
+      userConfig,
+      logger
+    });
+    for (const eg of evaluatedGroups) {
+      const idx = finalGroups.findIndex(g => stripGroupDecoration(g.name).toLowerCase() === stripGroupDecoration(eg.name).toLowerCase());
+      if (idx !== -1) {
+        // 同名策略组覆盖/合并现有骨架组
+        finalGroups[idx] = { ...finalGroups[idx], ...eg };
+      } else {
+        finalGroups.push(eg);
+      }
+    }
+  }
 
   // 自定义节点分组注入
   if (userConfig.customNodeGroups && buckets.special.length > 0) {

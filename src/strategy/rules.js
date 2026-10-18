@@ -77,6 +77,32 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     routingRules.push(...userConfig.customRules);
   }
 
+  // 用户声明式策略组 (customGroups) 绑定规则注入
+  if (Array.isArray(userConfig.customGroups) && userConfig.customGroups.length) {
+    for (const g of userConfig.customGroups) {
+      if (!g || !g.name || !g.rules) continue;
+      const targetName = g.name;
+      const rulesList = Array.isArray(g.rules) ? g.rules : [g.rules];
+      for (const r of rulesList) {
+        if (!r || typeof r !== 'string') continue;
+        const trimmed = r.trim();
+        if (trimmed.includes(',')) {
+          const parts = trimmed.split(',');
+          if (parts.length === 2) {
+            routingRules.push(`${parts[0].trim()},${parts[1].trim()},${targetName}`);
+          } else {
+            routingRules.push(trimmed);
+          }
+        } else {
+          const ruleSetName = trimmed.replace(/^(geosite|geoip):/i, '');
+          const providerPath = trimmed.includes(':') ? trimmed.replace(':', '/') : `geosite/${trimmed}`;
+          providerBase[ruleSetName] = providerPath;
+          routingRules.push(`RULE-SET,${ruleSetName},${targetName}`);
+        }
+      }
+    }
+  }
+
   // QUIC 分流拦截
   if (userConfig.enableQUICReject) {
     const isReturn = userConfig.enableDomesticGroup && !userConfig.proxyFirst;

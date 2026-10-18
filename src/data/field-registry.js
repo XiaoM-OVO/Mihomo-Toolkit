@@ -322,6 +322,8 @@ const FIELDS = [
     group: '自定义规则入口', doc: '注入到 MATCH 之前的自定义分流规则（优先级最高，防策略劫持仅可信来源可写）' },
   { key: 'customRuleProviders', type: 'object', merge: 'override', trust: 'local',
     group: '自定义规则入口', doc: '自定义 Rule-Provider 定义（name → {type, behavior, url…}，防出网探测仅可信来源可写）' },
+  { key: 'customGroups', type: 'object[]', merge: 'override', trust: 'local',
+    group: '自定义规则入口', doc: '声明式自定义策略组 DSL 清单（支持 match/exclude 配方、宏引用与原生字段透传）' },
   { key: 'subDomain', type: 'string[]', merge: 'override', trust: 'any',
     group: '自定义规则入口', doc: '订阅服务域名或 IP（自动注入为直连分流规则与 fake-ip-filter，防止客户端拉取订阅走代理循环与高延迟）' },
 
