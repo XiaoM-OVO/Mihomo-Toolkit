@@ -64,7 +64,6 @@ function buildBuiltinAppRecipes({
   userConfig = {},
   effectiveRegistries = {},
   regionNames = {},
-  activeRegionGroups = [],
   buckets = {}
 }) {
   const recipes = [];

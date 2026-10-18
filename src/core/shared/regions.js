@@ -676,23 +676,6 @@ function validateMapping() {
 }
 
 /**
- * 从国旗 Emoji 动态派生 ISO 3166-1 alpha-2 国家/地区代码 (纯函数)
- * @param {string} icon
- * @returns {string|null}
- */
-function countryCodeFromFlag(icon) {
-  if (!icon || typeof icon !== 'string') return null;
-  const chars = Array.from(icon);
-  if (chars.length !== 2) return null;
-  const cp0 = chars[0].codePointAt(0);
-  const cp1 = chars[1].codePointAt(0);
-  if (cp0 >= 0x1F1E6 && cp0 <= 0x1F1FF && cp1 >= 0x1F1E6 && cp1 <= 0x1F1FF) {
-    return String.fromCharCode(cp0 - 0x1F1E6 + 65, cp1 - 0x1F1E6 + 65);
-  }
-  return null;
-}
-
-/**
  * 权威地区元数据事实源 (单一事实源 SSOT，派生自 REGION_DEFS_RAW)
  * 映射标准地区名 -> { groupKey, countryCode, regionName, groupName, icon, continent, subGroup, foldGroup }
  */
