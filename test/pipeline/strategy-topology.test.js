@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const { DEFAULT_CONFIG } = require('../../src/config');
 const { createServiceRegistries } = require('../../src/strategy/registries');
-const { buildProxyTopology, HIGH_MULTI_GROUP, EXPERIMENTAL_GROUP } = require('../../src/strategy/topology');
+const { buildProxyTopology, buildBuiltinAppRecipes, HIGH_MULTI_GROUP, EXPERIMENTAL_GROUP } = require('../../src/strategy/topology');
 
 describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', () => {
   it('buildProxyTopology - 基础策略组装配与地区归纳', () => {
@@ -362,6 +362,65 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     const autoSelect = proxyGroups.find(g => g.name === '自动选择');
     assert.ok(autoSelect);
     assert.deepEqual(autoSelect.proxies, ['🇺🇸 美国 家宽 01', '🇭🇰 香港 IEPL 01']);
+  });
+
+  it('buildBuiltinAppRecipes - 声明式应用配方解析与元数据解耦', () => {
+    const effectiveRegistries = {
+      ai: {
+        chatgpt: { name: 'ChatGPT', tag: 'ai', pool: 'ai', preferredRegions: ['us', 'jp'] }
+      },
+      streaming: {
+        custom_stream: { name: '自定义流媒体', pool: 'custom_stream', preferredRegions: ['sg', 'tw'] },
+        direct_stream: { name: '免翻流媒体', proxies: ['DIRECT', '香港节点'] }
+      }
+    };
+
+    const regionNames = {
+      us: '美国节点',
+      jp: '日本节点',
+      sg: '新加坡节点',
+      tw: '台湾节点',
+      hk: '香港节点'
+    };
+
+    const recipes = buildBuiltinAppRecipes({
+      userConfig: {
+        enableAI: true,
+        enableStreaming: true,
+        aiServices: ['chatgpt'],
+        streamingServices: ['custom_stream', 'direct_stream']
+      },
+      effectiveRegistries,
+      regionNames,
+      activeRegionGroups: ['香港节点', '美国节点', '新加坡节点'],
+      buckets: { ai: ['AI专线1'], custom_stream: ['流媒体1'] },
+      proxyTarget: '自动选择'
+    });
+
+    const chatgpt = recipes.find(r => r.name === 'ChatGPT');
+    assert.ok(chatgpt);
+    assert.deepEqual(chatgpt.proxies, [
+      '@residentialGroup',
+      '美国节点',
+      '日本节点',
+      'AI专线1',
+      '@defaultProxy',
+      'DIRECT'
+    ]);
+
+    const customStream = recipes.find(r => r.name === '自定义流媒体');
+    assert.ok(customStream);
+    assert.deepEqual(customStream.proxies, [
+      '流媒体1',
+      '新加坡节点',
+      '台湾节点',
+      '@standardOptions',
+      'DIRECT'
+    ]);
+
+    const directStream = recipes.find(r => r.name === '免翻流媒体');
+    assert.ok(directStream);
+    assert.deepEqual(directStream.proxies, ['DIRECT', '香港节点']);
   });
 });
 

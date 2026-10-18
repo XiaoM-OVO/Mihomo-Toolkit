@@ -53,6 +53,7 @@
   "enableRegionHashLB": false,
   "hideUnknownGroup": false,
   "groupIconMode": "emoji",
+  "groupIcons": {},
   "iconRepoOrz": "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/",
   "iconRepoKoolson": "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/",
   "iconRepoLige47": "https://fastly.jsdelivr.net/gh/lige47/lige_icon@main/icon/",

@@ -299,5 +299,72 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(providers['netflix'], '应自动登记 netflix rule-provider');
     assert.ok(providers['netflix'].url.includes('geosite/netflix'), 'provider URL 应正确拼接');
   });
+
+  test('strategyMain - 策略组图标模式 (groupIconMode: none 纯文本无装饰)', () => {
+    const rawConfig = {
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇯🇵 日本 01', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' }
+      ]
+    };
+
+    const userConfig = {
+      groupIconMode: 'none',
+      enableAI: true,
+      enableStreaming: true,
+      minorNodeThreshold: 1
+    };
+
+    const result = strategyMain(rawConfig, userConfig);
+    const groups = result['proxy-groups'];
+
+    // 纯文本模式：组名一律为纯净中文，不带任何 Emoji 徽标
+    assert.ok(groups.some(g => g.name === '自动选择'), '应为纯净「自动选择」而非带 Emoji');
+    assert.ok(groups.some(g => g.name === '手动选择'), '应为纯净「手动选择」而非带 Emoji');
+    assert.ok(groups.some(g => g.name === '香港节点'), '应为纯净「香港节点」而非带 Emoji');
+    assert.ok(groups.some(g => g.name === 'ChatGPT'), '应为纯净「ChatGPT」而非带 Emoji');
+
+    // 纯文本模式：所有策略组一律不挂载 icon 属性
+    for (const g of groups) {
+      assert.equal(g.icon, undefined, `组「${g.name}」在 none 模式下不得挂载 icon`);
+    }
+
+    // 规则 TARGET 也应全部同步为纯净组名
+    const groupNameSet = new Set(groups.map(g => g.name));
+    for (const r of result.rules) {
+      const parts = r.split(',');
+      const target = parts[parts.length - 1] === 'no-resolve' ? parts[parts.length - 2] : parts[parts.length - 1];
+      if (['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS'].includes(target)) continue;
+      assert.ok(groupNameSet.has(target), `规则目标「${target}」必须存在于策略组清单中`);
+    }
+  });
+
+  test('strategyMain - 自定义策略组图标覆盖 (groupIcons)', () => {
+    const rawConfig = {
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
+      ]
+    };
+
+    const userConfig = {
+      groupIcons: {
+        '自动选择': '⚡',
+        '手动选择': { emoji: '🎯', icon: 'https://custom.icon/static.png' }
+      },
+      minorNodeThreshold: 1
+    };
+
+    const result = strategyMain(rawConfig, userConfig);
+    const groups = result['proxy-groups'];
+
+    const autoGroup = groups.find(g => g.name.includes('自动选择'));
+    assert.ok(autoGroup, '应存在自动选择策略组');
+    assert.equal(autoGroup.name, '⚡ 自动选择', '自动选择组 Emoji 应被 groupIcons 成功覆盖为 ⚡');
+
+    const manualGroup = groups.find(g => g.name.includes('手动选择'));
+    assert.ok(manualGroup, '应存在手动选择策略组');
+    assert.equal(manualGroup.name, '🎯 手动选择', '手动选择组 Emoji 应被 groupIcons 成功覆盖为 🎯');
+    assert.equal(manualGroup.icon, 'https://custom.icon/static.png', '手动选择组 Icon 应被 groupIcons 成功覆盖');
+  });
 });
 

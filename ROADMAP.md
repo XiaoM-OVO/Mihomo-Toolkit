@@ -97,14 +97,14 @@
 ### 🔵 Milestone 3: 声明式策略拓扑与配置解耦 (大动作核心 · 推进中 🚀)
 > **阶段目标**：破除元数据与装配机制双硬编码耦合，实现数据驱动的声明式拓扑引擎。
 
-- [ ] **声明式策略拓扑与装配解耦 (Declarative Topology Engine)**：
-  - 破除双硬编码与强耦合：服务元数据归 `catalog.js`，装配规则归拓扑引擎，解决“修改策略组逻辑需改两处甚至改源码”的痛点；
-  - 声明式自定义策略组：允许用户在 `config.yaml` 中通过 `customGroups` 自定义策略组（原生静态字段透传，配合 `match` 动态挑人配方与 `exclude` 黑名单）；
-  - 规则与图标联动：支持在组声明中关联 `rules` 与 `emoji`/`icon`，全自动挂载分流与展示层渲染。
-- [ ] **图标系统模型统一重构 (Icon Registry)**：
-  - 消除 `icon` 字段概念混淆（国旗 Emoji vs 本地图片 vs 远程 URL），建立统一的图标资产管理规范；
-  - 支持策略组骨架组图标自定义配置覆盖；
-  - 策略组与节点命名模式联动，支持完全去除 Emoji 的纯净模式。
+- [x] **声明式策略拓扑与装配解耦 (Declarative Topology Engine)**：
+  - [x] 破除双硬编码与强耦合：服务元数据归 `catalog.js`，装配规则归拓扑引擎，解决“修改策略组逻辑需改两处甚至改源码”的痛点；
+  - [x] 声明式自定义策略组：允许用户在 `config.yaml` 中通过 `customGroups` 自定义策略组（原生静态字段透传，配合 `match` 动态挑人配方与 `exclude` 黑名单）；
+  - [x] 规则与图标联动：支持在组声明中关联 `rules` 与 `emoji`/`icon`，全自动挂载分流与展示层渲染。
+- [x] **图标系统模型统一重构 (Icon Registry)**：
+  - [x] 消除 `icon` 字段概念混淆（国旗 Emoji vs 本地图片 vs 远程 URL），建立统一的图标资产管理规范；
+  - [x] 支持策略组骨架组图标自定义配置覆盖 (`groupIcons`)；
+  - [x] 策略组与节点命名模式联动，支持完全去除 Emoji 的纯净模式 (`groupIconMode: 'none'`)。
 - [ ] **安全进阶防御**：
   - 探索网络抓取建连阶段的 IP 固定（IP Pinning）机制，阻断基于 DNS Rebinding 的 SSRF 窗口。
 
@@ -156,7 +156,7 @@
 | :--- | :--- | :---: | :--- | :---: |
 | `IO -> Core` 反向引用 (已修复) | `src/io/ssrf.js`, `parsers/index.js` | 🟡 中 | 依赖 Core 的基础工具函数，下沉公共基础模块 | M1 阶段 |
 | customRules 分流优先级倒挂 (已修复) | `src/strategy/rules.js` | 🔴 高 | 文档声明最高但代码放在最后，自上而下首命中导致失效，需提至首位 | M1 阶段 |
-| 策略组装配与元数据双硬编码耦合 | `src/strategy/topology.js` | 🔴 高 | 元数据与组装机制割裂，修改策略组逻辑需改多处，重构为声明式拓扑引擎 | M3 阶段 |
+| 策略组装配与元数据双硬编码耦合 (已修复) | `src/strategy/topology.js` | 🔴 高 | 引入声明式 DSL 配方与拓扑引擎，破除双硬编码与业务强耦合 | M3 阶段 |
 | SSRF TOCTOU 窗口 | `src/io/ssrf.js` | 🟡 中 | 校验与连接使用两次 DNS，评估 IP Pinning 成本 | M3 阶段 |
 
 ### 2. Data & Config 层问题清单 (第 1 批审查)
@@ -184,7 +184,7 @@
 | 弱引用信任凭据克隆易断裂 (已修复) | `src/core/node-trust.js` | 设计脆弱性 | 提供 `copyTrustedProxy` 浅拷贝/克隆凭据完整复制，解决 WeakSet/WeakMap 凭据断裂 | M2 阶段 |
 | 简易根域推导规则覆盖有限 (已修复) | `src/core/security/resolver-plan.js` | 边界局限 | 扩充常见 PaaS、DDNS 动态域名与各类国家/地区复合公共后缀（含省级 ccTLD）泛化聚合防御 | M2 阶段 |
 | 基础网络/流量工具放置错层 (已修复) | `src/core/shared/ip.js`, `sub-info.js` | 架构债务 | 纯基础工具错置于 Core 层，导致 `IO -> Core` 反向引用违规 | M1 阶段 |
-| 图标系统模型二义性与硬编码散落 | `src/strategy/presentation.js`, `catalog.js` | 设计坏味道 | `icon` 混用为国旗 Emoji、图片与 URL；骨架组硬编码在代码中无法配置 | M3 阶段 |
+| 图标系统模型二义性与硬编码散落 (已修复) | `src/strategy/presentation.js`, `catalog.js` | 设计坏味道 | 规范化资产并支持 groupIcons 覆盖与 groupIconMode: none 纯净模式 | M3 阶段 |
 
 ### 4. IO 边界层与协议解析器问题清单 (第 3 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |

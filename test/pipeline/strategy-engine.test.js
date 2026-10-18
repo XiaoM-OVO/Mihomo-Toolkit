@@ -95,6 +95,31 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       ]);
     });
 
+    it('宏替换 (@standardOptions, @residentialGroup)', () => {
+      const declared = ['@residentialGroup', '@matchedNodes', '@standardOptions', 'DIRECT'];
+      const macroContext = {
+        residentialGroup: ['家宽优选'],
+        standardOptions: ['自动选择', '手动选择', '故障转移', '香港节点']
+      };
+      const matchedNodeNames = ['节点A'];
+
+      const resolved = resolveGroupProxies({
+        declaredProxies: declared,
+        matchedNodeNames,
+        macroContext
+      });
+
+      assert.deepEqual(resolved, [
+        '家宽优选',
+        '节点A',
+        '自动选择',
+        '手动选择',
+        '故障转移',
+        '香港节点',
+        'DIRECT'
+      ]);
+    });
+
     it('重复项保序去重', () => {
       const declared = ['DIRECT', '@matchedNodes', 'DIRECT', '自动选择', '自动选择'];
       const resolved = resolveGroupProxies({

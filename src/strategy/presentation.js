@@ -13,6 +13,13 @@ const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/region
 const { replaceRuleTarget } = require('../core/chinese-sync');
 const { FIELDS_BY_KEY } = require('../data');
 
+const GROUP_DECORATION_PREFIX = /^[^\p{L}\p{N}]+/u;
+
+function stripGroupDecoration(rawName) {
+  const stripped = String(rawName || '').replace(GROUP_DECORATION_PREFIX, '').trim();
+  return stripped || String(rawName || '').trim();
+}
+
 const REGION_ICON_FILES = {
   cn: 'CN.png',
   hk: 'HK.png',
@@ -181,7 +188,46 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     }
   }
 
-  // 4. 自定义策略组 DSL (customGroups) 图标与 Emoji 注册
+  // 4. 用户全局组图标与 Emoji 自定义覆盖 (groupIcons)
+  const explicitIcons = new Set();
+  if (userConfig.groupIcons && typeof userConfig.groupIcons === 'object') {
+    for (const [groupName, iconConf] of Object.entries(userConfig.groupIcons)) {
+      if (!groupName || !iconConf) continue;
+      const cleanName = stripGroupDecoration(groupName);
+
+      if (typeof iconConf === 'string') {
+        if (/\p{Extended_Pictographic}/u.test(iconConf)) {
+          const emoji = iconConf.trim();
+          emojiMap[cleanName] = `${emoji} ${cleanName}`;
+        } else {
+          const iconUrl = iconConf.startsWith('http') ? iconConf : resolveIconUrl(iconConf, 'koolson', userConfig);
+          iconMap[cleanName] = iconUrl;
+          explicitIcons.add(cleanName);
+          if (emojiMap[cleanName]) iconMap[emojiMap[cleanName]] = iconUrl;
+        }
+      } else if (typeof iconConf === 'object') {
+        if (iconConf.emoji) {
+          const emoji = String(iconConf.emoji).trim();
+          emojiMap[cleanName] = `${emoji} ${cleanName}`;
+        }
+        if (iconConf.icon) {
+          let iconUrl = '';
+          if (typeof iconConf.icon === 'string') {
+            iconUrl = iconConf.icon.startsWith('http') ? iconConf.icon : resolveIconUrl(iconConf.icon, 'koolson', userConfig);
+          } else if (typeof iconConf.icon === 'object' && iconConf.icon.file) {
+            iconUrl = resolveIconUrl(iconConf.icon.file, iconConf.icon.repo || 'koolson', userConfig);
+          }
+          if (iconUrl) {
+            iconMap[cleanName] = iconUrl;
+            explicitIcons.add(cleanName);
+            if (emojiMap[cleanName]) iconMap[emojiMap[cleanName]] = iconUrl;
+          }
+        }
+      }
+    }
+  }
+
+  // 5. 自定义策略组 DSL (customGroups) 图标与 Emoji 注册
   if (Array.isArray(userConfig.customGroups)) {
     for (const g of userConfig.customGroups) {
       if (!g || !g.name) continue;
@@ -200,13 +246,14 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
         }
         if (iconUrl) {
           iconMap[cleanName] = iconUrl;
+          explicitIcons.add(cleanName);
           iconMap[fullName] = iconUrl;
         }
       }
     }
   }
 
-  return { emojiMap, iconMap };
+  return { emojiMap, iconMap, explicitIcons };
 }
 
 /**
@@ -217,7 +264,12 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
  */
 function applyPresentation(config, userConfig = {}, registries = {}) {
   const mode = userConfig.groupIconMode || 'emoji';
-  const { emojiMap, iconMap } = buildPresentationMaps(userConfig, registries);
+  const { emojiMap, iconMap, explicitIcons } = buildPresentationMaps(userConfig, registries);
+
+  // 模式 0: 纯文本无图标模式 (none) - 保持纯净中文组名，零 Emoji 装饰，零 g.icon 挂载
+  if (mode === 'none') {
+    return;
+  }
 
   // 模式 1: 纯图标模式 (icon) - 内部纯净中文即最终名字，零字符串替换，仅挂载 g.icon
   if (mode === 'icon') {
@@ -234,11 +286,14 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
 
   // 1. 策略组更名与内部代理更名
   (config['proxy-groups'] || []).forEach(g => {
-    if (emojiMap[g.name]) {
-      g.name = emojiMap[g.name];
+    const rawName = g.name;
+    const clean = stripGroupDecoration(rawName);
+    if (emojiMap[rawName]) {
+      g.name = emojiMap[rawName];
     }
-    if (needIcons && iconMap[g.name] && !g.icon) {
-      g.icon = iconMap[g.name];
+    const shouldMount = needIcons || (explicitIcons && explicitIcons.has(clean));
+    if (shouldMount && (iconMap[g.name] || iconMap[rawName]) && !g.icon) {
+      g.icon = iconMap[g.name] || iconMap[rawName];
     }
     if (Array.isArray(g.proxies)) {
       g.proxies = g.proxies.map(p => emojiMap[p] || p);
@@ -261,5 +316,7 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
 }
 
 module.exports = {
+  stripGroupDecoration,
+  buildPresentationMaps,
   applyPresentation
 };

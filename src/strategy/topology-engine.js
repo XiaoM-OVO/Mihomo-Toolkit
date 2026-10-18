@@ -138,6 +138,11 @@ function resolveGroupProxies({ declaredProxies = [], matchedNodeNames = [], macr
         resolved.push(...residential);
         break;
 
+      case '@residentialgroup':
+      case '@resigroup':
+        resolved.push(...(macroContext.residentialGroup || []));
+        break;
+
       case '@allstandard':
       case '@all':
         resolved.push(...allStandard);
@@ -159,6 +164,11 @@ function resolveGroupProxies({ declaredProxies = [], matchedNodeNames = [], macr
       case '@defaultproxy':
       case '@proxy':
         resolved.push(defaultProxy);
+        break;
+
+      case '@standardoptions':
+      case '@standard':
+        resolved.push(...(macroContext.standardOptions || []));
         break;
 
       default:
@@ -209,13 +219,16 @@ function evaluateGroupDefinition(groupDef, context = {}) {
 
   // 3. 构建宏上下文
   const defaultProxy = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
+  const resiGroup = context.residentialGroup || ((userConfig.enableResidential && buckets.residential?.length) ? ['家宽优选'] : []);
   const macroContext = {
     residential: buckets.residential || [],
+    residentialGroup: resiGroup,
     allStandard: buckets.allStandard || [],
     highMulti: buckets.highMulti || [],
     special: buckets.special || [],
     activeRegions: activeRegionGroups || [],
-    defaultProxy
+    defaultProxy,
+    standardOptions: context.standardOptions || []
   };
 
   // 4. 组装并去重 proxies
@@ -289,6 +302,8 @@ function evaluateCustomTopology({
   classifiedNodes = [],
   buckets = {},
   userConfig = {},
+  standardOptions = [],
+  residentialGroup = [],
   logger = null
 } = {}) {
   if (!Array.isArray(customGroups) || customGroups.length === 0) {
@@ -303,7 +318,9 @@ function evaluateCustomTopology({
     classifiedNodes,
     buckets,
     userConfig,
-    activeRegionGroups
+    activeRegionGroups,
+    standardOptions,
+    residentialGroup
   };
 
   const evaluatedGroups = [];

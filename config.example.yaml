@@ -195,6 +195,12 @@ regionGroupType: "url-test"        # 地区策略组类型: url-test (测速优�
 #   - "sg"
 #   - "us"
 # hideUnknownGroup: false          # 是否在面板中隐藏「🗑️ 未知识别」组
+# groupIconMode: "emoji"             # 策略组图标模式: emoji (默认带Emoji) | icon (仅在线图标纯净名) | both (两者兼备) | none (纯文本无装饰)
+# groupIcons:                        # 自定义策略组/骨架组的图标与 Emoji 覆盖映射表
+#   自动选择: "⚡"
+#   手动选择:
+#     emoji: "📍"
+#     icon: "Static.png"
 # exemptGroups:                    # 在只读骨架基线（手动选择 / 漏网之鱼）之外【追加】永不被空组剪枝斩首的组名
 #                                  # 同样只增不减：用于保护自建常驻组不被 DAG 级联清理误删
 #   - "🏠 家宽优选"

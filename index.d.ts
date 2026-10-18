@@ -272,8 +272,10 @@ export interface ToolkitConfig {
   enableRegionHashLB?: boolean;
   /** 是否在面板中隐藏「🗑️ 未知识别」组 */
   hideUnknownGroup?: boolean;
-  /** 策略组图标模式: emoji | icon | both */
-  groupIconMode?: 'emoji' | 'icon' | 'both';
+  /** 策略组图标模式: emoji | icon | both | none */
+  groupIconMode?: 'emoji' | 'icon' | 'both' | 'none';
+  /** 自定义策略组/骨架组的图标与 Emoji 覆盖映射表 */
+  groupIcons?: Record<string, string | { emoji?: string; icon?: string | { repo?: string; file: string } }>;
   /** 在线图标仓库前缀 (Orz-3) */
   iconRepoOrz?: string;
   /** 在线图标仓库前缀 (Koolson) */
