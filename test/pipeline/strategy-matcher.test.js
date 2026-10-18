@@ -142,6 +142,54 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
       assert.equal(matcher(nodeUnknown), true);
       assert.equal(matcher(nodeHK), false);
     });
+
+    it('大洲与次大区层级匹配 (真实元数据衍生: 亚洲, 东南亚, 欧洲, 美洲, 大洋洲)', () => {
+      const realHK = { regionInfo: { id: 'hk', name: '香港', continent: 'asia', subGroup: 'ea' } };
+      const realJP = { regionInfo: { id: 'jp', name: '日本', continent: 'asia', subGroup: 'ea' } };
+      const realSG = { regionInfo: { id: 'sg', name: '新加坡', continent: 'asia', subGroup: 'sea' } };
+      const realMY = { regionInfo: { name: '马来西亚', group: 'sea', continent: 'asia', subGroup: 'sea' } };
+      const realUS = { regionInfo: { id: 'us', name: '美国', continent: 'americas', subGroup: 'na' } };
+      const realDE = { regionInfo: { name: '德国', group: 'eu', continent: 'europe' } };
+      const realAU = { regionInfo: { name: '澳大利亚', continent: 'oceania', subGroup: 'oc' } };
+
+      // 亚洲及中文
+      const asiaMatcher = compileRegionMatcher('asia');
+      assert.equal(asiaMatcher(realHK), true);
+      assert.equal(asiaMatcher(realJP), true);
+      assert.equal(asiaMatcher(realSG), true);
+      assert.equal(asiaMatcher(realMY), true);
+      assert.equal(asiaMatcher(realUS), false);
+      assert.equal(asiaMatcher(realDE), false);
+
+      const asiaZhMatcher = compileRegionMatcher('亚洲');
+      assert.equal(asiaZhMatcher(realHK), true);
+      assert.equal(asiaZhMatcher(realUS), false);
+
+      // 东南亚 (sea / 东南亚)
+      const seaMatcher = compileRegionMatcher('sea');
+      assert.equal(seaMatcher(realSG), true);
+      assert.equal(seaMatcher(realMY), true);
+      assert.equal(seaMatcher(realHK), false);
+      assert.equal(seaMatcher(realJP), false);
+
+      const seaZhMatcher = compileRegionMatcher('东南亚');
+      assert.equal(seaZhMatcher(realSG), true);
+      assert.equal(seaZhMatcher(realHK), false);
+
+      // 欧洲及美洲
+      const euMatcher = compileRegionMatcher('europe');
+      assert.equal(euMatcher(realDE), true);
+      assert.equal(euMatcher(realUS), false);
+
+      const amMatcher = compileRegionMatcher('americas');
+      assert.equal(amMatcher(realUS), true);
+      assert.equal(amMatcher(realHK), false);
+
+      // 大洋洲
+      const ocMatcher = compileRegionMatcher('oceania');
+      assert.equal(ocMatcher(realAU), true);
+      assert.equal(ocMatcher(realHK), false);
+    });
   });
 
   describe('4. 标签匹配器 (compileTagMatcher)', () => {

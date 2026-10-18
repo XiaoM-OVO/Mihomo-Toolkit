@@ -1,12 +1,14 @@
 /**
  * -----------------------------------------------------------------------------
- * Mihomo-Toolkit: 策略组节点挑人谓词匹配器 (Recipe Matcher)
+ * Mihomo-Toolkit: 策略组节点筛选谓词匹配器 (Recipe Matcher)
  * -----------------------------------------------------------------------------
  * 职责：
- * 1. 负责解析 DSL 中声明的 match (挑人配方) 与 exclude (黑名单排除)；
+ * 1. 负责解析 DSL 中声明的 match (节点匹配配方) 与 exclude (黑名单排除)；
  * 2. 将声明式过滤规则（地区、标签、倍率、名称正则、协议、特征池等）预编译为纯函数谓词；
  * 3. 面向 Strategy 拓扑引擎提供零副作用、高执行性能的节点过滤与分类计算能力。
  */
+
+const { isRegionInContinent } = require('../core/shared/regions');
 
 /**
  * 编译倍率匹配器
@@ -149,6 +151,12 @@ function compileRegionMatcher(spec) {
       if (token === 'other' || token === '其它' || token === '其他') {
         return groupKey === 'other' || group === 'other';
       }
+
+      // 大洲与次大区层级匹配 (如 asia / 亚洲 / sea / 东南亚 / europe / americas 等)
+      if (regionInfo && isRegionInContinent(regionInfo, token)) {
+        return true;
+      }
+
       return (
         (id && id === token) ||
         (name && (name === token || name.includes(token))) ||
@@ -401,7 +409,7 @@ function compileRule(rule, { defaultLogic = 'all' } = {}) {
 }
 
 /**
- * 编译挑人匹配配方 (match)
+ * 编译节点匹配配方 (match)
  * @param {object|Array<object>|Function} matchSpec
  * @returns {(item: object) => boolean}
  */
@@ -444,7 +452,7 @@ function compileExclude(excludeSpec) {
 }
 
 /**
- * 创建一体化节点挑人谓词
+ * 创建一体化节点筛选谓词
  * @param {object} [spec={}]
  * @param {object|Array|Function} [spec.match] 命中配方
  * @param {object|Array|Function} [spec.exclude] 排除配方

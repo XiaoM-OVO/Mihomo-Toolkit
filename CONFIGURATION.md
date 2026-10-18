@@ -112,7 +112,7 @@ include:
 | `lazy` | boolean | 否 | 是否启用懒加载测速（默认 `true`） |
 | `icon` | string / object | 否 | 图标 URL 或仓库对象 `{ repo: 'koolson', file: 'YouTube.png' }` |
 | `emoji` | string | 否 | Emoji 徽标（如 `🎬`） |
-| `match` | Recipe / Recipe[] | 否 | **挑人配方（正向命中条件）**，可写对象或数组 |
+| `match` | Recipe / Recipe[] | 否 | **节点匹配配方（正向命中条件）**，可写对象或数组 |
 | `exclude` | Recipe / Recipe[] | 否 | **黑名单配方（反向剔除条件）**，任一命中立即排除 |
 | `proxies` | string[] | 否 | **策略组成员声明**，支持纯节点名、下游策略组引用以及**宏变量** |
 | `rules` | string / string[] | 否 | 绑定的分流规则名称（会自动注入到 rules 规则链，如 `youtube`） |
@@ -123,7 +123,7 @@ include:
 
 ```yaml
 match:
-  # 1. 地区 (支持代码 'hk'/'us'、中文 '香港'、大洲 'asia'/'eu'、取反 '!cn'、'unknown')
+  # 1. 地区 (支持代码 'hk'/'us'、中文 '香港'、大洲 'asia'/'europe'/'americas'/'oceania'/'africa'、次大区 'sea'/'na'/'latam'/'me'/'sa'、取反 '!cn'、'unknown')
   region: ["hk", "tw", "jp"]
 
   # 2. 节点倍率 (支持区间 [0, 1.5]、不等式 '<= 1.5'、'> 2.0'、'== 1.0')
@@ -145,7 +145,7 @@ match:
   mode: all
 ```
 
-#### 全部 9 个宏变量清单
+#### 动态拓扑宏变量清单
 
 在 `proxies` 中，你不仅能书写固定的节点名或策略组名，还可以使用 `@` 开头的**动态拓扑宏**：
 
@@ -158,6 +158,14 @@ match:
 | `@highMulti` | - | 所有被隔离的高倍率节点全集 |
 | `@special` | - | 所有被识别的特殊节点全集 |
 | `@activeRegions` | `@regions` | 当前所有成功建组的活跃地区策略组名称列表（如 `['🇭🇰 香港节点', '🇯🇵 日本节点']`） |
+| `@asia` | `@asiaRegions`, `@亚洲` | 当前活跃地区组中归属于**亚洲**的所有策略组（含东亚、东南亚、南亚、中东等） |
+| `@europe` | `@eu`, `@euRegions`, `@欧洲` | 当前活跃地区组中归属于**欧洲**的所有策略组 |
+| `@americas` | `@america`, `@am`, `@美洲` | 当前活跃地区组中归属于**美洲**的所有策略组（美、加、拉美等） |
+| `@oceania` | `@oc`, `@大洋洲` | 当前活跃地区组中归属于**大洋洲**的所有策略组（澳大利亚等） |
+| `@africa` | `@af`, `@非洲` | 当前活跃地区组中归属于**非洲**的所有策略组 |
+| `@sea` | `@seaRegions`, `@东南亚` | 当前活跃地区组中归属于**东南亚**的所有策略组（新加坡、马来西亚、泰国等） |
+| `@domesticGroup` | `@domestic` | 若开启中国分流则展开为 `['🇨🇳 中国分流']`，否则展开为 `['DIRECT']` |
+| `@nonCnRegions` | `@noncn`, `@tiktokregions` | 当前活跃地区组中剔除中国大中华核心区（大陆/香港等）后的纯海外地区组 |
 | `@defaultProxy` | `@proxy` | 根据 `defaultProxyMode` 计算出的默认代理组（`自动选择` / `手动选择` / `DIRECT`） |
 | `@standardOptions` | `@standard` | 标准应用组的前置选项（依序展开：默认代理组 ➔ 各活跃地区组 ➔ 家宽组 ➔ DIRECT） |
 

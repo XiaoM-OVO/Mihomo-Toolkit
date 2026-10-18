@@ -103,7 +103,7 @@ export interface CustomGroupConfig {
   filter?: string;
   /** Mihomo 原生正则排除表达式 */
   'exclude-filter'?: string;
-  /** 动态挑人配方 (单个规则或规则数组) */
+  /** 动态节点匹配配方 (单个规则或规则数组) */
   match?: CustomGroupRecipe | CustomGroupRecipe[];
   /** 黑名单排除配方 (单个规则或规则数组，任一命中即排除) */
   exclude?: CustomGroupRecipe | CustomGroupRecipe[];

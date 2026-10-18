@@ -12,6 +12,7 @@
  */
 
 const { filterNodes } = require('./matcher');
+const { filterRegionsByContinent } = require('../core/shared/regions');
 const { FIELDS_BY_KEY } = require('../data');
 
 const SUPPORTED_GROUP_TYPES = new Set(['select', 'url-test', 'fallback', 'load-balance']);
@@ -164,6 +165,77 @@ function resolveGroupProxies({ declaredProxies = [], matchedNodeNames = [], macr
         resolved.push(...activeRegions);
         break;
 
+      case '@asia':
+      case '@asiaregions':
+      case '@亚洲':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'asia'));
+        break;
+
+      case '@europe':
+      case '@eu':
+      case '@euregions':
+      case '@欧洲':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'europe'));
+        break;
+
+      case '@americas':
+      case '@america':
+      case '@am':
+      case '@americaregions':
+      case '@美洲':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'americas'));
+        break;
+
+      case '@oceania':
+      case '@oc':
+      case '@oceaniaregions':
+      case '@大洋洲':
+      case '@澳洲':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'oceania'));
+        break;
+
+      case '@africa':
+      case '@af':
+      case '@africaregions':
+      case '@非洲':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'africa'));
+        break;
+
+      case '@sea':
+      case '@searegions':
+      case '@东南亚':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'sea'));
+        break;
+
+      case '@me':
+      case '@meregions':
+      case '@中东':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'me'));
+        break;
+
+      case '@sa':
+      case '@saregions':
+      case '@南亚':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'sa'));
+        break;
+
+      case '@na':
+      case '@naregions':
+      case '@北美':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'na'));
+        break;
+
+      case '@latam':
+      case '@南美':
+      case '@拉美':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'latam'));
+        break;
+
+      case '@ea':
+      case '@东亚':
+        resolved.push(...filterRegionsByContinent(activeRegions, 'ea'));
+        break;
+
       case '@defaultproxy':
       case '@proxy':
         resolved.push(defaultProxy);
@@ -219,7 +291,7 @@ function evaluateGroupDefinition(groupDef, context = {}) {
     rawType = 'select';
   }
 
-  // 2. 节点挑人与过滤
+  // 2. 节点匹配与筛选
   let matchedNodeNames = [];
   if (groupDef.match || groupDef.exclude) {
     const matched = filterNodes(classifiedNodes, {

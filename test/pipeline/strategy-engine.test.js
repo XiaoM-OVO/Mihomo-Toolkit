@@ -128,6 +128,47 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       });
       assert.deepEqual(resolved, ['DIRECT', '节点1', '自动选择']);
     });
+
+    it('大洲与次大区宏替换 (@asia, @europe, @americas, @sea, @oceania)', () => {
+      const activeRegions = [
+        '香港节点',
+        '日本节点',
+        '新加坡节点',
+        '美国节点',
+        '德国节点',
+        '东南亚节点',
+        '其他节点'
+      ];
+      const macroContext = { activeRegions };
+
+      // 亚洲宏
+      const asiaResolved = resolveGroupProxies({
+        declaredProxies: ['@asia', 'DIRECT'],
+        macroContext
+      });
+      assert.deepEqual(asiaResolved, ['香港节点', '日本节点', '新加坡节点', '东南亚节点', 'DIRECT']);
+
+      // 欧洲宏
+      const euResolved = resolveGroupProxies({
+        declaredProxies: ['@europe', 'DIRECT'],
+        macroContext
+      });
+      assert.deepEqual(euResolved, ['德国节点', 'DIRECT']);
+
+      // 美洲宏
+      const amResolved = resolveGroupProxies({
+        declaredProxies: ['@americas', 'DIRECT'],
+        macroContext
+      });
+      assert.deepEqual(amResolved, ['美国节点', 'DIRECT']);
+
+      // 东南亚次大区宏
+      const seaResolved = resolveGroupProxies({
+        declaredProxies: ['@sea', 'DIRECT'],
+        macroContext
+      });
+      assert.deepEqual(seaResolved, ['新加坡节点', '东南亚节点', 'DIRECT']);
+    });
   });
 
   describe('3. 单个策略组定义求解 (evaluateGroupDefinition)', () => {
@@ -155,7 +196,7 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       }
     ];
 
-    it('select 组装配与 match 动态挑人', () => {
+    it('select 组装配与 match 动态节点筛选', () => {
       const groupDef = {
         name: '流媒体精选',
         type: 'select',
