@@ -198,8 +198,8 @@ function detectRegion(name, defs = DEFAULT_ENHANCED_DEFS) {
   const matchedDefs = [];
   for (const r of defs) {
     const regs = [
-      r._matchReg || (r.reg ? new RegExp(r.city ? r.reg.source + '|' + r.city : r.reg.source, 'i') : null),
-      r._codeMatchReg || r.codeReg || null
+      r.matchReg || (r.reg ? new RegExp(r.city ? r.reg.source + '|' + r.city : r.reg.source, 'i') : null),
+      r.codeReg || null
     ].filter(Boolean);
 
     for (const reg of regs) {
@@ -298,8 +298,8 @@ function extractMetadata(rawName) {
     status = 'partial';
   } else if (regionDef) {
     const metaMapping = REGION_METADATA_MAP[regionDef.name] || {
-      groupKey: (regionDef.id || regionDef.name || 'unknown').toLowerCase(),
-      countryCode: (regionDef.id && regionDef.id.length === 2 ? regionDef.id.toUpperCase() : null),
+      groupKey: regionDef.id || 'unknown',
+      countryCode: regionDef.code || (regionDef.id && regionDef.id.length === 2 ? regionDef.id.toUpperCase() : null),
       regionName: regionDef.name || null
     };
     groupKey = metaMapping.groupKey;

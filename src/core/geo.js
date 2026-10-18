@@ -29,8 +29,8 @@ function matchNodeRegion(name, regionDefs, options = {}) {
 
   const matchedRegions = defs.flatMap(r => {
     const regs = [
-      r._matchReg || (r.reg ? new RegExp(r.city ? r.reg.source + '|' + r.city : r.reg.source, 'i') : null),
-      r._codeMatchReg || r.codeReg || null
+      r.matchReg || (r.reg ? new RegExp(r.city ? r.reg.source + '|' + r.city : r.reg.source, 'i') : null),
+      r.codeReg || null
     ].filter(Boolean);
     return regs.map(reg => {
       const m = name.match(reg);
@@ -63,13 +63,18 @@ function matchNodeRegion(name, regionDefs, options = {}) {
       }
       const dynamicName = flagMatch[2].trim();
       return {
-        id: dynamicName,
+        id: dynamicName.toLowerCase(),
+        code: null,
         icon: flagIcon,
+        iconFile: 'Global.png',
         name: dynamicName,
+        groupName: `${dynamicName}节点`,
+        continent: 'other',
+        subGroup: 'other',
+        foldGroup: 'other',
         _isDynamic: true,
-        _cleanReg: new RegExp(escapeRegex(dynamicName), 'ig'),
-        _matchReg: new RegExp(escapeRegex(dynamicName), 'i'),
-        _cityReg: null
+        matchReg: new RegExp(escapeRegex(dynamicName), 'i'),
+        cityReg: null
       };
     }
   }
@@ -85,7 +90,7 @@ function matchNodeRegion(name, regionDefs, options = {}) {
  */
 function extractCity(name, regionDef) {
   if (!name || !regionDef) return '';
-  const cityReg = regionDef._cityReg || (regionDef.city ? new RegExp(regionDef.city, 'i') : null);
+  const cityReg = regionDef.cityReg || (regionDef.city ? new RegExp(regionDef.city, 'i') : null);
   if (!cityReg) return '';
   const match = name.match(cityReg);
   return match ? match[0] : '';

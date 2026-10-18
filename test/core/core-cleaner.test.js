@@ -179,6 +179,24 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     }
   });
 
+  it('classifyNode - 全量收录地区均具备规范小写 groupKey 与 groupName (DE, UK, FR, AU, CA 等统一标准)', () => {
+    const nodes = [
+      { name: '🇩🇪 德国 法兰克福 01', expected: 'de', expectedGroup: '德国节点' },
+      { name: '🇬🇧 英国 伦敦 01', expected: 'uk', expectedGroup: '英国节点' },
+      { name: '🇫🇷 法国 巴黎 01', expected: 'fr', expectedGroup: '法国节点' },
+      { name: '🇦🇺 澳大利亚 悉尼 01', expected: 'au', expectedGroup: '澳大利亚节点' },
+      { name: '🇨🇦 加拿大 多伦多 01', expected: 'ca', expectedGroup: '加拿大节点' },
+      { name: '🇮🇳 印度 孟买 01', expected: 'in', expectedGroup: '印度节点' },
+      { name: '🇨🇳 中国 深圳 01', expected: 'cn', expectedGroup: '大陆节点' }
+    ];
+    for (const item of nodes) {
+      const res = classifyNode({ name: item.name, server: '1.2.3.4', port: 443 });
+      assert.equal(res.groupKey, item.expected, `${item.name} groupKey 应为 ${item.expected}`);
+      assert.equal(res.regionInfo.id, item.expected, `${item.name} regionInfo.id 应为 ${item.expected}`);
+      assert.equal(res.regionInfo.groupName, item.expectedGroup, `${item.name} groupName 应为 ${item.expectedGroup}`);
+    }
+  });
+
   it('extractNodeAttributes - 属性提取增强 (CMIN2 / AS9929 / x64避让 / 多格式入口识别)', () => {
     // 1. CMIN2 完整识别且不被 CMI 截断
     const cmin2 = extractNodeAttributes('香港 CMIN2 01');

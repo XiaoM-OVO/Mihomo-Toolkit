@@ -139,8 +139,9 @@ function compileRegionMatcher(spec) {
   return (item) => {
     const regionInfo = item.regionInfo;
     const id = (regionInfo?.id || '').toLowerCase();
+    const code = (regionInfo?.code || '').toLowerCase();
     const name = (regionInfo?.name || '').toLowerCase();
-    const group = (regionInfo?.group || '').toLowerCase();
+    const foldGroup = (regionInfo?.foldGroup || regionInfo?.group || '').toLowerCase();
     const groupKey = (item.groupKey || '').toLowerCase();
     const isUnknown = Boolean(item.isUnknownRegion || (!regionInfo && groupKey === 'unknown'));
 
@@ -149,7 +150,7 @@ function compileRegionMatcher(spec) {
         return isUnknown;
       }
       if (token === 'other' || token === '其它' || token === '其他') {
-        return groupKey === 'other' || group === 'other';
+        return groupKey === 'other' || foldGroup === 'other';
       }
 
       // 大洲与次大区层级匹配 (如 asia / 亚洲 / sea / 东南亚 / europe / americas 等)
@@ -159,8 +160,9 @@ function compileRegionMatcher(spec) {
 
       return (
         (id && id === token) ||
+        (code && code === token) ||
         (name && (name === token || name.includes(token))) ||
-        (group && group === token) ||
+        (foldGroup && foldGroup === token) ||
         (groupKey && groupKey === token)
       );
     };

@@ -57,7 +57,7 @@ function computeNodeIndices(items = [], options = {}) {
 
   items.forEach(item => {
     if (!item || item.skip || item.isSpecial || item.isInfo || !item.regionInfo) return;
-    const regionKey = item.regionInfo.id || item.regionInfo.name;
+    const regionKey = item.regionInfo.id;
     const tag = item.airportTag || '';
     const prefix = item.indexPrefix || getTrustedProxyMetadata(item.proxy, 'indexPrefix') || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
     const isoBucket = item.isolateBucket !== undefined ? item.isolateBucket : getIsolationBucket(item, options);
@@ -77,7 +77,7 @@ function computeNodeIndices(items = [], options = {}) {
       indexMap.set(item, '');
       return;
     }
-    const regionKey = item.regionInfo.id || item.regionInfo.name;
+    const regionKey = item.regionInfo.id;
     const tag = item.airportTag || '';
     const prefix = item.indexPrefix || getTrustedProxyMetadata(item.proxy, 'indexPrefix') || (options.indexPrefixMap && options.indexPrefixMap[tag]) || '';
     const isoBucket = item.isolateBucket !== undefined ? item.isolateBucket : getIsolationBucket(item, options);

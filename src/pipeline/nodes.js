@@ -177,7 +177,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       isolateReason = '实验节点隔离';
     } else if (item.regionInfo) {
       const icon = item.regionInfo.icon ? `${item.regionInfo.icon} ` : '';
-      groupName = `${icon}${item.regionInfo.name}节点`;
+      groupName = `${icon}${item.regionInfo.groupName || `${item.regionInfo.name}节点`}`;
     } else {
       groupName = '🌐 其他节点';
     }

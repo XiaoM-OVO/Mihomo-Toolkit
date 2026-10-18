@@ -263,8 +263,8 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
       {
         proxy: { name: '🇩🇪 德国 01' },
         rawName: '🇩🇪 德国 01',
-        regionInfo: { group: 'eu', name: '德国' },
-        groupKey: '德国',
+        regionInfo: { id: 'de', code: 'DE', name: '德国', groupName: '德国节点', foldGroup: 'eu', continent: 'europe' },
+        groupKey: 'de',
         tags: []
       }
     ];
@@ -280,10 +280,10 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.ok(!defaultGroupNames.includes('德国节点'), '默认德国节点不足3个应折叠');
     assert.ok(resDefault.buckets.other.includes('🇩🇪 德国 01'), '德国节点不足3个且欧洲大洲不足3个，最终折叠进 other 桶');
 
-    // Case 2: 用户自定义 coreRegions: ['德国'] (将德国设为主力，香港排除出主力)
+    // Case 2: 用户自定义 coreRegions: ['de'] (将德国设为主力，香港排除出主力)
     const resCustom = buildProxyTopology({
       classifiedNodes,
-      userConfig: { ...DEFAULT_CONFIG, minorNodeThreshold: 3, coreRegions: ['德国'] },
+      userConfig: { ...DEFAULT_CONFIG, minorNodeThreshold: 3, coreRegions: ['de'] },
       registries
     });
     const customGroupNames = resCustom.proxyGroups.map(g => g.name);

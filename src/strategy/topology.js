@@ -279,7 +279,7 @@ function buildProxyTopology({
     : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});
 
   const regionDefs = getEnhancedRegionDefs();
-  const mixedRegionIds = [...new Set(regionDefs.map(r => r.group).filter(Boolean)), 'other'];
+  const mixedRegionIds = [...CONTINENT_DEFS.map(c => c.id), 'other'];
 
   // 1. 初始化分发桶
   const buckets = {
@@ -338,7 +338,7 @@ function buildProxyTopology({
     // 家宽池 (由 enableResidential 策略控制是否入桶)
     if (userConfig.enableResidential && tags.includes('residential')) {
       addToBucket(buckets.residential, finalName);
-      const resiKey = item.regionInfo?.id || item.regionInfo?.name || 'other';
+      const resiKey = item.regionInfo?.id || 'other';
       if (!buckets.resiRegionMap[resiKey]) buckets.resiRegionMap[resiKey] = [];
       addToBucket(buckets.resiRegionMap[resiKey], finalName);
     }
@@ -379,7 +379,9 @@ function buildProxyTopology({
     }
 
     // 2.5 正常合格进入大区桶与主力标准池
-    const rKey = item.regionInfo ? (item.regionInfo.id || item.regionInfo.name) : 'other';
+    const rKey = item.regionInfo
+      ? (item.regionInfo.id || regionDefs.find(r => r.name === item.regionInfo.name)?.id || 'other')
+      : 'other';
     if (!buckets[rKey]) buckets[rKey] = [];
     addToBucket(buckets[rKey], finalName);
 
@@ -392,38 +394,30 @@ function buildProxyTopology({
   const rawCoreList = Array.isArray(userConfig.coreRegions) ? userConfig.coreRegions : DEFAULT_CORE_REGIONS;
   const coreRegionIds = new Set(rawCoreList.map(k => String(k).toLowerCase()));
 
-  const getRegionDisplayName = (r) => {
-    if (r.id === 'cn' || r.name === '中国') return '大陆节点';
-    return `${r.name}节点`;
-  };
-
   const regionNames = {};
 
   // 先把已登记的地区元数据录入可用映射表，供下游 AI 偏好组等引用解析
   regionDefs.forEach(r => {
-    const key = r.id || r.name;
-    regionNames[key] = getRegionDisplayName(r);
+    regionNames[r.id] = r.groupName;
   });
   CONTINENT_DEFS.forEach(c => {
-    regionNames[c.id] = `${c.name}节点`;
+    regionNames[c.id] = c.groupName;
   });
 
   const threshold = userConfig.minorNodeThreshold ?? 3;
 
   regionDefs.forEach(r => {
-    const key = r.id || r.name;
-    const isCore = (r.id && coreRegionIds.has(r.id.toLowerCase())) ||
-                   (r.name && (coreRegionIds.has(r.name) || coreRegionIds.has(r.name.toLowerCase())));
-    const nodes = buckets[key];
+    const isCore = coreRegionIds.has(r.id.toLowerCase()) || coreRegionIds.has(r.name.toLowerCase());
+    const nodes = buckets[r.id];
     if (nodes && nodes.length > 0) {
       if (isCore || nodes.length >= threshold) {
         // 主力免折叠大区或节点数达到阈值：保持独立建组
       } else {
         // 小众地区节点折叠进大洲组或 other
-        const targetContinent = r.group || 'other';
+        const targetContinent = r.foldGroup || r.group || 'other';
         if (!buckets[targetContinent]) buckets[targetContinent] = [];
         buckets[targetContinent].push(...nodes);
-        buckets[key] = [];
+        buckets[r.id] = [];
       }
     }
   });
@@ -451,7 +445,7 @@ function buildProxyTopology({
       const gName = regionNames[k];
       const list = buckets[k] || [];
       if (list.length > 0) {
-        const rDef = regionDefs.find(r => (r.id || r.name) === k);
+        const rDef = regionDefs.find(r => r.id === k) || CONTINENT_DEFS.find(c => c.id === k);
         const iconPrefix = rDef?.icon ? `${rDef.icon} ` : '';
         const lowMultiCount = list.filter(name => {
           const item = classifiedNodes.find(n => (n.proxy?.name || n.rawName) === name);

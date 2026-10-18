@@ -147,10 +147,10 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
       const realHK = { regionInfo: { id: 'hk', name: '香港', continent: 'asia', subGroup: 'ea' } };
       const realJP = { regionInfo: { id: 'jp', name: '日本', continent: 'asia', subGroup: 'ea' } };
       const realSG = { regionInfo: { id: 'sg', name: '新加坡', continent: 'asia', subGroup: 'sea' } };
-      const realMY = { regionInfo: { name: '马来西亚', group: 'sea', continent: 'asia', subGroup: 'sea' } };
-      const realUS = { regionInfo: { id: 'us', name: '美国', continent: 'americas', subGroup: 'na' } };
-      const realDE = { regionInfo: { name: '德国', group: 'eu', continent: 'europe' } };
-      const realAU = { regionInfo: { name: '澳大利亚', continent: 'oceania', subGroup: 'oc' } };
+      const realMY = { regionInfo: { id: 'my', code: 'MY', name: '马来西亚', foldGroup: 'sea', continent: 'asia', subGroup: 'sea' } };
+      const realUS = { regionInfo: { id: 'us', code: 'US', name: '美国', continent: 'americas', subGroup: 'na' } };
+      const realDE = { regionInfo: { id: 'de', code: 'DE', name: '德国', foldGroup: 'eu', continent: 'europe' } };
+      const realAU = { regionInfo: { id: 'au', code: 'AU', name: '澳大利亚', foldGroup: 'oc', continent: 'oceania', subGroup: 'oc' } };
 
       // 亚洲及中文
       const asiaMatcher = compileRegionMatcher('asia');
@@ -189,6 +189,15 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
       const ocMatcher = compileRegionMatcher('oceania');
       assert.equal(ocMatcher(realAU), true);
       assert.equal(ocMatcher(realHK), false);
+
+      // 国家代号精准匹配 (de, au, my 等非核心原样支持)
+      const deMatcher = compileRegionMatcher('de');
+      assert.equal(deMatcher(realDE), true);
+      assert.equal(deMatcher(realUS), false);
+
+      const auMatcher = compileRegionMatcher('au');
+      assert.equal(auMatcher(realAU), true);
+      assert.equal(auMatcher(realHK), false);
     });
   });
 

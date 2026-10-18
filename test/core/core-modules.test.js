@@ -4,19 +4,37 @@ const assert = require('node:assert/strict');
 const { dedupeNodes } = require('../../src/core/dedupe');
 const { matchNodeRegion, extractCity } = require('../../src/core/geo');
 const { renderTemplate, createSeparatorCleaners, buildRenamePlan, applyRenamePlan } = require('../../src/core/rename');
-const { getEnhancedRegionDefs, validateMapping } = require('../../src/core/shared/regions');
+const { getEnhancedRegionDefs, validateMapping, isRegionInContinent, filterRegionsByContinent } = require('../../src/core/shared/regions');
 const { PROTOCOL_ICONS, FEATURE_ICONS, FEATURE_TEXT_MAP } = require('../../src/core/shared/icons');
 const { isPrivateIp, isAllowedUrl } = require('../../src/io/ssrf');
 const { formatBytes, calcResetDays } = require('../../src/strategy/dashboard');
 
 describe('【Core】核心基础构件 (modules)', () => {
-  it('shared/regions & icons - 共享字典与常量合法性', () => {
+  it('shared/regions & icons - 共享字典与常量合法性及单例缓存', () => {
     assert.equal(validateMapping(), true);
     const defs = getEnhancedRegionDefs();
     assert.ok(defs.length > 20);
+    // 验证不可变单例缓存，零重复编译
+    assert.equal(getEnhancedRegionDefs(), defs);
+    assert.ok(Object.isFrozen(defs));
+
     assert.equal(PROTOCOL_ICONS.vless, '🛸');
     assert.equal(FEATURE_ICONS.game, '🎮');
     assert.equal(FEATURE_TEXT_MAP.game, '游戏');
+
+    // 验证沙特 (sa) 与南亚次大区 (sas) 彻底脱敏无冲突
+    const saDef = defs.find(r => r.id === 'sa');
+    const inDef = defs.find(r => r.id === 'in');
+    assert.ok(saDef && inDef);
+    assert.equal(saDef.name, '沙特');
+    assert.equal(inDef.name, '印度');
+    assert.equal(isRegionInContinent(saDef, 'sas'), false);
+    assert.equal(isRegionInContinent(saDef, '南亚'), false);
+    assert.equal(isRegionInContinent(saDef, 'me'), true);
+    assert.equal(isRegionInContinent(inDef, 'sas'), true);
+    assert.equal(isRegionInContinent(inDef, '南亚'), true);
+    assert.deepEqual(filterRegionsByContinent(['沙特节点', '印度节点'], '南亚'), ['印度节点']);
+    assert.deepEqual(filterRegionsByContinent(['沙特节点', '印度节点'], '中东'), ['沙特节点']);
   });
 
   it('dedupe - 节点物理去重算法 (dedupeNodes)', () => {
@@ -60,6 +78,11 @@ describe('【Core】核心基础构件 (modules)', () => {
     assert.equal(matchNodeRegion('IT 01', defs)?.name, '意大利');
     assert.equal(matchNodeRegion('IS 01', defs)?.name, '冰岛');
     assert.equal(matchNodeRegion('MY 01', defs)?.name, '马来西亚');
+    // 反向回国节点：美->沪 必须命中中国 (cn) 而非美国 (us)，因匹配长度优先
+    assert.equal(matchNodeRegion('美->沪 回国专线 01', defs)?.id, 'cn');
+    // 普通中转节点：深->香港 必须命中落地香港 (hk) 而非国内入口深圳
+    assert.equal(matchNodeRegion('深->香港 01', defs)?.id, 'hk');
+    assert.equal(matchNodeRegion('深->德国 01', defs)?.id, 'de');
   });
 
   it('rename - 模板渲染与空变量清洗 (renderTemplate)', () => {

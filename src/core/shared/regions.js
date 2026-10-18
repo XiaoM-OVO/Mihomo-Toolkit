@@ -1,112 +1,603 @@
 /**
- * 地区识别字典与大洲分组
+ * 地区识别字典与大洲分组 (Region SSOT)
  *
- * 维护标准地区元数据、国旗 Emoji、落地城市及匹配正则。
+ * 维护标准地区元数据、国旗 Emoji、图标资源、落地城市及匹配正则。
  */
 
-// 入口地区/运营商前缀正则片段
-const IN_PREFIX = "(?:深|广|沪|京|杭|川|苏|甬|莞|移动|联通|电信|香港|台湾|日本|韩国|新加坡|美国|英国|德国|法国|澳洲|英|德|法|澳|美|日|韩|新|港|台)";
-const IN_PREFIX_OPTIONAL = `(?:${IN_PREFIX}(?:\\s*(?:->|=>|~>|→|⇒|-|—|=|>|至)\\s*|\\s+)?)?`;
+'use strict';
 
-// 顺序决定排序优先级与节点桶名
+const { SINGLE_EXIT_LOOKAHEAD } = require('../../data/cleaner-rules');
+
+// 顺序决定排序优先级与节点桶名 (全量标准化规范契约)
 const REGION_DEFS_RAW = [
   // --- 大中华区 ---
-  { id: "cn", name: "中国", continent: "asia", subGroup: "ea", icon: "🇨🇳", city: "深圳|广州|上海|北京|杭州|成都|武汉|南京", reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(?:CN(?!2)|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i },
-  { id: "hk", name: "香港", continent: "asia", subGroup: "ea", icon: "🇭🇰", _regTemplate: "香港|香江|(?<![空海端])港(?![口湾澳])|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong" },
-  { id: "mo", name: "澳门", continent: "asia", subGroup: "ea", icon: "🇲🇴", reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i },
-  { id: "tw", name: "台湾", continent: "asia", subGroup: "ea", icon: "🇹🇼", city: "台北|新北|台中|高雄|彰化", _regTemplate: "台湾|台灣|(?<![平前后戏平台])台(?![平前后湾灣风])|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet" },
+  {
+    id: "cn",
+    code: "CN",
+    name: "中国",
+    groupName: "大陆节点",
+    continent: "asia",
+    subGroup: "ea",
+    icon: "🇨🇳",
+    iconFile: "CN.png",
+    city: "深圳|广州|上海|北京|杭州|成都|武汉|南京",
+    // 说明：包含针对反向回国节点的正则 "(海外入口)->(国内落地)"。
+    // 在 geo.js 中采用最长匹配优先原则（如 "美->沪" 长度 4 优于 "美" 长度 1），确保稳定落地至中国。
+    reg: /回国|返乡|中国|大陆|内地|Mainland|(?<![a-zA-Z])(?:CN(?!2)|PRC)(?![a-zA-Z])|China|(?:美|日|韩|新|港|台|英|德|法|澳)(?:-|->|至|=>|\s)*(?:京|沪|广|深|国内|大陆|中国|落地)/i
+  },
+  {
+    id: "hk",
+    code: "HK",
+    name: "香港",
+    groupName: "香港节点",
+    continent: "asia",
+    subGroup: "ea",
+    icon: "🇭🇰",
+    iconFile: "HK.png",
+    reg: new RegExp(`香港|香江|(?<![空海端])港${SINGLE_EXIT_LOOKAHEAD.港}|(?<![a-zA-Z])(?:HK|HKT|HKBN|HGC|WTT|PCCW)(?![a-zA-Z])|Hong Kong`, "i")
+  },
+  {
+    id: "mo",
+    code: "MO",
+    name: "澳门",
+    groupName: "澳门节点",
+    continent: "asia",
+    subGroup: "ea",
+    icon: "🇲🇴",
+    iconFile: "MO.png",
+    reg: /澳门|澳門|Macau|Macao|(?<![a-zA-Z])CTM(?![a-zA-Z])/i
+  },
+  {
+    id: "tw",
+    code: "TW",
+    name: "台湾",
+    groupName: "台湾节点",
+    continent: "asia",
+    subGroup: "ea",
+    icon: "🇹🇼",
+    iconFile: "TW.png",
+    city: "台北|新北|台中|高雄|彰化",
+    reg: new RegExp(`台湾|台灣|(?<![平前后戏平台])台${SINGLE_EXIT_LOOKAHEAD.台}|(?<![a-zA-Z])(?:TW|APTG)(?![a-zA-Z])|Taiwan|Hinet|Kbro|Seednet`, "i")
+  },
 
   // --- 亚洲核心区 ---
-  { id: "jp", name: "日本", continent: "asia", subGroup: "ea", icon: "🇯🇵", city: "东京|大阪|埼玉|京都|川崎", _regTemplate: "日本|日(?![常用期间程志照益本])|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala" },
-  { id: "kr", name: "韩国", continent: "asia", subGroup: "ea", icon: "🇰🇷", city: "首尔|春川", _regTemplate: "韩国|韩(?![信国])|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea" },
-  { id: "sg", name: "新加坡", continent: "asia", subGroup: "sea", icon: "🇸🇬", city: "狮城", _regTemplate: "新加坡|新(?![建春年线增华上线节点加北坡])|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest" },
+  {
+    id: "jp",
+    code: "JP",
+    name: "日本",
+    groupName: "日本节点",
+    continent: "asia",
+    subGroup: "ea",
+    icon: "🇯🇵",
+    iconFile: "JP.png",
+    city: "东京|大阪|埼玉|京都|川崎",
+    reg: new RegExp(`日本|日${SINGLE_EXIT_LOOKAHEAD.日}|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala`, "i")
+  },
+  {
+    id: "kr",
+    code: "KR",
+    name: "韩国",
+    groupName: "韩国节点",
+    continent: "asia",
+    subGroup: "ea",
+    icon: "🇰🇷",
+    iconFile: "KR.png",
+    city: "首尔|春川",
+    reg: /韩国|韩(?![信国])|(?<![a-zA-Z])KR(?![a-zA-Z])|Korea/i
+  },
+  {
+    id: "sg",
+    code: "SG",
+    name: "新加坡",
+    groupName: "新加坡节点",
+    continent: "asia",
+    subGroup: "sea",
+    foldGroup: "sea",
+    icon: "🇸🇬",
+    iconFile: "SG.png",
+    city: "狮城",
+    reg: new RegExp(`新加坡|新${SINGLE_EXIT_LOOKAHEAD.新}|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest`, "i")
+  },
 
   // --- 北美大区 ---
-  { id: "us", name: "美国", continent: "americas", subGroup: "na", icon: "🇺🇸", city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿", _regTemplate: "美国|西美|美西|美东|(?<![完优赞欧])美(?![食味丽国西东])|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America|United States" },
+  {
+    id: "us",
+    code: "US",
+    name: "美国",
+    groupName: "美国节点",
+    continent: "americas",
+    subGroup: "na",
+    foldGroup: "am",
+    icon: "🇺🇸",
+    iconFile: "US.png",
+    city: "洛杉矶|圣何塞|西雅图|波特兰|达拉斯|芝加哥|亚特兰大|凤凰城|硅谷|纽约|迈阿密|华盛顿",
+    reg: new RegExp(`美国|西美|美西|美东|(?<![完优赞欧])美${SINGLE_EXIT_LOOKAHEAD.美}|(?<![a-zA-Z])(?:US|LAX)(?![a-zA-Z])|Los Angeles|America|United States`, "i")
+  },
 
   // --- 欧洲大区 ---
-  { group: "eu", continent: "europe", name: "英国",   icon: "🇬🇧", city: "伦敦|費勒姆", reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i },
-  { group: "eu", continent: "europe", name: "德国",   icon: "🇩🇪", city: "法兰克福", reg: /德国|(?<![a-zA-Z])DE(?![a-zA-Z])|Germany/i },
-  { group: "eu", continent: "europe", name: "法国",   icon: "🇫🇷", city: "巴黎", reg: /法国|(?<![a-zA-Z])FR(?![a-zA-Z])|France/i },
-  { group: "eu", continent: "europe", name: "俄罗斯", icon: "🇷🇺", city: "莫斯科|伯力|圣彼得堡|新西伯利亚", reg: /俄罗斯|(?<![a-zA-Z])RU(?![a-zA-Z])|Russia/i },
-  { group: "eu", continent: "europe", name: "乌克兰", icon: "🇺🇦", city: "基辅", reg: /乌克兰|(?<![a-zA-Z])UA(?![a-zA-Z])|Ukraine/i },
-  { group: "eu", continent: "europe", name: "西班牙", icon: "🇪🇸", city: "马德里", reg: /西班牙|(?<![a-zA-Z])ES(?![a-zA-Z])|Spain/i },
-  { group: "eu", continent: "europe", name: "荷兰",   icon: "🇳🇱", city: "阿姆斯特丹", reg: /荷兰|(?<![a-zA-Z])NL(?![a-zA-Z])|Netherlands/i },
-  { group: "eu", continent: "europe", name: "瑞士",   icon: "🇨🇭", city: "苏黎世|日内瓦", reg: /瑞士|(?<![a-zA-Z])CH(?![a-zA-Z])|Switzerland/i },
-  { group: "eu", continent: "europe", name: "意大利", icon: "🇮🇹", city: "米兰|罗马", reg: /意大利|Italy/i, codeReg: /(?<![a-zA-Z])IT(?![a-zA-Z])/ },
-  { group: "eu", continent: "europe", name: "瑞典",   icon: "🇸🇪", city: "斯德哥尔摩", reg: /瑞典|(?<![a-zA-Z])SE(?![a-zA-Z])|Sweden/i },
-  { group: "eu", continent: "europe", name: "爱尔兰", icon: "🇮🇪", city: "都柏林", reg: /爱尔兰|(?<![a-zA-Z])IE(?![a-zA-Z])|Ireland/i },
-  { group: "eu", continent: "europe", name: "波兰",   icon: "🇵🇱", city: "华沙", reg: /波兰|(?<![a-zA-Z])PL(?![a-zA-Z])|Poland/i },
-  { group: "eu", continent: "europe", name: "芬兰",   icon: "🇫🇮", city: "赫尔辛基", reg: /芬兰|(?<![a-zA-Z])FI(?![a-zA-Z])|Finland/i },
-  { group: "eu", continent: "europe", name: "冰岛",   icon: "🇮🇸", city: "雷克雅未克", reg: /冰岛|Iceland/i, codeReg: /(?<![a-zA-Z])IS(?![a-zA-Z])/ },
+  {
+    id: "uk",
+    code: "GB",
+    name: "英国",
+    groupName: "英国节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇬🇧",
+    iconFile: "UK.png",
+    city: "伦敦|費勒姆",
+    reg: /英国|(?<![a-zA-Z])UK(?![a-zA-Z])|United Kingdom|Britain/i
+  },
+  {
+    id: "de",
+    code: "DE",
+    name: "德国",
+    groupName: "德国节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇩🇪",
+    iconFile: "DE.png",
+    city: "法兰克福",
+    reg: /德国|(?<![a-zA-Z])DE(?![a-zA-Z])|Germany/i
+  },
+  {
+    id: "fr",
+    code: "FR",
+    name: "法国",
+    groupName: "法国节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇫🇷",
+    iconFile: "FR.png",
+    city: "巴黎",
+    reg: /法国|(?<![a-zA-Z])FR(?![a-zA-Z])|France/i
+  },
+  {
+    id: "ru",
+    code: "RU",
+    name: "俄罗斯",
+    groupName: "俄罗斯节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇷🇺",
+    iconFile: "RU.png",
+    city: "莫斯科|伯力|圣彼得堡|新西伯利亚",
+    reg: /俄罗斯|(?<![a-zA-Z])RU(?![a-zA-Z])|Russia/i
+  },
+  {
+    id: "ua",
+    code: "UA",
+    name: "乌克兰",
+    groupName: "乌克兰节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇺🇦",
+    iconFile: "UA.png",
+    city: "基辅",
+    reg: /乌克兰|(?<![a-zA-Z])UA(?![a-zA-Z])|Ukraine/i
+  },
+  {
+    id: "es",
+    code: "ES",
+    name: "西班牙",
+    groupName: "西班牙节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇪🇸",
+    iconFile: "ES.png",
+    city: "马德里",
+    reg: /西班牙|(?<![a-zA-Z])ES(?![a-zA-Z])|Spain/i
+  },
+  {
+    id: "nl",
+    code: "NL",
+    name: "荷兰",
+    groupName: "荷兰节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇳🇱",
+    iconFile: "NL.png",
+    city: "阿姆斯特丹",
+    reg: /荷兰|(?<![a-zA-Z])NL(?![a-zA-Z])|Netherlands/i
+  },
+  {
+    id: "ch",
+    code: "CH",
+    name: "瑞士",
+    groupName: "瑞士节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇨🇭",
+    iconFile: "CH.png",
+    city: "苏黎世|日内瓦",
+    reg: /瑞士|(?<![a-zA-Z])CH(?![a-zA-Z])|Switzerland/i
+  },
+  {
+    id: "it",
+    code: "IT",
+    name: "意大利",
+    groupName: "意大利节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇮🇹",
+    iconFile: "IT.png",
+    city: "米兰|罗马",
+    reg: /意大利|Italy/i,
+    // 注意：两字母代码 IT 为常用英文单词，绝不能加 i 标志做不区分大小写匹配，必须严格大写匹配
+    codeReg: /(?<![a-zA-Z])IT(?![a-zA-Z])/
+  },
+  {
+    id: "se",
+    code: "SE",
+    name: "瑞典",
+    groupName: "瑞典节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇸🇪",
+    iconFile: "SE.png",
+    city: "斯德哥尔摩",
+    reg: /瑞典|(?<![a-zA-Z])SE(?![a-zA-Z])|Sweden/i
+  },
+  {
+    id: "ie",
+    code: "IE",
+    name: "爱尔兰",
+    groupName: "爱尔兰节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇮🇪",
+    iconFile: "IE.png",
+    city: "都柏林",
+    reg: /爱尔兰|(?<![a-zA-Z])IE(?![a-zA-Z])|Ireland/i
+  },
+  {
+    id: "pl",
+    code: "PL",
+    name: "波兰",
+    groupName: "波兰节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇵🇱",
+    iconFile: "PL.png",
+    city: "华沙",
+    reg: /波兰|(?<![a-zA-Z])PL(?![a-zA-Z])|Poland/i
+  },
+  {
+    id: "fi",
+    code: "FI",
+    name: "芬兰",
+    groupName: "芬兰节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇫🇮",
+    iconFile: "FI.png",
+    city: "赫尔辛基",
+    reg: /芬兰|(?<![a-zA-Z])FI(?![a-zA-Z])|Finland/i
+  },
+  {
+    id: "is",
+    code: "IS",
+    name: "冰岛",
+    groupName: "冰岛节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇮🇸",
+    iconFile: "IS.png",
+    city: "雷克雅未克",
+    reg: /冰岛|Iceland/i,
+    // 注意：两字母代码 IS 为常用英文单词 (is)，必须严格大写匹配
+    codeReg: /(?<![a-zA-Z])IS(?![a-zA-Z])/
+  },
 
   // --- 南亚大区 ---
-  { group: "sa", continent: "asia", subGroup: "sa", name: "印度",     icon: "🇮🇳", city: "孟买|新德里", reg: /印度|India/i, codeReg: /(?<![a-zA-Z])IN(?![a-zA-Z])/ },
+  {
+    id: "in",
+    code: "IN",
+    name: "印度",
+    groupName: "印度节点",
+    continent: "asia",
+    subGroup: "sas",
+    foldGroup: "sas",
+    icon: "🇮🇳",
+    iconFile: "IN.png",
+    city: "孟买|新德里",
+    reg: /印度|India/i,
+    // 注意：两字母代码 IN 为常用英文单词 (in)，必须严格大写匹配
+    codeReg: /(?<![a-zA-Z])IN(?![a-zA-Z])/
+  },
 
   // --- 东南亚大区 ---
-  { group: "sea", continent: "asia", subGroup: "sea", name: "马来西亚", icon: "🇲🇾", city: "吉隆坡", reg: /马来|马来西亚|Malaysia/i, codeReg: /(?<![a-zA-Z])MY(?![a-zA-Z])/ },
-  { group: "sea", continent: "asia", subGroup: "sea", name: "泰国",     icon: "🇹🇭", city: "曼谷", reg: /泰国|(?<![a-zA-Z])TH(?![a-zA-Z])|Thailand/i },
-  { group: "sea", continent: "asia", subGroup: "sea", name: "印尼",     icon: "🇮🇩", city: "雅加达", reg: /印尼|印度尼西亚|(?<![a-zA-Z])ID(?![a-zA-Z])|Indonesia/i },
-  { group: "sea", continent: "asia", subGroup: "sea", name: "菲律宾",   icon: "🇵🇭", city: "马尼拉", reg: /菲律宾|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i },
-  { group: "sea", continent: "asia", subGroup: "sea", name: "越南",     icon: "🇻🇳", city: "胡志明|河内", reg: /越南|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i },
+  {
+    id: "my",
+    code: "MY",
+    name: "马来西亚",
+    groupName: "马来西亚节点",
+    continent: "asia",
+    subGroup: "sea",
+    foldGroup: "sea",
+    icon: "🇲🇾",
+    iconFile: "MY.png",
+    city: "吉隆坡",
+    reg: /马来|马来西亚|Malaysia/i,
+    // 注意：两字母代码 MY 为常用英文单词 (my)，必须严格大写匹配
+    codeReg: /(?<![a-zA-Z])MY(?![a-zA-Z])/
+  },
+  {
+    id: "th",
+    code: "TH",
+    name: "泰国",
+    groupName: "泰国节点",
+    continent: "asia",
+    subGroup: "sea",
+    foldGroup: "sea",
+    icon: "🇹🇭",
+    iconFile: "TH.png",
+    city: "曼谷",
+    reg: /泰国|(?<![a-zA-Z])TH(?![a-zA-Z])|Thailand/i
+  },
+  {
+    id: "id",
+    code: "ID",
+    name: "印尼",
+    groupName: "印尼节点",
+    continent: "asia",
+    subGroup: "sea",
+    foldGroup: "sea",
+    icon: "🇮🇩",
+    iconFile: "ID.png",
+    city: "雅加达",
+    reg: /印尼|印度尼西亚|(?<![a-zA-Z])ID(?![a-zA-Z])|Indonesia/i
+  },
+  {
+    id: "ph",
+    code: "PH",
+    name: "菲律宾",
+    groupName: "菲律宾节点",
+    continent: "asia",
+    subGroup: "sea",
+    foldGroup: "sea",
+    icon: "🇵🇭",
+    iconFile: "PH.png",
+    city: "马尼拉",
+    reg: /菲律宾|(?<![a-zA-Z])PH(?![a-zA-Z])|Philippines/i
+  },
+  {
+    id: "vn",
+    code: "VN",
+    name: "越南",
+    groupName: "越南节点",
+    continent: "asia",
+    subGroup: "sea",
+    foldGroup: "sea",
+    icon: "🇻🇳",
+    iconFile: "VN.png",
+    city: "胡志明|河内",
+    reg: /越南|(?<![a-zA-Z])VN(?![a-zA-Z])|Vietnam/i
+  },
 
   // --- 美洲大区 ---
-  { group: "am", continent: "americas", subGroup: "na", name: "加拿大",    icon: "🇨🇦", city: "多伦多|温哥华|蒙特利尔", reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i },
-  { group: "am", continent: "americas", subGroup: "latam", name: "阿根廷",    icon: "🇦🇷", city: "布宜诺斯艾利斯", reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i },
-  { group: "am", continent: "americas", subGroup: "latam", name: "巴西",      icon: "🇧🇷", city: "圣保罗", reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i },
-  { group: "am", continent: "americas", subGroup: "na", name: "墨西哥",    icon: "🇲🇽", reg: /墨西哥|(?<![a-zA-Z])MX(?![a-zA-Z])|Mexico/i },
-  { group: "am", continent: "americas", subGroup: "latam", name: "智利",      icon: "🇨🇱", reg: /智利|(?<![a-zA-Z])CL(?![a-zA-Z])|Chile/i },
+  {
+    id: "ca",
+    code: "CA",
+    name: "加拿大",
+    groupName: "加拿大节点",
+    continent: "americas",
+    subGroup: "na",
+    foldGroup: "am",
+    icon: "🇨🇦",
+    iconFile: "CA.png",
+    city: "多伦多|温哥华|蒙特利尔",
+    reg: /加拿大|(?<![a-zA-Z])CA(?![a-zA-Z])|Canada/i
+  },
+  {
+    id: "ar",
+    code: "AR",
+    name: "阿根廷",
+    groupName: "阿根廷节点",
+    continent: "americas",
+    subGroup: "latam",
+    foldGroup: "am",
+    icon: "🇦🇷",
+    iconFile: "AR.png",
+    city: "布宜诺斯艾利斯",
+    reg: /阿根廷|(?<![a-zA-Z])AR(?![a-zA-Z])|Argentina/i
+  },
+  {
+    id: "br",
+    code: "BR",
+    name: "巴西",
+    groupName: "巴西节点",
+    continent: "americas",
+    subGroup: "latam",
+    foldGroup: "am",
+    icon: "🇧🇷",
+    iconFile: "BR.png",
+    city: "圣保罗",
+    reg: /巴西|(?<![a-zA-Z])BR(?![a-zA-Z])|Brazil/i
+  },
+  {
+    id: "mx",
+    code: "MX",
+    name: "墨西哥",
+    groupName: "墨西哥节点",
+    continent: "americas",
+    subGroup: "na",
+    foldGroup: "am",
+    icon: "🇲🇽",
+    iconFile: "MX.png",
+    reg: /墨西哥|(?<![a-zA-Z])MX(?![a-zA-Z])|Mexico/i
+  },
+  {
+    id: "cl",
+    code: "CL",
+    name: "智利",
+    groupName: "智利节点",
+    continent: "americas",
+    subGroup: "latam",
+    foldGroup: "am",
+    icon: "🇨🇱",
+    iconFile: "CL.png",
+    reg: /智利|(?<![a-zA-Z])CL(?![a-zA-Z])|Chile/i
+  },
 
   // --- 中东大区 ---
-  { group: "me", continent: "asia", subGroup: "me", name: "阿联酋",    icon: "🇦🇪", city: "迪拜", reg: /阿联酋|迪拜|(?<![a-zA-Z])(?:AE|UAE)(?![a-zA-Z])/i },
-  { group: "me", continent: "asia", subGroup: "me", name: "土耳其",    icon: "🇹🇷", city: "伊斯坦布尔", reg: /土耳其|(?<![a-zA-Z])TR(?![a-zA-Z])|Turkey/i },
-  { group: "me", continent: "asia", subGroup: "me", name: "沙特",      icon: "🇸🇦", city: "利雅得|吉达", reg: /沙特|阿拉伯|(?<![a-zA-Z])SA(?![a-zA-Z])|Saudi/i },
-  { group: "me", continent: "asia", subGroup: "me", name: "以色列",    icon: "🇮🇱", city: "特拉维夫", reg: /以色列|(?<![a-zA-Z])IL(?![a-zA-Z])|Israel/i },
+  {
+    id: "ae",
+    code: "AE",
+    name: "阿联酋",
+    groupName: "阿联酋节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇦🇪",
+    iconFile: "AE.png",
+    city: "迪拜",
+    reg: /阿联酋|迪拜|(?<![a-zA-Z])(?:AE|UAE)(?![a-zA-Z])/i
+  },
+  {
+    id: "tr",
+    code: "TR",
+    name: "土耳其",
+    groupName: "土耳其节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇹🇷",
+    iconFile: "TR.png",
+    city: "伊斯坦布尔",
+    reg: /土耳其|(?<![a-zA-Z])TR(?![a-zA-Z])|Turkey/i
+  },
+  {
+    id: "sa",
+    code: "SA",
+    name: "沙特",
+    groupName: "沙特节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇸🇦",
+    iconFile: "SA.png",
+    city: "利雅得|吉达",
+    reg: /沙特|阿拉伯|(?<![a-zA-Z])SA(?![a-zA-Z])|Saudi/i
+  },
+  {
+    id: "il",
+    code: "IL",
+    name: "以色列",
+    groupName: "以色列节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇮🇱",
+    iconFile: "IL.png",
+    city: "特拉维夫",
+    reg: /以色列|(?<![a-zA-Z])IL(?![a-zA-Z])|Israel/i
+  },
 
   // --- 非洲大区 ---
-  { group: "af", continent: "africa", name: "南非",      icon: "🇿🇦", city: "约翰内斯堡", reg: /南非|(?<![a-zA-Z])ZA(?![a-zA-Z])|South Africa/i },
-  { group: "af", continent: "africa", name: "尼日利亚",  icon: "🇳🇬", reg: /尼日利亚|(?<![a-zA-Z])NG(?![a-zA-Z])|Nigeria/i },
-  { group: "af", continent: "africa", name: "埃及",      icon: "🇪🇬", city: "开罗", reg: /埃及|(?<![a-zA-Z])EG(?![a-zA-Z])|Egypt/i },
+  {
+    id: "za",
+    code: "ZA",
+    name: "南非",
+    groupName: "南非节点",
+    continent: "africa",
+    subGroup: "af",
+    foldGroup: "af",
+    icon: "🇿🇦",
+    iconFile: "ZA.png",
+    city: "约翰内斯堡",
+    reg: /南非|(?<![a-zA-Z])ZA(?![a-zA-Z])|South Africa/i
+  },
+  {
+    id: "ng",
+    code: "NG",
+    name: "尼日利亚",
+    groupName: "尼日利亚节点",
+    continent: "africa",
+    subGroup: "af",
+    foldGroup: "af",
+    icon: "🇳🇬",
+    iconFile: "NG.png",
+    reg: /尼日利亚|(?<![a-zA-Z])NG(?![a-zA-Z])|Nigeria/i
+  },
+  {
+    id: "eg",
+    code: "EG",
+    name: "埃及",
+    groupName: "埃及节点",
+    continent: "africa",
+    subGroup: "af",
+    foldGroup: "af",
+    icon: "🇪🇬",
+    iconFile: "EG.png",
+    city: "开罗",
+    reg: /埃及|(?<![a-zA-Z])EG(?![a-zA-Z])|Egypt/i
+  },
 
-  // --- 其他零散地区 ---
-  { continent: "oceania", subGroup: "oc", name: "澳大利亚", icon: "🇦🇺", city: "悉尼|墨尔本", reg: /澳大利亚|澳洲|(?<![a-zA-Z])AU(?![a-zA-Z])|Australia|Sydney/i },
+  // --- 大洋洲大区 ---
+  {
+    id: "au",
+    code: "AU",
+    name: "澳大利亚",
+    groupName: "澳大利亚节点",
+    continent: "oceania",
+    subGroup: "oc",
+    foldGroup: "oc",
+    icon: "🇦🇺",
+    iconFile: "AU.png",
+    city: "悉尼|墨尔本",
+    reg: /澳大利亚|澳洲|(?<![a-zA-Z])AU(?![a-zA-Z])|Australia|Sydney/i
+  }
 ];
 
-// 动态派生未定义 reg 的模板项
-for (const r of REGION_DEFS_RAW) {
-  if (r._regTemplate && !r.reg) {
-    r.reg = new RegExp(IN_PREFIX_OPTIONAL + '(?:' + r._regTemplate + ')', "i");
-  }
-}
-
-// 六大洲折叠大区定义
+// 七大洲与次大区折叠组定义
 const CONTINENT_DEFS = [
-  { id: "eu",  icon: "🇪🇺", name: "欧洲",   continent: "europe" },   // 👑 高频大区：英/德/法/俄 等
-  { id: "sea", icon: "🏝️", name: "东南亚", continent: "asia", subGroup: "sea" }, // 👑 高频大区：马/泰/印尼/越/菲 等
-  { id: "am",  icon: "🌵", name: "美洲",   continent: "americas" },   // 🌎 次高频：加/巴/阿/智 等
-  { id: "sa",  icon: "🍛", name: "南亚",   continent: "asia", subGroup: "sa" },   // 🍛 较冷门：印度/巴基斯坦 等
-  { id: "me",  icon: "🐪", name: "中东",   continent: "asia", subGroup: "me" },   // 🐪 冷门区：阿联酋/沙特/以色列 等
-  { id: "af",  icon: "🦁", name: "非洲",   continent: "africa" }    // 🦁 极冷区：南非/尼日利亚/埃及 等
+  { id: "eu",  icon: "🇪🇺", name: "欧洲",   groupName: "欧洲节点",   iconFile: "EU.png",      continent: "europe",   subGroup: "eu",  foldGroup: "eu" },
+  { id: "sea", icon: "🏝️", name: "东南亚", groupName: "东南亚节点", iconFile: "Global.png",  continent: "asia",     subGroup: "sea", foldGroup: "sea" },
+  // 说明：am 为美洲大区统一折叠组 (Americas)。具体国家按次大区细分为 na (北美) 与 latam (拉美)。
+  { id: "am",  icon: "🌵", name: "美洲",   groupName: "美洲节点",   iconFile: "America.png", continent: "americas", subGroup: "am",  foldGroup: "am" },
+  // 说明：南亚次大区代号统一采用 sas (South Asia Subregion)，与沙特国家代码 sa (Saudi Arabia) 解耦脱敏
+  { id: "sas", icon: "🍛", name: "南亚",   groupName: "南亚节点",   iconFile: "Global.png",  continent: "asia",     subGroup: "sas", foldGroup: "sas" },
+  { id: "me",  icon: "🐪", name: "中东",   groupName: "中东节点",   iconFile: "Global.png",  continent: "asia",     subGroup: "me",  foldGroup: "me" },
+  { id: "af",  icon: "🦁", name: "非洲",   groupName: "非洲节点",   iconFile: "Global.png",  continent: "africa",   subGroup: "af",  foldGroup: "af" },
+  { id: "oc",  icon: "🦘", name: "大洋洲", groupName: "大洋洲节点", iconFile: "AU.png",       continent: "oceania",  subGroup: "oc",  foldGroup: "oc" }
 ];
 
 /**
- * 运行时增强：预生成每个地区的 _cleanReg / _matchReg / _cityReg
+ * 运行时增强：预编译并装配每个地区的 matchReg / cityReg / codeReg
  */
 const REGION_FLAG_LOOKUPS = new WeakMap();
+let enhancedRegionDefsCache = null;
+let defaultRegionFlagLookupCache = null;
 
 function enhanceRegionDefs(defs) {
   defs.forEach(r => {
     const combinedSource = r.city ? `${r.reg.source}|${r.city}` : r.reg.source;
-    r._cleanReg = new RegExp(combinedSource, "ig");
-    r._matchReg = new RegExp(combinedSource, "i");
-    r._cityReg = r.city ? new RegExp(r.city, "i") : null;
-    r._codeMatchReg = r.codeReg || null;
+    r.matchReg = new RegExp(combinedSource, "i");
+    r.cityReg = r.city ? new RegExp(r.city, "i") : null;
+    r.codeReg = r.codeReg || null;
   });
   REGION_FLAG_LOOKUPS.set(defs, new Map(defs.filter(r => r.icon).map(r => [r.icon, r])));
   return defs;
 }
 
 function getRegionFlagLookup(defs) {
+  if (defs === enhancedRegionDefsCache && defaultRegionFlagLookupCache) {
+    return defaultRegionFlagLookupCache;
+  }
   let lookup = REGION_FLAG_LOOKUPS.get(defs);
   if (!lookup) {
     lookup = new Map((Array.isArray(defs) ? defs : []).filter(r => r?.icon).map(r => [r.icon, r]));
@@ -116,30 +607,52 @@ function getRegionFlagLookup(defs) {
 }
 
 /**
- * 获取一份完整增强过的地区定义列表克隆
+ * 获取完整增强过的地区定义列表（模块级不可变单例缓存，零重复编译开销）
  */
 function getEnhancedRegionDefs() {
-  const cloned = REGION_DEFS_RAW.map(r => ({ ...r }));
-  return enhanceRegionDefs(cloned);
+  if (!enhancedRegionDefsCache) {
+    const cloned = REGION_DEFS_RAW.map(r => ({ ...r }));
+    enhanceRegionDefs(cloned);
+    enhancedRegionDefsCache = Object.freeze(cloned);
+    defaultRegionFlagLookupCache = new Map(enhancedRegionDefsCache.filter(r => r.icon).map(r => [r.icon, r]));
+  }
+  return enhancedRegionDefsCache;
 }
 
 /**
- * 自检函数
+ * SSOT 自检函数：校验全量地区与大洲定义的完整性与唯一性，杜绝 ID 碰撞或字段漂移
  */
 function validateMapping() {
   const mismatches = [];
+  const seenIds = new Set();
+
   for (const r of REGION_DEFS_RAW) {
-    if (r._regTemplate != null) {
-      const expectedSource = IN_PREFIX_OPTIONAL + '(?:' + r._regTemplate + ')';
-      const actualSource = r.reg.source;
-      const rebuiltSource = new RegExp(expectedSource, "i").source;
-      if (actualSource !== rebuiltSource) {
-        mismatches.push(`${r.name}: reg.source 与 IN_PREFIX_OPTIONAL + _regTemplate 不一致`);
-      }
+    if (!r.id || typeof r.id !== 'string') {
+      mismatches.push(`${r.name || '未知'}: 缺少合法的 id 字段`);
+    } else if (seenIds.has(r.id)) {
+      mismatches.push(`${r.name}: 存在重复的地区 id "${r.id}"`);
+    } else {
+      seenIds.add(r.id);
+    }
+
+    if (!r.name) mismatches.push(`${r.id}: 缺少 name 字段`);
+    if (!r.groupName) mismatches.push(`${r.id}: 缺少 groupName 字段`);
+    if (!r.continent) mismatches.push(`${r.id}: 缺少 continent 字段`);
+    if (!r.icon) mismatches.push(`${r.id}: 缺少 icon 字段`);
+    if (!r.iconFile) mismatches.push(`${r.id}: 缺少 iconFile 字段`);
+    if (!(r.reg instanceof RegExp)) mismatches.push(`${r.id}: reg 必须为 RegExp 实例`);
+    if (r.codeReg && !(r.codeReg instanceof RegExp)) mismatches.push(`${r.id}: codeReg 必须为 RegExp 实例`);
+  }
+
+  // 校验大洲/次大区定义不与国家地区 ID 冲突（如 sas vs sa）
+  for (const c of CONTINENT_DEFS) {
+    if (seenIds.has(c.id)) {
+      mismatches.push(`大洲/次大区 id "${c.id}" (${c.name}) 与国家地区 id 冲突！`);
     }
   }
+
   if (mismatches.length) {
-    throw new Error("[region-defs] _regTemplate 校验失败:\n  " + mismatches.join("\n  "));
+    throw new Error("[region-defs] SSOT 校验失败:\n  " + mismatches.join("\n  "));
   }
   return true;
 }
@@ -166,16 +679,19 @@ function countryCodeFromFlag(icon) {
 
 /**
  * 权威地区元数据事实源 (单一事实源 SSOT，派生自 REGION_DEFS_RAW)
- * 映射标准地区名 -> { groupKey, countryCode, regionName }
+ * 映射标准地区名 -> { groupKey, countryCode, regionName, groupName, icon, continent, subGroup, foldGroup }
  */
 const REGION_METADATA_MAP = Object.freeze(
   REGION_DEFS_RAW.reduce((acc, r) => {
-    const code = countryCodeFromFlag(r.icon);
-    const groupKey = r.id || (r.name === '英国' ? 'uk' : (code ? code.toLowerCase() : 'unknown'));
     acc[r.name] = Object.freeze({
-      groupKey,
-      countryCode: code,
-      regionName: r.name
+      groupKey: r.id,
+      countryCode: r.code,
+      regionName: r.name,
+      groupName: r.groupName,
+      icon: r.icon,
+      continent: r.continent,
+      subGroup: r.subGroup,
+      foldGroup: r.foldGroup
     });
     return acc;
   }, {})
@@ -213,10 +729,10 @@ const CONTINENT_ALIAS_MAP = Object.freeze({
   southeastasia: 'sea',
   东南亚: 'sea',
 
-  sa: 'sa',
-  'south-asia': 'sa',
-  southasia: 'sa',
-  南亚: 'sa',
+  sas: 'sas',
+  'south-asia': 'sas',
+  southasia: 'sas',
+  南亚: 'sas',
 
   me: 'me',
   'middle-east': 'me',
@@ -244,7 +760,7 @@ const CONTINENT_ALIAS_MAP = Object.freeze({
 /**
  * 判断指定地区元数据是否属于特定大洲/次大区
  * @param {object} regionDef 地区元数据对象 (来自 REGION_DEFS_RAW、CONTINENT_DEFS 或节点 regionInfo)
- * @param {string} continentToken 大洲或次大区代号 (如 'asia', '欧洲', 'sea')
+ * @param {string} continentToken 大洲或次大区代号 (如 'asia', '欧洲', 'sea', 'sas')
  * @returns {boolean}
  */
 function isRegionInContinent(regionDef, continentToken) {
@@ -254,32 +770,14 @@ function isRegionInContinent(regionDef, continentToken) {
 
   const rContinent = (regionDef.continent || '').toLowerCase();
   const rSubGroup = (regionDef.subGroup || '').toLowerCase();
-  const rGroup = (regionDef.group || '').toLowerCase();
+  const rFoldGroup = (regionDef.foldGroup || regionDef.group || '').toLowerCase();
   const rId = (regionDef.id || '').toLowerCase();
 
-  // 兼容直接匹配 group 或 id (如单测 mock 的 group: 'asia')
-  if (rGroup === target || rId === target) {
-    return true;
-  }
-
   // 1. 大洲级全量匹配 (asia, europe, americas, oceania, africa)
-  if (target === 'asia' || target === 'europe' || target === 'americas' || target === 'oceania' || target === 'africa') {
-    if (rContinent === target) return true;
-    if (target === 'asia' && (rGroup === 'sea' || rGroup === 'sa' || rGroup === 'me' || rSubGroup === 'sea' || rSubGroup === 'sa' || rSubGroup === 'me' || rSubGroup === 'ea')) return true;
-    if (target === 'europe' && rGroup === 'eu') return true;
-    if (target === 'americas' && (rGroup === 'am' || rId === 'us' || rSubGroup === 'na' || rSubGroup === 'latam')) return true;
-    if (target === 'africa' && rGroup === 'af') return true;
-    if (target === 'oceania' && (rId === 'au' || regionDef.name === '澳大利亚')) return true;
-    return false;
-  }
+  if (rContinent === target) return true;
 
-  // 2. 次大区匹配 (sea, sa, me, na, latam, ea)
-  if (target === rSubGroup || target === rGroup) {
-    return true;
-  }
-  if (target === 'na' && rId === 'us') return true;
-  if (target === 'sea' && rId === 'sg') return true;
-  if (target === 'ea' && ['cn', 'hk', 'mo', 'tw', 'jp', 'kr'].includes(rId)) return true;
+  // 2. 次大区 / 折叠大区代码匹配 (ea, sea, sas, me, na, latam, eu, af, oc)
+  if (rSubGroup === target || rFoldGroup === target || rId === target) return true;
 
   return false;
 }
@@ -300,14 +798,14 @@ function filterRegionsByContinent(groupNames = [], continentToken) {
     if (!name || typeof name !== 'string') return false;
     const clean = name.replace(/节点$/, '').trim();
 
-    // 先检查 CONTINENT_DEFS (如 '欧洲', '东南亚', '美洲', '南亚', '中东', '非洲')
-    const contMatch = CONTINENT_DEFS.find(c => c.name === clean || c.id === clean.toLowerCase());
+    // 1. 匹配 CONTINENT_DEFS (如 '欧洲', '东南亚', '美洲', '南亚', '中东', '非洲', '大洋洲')
+    const contMatch = CONTINENT_DEFS.find(c => c.name === clean || c.groupName === name || c.id === clean.toLowerCase());
     if (contMatch) {
       return isRegionInContinent(contMatch, target);
     }
 
-    // 再检查 REGION_DEFS_RAW (如 '香港', '日本', '大陆' / '中国', '美国', '德国' 等)
-    const rMatch = defs.find(r => r.name === clean || (clean === '大陆' && (r.id === 'cn' || r.name === '中国')) || (r.id && r.id.toLowerCase() === clean.toLowerCase()));
+    // 2. 匹配具体地区 REGION_DEFS (如 '香港', '日本', '大陆', '美国', '德国' 等)
+    const rMatch = defs.find(r => r.name === clean || r.groupName === name || r.id === clean.toLowerCase());
     if (rMatch) {
       return isRegionInContinent(rMatch, target);
     }

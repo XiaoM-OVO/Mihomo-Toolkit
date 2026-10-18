@@ -451,7 +451,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   const transportTag = getTransportType(proxy);
 
   const isUnknownRegion = !regionInfo;
-  const groupKey = regionInfo ? (regionInfo.id || regionInfo.name) : 'unknown';
+  const groupKey = regionInfo ? regionInfo.id : 'unknown';
   const tagList = Array.from(tags);
   const isolateBucket = getIsolationBucket({ tags: tagList, attrs }, userConfig);
 

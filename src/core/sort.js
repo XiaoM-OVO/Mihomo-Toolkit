@@ -69,12 +69,11 @@ function compareNodes(a, b, options = {}) {
     return (a.rawName || a.proxy?.name || '').localeCompare(b.rawName || b.proxy?.name || '', 'zh-CN');
   }
 
-  // 2. 地理大区优先级
   const regionOrder = getRegionOrderMap();
-  const keyA = a.regionInfo ? (a.regionInfo.id || a.regionInfo.name) : null;
-  const keyB = b.regionInfo ? (b.regionInfo.id || b.regionInfo.name) : null;
-  const orderA = keyA ? (regionOrder.get(keyA.toLowerCase()) ?? regionOrder.get(keyA) ?? 9000) : 9999;
-  const orderB = keyB ? (regionOrder.get(keyB.toLowerCase()) ?? regionOrder.get(keyB) ?? 9000) : 9999;
+  const keyA = a.regionInfo ? a.regionInfo.id : null;
+  const keyB = b.regionInfo ? b.regionInfo.id : null;
+  const orderA = keyA ? (regionOrder.get(keyA.toLowerCase()) ?? 9000) : 9999;
+  const orderB = keyB ? (regionOrder.get(keyB.toLowerCase()) ?? 9000) : 9999;
   if (orderA !== orderB) return orderA - orderB;
 
   // 2.5 隔离分类优先级 (同一大区内，标准节点在最前，隔离节点按业务类别整齐归拢)
