@@ -71,7 +71,7 @@ function buildBuiltinAppRecipes({
 
   // 1. AI 分组
   if (userConfig.enableAI && effectiveRegistries.ai) {
-    const aiServices = userConfig.aiServices || ['chatgpt', 'gemini', 'claude', 'copilot'];
+    const aiServices = userConfig.aiServices || Object.keys(effectiveRegistries.ai);
     const defaultAiPref = userConfig.aiPreferredRegions || ['us', 'jp', 'tw', 'sg', 'kr', 'eu'];
 
     aiServices.forEach(key => {
@@ -99,7 +99,7 @@ function buildBuiltinAppRecipes({
 
   // 2. 流媒体分组
   if (userConfig.enableStreaming && effectiveRegistries.streaming) {
-    const streamingServices = userConfig.streamingServices || ['youtube', 'netflix', 'bilibili', 'disney', 'spotify', 'tiktok', 'bahamut', 'pixiv', 'twitch'];
+    const streamingServices = userConfig.streamingServices || Object.keys(effectiveRegistries.streaming);
     streamingServices.forEach(key => {
       const st = effectiveRegistries.streaming[key];
       if (!st) return;
@@ -120,7 +120,7 @@ function buildBuiltinAppRecipes({
 
   // 3. 社交分组
   if (userConfig.enableSocial && effectiveRegistries.social) {
-    const socialServices = userConfig.socialServices || ['twitter', 'facebook', 'instagram', 'discord'];
+    const socialServices = userConfig.socialServices || Object.keys(effectiveRegistries.social);
     const independentSocial = userConfig.independentSocial || ['twitter'];
     const nonIndependent = socialServices.filter(k => !independentSocial.includes(k) && effectiveRegistries.social[k]);
 
@@ -179,7 +179,7 @@ function buildBuiltinAppRecipes({
   if (effectiveRegistries.dev) {
     const devActive = Array.isArray(userConfig.devServices)
       ? userConfig.devServices
-      : ['github', 'scholar'];
+      : Object.keys(effectiveRegistries.dev);
 
     devActive.forEach(key => {
       if (key === 'github' && userConfig.enableGitHub === false) return;
@@ -234,7 +234,7 @@ function buildBuiltinAppRecipes({
 
   // 6. 系统服务
   if (userConfig.enableSystemServices && effectiveRegistries.system) {
-    const systemServices = userConfig.systemServices || ['microsoft', 'apple', 'google'];
+    const systemServices = userConfig.systemServices || Object.keys(effectiveRegistries.system);
     systemServices.forEach(key => {
       const sys = effectiveRegistries.system[key];
       if (sys) {
