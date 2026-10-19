@@ -137,7 +137,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
 
   // 确保聚合组与专项组元数据保底挂载 (如外部传入了精简的自定义 registries 字典)
   const { DEFAULT_AGGREGATE_GROUPS, SPECIAL_SERVICES } = require('../config/catalog');
-  const aggregateSources = effectiveRegistries._aggregate || DEFAULT_AGGREGATE_GROUPS;
+  const aggregateSources = effectiveRegistries.aggregates || effectiveRegistries._aggregate || DEFAULT_AGGREGATE_GROUPS;
   for (const [cleanName, def] of Object.entries(aggregateSources)) {
     const fullName = def.fullName || (def.emoji ? `${def.emoji} ${cleanName}` : (def.uiIcon ? `${def.uiIcon} ${cleanName}` : cleanName));
     emojiMap[cleanName] = fullName;
@@ -149,7 +149,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     }
   }
 
-  const specialSources = effectiveRegistries._specialized || SPECIAL_SERVICES;
+  const specialSources = effectiveRegistries.specialized || effectiveRegistries._specialized || SPECIAL_SERVICES;
   for (const def of Object.values(specialSources)) {
     const cleanName = def.cleanName || def.name;
     if (!cleanName) continue;
@@ -164,7 +164,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
   }
 
   for (const [catName, catServices] of Object.entries(effectiveRegistries)) {
-    if (catName.startsWith('_')) continue;
+    if (catName === 'aggregates' || catName === 'specialized' || catName.startsWith('_')) continue;
     if (catServices && typeof catServices === 'object') {
       Object.values(catServices).forEach(item => {
         if (item && item.cleanName) {

@@ -36,30 +36,61 @@ const DEFAULT_REPOS = {
 // ─────────────────────────────────────────────────────────────
 // 2. 专项独立服务与聚合策略组定义
 // ─────────────────────────────────────────────────────────────
+const DEFAULT_AGGREGATES = Object.freeze({
+  game: {
+    service: {
+      name: '游戏服务',
+      emoji: '🎮',
+      icon: { repo: 'koolson', file: 'Game.png' },
+      proxies: ['DIRECT', '@standardOptions', '@buckets.game']
+    },
+    download: {
+      name: '游戏下载',
+      emoji: '🎮',
+      icon: { repo: 'koolson', file: 'Game.png' },
+      proxies: ['DIRECT', '下载策略', '自动选择', '手动选择', '@buckets.game']
+    }
+  },
+  social: {
+    combined: {
+      name: '社交平台',
+      emoji: '💬',
+      icon: { repo: 'koolson', file: 'Discord.png' },
+      proxies: ['@standardOptions', 'DIRECT']
+    }
+  }
+});
+
 const DEFAULT_AGGREGATE_GROUPS = Object.freeze({
-  '游戏服务': { emoji: '🎮', icon: { repo: 'koolson', file: 'Game.png' } },
-  '游戏下载': { emoji: '🎮', icon: { repo: 'koolson', file: 'Game.png' } },
-  '社交平台': { emoji: '💬', icon: { repo: 'koolson', file: 'Discord.png' } }
+  '游戏服务': DEFAULT_AGGREGATES.game.service,
+  '游戏下载': DEFAULT_AGGREGATES.game.download,
+  '社交平台': DEFAULT_AGGREGATES.social.combined
 });
 
 const SPECIAL_SERVICES = Object.freeze({
   crypto: {
+    key: 'crypto',
     name: '加密货币',
     emoji: '🪙',
     icon: { repo: 'koolson', file: 'Cryptocurrency.png' },
     configKey: 'enableCrypto',
     providers: { crypto: 'geosite/category-cryptocurrency' },
-    rules: ['RULE-SET,crypto,加密货币']
+    rules: ['RULE-SET,crypto,加密货币'],
+    preferredRegions: ['tw', 'jp', 'eu'],
+    proxies: ['@preferredRegions', '@residentialGroup', '@defaultProxy', 'DIRECT']
   },
   paypal: {
+    key: 'paypal',
     name: 'PayPal',
     emoji: '💳',
     icon: { repo: 'koolson', file: 'PayPal.png' },
     configKey: 'enablePayPal',
     providers: { paypal: 'geosite/paypal' },
-    rules: ['RULE-SET,paypal,PayPal']
+    rules: ['RULE-SET,paypal,PayPal'],
+    proxies: ['DIRECT', '@defaultProxy', '@activeRegions', '@residentialGroup']
   },
   webrtc: {
+    key: 'webrtc',
     name: 'WebRTC',
     emoji: '🗣',
     icon: { repo: 'koolson', file: 'Direct.png' },
@@ -73,20 +104,26 @@ const SPECIAL_SERVICES = Object.freeze({
       'DST-PORT,5349,WebRTC',
       'DST-PORT,5350,WebRTC',
       'DST-PORT,19302,WebRTC'
-    ]
+    ],
+    proxies: ['@defaultProxy', 'DIRECT', '手动选择', '自动选择', '@activeRegions']
   },
   telegram: {
+    key: 'telegram',
     name: 'Telegram',
     emoji: '✈️',
     icon: { repo: 'koolson', file: 'Telegram.png' },
     configKey: 'enableTelegram',
     providers: { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' },
-    rules: ({ isWin, isMac, isLin }) => [
-      ...(isWin ? ['PROCESS-NAME,Telegram.exe,Telegram'] : []),
-      ...(isMac || isLin ? ['PROCESS-NAME,Telegram,Telegram'] : []),
+    process: {
+      win: ['Telegram'],
+      mac: ['Telegram'],
+      lin: ['Telegram']
+    },
+    rules: [
       'RULE-SET,telegram,Telegram',
       'RULE-SET,telegram-ip,Telegram,no-resolve'
-    ]
+    ],
+    proxies: ['@standardOptions', 'DIRECT']
   }
 });
 
@@ -102,18 +139,14 @@ const CATEGORY_DEFAULTS = {
   },
   social: {
     preferredRegions: [],
-    aggregateGroups: {
-      '社交平台': DEFAULT_AGGREGATE_GROUPS['社交平台']
-    }
+    aggregates: DEFAULT_AGGREGATES.social
   },
   game: {
     preferredRegions: [],
     emoji: '🎮',
     icon: { repo: 'koolson', file: 'Game.png' },
-    aggregateGroups: {
-      '游戏服务': DEFAULT_AGGREGATE_GROUPS['游戏服务'],
-      '游戏下载': DEFAULT_AGGREGATE_GROUPS['游戏下载']
-    }
+    defaultAggregate: 'service',
+    aggregates: DEFAULT_AGGREGATES.game
   },
   dev: {
     preferredRegions: []
@@ -281,9 +314,9 @@ const BUILTIN_SERVICES = {
     steam: {
       name: 'Steam',
       rules: [
-        { type: 'DOMAIN-SUFFIX', value: 'steamcontent.com', target: 'GAME_DOWNLOAD' },
-        { type: 'RULE-SET', value: 'steam-cn', path: 'steam@cn', target: 'GAME_DOWNLOAD' },
-        { type: 'RULE-SET', value: 'steam', path: 'steam', target: 'GAME_SERVICE' }
+        { type: 'DOMAIN-SUFFIX', value: 'steamcontent.com', target: '@download' },
+        { type: 'RULE-SET', value: 'steam-cn', path: 'steam@cn', target: '@download' },
+        { type: 'RULE-SET', value: 'steam', path: 'steam', target: '@service' }
       ]
     },
     'steam-cn': {
@@ -296,42 +329,42 @@ const BUILTIN_SERVICES = {
       name: 'Epic',
       providerPath: 'epicgames',
       rules: [
-        { type: 'DOMAIN-SUFFIX', value: 'download.epicgames.com', target: 'GAME_DOWNLOAD' },
-        { type: 'RULE-SET', value: 'epic', path: 'epicgames', target: 'GAME_SERVICE' },
-        { type: 'DOMAIN-SUFFIX', value: 'epicgames.com', target: 'GAME_SERVICE' }
+        { type: 'DOMAIN-SUFFIX', value: 'download.epicgames.com', target: '@download' },
+        { type: 'RULE-SET', value: 'epic', path: 'epicgames', target: '@service' },
+        { type: 'DOMAIN-SUFFIX', value: 'epicgames.com', target: '@service' }
       ]
     },
     riot: {
       name: 'Riot',
-      rules: [{ type: 'RULE-SET', value: 'riot', path: 'riot', target: 'GAME_SERVICE' }]
+      rules: [{ type: 'RULE-SET', value: 'riot', path: 'riot', target: '@service' }]
     },
     blizzard: {
       name: 'Blizzard',
-      rules: [{ type: 'RULE-SET', value: 'blizzard', path: 'blizzard', target: 'GAME_SERVICE' }]
+      rules: [{ type: 'RULE-SET', value: 'blizzard', path: 'blizzard', target: '@service' }]
     },
     nintendo: {
       name: 'Nintendo',
-      rules: [{ type: 'RULE-SET', value: 'nintendo', path: 'nintendo', target: 'GAME_SERVICE' }]
+      rules: [{ type: 'RULE-SET', value: 'nintendo', path: 'nintendo', target: '@service' }]
     },
     playstation: {
       name: 'PlayStation',
-      rules: [{ type: 'RULE-SET', value: 'playstation', path: 'playstation', target: 'GAME_SERVICE' }]
+      rules: [{ type: 'RULE-SET', value: 'playstation', path: 'playstation', target: '@service' }]
     },
     xbox: {
       name: 'Xbox',
-      rules: [{ type: 'RULE-SET', value: 'xbox', path: 'xbox', target: 'GAME_SERVICE' }]
+      rules: [{ type: 'RULE-SET', value: 'xbox', path: 'xbox', target: '@service' }]
     },
     ubisoft: {
       name: 'Ubisoft',
-      rules: [{ type: 'RULE-SET', value: 'ubisoft', path: 'ubisoft', target: 'GAME_SERVICE' }]
+      rules: [{ type: 'RULE-SET', value: 'ubisoft', path: 'ubisoft', target: '@service' }]
     },
     origin: {
       name: 'Origin',
-      rules: [{ type: 'RULE-SET', value: 'origin', path: 'origin', target: 'GAME_SERVICE' }]
+      rules: [{ type: 'RULE-SET', value: 'origin', path: 'origin', target: '@service' }]
     },
     ea: {
       name: 'EA',
-      rules: [{ type: 'RULE-SET', value: 'ea', path: 'ea', target: 'GAME_SERVICE' }]
+      rules: [{ type: 'RULE-SET', value: 'ea', path: 'ea', target: '@service' }]
     }
   },
 
@@ -458,6 +491,35 @@ function deepMerge(target, source) {
     }
   }
   return output;
+}
+
+/**
+ * 解析服务分流规则的目标策略组（杜绝私有魔术字符串，动态绑定大类聚合目标）
+ * @param {string} rawTarget 原始 target 声明
+ * @param {string} cat 服务所属大类 ('game', 'ai' 等)
+ * @param {string} cleanName 服务名称
+ * @param {object} catDefaults 大类默认配置对象
+ * @returns {string} 目标策略组名称
+ */
+function resolveRuleTarget(rawTarget, cat, cleanName, catDefaults = {}) {
+  const aggregates = catDefaults.aggregates || {};
+  const defaultAggName = catDefaults.defaultAggregate ? aggregates[catDefaults.defaultAggregate]?.name : null;
+
+  if (!rawTarget || rawTarget === '@self') {
+    return defaultAggName || cleanName;
+  }
+  if (typeof rawTarget === 'string') {
+    if (rawTarget.startsWith('@')) {
+      const key = rawTarget.slice(1);
+      if (aggregates[key]) {
+        return aggregates[key].name;
+      }
+    }
+    // 向后兼容过渡：GAME_DOWNLOAD -> download, GAME_SERVICE -> service
+    if (rawTarget === 'GAME_DOWNLOAD' && aggregates.download) return aggregates.download.name;
+    if (rawTarget === 'GAME_SERVICE' && aggregates.service) return aggregates.service.name;
+  }
+  return rawTarget;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -618,7 +680,7 @@ class ServiceCatalog {
 
   /**
    * 导出结构化服务注册表对象
-   * @returns {object} { ai, streaming, social, game, dev, system, _aggregate, _specialized }
+   * @returns {object} { ai, streaming, social, game, dev, system, aggregates, specialized }
    */
   toRegistries() {
     const registries = {};
@@ -648,7 +710,7 @@ class ServiceCatalog {
         if (typeof s.rules === 'string') {
           if (!s.provider && !s.providerPath) providerPath = `geosite/${s.rules}`;
           ruleSetName = s.rules;
-          const target = cat === 'game' ? '游戏服务' : cleanName;
+          const target = resolveRuleTarget(s.target, cat, cleanName, catDefaults);
           rulesArr = [`RULE-SET,${s.rules},${target}`];
         } else if (Array.isArray(s.rules)) {
           if (!s.provider && !s.providerPath) {
@@ -659,14 +721,7 @@ class ServiceCatalog {
           }
           rulesArr = s.rules.map(r => {
             if (typeof r === 'string') return r;
-            let target = r.target;
-            if (target === 'GAME_DOWNLOAD') {
-              target = '游戏下载';
-            } else if (target === 'GAME_SERVICE') {
-              target = '游戏服务';
-            } else if (target === '@self' || !target) {
-              target = cat === 'game' ? '游戏服务' : cleanName;
-            }
+            const target = resolveRuleTarget(r.target, cat, cleanName, catDefaults);
             return `${r.type},${r.value},${target}`;
           });
         } else if (s.rules && typeof s.rules === 'object') {
@@ -674,7 +729,7 @@ class ServiceCatalog {
           if (!s.provider && !s.providerPath) {
             providerPath = s.rules.path ? `geosite/${s.rules.path}` : `geosite/${ruleSetName}`;
           }
-          const target = cat === 'game' ? '游戏服务' : cleanName;
+          const target = resolveRuleTarget(s.rules.target || s.target, cat, cleanName, catDefaults);
           rulesArr = [`RULE-SET,${ruleSetName},${target}`];
         }
 
@@ -696,33 +751,44 @@ class ServiceCatalog {
       }
     }
 
-    // 聚合策略组投影 (如 '游戏服务', '游戏下载', '社交平台')
-    const aggregate = {};
+    // 聚合策略组全量投影 (外观 + 拓扑配方)
+    const aggregates = {};
     for (const catDef of Object.values(CATEGORY_DEFAULTS)) {
-      if (catDef.aggregateGroups) {
-        for (const [groupName, meta] of Object.entries(catDef.aggregateGroups)) {
-          aggregate[groupName] = {
-            cleanName: groupName,
-            fullName: meta.emoji ? `${meta.emoji} ${groupName}` : groupName,
+      if (catDef.aggregates) {
+        for (const [aggKey, meta] of Object.entries(catDef.aggregates)) {
+          aggregates[meta.name] = {
+            key: aggKey,
+            name: meta.name,
+            cleanName: meta.name,
+            fullName: meta.emoji ? `${meta.emoji} ${meta.name}` : meta.name,
             uiIcon: meta.emoji || '',
-            iconUrl: resolveIconUrl(meta.icon, this.repos.icons)
+            iconUrl: resolveIconUrl(meta.icon, this.repos.icons),
+            proxies: meta.proxies ? [...meta.proxies] : undefined
           };
         }
       }
     }
-    registries._aggregate = aggregate;
+    registries.aggregates = aggregates;
 
-    // 专项独立服务投影 (如 'Telegram', '加密货币', 'PayPal', 'WebRTC')
+    // 专项独立服务全量投影 (Crypto, PayPal, WebRTC, Telegram - 包含 rules/providers/process/proxies)
     const specialized = {};
     for (const [specKey, spec] of Object.entries(SPECIAL_SERVICES)) {
       specialized[specKey] = {
+        key: specKey,
+        name: spec.name,
         cleanName: spec.name,
         fullName: spec.emoji ? `${spec.emoji} ${spec.name}` : spec.name,
         uiIcon: spec.emoji || '',
-        iconUrl: resolveIconUrl(spec.icon, this.repos.icons)
+        iconUrl: resolveIconUrl(spec.icon, this.repos.icons),
+        configKey: spec.configKey,
+        providers: spec.providers ? { ...spec.providers } : {},
+        rules: spec.rules ? [...spec.rules] : [],
+        process: spec.process ? { ...spec.process } : undefined,
+        preferredRegions: spec.preferredRegions ? [...spec.preferredRegions] : undefined,
+        proxies: spec.proxies ? [...spec.proxies] : undefined
       };
     }
-    registries._specialized = specialized;
+    registries.specialized = specialized;
 
     return registries;
   }
@@ -789,8 +855,10 @@ function buildServiceCatalog(userConfig = {}) {
 module.exports = {
   compileRegex,
   resolveIconUrl,
+  resolveRuleTarget,
   deepMerge,
   CATEGORY_DEFAULTS,
+  DEFAULT_AGGREGATES,
   DEFAULT_AGGREGATE_GROUPS,
   SPECIAL_SERVICES,
   BUILTIN_SERVICES,

@@ -114,7 +114,10 @@ function expandProcessRules(processLists, target, osInfo) {
   const { isWin, isMac, isLin } = osInfo;
   const rules = [];
   if (isWin && Array.isArray(processLists.win)) {
-    rules.push(...processLists.win.map(p => `PROCESS-NAME,${p}.exe,${target}`));
+    rules.push(...processLists.win.map(p => {
+      const exeName = p.toLowerCase().endsWith('.exe') ? p : `${p}.exe`;
+      return `PROCESS-NAME,${exeName},${target}`;
+    }));
   }
   if (isMac && Array.isArray(processLists.mac)) {
     rules.push(...processLists.mac.map(p => `PROCESS-NAME,${p},${target}`));
@@ -319,11 +322,20 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
   }
 
   // 11. 专项独立服务 (Crypto, PayPal, WebRTC, Telegram)
-  for (const spec of Object.values(SPECIAL_SERVICES)) {
+  const specializedMap = effectiveRegistries.specialized || SPECIAL_SERVICES;
+  for (const spec of Object.values(specializedMap)) {
     if (userConfig[spec.configKey]) {
-      Object.assign(providerBase, spec.providers);
-      const svcRules = typeof spec.rules === 'function' ? spec.rules(osInfo) : spec.rules;
-      routingRules.push(...svcRules);
+      if (spec.providers) {
+        Object.assign(providerBase, spec.providers);
+      }
+      if (spec.process) {
+        routingRules.push(...expandProcessRules(spec.process, spec.name, osInfo));
+      }
+      if (Array.isArray(spec.rules)) {
+        routingRules.push(...spec.rules);
+      } else if (typeof spec.rules === 'function') {
+        routingRules.push(...spec.rules(osInfo));
+      }
     }
   }
 

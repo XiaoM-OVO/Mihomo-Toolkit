@@ -316,14 +316,23 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.ok(registries.game.steam.iconUrl.includes('Game.png'));
     assert.ok(registries.game.epic.iconUrl.includes('Game.png'));
 
-    // 2. 结构化注册表挂载聚合与专项元数据投影
-    assert.ok(registries._aggregate);
-    assert.ok(registries._specialized);
-    assert.equal(registries._aggregate['游戏服务'].fullName, '🎮 游戏服务');
-    assert.equal(registries._aggregate['游戏下载'].fullName, '🎮 游戏下载');
-    assert.equal(registries._aggregate['社交平台'].fullName, '💬 社交平台');
-    assert.equal(registries._specialized['crypto'].fullName, '🪙 加密货币');
-    assert.equal(registries._specialized['telegram'].fullName, '✈️ Telegram');
+    // 2. 结构化注册表挂载聚合与专项元数据投影 (无下划线第一等公民)
+    assert.ok(registries.aggregates);
+    assert.ok(registries.specialized);
+    assert.equal(registries.aggregates['游戏服务'].fullName, '🎮 游戏服务');
+    assert.equal(registries.aggregates['游戏下载'].fullName, '🎮 游戏下载');
+    assert.equal(registries.aggregates['社交平台'].fullName, '💬 社交平台');
+    assert.deepStrictEqual(registries.aggregates['游戏下载'].proxies, ['DIRECT', '下载策略', '自动选择', '手动选择', '@buckets.game']);
+    assert.deepStrictEqual(registries.aggregates['游戏服务'].proxies, ['DIRECT', '@standardOptions', '@buckets.game']);
+
+    assert.equal(registries.specialized['crypto'].fullName, '🪙 加密货币');
+    assert.equal(registries.specialized['telegram'].fullName, '✈️ Telegram');
+    // 验证专项组全量属性投影 (包含 rules/providers/process)
+    assert.ok(Array.isArray(registries.specialized['telegram'].rules));
+    assert.ok(registries.specialized['telegram'].process.win);
+    assert.ok(registries.specialized['telegram'].providers.telegram);
+    assert.ok(typeof SPECIAL_SERVICES.telegram.rules !== 'function', 'telegram.rules 必须为纯声明式数组而非函数');
+
     assert.ok(DEFAULT_AGGREGATE_GROUPS['游戏服务']);
   });
 
@@ -363,7 +372,11 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
           },
           apex_dl: {
             name: 'Apex下载',
-            rules: [{ type: 'DOMAIN-SUFFIX', value: 'apex-dl.ea.com', target: 'GAME_DOWNLOAD' }]
+            rules: [{ type: 'DOMAIN-SUFFIX', value: 'apex-dl.ea.com', target: '@download' }]
+          },
+          apex_legacy: {
+            name: 'Apex旧配置',
+            rules: [{ type: 'DOMAIN-SUFFIX', value: 'apex-legacy.ea.com', target: 'GAME_DOWNLOAD' }]
           }
         }
       }
@@ -373,7 +386,8 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     // 自动激活且 target 默认为 '游戏服务'
     assert.ok(customRules.includes('RULE-SET,lol,游戏服务'), '字符串 rules 默认定向至游戏服务');
     assert.ok(customRules.includes('DOMAIN-SUFFIX,yuanshen.com,游戏服务'), '对象 rules 默认定向至游戏服务');
-    assert.ok(customRules.includes('DOMAIN-SUFFIX,apex-dl.ea.com,游戏下载'), '显式 GAME_DOWNLOAD 定向至游戏下载');
+    assert.ok(customRules.includes('DOMAIN-SUFFIX,apex-dl.ea.com,游戏下载'), '语义化 @download 定向至游戏下载');
+    assert.ok(customRules.includes('DOMAIN-SUFFIX,apex-legacy.ea.com,游戏下载'), '兼容 GAME_DOWNLOAD 定向至游戏下载');
     assert.ok(customProviders['lol'], '自动生成自定义游戏规则提供者');
     // 确保绝对没有定向到不存在的幽灵组
     assert.ok(!customRules.some(r => r.endsWith(',英雄联盟')), '严禁产生以自定义游戏名命名的幽灵目标');

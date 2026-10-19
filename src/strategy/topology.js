@@ -151,31 +151,38 @@ function buildBuiltinAppRecipes({
     }
   }
 
-  // 4. 游戏分组
+  // 4. 游戏分组 (由 effectiveRegistries.aggregates 驱动)
   if (userConfig.enableGame) {
-    recipes.push(
-      {
-        name: '游戏服务',
-        type: 'select',
-        proxies: ['DIRECT', '@standardOptions', ...(buckets.game || [])]
-      },
-      {
-        name: '游戏下载',
-        type: 'select',
-        proxies: ['DIRECT', '下载策略', '自动选择', '手动选择', ...(buckets.game || [])]
-      }
-    );
+    const gameBuckets = buckets.game || [];
+    const gameAggs = effectiveRegistries.aggregates
+      ? [effectiveRegistries.aggregates['游戏服务'], effectiveRegistries.aggregates['游戏下载']].filter(Boolean)
+      : [];
+
+    if (gameAggs.length > 0) {
+      gameAggs.forEach(agg => {
+        recipes.push({
+          name: agg.name,
+          type: 'select',
+          proxies: (agg.proxies || []).map(p => (p === '@buckets.game' ? gameBuckets : p)).flat()
+        });
+      });
+    } else {
+      recipes.push(
+        {
+          name: '游戏服务',
+          type: 'select',
+          proxies: ['DIRECT', '@standardOptions', ...gameBuckets]
+        },
+        {
+          name: '游戏下载',
+          type: 'select',
+          proxies: ['DIRECT', '下载策略', '自动选择', '手动选择', ...gameBuckets]
+        }
+      );
+    }
   }
 
-  // 5. 专项应用分组
-  if (userConfig.enableTelegram) {
-    recipes.push({
-      name: 'Telegram',
-      type: 'select',
-      proxies: ['@standardOptions', 'DIRECT']
-    });
-  }
-
+  // 5. 开发者与学术服务
   if (effectiveRegistries.dev) {
     const devActive = Array.isArray(userConfig.devServices)
       ? userConfig.devServices
@@ -203,32 +210,27 @@ function buildBuiltinAppRecipes({
     });
   }
 
-  if (userConfig.enableCrypto) {
-    const cryptoPref = ['tw', 'jp', 'eu'].map(id => regionNames[id]).filter(Boolean);
-    recipes.push({
-      name: '加密货币',
-      type: 'select',
-      proxies: [...cryptoPref, '@residentialGroup', '@defaultProxy', 'DIRECT']
-    });
-  }
+  // 6. 专项应用分组 (由 effectiveRegistries.specialized 驱动)
+  const specializedMap = effectiveRegistries.specialized || {};
+  for (const spec of Object.values(specializedMap)) {
+    if (!userConfig[spec.configKey]) continue;
 
-  if (userConfig.enablePayPal) {
-    recipes.push({
-      name: 'PayPal',
-      type: 'select',
-      proxies: ['DIRECT', '@defaultProxy', '@activeRegions', '@residentialGroup']
-    });
-  }
+    let proxies = spec.proxies ? [...spec.proxies] : ['@standardOptions', 'DIRECT'];
 
-  if (userConfig.enableWebRTC) {
-    const webrtcReturn = userConfig.enableDomesticGroup && !userConfig.proxyFirst;
-    const webrtcList = webrtcReturn
-      ? ['DIRECT', '@defaultProxy', '手动选择', '自动选择', '@activeRegions']
-      : ['@defaultProxy', 'DIRECT', '手动选择', '自动选择', '@activeRegions'];
+    // 处理 WebRTC 回国模式偏好
+    if (spec.key === 'webrtc' && userConfig.enableDomesticGroup && !userConfig.proxyFirst) {
+      proxies = ['DIRECT', '@defaultProxy', '手动选择', '自动选择', '@activeRegions'];
+    }
+    // 处理偏好大区展开 (如 Crypto 的 preferredRegions)
+    if (spec.preferredRegions && proxies.includes('@preferredRegions')) {
+      const pref = spec.preferredRegions.map(id => regionNames[id]).filter(Boolean);
+      proxies = proxies.flatMap(p => (p === '@preferredRegions' ? pref : p));
+    }
+
     recipes.push({
-      name: 'WebRTC',
+      name: spec.name,
       type: 'select',
-      proxies: webrtcList
+      proxies
     });
   }
 
