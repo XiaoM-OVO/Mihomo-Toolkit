@@ -314,7 +314,7 @@ groupIcons:
 Toolkit 预装了近 30 种主流服务（ChatGPT、YouTube、Netflix、Steam、GitHub、Apple 等）。如果遇到小众应用或新增的 AI 平台，你完全可以通过行内定义或外挂文件进行热插拔：
 
 ```yaml
-# 方式 A：行内直接定义
+# 方式 A：行内直接定义（支持 ai, streaming, social, game, dev, system 六大分类）
 customServices:
   ai:
     deepseek:
@@ -324,11 +324,29 @@ customServices:
       rules: "deepseek"                      # 对应 geosite:deepseek 规则集
       icon: { repo: "koolson", file: "AI.png" }
 
+  game:
+    lol:
+      name: "英雄联盟"
+      rules: "lol"                           # 自动路由至「🎮 游戏服务」聚合组
+    apex:
+      name: "Apex英雄"
+      rules:
+        - { type: "DOMAIN-SUFFIX", value: "apex-dl.ea.com", target: "@download" } # 语义化定向至游戏下载
+        - { type: "RULE-SET", value: "apex", path: "apex", target: "@service" }   # 语义化定向至游戏服务
+
 # 方式 B：外挂专用配置文件（支持 .yaml / .json / .js）
 servicesConfigFile: "./services.config.yaml"
 ```
 
+#### 规则语法与语义化宏目标 (`target`)
 - **语义继承**：如果服务 key 与官方内置服务相同（如 `chatgpt`），系统会自动执行属性合并，你可以仅覆盖名称、图标或地区偏好，其余底层规则完全继承。
+- **自动激活**：在 `customServices` 中声明的自定义服务会自动并入激活列表，无需在 `aiServices` 或 `gameServices` 中再次重复声明。
+- **语义化宏目标 (`target`)**：
+  - `@service`（或 `@self` / 省略目标）：动态路由至该分类的默认聚合组（如游戏的 `🎮 游戏服务`）或独立策略组；
+  - `@download`：动态路由至该分类的下载聚合组（如游戏的 `🎮 游戏下载`）；
+  - 显式目标名（如 `DIRECT`、`香港节点` 或自定义策略组）：原样透传。
+- **防幽灵组铁律 (Anti-Ghost Group)**：游戏分类下的自定义规则严禁直接以自定义游戏名称作为路由目标，默认与宏目标严格归并在预设聚合组中，杜绝产生不存在的幽灵策略组。
+- **声明驱动子规则集按需激活**：游戏平台规则集庞大，系统默认仅根据 `gameServices`（如 `['steam', 'epic']`）激活并拉取对应 Provider；未声明的内置平台不会拉取网络规则集，杜绝配置臃肿。
 
 ---
 
@@ -478,7 +496,7 @@ include:
 | `streamingServices`| `string[]`| `['youtube', 'netflix', ...]` | `any` | `override` | 激活的流媒体细分服务列表。 |
 | `socialServices` | `string[]` | `['twitter', 'facebook', 'instagram', 'discord']`| `any` | `override` | 激活的海外社交平台细分服务列表。 |
 | `independentSocial`| `string[]`| `['twitter']` | `any` | `override` | 在社交平台中需要独立建组的应用（其余合并进入「💬 社交平台」组）。 |
-| `gameServices` | `string[]` | `['steam', 'epic', ...]` | `any` | `override` | 激活的游戏平台服务列表。 |
+| `gameServices` | `string[]` | `['steam', 'epic', ...]` | `any` | `override` | 激活的游戏细分服务列表（按需拉取对应规则集与 Provider，未声明项不下载不注入，防规则臃肿与幽灵组）。 |
 | `systemServices` | `string[]` | `['microsoft', 'apple', 'google']` | `any` | `override` | 激活的操作系统云服务列表。 |
 | `devServices` | `string[]` | `['github', 'scholar']` | `any` | `override` | 激活的开发者与学术服务列表。 |
 | `aiPreferredRegions`| `string[]`| `['us', 'jp', 'tw', 'sg', 'kr', 'eu']` | `any` | `override` | AI 服务策略组默认保底优选的大区排序（无专属节点时依序排布）。 |

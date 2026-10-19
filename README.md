@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
 [![Version](https://img.shields.io/badge/Version-v4.0.0--alpha-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-539%20Passed-brightgreen)](test/)
+[![Tests](https://img.shields.io/badge/Tests-565%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底** 」
 

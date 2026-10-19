@@ -113,7 +113,9 @@ src/
 │   └── envelope.js               # 节点只读 Envelope 包装与旁路接入
 │
 ├── 3. strategy/                  # 🌐 Layer 3: 策略组拓扑与内核优化层
-│   ├── topology.js               # 六维大区折叠、动态测速与兜底策略组装配
+│   ├── topology.js               # 六维大区折叠、动态测速与骨架策略组装配
+│   ├── topology-engine.js        # 声明式策略组 DSL 评估与宏展开引擎
+│   ├── matcher.js                # customGroups 节点匹配配方计算与黑名单校验
 │   ├── rules.js                  # 规则集 (Rule-Providers) 与分流路由组装
 │   ├── presentation.js           # 策略组展示层装饰器 (在线图标/徽标挂载)
 │   ├── prune.js                  # 有向无环图 (DAG) 递归空组级联淘汰与级联剪枝
@@ -314,9 +316,10 @@ include:
 
 为了保持技术评估的客观性，以下为系统当前版本明确存在的局限与待攻坚点：
 
-1. **策略组拓扑与装配逻辑双硬编码耦合**：
-   当前策略组的层级结构（各大区组、业务组、测速组等）与其节点挑选规则完全在 `topology.js` 中硬编码构建。服务元数据（`catalog.js` SSOT）与策略组装配机制割裂且深度耦合：若想微调某个策略组的选人规则（如指定地区、黑名单排除、测速模式），无法在配置文件中直接声明，导致修改策略组逻辑需跨多处硬编码。
-2. **SSRF 防御存在 DNS Rebinding (TOCTOU) 风险**：
+1. **SSRF 防御存在 DNS Rebinding (TOCTOU) 风险**：
    `src/io/ssrf.js` 在验证阶段与后续实际建立网络连接阶段各执行一次独立 DNS 解析，未做 IP 固定（IP Pinning）。在面对恶意 DNS 动态切换回环 IP 的场景下理论上存在绕过窗口。
-3. **宿主适配层较为简陋**：
+2. **宿主适配层较为简陋**：
    当前 `targets/` 仅提供了最基础的 CLI 与轻量 HTTP 服务端，对于更广泛的集成场景（如 Serverless / 边缘 Worker / 复杂进程守护）尚未形成标准化的适配接口。
+
+> [!NOTE]
+> 原“策略组拓扑与装配逻辑双硬编码耦合”已于 Milestone 3 阶段彻底攻坚闭环（引入 `customGroups` 声明式 DSL 引擎与 `catalog.js` SSOT 全量聚合/专项拓扑配方驱动）。
