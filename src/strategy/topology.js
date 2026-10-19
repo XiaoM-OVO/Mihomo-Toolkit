@@ -8,6 +8,7 @@ const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/region
 const { getTrustedProxyMetadata } = require('../core/node-trust');
 const { FIELDS_BY_KEY } = require('../data');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
+const { validateCustomGroups } = require('./matcher');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
 const { stripGroupDecoration } = require('./presentation');
 
@@ -272,7 +273,11 @@ function buildProxyTopology({
   registries = {},
   logger = null
 }) {
+  // 0. 校验声明式策略组 (customGroups) match/exclude 配方合规性
+  validateCustomGroups(userConfig.customGroups);
+
   // 确保 registries 优先从 catalog 获取单一事实来源
+
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
     ? registries
     : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});

@@ -213,10 +213,11 @@ function resolveGroupProxies({ declaredProxies = [], matchedNodeNames = [], macr
         resolved.push(...filterRegionsByContinent(activeRegions, 'me'));
         break;
 
-      case '@sa':
-      case '@saregions':
+      case '@sas':
+      case '@sasregions':
+      case '@southasia':
       case '@南亚':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'sa'));
+        resolved.push(...filterRegionsByContinent(activeRegions, 'sas'));
         break;
 
       case '@na':
@@ -438,9 +439,14 @@ function evaluateCustomTopology({
   // 环路检测 (包含已存在策略组与新增策略组的全景图)
   const combinedAll = [...existingGroups, ...evaluatedGroups];
   const { hasCycle, cycles } = detectGroupCycles(combinedAll);
-  if (hasCycle && logger && typeof logger.warn === 'function') {
-    logger.warn(`⚠️ [TopologyEngine] 检测到策略组存在循环依赖: ${cycles.map(c => c.join(' -> ')).join(' | ')}`);
+  if (hasCycle) {
+    const cycleDesc = cycles.map(c => c.join(' -> ')).join(' | ');
+    if (logger && typeof logger.warn === 'function') {
+      logger.warn(`⚠️ [TopologyEngine] 检测到策略组存在循环依赖: ${cycleDesc}`);
+    }
+    throw new Error(`[customGroups] 检测到策略组存在循环依赖 (Cycle Dependency): ${cycleDesc}`);
   }
+
 
   return {
     evaluatedGroups,

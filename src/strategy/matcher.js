@@ -10,6 +10,9 @@
 
 const { isRegionInContinent } = require('../core/shared/regions');
 
+
+
+
 /**
  * 编译倍率匹配器
  * @param {string|number|Array<number>} spec
@@ -335,6 +338,266 @@ function compileFeaturePoolMatcher(spec) {
 }
 
 /**
+ * 断言非空字符串或非空字符串数组
+ */
+function assertNonEmptyStringOrArray(val, path, label = '字符串') {
+  if (typeof val === 'string') {
+    if (!val.trim()) {
+      throw new Error(`[customGroups] ${path}: ${label}值不能为空`);
+    }
+    return;
+  }
+  if (Array.isArray(val)) {
+    if (val.length === 0) {
+      throw new Error(`[customGroups] ${path}: 数组不能为空`);
+    }
+    for (let i = 0; i < val.length; i++) {
+      if (typeof val[i] !== 'string' || !val[i].trim()) {
+        throw new TypeError(`[customGroups] ${path}[${i}]: 期望非空 string 类型`);
+      }
+    }
+    return;
+  }
+  throw new TypeError(`[customGroups] ${path}: 期望 string 或 string[] 类型`);
+}
+
+/**
+ * 断言模式/正则参数
+ */
+function assertPattern(val, path) {
+  if (typeof val === 'string') {
+    if (!val.trim()) {
+      throw new Error(`[customGroups] ${path}: 正则/名称关键词不能为空`);
+    }
+  } else if (val instanceof RegExp) {
+    // 正则实例合法
+  } else if (Array.isArray(val)) {
+    if (val.length === 0) {
+      throw new Error(`[customGroups] ${path}: 数组不能为空`);
+    }
+    for (let i = 0; i < val.length; i++) {
+      const item = val[i];
+      const isPattern = (typeof item === 'string' && Boolean(item.trim())) || item instanceof RegExp;
+      if (!isPattern) {
+        throw new TypeError(`[customGroups] ${path}[${i}]: 期望非空 string 或 RegExp 类型`);
+      }
+    }
+  } else {
+    throw new TypeError(`[customGroups] ${path}: 期望 string, RegExp 或由它们组成的非空数组`);
+  }
+}
+
+/**
+ * 断言倍率参数
+ */
+function assertMulti(val, path) {
+  if (typeof val === 'number') {
+    if (Number.isNaN(val)) {
+      throw new TypeError(`[customGroups] ${path}: 倍率数值不能为 NaN`);
+    }
+  } else if (typeof val === 'string') {
+    const s = val.trim();
+    if (!s) {
+      throw new Error(`[customGroups] ${path}: 倍率字符串表达式不能为空`);
+    }
+    const rangeMatch = s.match(/^([\[\(])\s*([0-9.]+)\s*,\s*([0-9.]+)\s*([\]\)])$/);
+    const opMatch = s.match(/^(<=|>=|<|>|==|=)?\s*([0-9.]+)$/);
+    if (!rangeMatch && !opMatch) {
+      throw new Error(`[customGroups] ${path}: 倍率格式不合法「${val}」，仅支持比较运算符（如 '<= 1.5'）或区间（如 '[1.0, 2.0]'）`);
+    }
+  } else if (Array.isArray(val)) {
+    if (val.length !== 2 || typeof val[0] !== 'number' || typeof val[1] !== 'number' || Number.isNaN(val[0]) || Number.isNaN(val[1])) {
+      throw new TypeError(`[customGroups] ${path}: 数组范围必须为包含两个数字的元组 [min, max]`);
+    }
+  } else {
+    throw new TypeError(`[customGroups] ${path}: 期望 number, string (不等式/区间) 或 [min, max] 数字范围数组`);
+  }
+}
+
+/**
+ * 断言标签参数
+ */
+function assertTags(val, path) {
+  if (typeof val === 'string') {
+    if (!val.trim()) {
+      throw new Error(`[customGroups] ${path}: 标签名不能为空`);
+    }
+  } else if (Array.isArray(val)) {
+    if (val.length === 0) {
+      throw new Error(`[customGroups] ${path}: 标签数组不能为空`);
+    }
+    for (let i = 0; i < val.length; i++) {
+      if (typeof val[i] !== 'string' || !val[i].trim()) {
+        throw new TypeError(`[customGroups] ${path}[${i}]: 期望非空 string 标签`);
+      }
+    }
+  } else if (typeof val === 'object' && val !== null) {
+    const tagKeys = Object.keys(val);
+    for (const tk of tagKeys) {
+      if (tk !== 'any' && tk !== 'all') {
+        throw new Error(`[customGroups] ${path}: 复合标签对象包含未知键「${tk}」，仅允许 'any' 或 'all'`);
+      }
+    }
+    if (!tagKeys.includes('any') && !tagKeys.includes('all')) {
+      throw new Error(`[customGroups] ${path}: 复合标签对象必须至少包含 'any' 或 'all' 中的一个`);
+    }
+    for (const tk of ['any', 'all']) {
+      if (val[tk] !== undefined) {
+        if (!Array.isArray(val[tk]) || val[tk].length === 0) {
+          throw new TypeError(`[customGroups] ${path}.${tk}: 期望非空 string[] 数组`);
+        }
+        for (let i = 0; i < val[tk].length; i++) {
+          if (typeof val[tk][i] !== 'string' || !val[tk][i].trim()) {
+            throw new TypeError(`[customGroups] ${path}.${tk}[${i}]: 期望非空 string 标签`);
+          }
+        }
+      }
+    }
+  } else {
+    throw new TypeError(`[customGroups] ${path}: 期望 string, string[] 或包含 any/all 成员数组的复合对象`);
+  }
+}
+
+/**
+ * 配方维度单一事实源 (SSOT) 映射表
+ */
+const RECIPE_DIMENSIONS = {
+  region: {
+    validate: (val, path) => assertNonEmptyStringOrArray(val, path, '字符串'),
+    compile: compileRegionMatcher
+  },
+  multi: {
+    validate: assertMulti,
+    compile: (val) => {
+      const fn = compileMultiMatcher(val);
+      return fn ? (item) => fn(item.attrs?.multiNum ?? 1.0) : null;
+    }
+  },
+  tags: {
+    validate: assertTags,
+    compile: (val) => {
+      const fn = compileTagMatcher(val);
+      return fn ? (item) => fn(item.tags) : null;
+    }
+  },
+  pattern: {
+    validate: assertPattern,
+    compile: (val) => {
+      const fn = compilePatternMatcher(val);
+      return fn ? (item) => fn(item.proxy?.name || item.rawName) : null;
+    }
+  },
+  protocol: {
+    validate: (val, path) => assertNonEmptyStringOrArray(val, path, '字符串'),
+    compile: compileProtocolMatcher
+  },
+  airport: {
+    validate: (val, path) => assertNonEmptyStringOrArray(val, path, '字符串'),
+    compile: compileAirportMatcher
+  },
+  pool: {
+    validate: (val, path) => assertNonEmptyStringOrArray(val, path, '字符串'),
+    compile: compileFeaturePoolMatcher
+  },
+  isSpecial: {
+    validate: (val, path) => {
+      if (typeof val !== 'boolean') throw new TypeError(`[customGroups] ${path}: 期望 boolean 类型`);
+    },
+    compile: (val) => ((item) => Boolean(item.isSpecial) === val)
+  },
+  isUnknownRegion: {
+    validate: (val, path) => {
+      if (typeof val !== 'boolean') throw new TypeError(`[customGroups] ${path}: 期望 boolean 类型`);
+    },
+    compile: (val) => ((item) => Boolean(item.isUnknownRegion) === val)
+  },
+  custom: {
+    validate: (val, path) => {
+      if (typeof val !== 'function') throw new TypeError(`[customGroups] ${path}: 期望 function 谓词类型`);
+    },
+    compile: (fn) => fn
+  }
+};
+
+const ALLOWED_RECIPE_KEYS = new Set([...Object.keys(RECIPE_DIMENSIONS), 'mode']);
+
+/**
+ * 校验单个配方对象 (Recipe) 字段名与值类型
+ * @param {any} recipe 配方对象
+ * @param {string} path 错误路径提示
+ */
+function validateRecipe(recipe, path) {
+  if (typeof recipe === 'function') return;
+
+  if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) {
+    throw new TypeError(`[customGroups] ${path}: 配方必须为非空普通对象 (Plain Object) 或函数`);
+  }
+
+  const keys = Object.keys(recipe);
+  if (keys.length === 0) {
+    throw new Error(`[customGroups] ${path}: 配方对象不能为空，至少需包含一个有效匹配维度`);
+  }
+
+  for (const key of keys) {
+    if (key === 'mode') {
+      if (recipe.mode !== 'all' && recipe.mode !== 'any') {
+        throw new Error(`[customGroups] ${path}.mode: 期望 'all' 或 'any'`);
+      }
+      continue;
+    }
+
+    const dim = RECIPE_DIMENSIONS[key];
+    if (!dim) {
+      throw new Error(`[customGroups] ${path}: 未知匹配维度「${key}」，支持字段: ${[...ALLOWED_RECIPE_KEYS].join(', ')}`);
+    }
+
+    const val = recipe[key];
+    if (val === undefined || val === null) {
+      throw new TypeError(`[customGroups] ${path}.${key}: 匹配规则值不能为空或 undefined`);
+    }
+
+    dim.validate(val, `${path}.${key}`);
+  }
+}
+
+/**
+ * 校验 customGroups 列表中所有 match 与 exclude 配方
+ * @param {Array<object>} customGroups 声明式自定义策略组定义列表
+ */
+function validateCustomGroups(customGroups) {
+  if (!customGroups) return;
+  if (!Array.isArray(customGroups)) {
+    throw new TypeError(`[customGroups] customGroups 配置必须为策略组对象数组`);
+  }
+
+  customGroups.forEach((group, index) => {
+    if (!group || typeof group !== 'object') {
+      throw new TypeError(`[customGroups] customGroups[${index}]: 策略组定义必须为有效对象`);
+    }
+
+    const groupName = group.name ? `「${group.name}」` : `[${index}]`;
+
+    for (const field of ['match', 'exclude']) {
+      if (group[field] === undefined || group[field] === null) continue;
+
+      const pathPrefix = `策略组 ${groupName} -> ${field}`;
+      const val = group[field];
+
+      if (Array.isArray(val)) {
+        if (val.length === 0) {
+          throw new Error(`[customGroups] ${pathPrefix}: 配方数组不能为空`);
+        }
+        val.forEach((recipe, rIdx) => {
+          validateRecipe(recipe, `${pathPrefix}[${rIdx}]`);
+        });
+      } else {
+        validateRecipe(val, pathPrefix);
+      }
+    }
+  });
+}
+
+/**
  * 编译单个过滤规则对象
  * @param {object} rule
  * @param {object} [options]
@@ -345,60 +608,11 @@ function compileRule(rule, { defaultLogic = 'all' } = {}) {
   if (!rule || typeof rule !== 'object') return null;
 
   const checks = [];
-
-  // 1. 地区 (region)
-  if (rule.region !== undefined) {
-    const fn = compileRegionMatcher(rule.region);
-    if (fn) checks.push(fn);
-  }
-
-  // 2. 标签 (tags)
-  if (rule.tags !== undefined) {
-    const fn = compileTagMatcher(rule.tags);
-    if (fn) checks.push((item) => fn(item.tags));
-  }
-
-  // 3. 倍率 (multi)
-  if (rule.multi !== undefined) {
-    const fn = compileMultiMatcher(rule.multi);
-    if (fn) checks.push((item) => fn(item.attrs?.multiNum ?? 1.0));
-  }
-
-  // 4. 正则/名称关键词 (pattern / name)
-  if (rule.pattern !== undefined || rule.name !== undefined) {
-    const fn = compilePatternMatcher(rule.pattern !== undefined ? rule.pattern : rule.name);
-    if (fn) checks.push((item) => fn(item.proxy?.name || item.rawName));
-  }
-
-  // 5. 协议 (protocol / type)
-  if (rule.protocol !== undefined || rule.type !== undefined) {
-    const fn = compileProtocolMatcher(rule.protocol !== undefined ? rule.protocol : rule.type);
-    if (fn) checks.push(fn);
-  }
-
-  // 6. 机场来源 (airport / subTag)
-  if (rule.airport !== undefined || rule.subTag !== undefined) {
-    const fn = compileAirportMatcher(rule.airport !== undefined ? rule.airport : rule.subTag);
-    if (fn) checks.push(fn);
-  }
-
-  // 7. 特征业务池 (featurePools / pool)
-  if (rule.featurePools !== undefined || rule.pool !== undefined) {
-    const fn = compileFeaturePoolMatcher(rule.featurePools !== undefined ? rule.featurePools : rule.pool);
-    if (fn) checks.push(fn);
-  }
-
-  // 8. 布尔标识
-  if (typeof rule.isSpecial === 'boolean') {
-    checks.push((item) => Boolean(item.isSpecial) === rule.isSpecial);
-  }
-  if (typeof rule.isUnknownRegion === 'boolean') {
-    checks.push((item) => Boolean(item.isUnknownRegion) === rule.isUnknownRegion);
-  }
-
-  // 9. 自定义 JS 谓词函数 (供 services.config.js 等场景调用)
-  if (typeof rule.custom === 'function') {
-    checks.push(rule.custom);
+  for (const [key, dim] of Object.entries(RECIPE_DIMENSIONS)) {
+    if (rule[key] !== undefined) {
+      const fn = dim.compile(rule[key]);
+      if (fn) checks.push(fn);
+    }
   }
 
   if (checks.length === 0) return null;
@@ -505,5 +719,8 @@ module.exports = {
   compileMatch,
   compileExclude,
   createNodePredicate,
-  filterNodes
+  filterNodes,
+  validateRecipe,
+  validateCustomGroups
 };
+

@@ -10,7 +10,9 @@ const {
   compileAirportMatcher,
   compileFeaturePoolMatcher,
   createNodePredicate,
-  filterNodes
+  filterNodes,
+  validateRecipe,
+  validateCustomGroups
 } = require('../../src/strategy/matcher');
 
 describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', () => {
@@ -353,4 +355,83 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
     });
   });
 
+  describe('7. 配方合规校验与严格阻断 (validateRecipe & validateCustomGroups)', () => {
+    it('合法配方与函数谓词正常通过', () => {
+      assert.doesNotThrow(() => validateRecipe({ region: 'hk' }, 'test'));
+      assert.doesNotThrow(() => validateRecipe({ multi: '<= 1.5', tags: ['streaming'] }, 'test'));
+      assert.doesNotThrow(() => validateRecipe(() => true, 'test'));
+    });
+
+    it('非对象、空对象或空数组拦截', () => {
+      assert.throws(() => validateRecipe(null, 'test'), /配方必须为非空普通对象/);
+      assert.throws(() => validateRecipe('invalid', 'test'), /配方必须为非空普通对象/);
+      assert.throws(() => validateRecipe([], 'test'), /配方必须为非空普通对象/);
+      assert.throws(() => validateRecipe({}, 'test'), /配方对象不能为空/);
+    });
+
+    it('未知匹配维度拦截 (Fail-Closed)', () => {
+      assert.throws(
+        () => validateRecipe({ regin: 'hk' }, 'test'),
+        /未知匹配维度「regin」/
+      );
+    });
+
+    it('各匹配维度类型与非空约束', () => {
+      // 字符串类型
+      assert.throws(() => validateRecipe({ region: '' }, 'test'), /字符串值不能为空/);
+      assert.throws(() => validateRecipe({ region: [] }, 'test'), /数组不能为空/);
+      assert.throws(() => validateRecipe({ region: [123] }, 'test'), /期望非空 string 类型/);
+
+      // 倍率格式
+      assert.throws(() => validateRecipe({ multi: NaN }, 'test'), /倍率数值不能为 NaN/);
+      assert.throws(() => validateRecipe({ multi: 'invalid' }, 'test'), /倍率格式不合法/);
+      assert.throws(() => validateRecipe({ multi: [1] }, 'test'), /包含两个数字的元组/);
+
+      // 标签格式
+      assert.throws(() => validateRecipe({ tags: '' }, 'test'), /标签名不能为空/);
+      assert.throws(() => validateRecipe({ tags: { unknown: ['a'] } }, 'test'), /未知键「unknown」/);
+
+      // 正则格式
+      assert.throws(() => validateRecipe({ pattern: '' }, 'test'), /正则\/名称关键词不能为空/);
+
+      // 模式与布尔
+      assert.throws(() => validateRecipe({ mode: 'invalid' }, 'test'), /期望 'all' 或 'any'/);
+      assert.throws(() => validateRecipe({ isSpecial: 'true' }, 'test'), /期望 boolean 类型/);
+      assert.throws(() => validateRecipe({ custom: 'not_fn' }, 'test'), /期望 function 谓词类型/);
+    });
+
+    it('validateCustomGroups 批次校验与路径溯源', () => {
+      assert.throws(
+        () => validateCustomGroups('not_array'),
+        /customGroups 配置必须为策略组对象数组/
+      );
+
+      assert.throws(
+        () => validateCustomGroups([null]),
+        /customGroups\[0\]: 策略组定义必须为有效对象/
+      );
+
+      assert.throws(
+        () => validateCustomGroups([{ name: '流媒体', match: [] }]),
+        /策略组\s*「流媒体」 -> match: 配方数组不能为空/
+      );
+
+      assert.throws(
+        () => validateCustomGroups([{ name: '流媒体', match: [{ regin: 'hk' }] }]),
+        /策略组\s*「流媒体」 -> match\[0\]: 未知匹配维度「regin」/
+      );
+
+      assert.doesNotThrow(() => {
+        validateCustomGroups([
+          {
+            name: '流媒体',
+            match: { region: 'hk' },
+            exclude: [{ tags: ['download'] }]
+          }
+        ]);
+      });
+    });
+  });
+
 });
+

@@ -51,6 +51,17 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       const result = detectGroupCycles(groups);
       assert.equal(result.hasCycle, false);
     });
+
+    it('evaluateCustomTopology 检测到环路死锁严格抛错 (Fail-Closed)', () => {
+      const customGroups = [
+        { name: '组A', proxies: ['组B'] },
+        { name: '组B', proxies: ['组A'] }
+      ];
+      assert.throws(
+        () => evaluateCustomTopology({ customGroups }),
+        /\[customGroups\] 检测到策略组存在循环依赖 \(Cycle Dependency\): 组A -> 组B -> 组A/
+      );
+    });
   });
 
   describe('2. 宏变量与代理列表解析 (resolveGroupProxies)', () => {
