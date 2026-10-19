@@ -34,7 +34,64 @@ const DEFAULT_REPOS = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 2. 六维分类默认策略 (CATEGORY_DEFAULTS)
+// 2. 专项独立服务与聚合策略组定义
+// ─────────────────────────────────────────────────────────────
+const DEFAULT_AGGREGATE_GROUPS = Object.freeze({
+  '游戏服务': { emoji: '🎮', icon: { repo: 'koolson', file: 'Game.png' } },
+  '游戏下载': { emoji: '🎮', icon: { repo: 'koolson', file: 'Game.png' } },
+  '社交平台': { emoji: '💬', icon: { repo: 'koolson', file: 'Discord.png' } }
+});
+
+const SPECIAL_SERVICES = Object.freeze({
+  crypto: {
+    name: '加密货币',
+    emoji: '🪙',
+    icon: { repo: 'koolson', file: 'Cryptocurrency.png' },
+    configKey: 'enableCrypto',
+    providers: { crypto: 'geosite/category-cryptocurrency' },
+    rules: ['RULE-SET,crypto,加密货币']
+  },
+  paypal: {
+    name: 'PayPal',
+    emoji: '💳',
+    icon: { repo: 'koolson', file: 'PayPal.png' },
+    configKey: 'enablePayPal',
+    providers: { paypal: 'geosite/paypal' },
+    rules: ['RULE-SET,paypal,PayPal']
+  },
+  webrtc: {
+    name: 'WebRTC',
+    emoji: '🗣',
+    icon: { repo: 'koolson', file: 'Direct.png' },
+    configKey: 'enableWebRTC',
+    providers: {},
+    rules: [
+      'DOMAIN-KEYWORD,webrtc,WebRTC',
+      'DOMAIN-KEYWORD,stun,WebRTC',
+      'DOMAIN-KEYWORD,turn,WebRTC',
+      'DST-PORT,3478,WebRTC',
+      'DST-PORT,5349,WebRTC',
+      'DST-PORT,5350,WebRTC',
+      'DST-PORT,19302,WebRTC'
+    ]
+  },
+  telegram: {
+    name: 'Telegram',
+    emoji: '✈️',
+    icon: { repo: 'koolson', file: 'Telegram.png' },
+    configKey: 'enableTelegram',
+    providers: { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' },
+    rules: ({ isWin, isMac, isLin }) => [
+      ...(isWin ? ['PROCESS-NAME,Telegram.exe,Telegram'] : []),
+      ...(isMac || isLin ? ['PROCESS-NAME,Telegram,Telegram'] : []),
+      'RULE-SET,telegram,Telegram',
+      'RULE-SET,telegram-ip,Telegram,no-resolve'
+    ]
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// 2.1 六维分类默认策略 (CATEGORY_DEFAULTS)
 // ─────────────────────────────────────────────────────────────
 const CATEGORY_DEFAULTS = {
   ai: {
@@ -44,10 +101,19 @@ const CATEGORY_DEFAULTS = {
     preferredRegions: []
   },
   social: {
-    preferredRegions: []
+    preferredRegions: [],
+    aggregateGroups: {
+      '社交平台': DEFAULT_AGGREGATE_GROUPS['社交平台']
+    }
   },
   game: {
-    preferredRegions: []
+    preferredRegions: [],
+    emoji: '🎮',
+    icon: { repo: 'koolson', file: 'Game.png' },
+    aggregateGroups: {
+      '游戏服务': DEFAULT_AGGREGATE_GROUPS['游戏服务'],
+      '游戏下载': DEFAULT_AGGREGATE_GROUPS['游戏下载']
+    }
   },
   dev: {
     preferredRegions: []
@@ -210,84 +276,62 @@ const BUILTIN_SERVICES = {
     }
   },
 
-  // ④ 游戏服务
+  // ④ 游戏服务 (徽标与默认图标统一定义在 CATEGORY_DEFAULTS.game 中继承)
   game: {
     steam: {
       name: 'Steam',
-      emoji: '🎮',
       rules: [
         { type: 'DOMAIN-SUFFIX', value: 'steamcontent.com', target: 'GAME_DOWNLOAD' },
         { type: 'RULE-SET', value: 'steam-cn', path: 'steam@cn', target: 'GAME_DOWNLOAD' },
         { type: 'RULE-SET', value: 'steam', path: 'steam', target: 'GAME_SERVICE' }
-      ],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      ]
     },
     'steam-cn': {
       name: 'Steam CN',
-      emoji: '🎮',
       rules: [],
       providerOnly: true,
-      providerPath: 'steam@cn',
-      icon: { repo: 'koolson', file: 'Game.png' }
+      providerPath: 'steam@cn'
     },
     epic: {
       name: 'Epic',
-      emoji: '🎮',
       providerPath: 'epicgames',
       rules: [
         { type: 'DOMAIN-SUFFIX', value: 'download.epicgames.com', target: 'GAME_DOWNLOAD' },
         { type: 'RULE-SET', value: 'epic', path: 'epicgames', target: 'GAME_SERVICE' },
         { type: 'DOMAIN-SUFFIX', value: 'epicgames.com', target: 'GAME_SERVICE' }
-      ],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      ]
     },
     riot: {
       name: 'Riot',
-      emoji: '🎮',
-      rules: [{ type: 'RULE-SET', value: 'riot', path: 'riot', target: 'GAME_SERVICE' }],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      rules: [{ type: 'RULE-SET', value: 'riot', path: 'riot', target: 'GAME_SERVICE' }]
     },
     blizzard: {
       name: 'Blizzard',
-      emoji: '🎮',
-      rules: [{ type: 'RULE-SET', value: 'blizzard', path: 'blizzard', target: 'GAME_SERVICE' }],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      rules: [{ type: 'RULE-SET', value: 'blizzard', path: 'blizzard', target: 'GAME_SERVICE' }]
     },
     nintendo: {
       name: 'Nintendo',
-      emoji: '🎮',
-      rules: [{ type: 'RULE-SET', value: 'nintendo', path: 'nintendo', target: 'GAME_SERVICE' }],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      rules: [{ type: 'RULE-SET', value: 'nintendo', path: 'nintendo', target: 'GAME_SERVICE' }]
     },
     playstation: {
       name: 'PlayStation',
-      emoji: '🎮',
-      rules: [{ type: 'RULE-SET', value: 'playstation', path: 'playstation', target: 'GAME_SERVICE' }],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      rules: [{ type: 'RULE-SET', value: 'playstation', path: 'playstation', target: 'GAME_SERVICE' }]
     },
     xbox: {
       name: 'Xbox',
-      emoji: '🎮',
-      rules: [{ type: 'RULE-SET', value: 'xbox', path: 'xbox', target: 'GAME_SERVICE' }],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      rules: [{ type: 'RULE-SET', value: 'xbox', path: 'xbox', target: 'GAME_SERVICE' }]
     },
     ubisoft: {
       name: 'Ubisoft',
-      emoji: '🎮',
-      rules: [{ type: 'RULE-SET', value: 'ubisoft', path: 'ubisoft', target: 'GAME_SERVICE' }],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      rules: [{ type: 'RULE-SET', value: 'ubisoft', path: 'ubisoft', target: 'GAME_SERVICE' }]
     },
     origin: {
       name: 'Origin',
-      emoji: '🎮',
-      rules: [{ type: 'RULE-SET', value: 'origin', path: 'origin', target: 'GAME_SERVICE' }],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      rules: [{ type: 'RULE-SET', value: 'origin', path: 'origin', target: 'GAME_SERVICE' }]
     },
     ea: {
       name: 'EA',
-      emoji: '🎮',
-      rules: [{ type: 'RULE-SET', value: 'ea', path: 'ea', target: 'GAME_SERVICE' }],
-      icon: { repo: 'koolson', file: 'Game.png' }
+      rules: [{ type: 'RULE-SET', value: 'ea', path: 'ea', target: 'GAME_SERVICE' }]
     }
   },
 
@@ -457,7 +501,9 @@ class ServiceCatalog {
       dev: cfg.devServices || Object.keys(catServices)
     };
 
-    const allowedKeys = activeKeysMap[category] || Object.keys(catServices);
+    const customKeys = Object.keys(cfg.customServices?.[category] || {});
+    const baseKeys = activeKeysMap[category] || Object.keys(catServices);
+    const allowedKeys = [...new Set([...baseKeys, ...customKeys])];
     const result = [];
 
     allowedKeys.forEach(key => {
@@ -495,8 +541,9 @@ class ServiceCatalog {
       if (cat === 'system' && !cfg.enableSystemServices) continue;
 
       const active = this.getActiveServices(cat, cfg);
+      const catDefaults = CATEGORY_DEFAULTS[cat] || {};
       for (const { key, service } of active) {
-        if (service.reg) {
+        if (service && service.reg) {
           const compiledReg = compileRegex(service.reg);
           if (compiledReg) {
             matchers.push({
@@ -504,7 +551,7 @@ class ServiceCatalog {
               reg: compiledReg,
               tag: service.tag || key,
               pool: service.pool || key,
-              uiIcon: service.emoji || '',
+              uiIcon: service.emoji || catDefaults.emoji || '',
               uiText: service.name || key
             });
           }
@@ -526,12 +573,13 @@ class ServiceCatalog {
     }
     const icons = {};
     const texts = {};
-    for (const catServices of Object.values(this.services)) {
+    for (const [cat, catServices] of Object.entries(this.services)) {
+      const catDefaults = CATEGORY_DEFAULTS[cat] || {};
       for (const [key, service] of Object.entries(catServices)) {
         if (!service) continue;
         const tag = service.tag || key;
         const pool = service.pool || key;
-        const emoji = service.emoji || '';
+        const emoji = service.emoji || catDefaults.emoji || '';
         const name = service.name || key;
 
         if (emoji) {
@@ -559,7 +607,8 @@ class ServiceCatalog {
   getGroupName(service, mode) {
     const iconMode = mode || this.userConfig.groupIconMode || 'emoji';
     const name = service.name;
-    const emoji = service.emoji || '';
+    const catDefaults = service.category ? CATEGORY_DEFAULTS[service.category] : null;
+    const emoji = service.emoji || catDefaults?.emoji || '';
 
     if (iconMode === 'icon') {
       return name;
@@ -569,16 +618,19 @@ class ServiceCatalog {
 
   /**
    * 导出结构化服务注册表对象
-   * @returns {object} { ai, streaming, social, game, dev, system }
+   * @returns {object} { ai, streaming, social, game, dev, system, _aggregate, _specialized }
    */
   toRegistries() {
     const registries = {};
     for (const [cat, catServices] of Object.entries(this.services)) {
+      const catDefaults = CATEGORY_DEFAULTS[cat] || {};
       registries[cat] = {};
       for (const [key, s] of Object.entries(catServices)) {
-        const cleanName = s.name;
-        const fullName = s.emoji ? `${s.emoji} ${cleanName}` : cleanName;
-        const iconUrl = resolveIconUrl(s.icon, this.repos.icons);
+        const cleanName = s.name || key;
+        const emoji = s.emoji || catDefaults.emoji || '';
+        const fullName = emoji ? `${emoji} ${cleanName}` : cleanName;
+        const iconDef = s.icon || catDefaults.icon;
+        const iconUrl = resolveIconUrl(iconDef, this.repos.icons);
         const compiledReg = compileRegex(s.reg);
 
         let providerPath = `geosite/${key}`;
@@ -596,7 +648,8 @@ class ServiceCatalog {
         if (typeof s.rules === 'string') {
           if (!s.provider && !s.providerPath) providerPath = `geosite/${s.rules}`;
           ruleSetName = s.rules;
-          rulesArr = [`RULE-SET,${s.rules},${cleanName}`];
+          const target = cat === 'game' ? '游戏服务' : cleanName;
+          rulesArr = [`RULE-SET,${s.rules},${target}`];
         } else if (Array.isArray(s.rules)) {
           if (!s.provider && !s.providerPath) {
             const ruleSetItem = s.rules.find(r => r && r.type === 'RULE-SET' && r.path);
@@ -606,7 +659,14 @@ class ServiceCatalog {
           }
           rulesArr = s.rules.map(r => {
             if (typeof r === 'string') return r;
-            const target = r.target === '@self' ? cleanName : (r.target === 'GAME_DOWNLOAD' ? '游戏下载' : (r.target === 'GAME_SERVICE' ? '游戏服务' : (r.target || cleanName)));
+            let target = r.target;
+            if (target === 'GAME_DOWNLOAD') {
+              target = '游戏下载';
+            } else if (target === 'GAME_SERVICE') {
+              target = '游戏服务';
+            } else if (target === '@self' || !target) {
+              target = cat === 'game' ? '游戏服务' : cleanName;
+            }
             return `${r.type},${r.value},${target}`;
           });
         } else if (s.rules && typeof s.rules === 'object') {
@@ -614,7 +674,8 @@ class ServiceCatalog {
           if (!s.provider && !s.providerPath) {
             providerPath = s.rules.path ? `geosite/${s.rules.path}` : `geosite/${ruleSetName}`;
           }
-          rulesArr = [`RULE-SET,${ruleSetName},${cleanName}`];
+          const target = cat === 'game' ? '游戏服务' : cleanName;
+          rulesArr = [`RULE-SET,${ruleSetName},${target}`];
         }
 
         registries[cat][key] = {
@@ -623,17 +684,46 @@ class ServiceCatalog {
           cleanName,
           fullName,
           iconUrl,
-          uiIcon: s.emoji || '',
+          uiIcon: emoji,
           reg: compiledReg,
           provider: s.provider || providerPath,
           ruleSet: s.ruleSet || ruleSetName,
           pool: s.pool || key,
           rules: rulesArr,
           proxies: s.proxies ? [...s.proxies] : undefined,
-          preferredRegions: s.preferredRegions || CATEGORY_DEFAULTS[cat]?.preferredRegions || []
+          preferredRegions: s.preferredRegions || catDefaults.preferredRegions || []
         };
       }
     }
+
+    // 聚合策略组投影 (如 '游戏服务', '游戏下载', '社交平台')
+    const aggregate = {};
+    for (const catDef of Object.values(CATEGORY_DEFAULTS)) {
+      if (catDef.aggregateGroups) {
+        for (const [groupName, meta] of Object.entries(catDef.aggregateGroups)) {
+          aggregate[groupName] = {
+            cleanName: groupName,
+            fullName: meta.emoji ? `${meta.emoji} ${groupName}` : groupName,
+            uiIcon: meta.emoji || '',
+            iconUrl: resolveIconUrl(meta.icon, this.repos.icons)
+          };
+        }
+      }
+    }
+    registries._aggregate = aggregate;
+
+    // 专项独立服务投影 (如 'Telegram', '加密货币', 'PayPal', 'WebRTC')
+    const specialized = {};
+    for (const [specKey, spec] of Object.entries(SPECIAL_SERVICES)) {
+      specialized[specKey] = {
+        cleanName: spec.name,
+        fullName: spec.emoji ? `${spec.emoji} ${spec.name}` : spec.name,
+        uiIcon: spec.emoji || '',
+        iconUrl: resolveIconUrl(spec.icon, this.repos.icons)
+      };
+    }
+    registries._specialized = specialized;
+
     return registries;
   }
 }
@@ -661,7 +751,7 @@ function buildServiceCatalog(userConfig = {}) {
   for (const [cat, sMap] of Object.entries(BUILTIN_SERVICES)) {
     mergedServices[cat] = {};
     for (const [k, v] of Object.entries(sMap)) {
-      mergedServices[cat][k] = { ...v };
+      mergedServices[cat][k] = { category: cat, ...v };
     }
   }
 
@@ -675,7 +765,7 @@ function buildServiceCatalog(userConfig = {}) {
       if (!def) continue;
 
       // 规范化用户传入的定义
-      const normalized = { ...def };
+      const normalized = { category: cat, ...def };
       if (normalized.reg) {
         normalized.reg = compileRegex(normalized.reg);
       }
@@ -700,6 +790,10 @@ module.exports = {
   compileRegex,
   resolveIconUrl,
   deepMerge,
+  CATEGORY_DEFAULTS,
+  DEFAULT_AGGREGATE_GROUPS,
+  SPECIAL_SERVICES,
+  BUILTIN_SERVICES,
   ServiceCatalog,
   buildServiceCatalog
 };

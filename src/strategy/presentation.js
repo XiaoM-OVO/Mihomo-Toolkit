@@ -36,14 +36,7 @@ const SKELETON_GROUPS = {
   '订阅与状态看板':   { emoji: '📊', icon: 'Airport.png', repo: 'koolson' },
   '漏网之鱼':       { emoji: '🐟', icon: 'Final.png', repo: 'koolson' },
   '其他节点':       { emoji: '🌐', icon: 'Global.png', repo: 'koolson' },
-  '未知识别':       { emoji: '🗑️', icon: 'Cydia.png', repo: 'koolson' },
-  '游戏服务':       { emoji: '🎮', icon: 'Game.png', repo: 'koolson' },
-  '游戏下载':       { emoji: '🎮', icon: 'Game.png', repo: 'koolson' },
-  'Telegram':       { emoji: '✈️', icon: 'Telegram.png', repo: 'koolson' },
-  '加密货币':       { emoji: '🪙', icon: 'Cryptocurrency.png', repo: 'koolson' },
-  'PayPal':         { emoji: '💳', icon: 'PayPal.png', repo: 'koolson' },
-  'WebRTC':         { emoji: '🗣', icon: 'Direct.png', repo: 'koolson' },
-  '社交平台':       { emoji: '💬', icon: 'Discord.png', repo: 'koolson' }
+  '未知识别':       { emoji: '🗑️', icon: 'Cydia.png', repo: 'koolson' }
 };
 
 /** 图标仓库前缀默认值取自字段注册表（单一真相源，避免与配置默认值漂移） */
@@ -125,7 +118,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     iconMap[fullName] = hashLbIconUrl;
   }
 
-  // 3. 业务服务注册表 (AI, Streaming, Dev, System 等)
+  // 3. 业务服务注册表 (AI, Streaming, Dev, System, 聚合组及专项组等)
   let effectiveRegistries = (registries && Object.keys(registries).length > 0) ? registries : null;
   if (!effectiveRegistries && userConfig.catalog && typeof userConfig.catalog.toRegistries === 'function') {
     effectiveRegistries = userConfig.catalog.toRegistries();
@@ -142,7 +135,36 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     }
   }
 
-  for (const catServices of Object.values(effectiveRegistries)) {
+  // 确保聚合组与专项组元数据保底挂载 (如外部传入了精简的自定义 registries 字典)
+  const { DEFAULT_AGGREGATE_GROUPS, SPECIAL_SERVICES } = require('../config/catalog');
+  const aggregateSources = effectiveRegistries._aggregate || DEFAULT_AGGREGATE_GROUPS;
+  for (const [cleanName, def] of Object.entries(aggregateSources)) {
+    const fullName = def.fullName || (def.emoji ? `${def.emoji} ${cleanName}` : (def.uiIcon ? `${def.uiIcon} ${cleanName}` : cleanName));
+    emojiMap[cleanName] = fullName;
+    emojiMap[fullName] = fullName;
+    const iconUrl = def.iconUrl || (def.icon ? resolveIconUrl(def.icon.file || def.icon, def.icon.repo || def.repo || 'koolson', userConfig) : null);
+    if (iconUrl) {
+      iconMap[cleanName] = iconUrl;
+      iconMap[fullName] = iconUrl;
+    }
+  }
+
+  const specialSources = effectiveRegistries._specialized || SPECIAL_SERVICES;
+  for (const def of Object.values(specialSources)) {
+    const cleanName = def.cleanName || def.name;
+    if (!cleanName) continue;
+    const fullName = def.fullName || (def.emoji ? `${def.emoji} ${cleanName}` : (def.uiIcon ? `${def.uiIcon} ${cleanName}` : cleanName));
+    emojiMap[cleanName] = fullName;
+    emojiMap[fullName] = fullName;
+    const iconUrl = def.iconUrl || (def.icon ? resolveIconUrl(def.icon.file || def.icon, def.icon.repo || def.repo || 'koolson', userConfig) : null);
+    if (iconUrl) {
+      iconMap[cleanName] = iconUrl;
+      iconMap[fullName] = iconUrl;
+    }
+  }
+
+  for (const [catName, catServices] of Object.entries(effectiveRegistries)) {
+    if (catName.startsWith('_')) continue;
     if (catServices && typeof catServices === 'object') {
       Object.values(catServices).forEach(item => {
         if (item && item.cleanName) {
@@ -363,6 +385,7 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
 }
 
 module.exports = {
+  SKELETON_GROUPS,
   stripGroupDecoration,
   buildPresentationMaps,
   applyPresentation

@@ -6,7 +6,7 @@
 
 const { FIELDS_BY_KEY } = require('../data');
 const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
-const { buildServiceCatalog } = require('../config/catalog');
+const { buildServiceCatalog, SPECIAL_SERVICES } = require('../config/catalog');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
 
 function dedupe(arr) {
@@ -27,45 +27,6 @@ const BASE_PROVIDER_ROUTES = Object.freeze({
   'download-android': 'geosite/category-android-app-download',
   'download-games': 'geosite/category-game-platforms-download',
   'download-games-cn': 'geosite/category-game-platforms-download@cn'
-});
-
-/**
- * 专项独立服务声明式配置 (Crypto, PayPal, WebRTC, Telegram)
- */
-const SPECIAL_SERVICES = Object.freeze({
-  crypto: {
-    configKey: 'enableCrypto',
-    providers: { crypto: 'geosite/category-cryptocurrency' },
-    rules: ['RULE-SET,crypto,加密货币']
-  },
-  paypal: {
-    configKey: 'enablePayPal',
-    providers: { paypal: 'geosite/paypal' },
-    rules: ['RULE-SET,paypal,PayPal']
-  },
-  webrtc: {
-    configKey: 'enableWebRTC',
-    providers: {},
-    rules: [
-      'DOMAIN-KEYWORD,webrtc,WebRTC',
-      'DOMAIN-KEYWORD,stun,WebRTC',
-      'DOMAIN-KEYWORD,turn,WebRTC',
-      'DST-PORT,3478,WebRTC',
-      'DST-PORT,5349,WebRTC',
-      'DST-PORT,5350,WebRTC',
-      'DST-PORT,19302,WebRTC'
-    ]
-  },
-  telegram: {
-    configKey: 'enableTelegram',
-    providers: { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' },
-    rules: ({ isWin, isMac, isLin }) => [
-      ...(isWin ? ['PROCESS-NAME,Telegram.exe,Telegram'] : []),
-      ...(isMac || isLin ? ['PROCESS-NAME,Telegram,Telegram'] : []),
-      'RULE-SET,telegram,Telegram',
-      'RULE-SET,telegram-ip,Telegram,no-resolve'
-    ]
-  }
 });
 
 /**
@@ -277,7 +238,9 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
 
   // 6. AI 助手服务
   if (userConfig.enableAI && effectiveRegistries.ai) {
-    const activeKeys = userConfig.aiServices || Object.keys(effectiveRegistries.ai);
+    const customAiKeys = Object.keys(userConfig.customServices?.ai || {});
+    const baseActive = userConfig.aiServices || Object.keys(effectiveRegistries.ai);
+    const activeKeys = [...new Set([...baseActive, ...customAiKeys])];
     assembleServiceCategory({
       registry: effectiveRegistries.ai,
       activeKeys,
@@ -288,7 +251,9 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
 
   // 7. 流媒体服务
   if (userConfig.enableStreaming && effectiveRegistries.streaming) {
-    const activeKeys = userConfig.streamingServices || Object.keys(effectiveRegistries.streaming);
+    const customStreamingKeys = Object.keys(userConfig.customServices?.streaming || {});
+    const baseActive = userConfig.streamingServices || Object.keys(effectiveRegistries.streaming);
+    const activeKeys = [...new Set([...baseActive, ...customStreamingKeys])];
     assembleServiceCategory({
       registry: effectiveRegistries.streaming,
       activeKeys,
@@ -299,7 +264,9 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
 
   // 8. 社交平台
   if (userConfig.enableSocial && effectiveRegistries.social) {
-    const socialServices = userConfig.socialServices || Object.keys(effectiveRegistries.social);
+    const customSocialKeys = Object.keys(userConfig.customServices?.social || {});
+    const baseActive = userConfig.socialServices || Object.keys(effectiveRegistries.social);
+    const socialServices = [...new Set([...baseActive, ...customSocialKeys])];
     const independentSocial = userConfig.independentSocial || ['twitter'];
     const nonIndependentKeys = socialServices.filter(k => !independentSocial.includes(k) && effectiveRegistries.social[k]);
     const useCombinedGroup = nonIndependentKeys.length > 1;
@@ -315,9 +282,11 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
     });
   }
 
-  // 9. 游戏平台
+  // 9. 游戏平台 (按需激活: gameServices 声明列表 + customServices.game 扩展)
   if (userConfig.enableGame && effectiveRegistries.game) {
-    const activeKeys = userConfig.gameServices || Object.keys(effectiveRegistries.game);
+    const customGameKeys = Object.keys(userConfig.customServices?.game || {});
+    const baseActive = userConfig.gameServices || Object.keys(effectiveRegistries.game);
+    const activeKeys = [...new Set([...baseActive, ...customGameKeys])];
     assembleServiceCategory({
       registry: effectiveRegistries.game,
       activeKeys,
@@ -360,7 +329,9 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
 
   // 12. 系统服务
   if (userConfig.enableSystemServices && effectiveRegistries.system) {
-    const activeKeys = userConfig.systemServices || Object.keys(effectiveRegistries.system);
+    const customSystemKeys = Object.keys(userConfig.customServices?.system || {});
+    const baseActive = userConfig.systemServices || Object.keys(effectiveRegistries.system);
+    const activeKeys = [...new Set([...baseActive, ...customSystemKeys])];
     assembleServiceCategory({
       registry: effectiveRegistries.system,
       activeKeys,
