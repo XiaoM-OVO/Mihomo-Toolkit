@@ -516,6 +516,41 @@ class ServiceCatalog {
   }
 
   /**
+   * 导出面向节点重命名与分流展示的服务级特征图标与文本字典 (Feature Maps)
+   * 包含 tag, key 与 pool 多维别名映射，支持 O(1) 幂等缓存
+   * @returns {{ icons: Record<string, string>, texts: Record<string, string> }}
+   */
+  getFeatureMaps() {
+    if (this._featureMaps) {
+      return this._featureMaps;
+    }
+    const icons = {};
+    const texts = {};
+    for (const catServices of Object.values(this.services)) {
+      for (const [key, service] of Object.entries(catServices)) {
+        if (!service) continue;
+        const tag = service.tag || key;
+        const pool = service.pool || key;
+        const emoji = service.emoji || '';
+        const name = service.name || key;
+
+        if (emoji) {
+          icons[tag] = emoji;
+          icons[key] = emoji;
+          if (pool) icons[pool] = emoji;
+        }
+        if (name) {
+          texts[tag] = name;
+          texts[key] = name;
+          if (pool) texts[pool] = name;
+        }
+      }
+    }
+    this._featureMaps = { icons, texts };
+    return this._featureMaps;
+  }
+
+  /**
    * 计算策略组的展示全名（依据 groupIconMode）
    * @param {object} service
    * @param {string} [mode] "emoji" | "icon" | "both"

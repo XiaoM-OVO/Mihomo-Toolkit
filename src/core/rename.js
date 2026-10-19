@@ -147,9 +147,13 @@ function buildRenamePlan(items = [], config = {}) {
   const plan = [];
   if (!Array.isArray(items)) return plan;
   const indexMap = computeNodeIndices(items, config);
-  const catalogIcons = {};
-  const catalogTexts = {};
-  if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
+  let catalogIcons = {};
+  let catalogTexts = {};
+  if (config.catalog && typeof config.catalog.getFeatureMaps === 'function') {
+    const maps = config.catalog.getFeatureMaps();
+    catalogIcons = maps.icons;
+    catalogTexts = maps.texts;
+  } else if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
     config.catalog.getCoreMatchers().forEach(m => {
       if (m.uiIcon) catalogIcons[m.tag] = m.uiIcon;
       if (m.uiText) catalogTexts[m.tag] = m.uiText;

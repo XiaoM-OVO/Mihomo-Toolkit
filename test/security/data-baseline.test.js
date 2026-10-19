@@ -233,18 +233,33 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.match(warnings[0], /protectedDomains/);
     });
 
-    it('exemptGroups - 骨架豁免组只增不减', () => {
+    it('exemptGroups - 骨架豁免组只增不减与无视装饰匹配 (Decoration-Agnostic)', () => {
       const merged = resolveConfig({ exemptGroups: ['🧪 实验节点'] });
       for (const g of SKELETON_EXEMPT_GROUPS) {
         assert.ok(merged.exemptGroups.includes(g), `骨架豁免组 ${g} 被配置覆盖`);
       }
       assert.ok(merged.exemptGroups.includes('🧪 实验节点'));
 
-      const { proxyGroups } = pruneEmptyGroups({
+      // 1. 骨架组纯净名自持保活
+      const res1 = pruneEmptyGroups({
         proxyGroups: [{ name: '手动选择', proxies: [] }, { name: '临时空组', proxies: [] }],
         exemptGroups: []
       });
-      assert.deepStrictEqual(proxyGroups.map(g => g.name), ['手动选择']);
+      assert.deepStrictEqual(res1.proxyGroups.map(g => g.name), ['手动选择']);
+
+      // 2. 带 Emoji 组名被纯净豁免清单命中 (📍 手动选择 匹配 手动选择)
+      const res2 = pruneEmptyGroups({
+        proxyGroups: [{ name: '📍 手动选择', proxies: [] }, { name: '临时空组', proxies: [] }],
+        exemptGroups: ['手动选择']
+      });
+      assert.deepStrictEqual(res2.proxyGroups.map(g => g.name), ['📍 手动选择']);
+
+      // 3. 用户配置带 Emoji 豁免项 (🏠 家宽优选) 命中纯净策略组名 (家宽优选)
+      const res3 = pruneEmptyGroups({
+        proxyGroups: [{ name: '家宽优选', proxies: [] }, { name: '临时空组', proxies: [] }],
+        exemptGroups: ['🏠 家宽优选']
+      });
+      assert.deepStrictEqual(res3.proxyGroups.map(g => g.name), ['家宽优选']);
     });
 
     it('protectedDomains - 判定点自持基线：传入空受保护域名清单也不会 fail-open', () => {

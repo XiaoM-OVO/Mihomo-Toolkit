@@ -32,6 +32,11 @@ describe('【Core】核心基础构件 (modules)', () => {
     assert.equal(PROTOCOL_ICONS.vless, '🛸');
     assert.equal(FEATURE_ICONS.game, '🎮');
     assert.equal(FEATURE_TEXT_MAP.game, '游戏');
+    // 验证业务服务特征已从底表剥离，由 ServiceCatalog 单一事实源管理
+    assert.equal(FEATURE_ICONS.chatgpt, undefined);
+    assert.equal(FEATURE_ICONS.nf, undefined);
+    assert.equal(FEATURE_TEXT_MAP.chatgpt, undefined);
+    assert.equal(FEATURE_TEXT_MAP.nf, undefined);
 
     // 验证沙特 (sa) 与南亚次大区 (sas) 彻底脱敏无冲突
     const saDef = defs.find(r => r.id === 'sa');

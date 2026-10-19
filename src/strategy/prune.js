@@ -7,6 +7,7 @@
  */
 
 const { SKELETON_EXEMPT_GROUPS, effectiveExemptGroups } = require('../data');
+const { stripGroupDecoration } = require('./presentation');
 
 const DEFAULT_EXEMPT_GROUPS = [...SKELETON_EXEMPT_GROUPS];
 const VALID_BUILTIN_TARGETS = ['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS', 'GLOBAL'];
@@ -46,7 +47,13 @@ function pruneEmptyGroups({
     }
   }
 
-  const exemptSet = new Set(effectiveExemptGroups(exemptGroups));
+  const exemptList = effectiveExemptGroups(exemptGroups);
+  const exemptExactSet = new Set(exemptList);
+  const exemptStrippedSet = new Set(exemptList.map(stripGroupDecoration));
+  const isExempt = (name) => {
+    if (!name || typeof name !== 'string') return false;
+    return exemptExactSet.has(name) || exemptStrippedSet.has(stripGroupDecoration(name));
+  };
 
   // 深度复制策略组并建立映射，严格校验同名冲突，防止静默覆盖
   const groupMap = new Map();
@@ -173,7 +180,7 @@ function pruneEmptyGroups({
 
   // 1.2 保护豁免组：若骨架组无法通过自身路径抵达任何生产性汇点，强制注入 DIRECT 保证自持
   for (const [name, group] of groupMap.entries()) {
-    if (exemptSet.has(name) && !reachable.has(name)) {
+    if (isExempt(name) && !reachable.has(name)) {
       rescueExemptGroup(name, group);
     }
   }
@@ -181,7 +188,7 @@ function pruneEmptyGroups({
   // 1.3 豁免组保活后，普通组若无法通达生产性汇点（即使包含 DIRECT），视为空组予以剪枝淘汰
   for (const name of Array.from(groupMap.keys())) {
     if (!reachable.has(name)) {
-      if (!exemptSet.has(name)) {
+      if (!isExempt(name)) {
         removedGroups.add(name);
         groupMap.delete(name);
         if (logger && typeof logger.debug === 'function') {
@@ -273,7 +280,7 @@ function pruneEmptyGroups({
     const group = groupMap.get(name);
     const hasExit = postReachable.has(name) && group.proxies.length > 0;
     if (!hasExit) {
-      if (!exemptSet.has(name)) {
+      if (!isExempt(name)) {
         removedGroups.add(name);
         groupMap.delete(name);
         if (logger && typeof logger.debug === 'function') {
@@ -288,7 +295,7 @@ function pruneEmptyGroups({
   // 3.1 终末收敛：清理存活组中指向已被剔除组的残余引用；骨架组若为空则注入 DIRECT 保活
   for (const group of groupMap.values()) {
     group.proxies = group.proxies.filter(target => isProductiveSink(target) || target === 'DIRECT' || groupMap.has(target));
-    if (group.proxies.length === 0 && exemptSet.has(group.name)) {
+    if (group.proxies.length === 0 && isExempt(group.name)) {
       rescueExemptGroup(group.name, group);
     }
   }

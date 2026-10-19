@@ -61,6 +61,39 @@ describe('【Pipeline】服务编目引擎与特征装配 (catalog-services)', (
     assert.equal(deepseek.reg.test('DeepSeek 专线'), true);
   });
 
+  it('getFeatureMaps - 导出服务级特征图标与文本映射字典 (DRY SSOT)', () => {
+    const catalog = buildServiceCatalog({
+      customServices: {
+        ai: {
+          deepseek: {
+            name: 'DeepSeek',
+            emoji: '🐋'
+          }
+        }
+      }
+    });
+
+    const { icons, texts } = catalog.getFeatureMaps();
+    // 缓存幂等性
+    assert.equal(catalog.getFeatureMaps(), catalog.getFeatureMaps());
+
+    // 内置 AI 与流媒体
+    assert.equal(icons['chatgpt'], '🤖');
+    assert.equal(texts['chatgpt'], 'ChatGPT');
+    assert.equal(icons['yt'], '▶️');
+    assert.equal(icons['youtube'], '▶️');
+    assert.equal(texts['yt'], 'YouTube');
+    assert.equal(texts['youtube'], 'YouTube');
+    assert.equal(icons['nf'], '🎬');
+    assert.equal(texts['nf'], 'Netflix');
+    assert.equal(icons['d+'], '🪄');
+    assert.equal(texts['d+'], 'Disney+');
+
+    // 自定义服务
+    assert.equal(icons['deepseek'], '🐋');
+    assert.equal(texts['deepseek'], 'DeepSeek');
+  });
+
   it('runNodesPipeline - 节点清洗特征打标与动态 Emoji 注入 ({features})', async () => {
     const rawProxies = [
       { name: '香港专线 [DeepSeek高速] 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },

@@ -1,7 +1,8 @@
 /**
  * 协议与特征图标字典
  *
- * 集中管理底层代理协议、业务特征标签与 Emoji/文字映射表。
+ * 集中管理底层代理协议与基础设施/网络基线特征标签的 Emoji/文字映射表。
+ * 业务服务级特征（如 AI、流媒体、社交平台等）由 ServiceCatalog 编目体系统一部署。
  */
 
 const PROTOCOL_ICONS = {
@@ -39,46 +40,25 @@ const FEATURE_ICONS = {
   AWS: "🛰️",
   aws: "🛰️",
   experimental: "🧪",
-  no_download: "🚫",
-  gpt: "🤖",
-  chatgpt: "🤖",
-  gemini: "♊",
-  claude: "🦀",
-  copilot: "🐙",
-  ai: "✨",
-  nf: "🎬",
-  "d+": "🪄",
-  disney: "🪄",
-  yt: "▶️",
-  tk: "🎵",
-  sp: "🎧"
+  no_download: "🚫"
 };
 
 const FEATURE_TEXT_MAP = {
   residential: "家宽",
   game: "游戏",
   streaming: "流媒体",
-  chatgpt: "GPT",
-  gemini: "Gemini",
-  claude: "Claude",
-  copilot: "Copilot",
-  ai: "AI",
   download: "下载",
   free: "免费",
   no_download: "禁止下载",
   wap: "WAP",
-  CDN: "CDN",
-  AWS: "AWS",
   cellular: "蜂窝",
+  CDN: "CDN",
+  cdn: "CDN",
+  AWS: "AWS",
+  aws: "AWS",
   ipv6: "IPv6",
   dualstack: "双栈",
-  experimental: "实验",
-  nf: "Netflix",
-  yt: "YouTube",
-  "d+": "Disney+",
-  disney: "Disney+",
-  tk: "TikTok",
-  sp: "Spotify"
+  experimental: "实验"
 };
 
 module.exports = {

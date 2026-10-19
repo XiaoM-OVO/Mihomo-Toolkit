@@ -147,8 +147,10 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   const finalNames = applyRenamePlan(effectiveItems, renamePlan);
   for (const item of effectiveItems) markTrustedCleanedNode(item.proxy);
 
-  const catalogTexts = {};
-  if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
+  let catalogTexts = {};
+  if (config.catalog && typeof config.catalog.getFeatureMaps === 'function') {
+    catalogTexts = config.catalog.getFeatureMaps().texts;
+  } else if (config.catalog && typeof config.catalog.getCoreMatchers === 'function') {
     config.catalog.getCoreMatchers().forEach(m => {
       if (m.uiText) catalogTexts[m.tag] = m.uiText;
     });
