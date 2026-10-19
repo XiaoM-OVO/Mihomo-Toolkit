@@ -40,8 +40,6 @@ const SKELETON_GROUPS = {
   '游戏服务':       { emoji: '🎮', icon: 'Game.png', repo: 'koolson' },
   '游戏下载':       { emoji: '🎮', icon: 'Game.png', repo: 'koolson' },
   'Telegram':       { emoji: '✈️', icon: 'Telegram.png', repo: 'koolson' },
-  'GitHub':         { emoji: '🐱', icon: 'GitHub.png', repo: 'koolson' },
-  '学术网站':       { emoji: '🎓', icon: 'Scholar.png', repo: 'koolson' },
   '加密货币':       { emoji: '🪙', icon: 'Cryptocurrency.png', repo: 'koolson' },
   'PayPal':         { emoji: '💳', icon: 'PayPal.png', repo: 'koolson' },
   'WebRTC':         { emoji: '🗣', icon: 'Direct.png', repo: 'koolson' },
@@ -128,9 +126,21 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
   }
 
   // 3. 业务服务注册表 (AI, Streaming, Dev, System 等)
-  const effectiveRegistries = (registries && Object.keys(registries).length > 0)
-    ? registries
-    : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});
+  let effectiveRegistries = (registries && Object.keys(registries).length > 0) ? registries : null;
+  if (!effectiveRegistries && userConfig.catalog && typeof userConfig.catalog.toRegistries === 'function') {
+    effectiveRegistries = userConfig.catalog.toRegistries();
+  }
+  if (!effectiveRegistries && userConfig.registries && Object.keys(userConfig.registries).length > 0) {
+    effectiveRegistries = userConfig.registries;
+  }
+  if (!effectiveRegistries) {
+    try {
+      const { buildServiceCatalog } = require('../config/catalog');
+      effectiveRegistries = buildServiceCatalog(userConfig).toRegistries();
+    } catch {
+      effectiveRegistries = {};
+    }
+  }
 
   for (const catServices of Object.values(effectiveRegistries)) {
     if (catServices && typeof catServices === 'object') {
@@ -139,6 +149,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
           const cleanName = item.cleanName;
           const fullName = item.fullName || (item.uiIcon ? `${item.uiIcon} ${cleanName}` : cleanName);
           emojiMap[cleanName] = fullName;
+          emojiMap[fullName] = fullName;
           if (item.iconUrl) {
             iconMap[cleanName] = item.iconUrl;
             iconMap[fullName] = item.iconUrl;
@@ -158,17 +169,24 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
       if (typeof iconConf === 'string') {
         if (/\p{Extended_Pictographic}/u.test(iconConf)) {
           const emoji = iconConf.trim();
-          emojiMap[cleanName] = `${emoji} ${cleanName}`;
+          const fullName = `${emoji} ${cleanName}`;
+          emojiMap[cleanName] = fullName;
+          emojiMap[groupName] = fullName;
+          emojiMap[fullName] = fullName;
         } else {
           const iconUrl = iconConf.startsWith('http') ? iconConf : resolveIconUrl(iconConf, 'koolson', userConfig);
           iconMap[cleanName] = iconUrl;
           explicitIcons.add(cleanName);
+          iconMap[groupName] = iconUrl;
           if (emojiMap[cleanName]) iconMap[emojiMap[cleanName]] = iconUrl;
         }
       } else if (typeof iconConf === 'object') {
         if (iconConf.emoji) {
           const emoji = String(iconConf.emoji).trim();
-          emojiMap[cleanName] = `${emoji} ${cleanName}`;
+          const fullName = `${emoji} ${cleanName}`;
+          emojiMap[cleanName] = fullName;
+          emojiMap[groupName] = fullName;
+          emojiMap[fullName] = fullName;
         }
         if (iconConf.icon) {
           let iconUrl = '';
@@ -180,6 +198,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
           if (iconUrl) {
             iconMap[cleanName] = iconUrl;
             explicitIcons.add(cleanName);
+            iconMap[groupName] = iconUrl;
             if (emojiMap[cleanName]) iconMap[emojiMap[cleanName]] = iconUrl;
           }
         }
@@ -187,15 +206,18 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     }
   }
 
-  // 5. 自定义策略组 DSL (customGroups) 图标与 Emoji 注册
+  // 5. 自定义策略组 DSL (customGroups) 图标与 Emoji 注册 (防双重 Emoji 拼接)
   if (Array.isArray(userConfig.customGroups)) {
     for (const g of userConfig.customGroups) {
       if (!g || !g.name) continue;
-      const cleanName = g.name;
-      const emoji = g.emoji || '';
+      const cleanName = stripGroupDecoration(g.name);
+      const extractedEmoji = g.name.match(GROUP_DECORATION_PREFIX)?.[0]?.trim() || '';
+      const emoji = (g.emoji ? String(g.emoji).trim() : '') || extractedEmoji;
       const fullName = emoji ? `${emoji} ${cleanName}` : cleanName;
       if (emoji) {
         emojiMap[cleanName] = fullName;
+        emojiMap[g.name] = fullName;
+        emojiMap[fullName] = fullName;
       }
       if (g.icon) {
         let iconUrl = '';
@@ -207,6 +229,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
         if (iconUrl) {
           iconMap[cleanName] = iconUrl;
           explicitIcons.add(cleanName);
+          iconMap[g.name] = iconUrl;
           iconMap[fullName] = iconUrl;
         }
       }
@@ -228,16 +251,68 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
 
   // 模式 0: 纯文本无图标模式 (none) - 保持纯净中文组名，零 Emoji 装饰，零 g.icon 挂载
   if (mode === 'none') {
+    const stripMap = {};
+    (config['proxy-groups'] || []).forEach(g => {
+      const rawName = g.name;
+      const clean = stripGroupDecoration(rawName);
+      if (rawName !== clean) {
+        g.name = clean;
+        stripMap[rawName] = clean;
+      }
+      delete g.icon;
+    });
+    if (Object.keys(stripMap).length > 0) {
+      (config['proxy-groups'] || []).forEach(g => {
+        if (Array.isArray(g.proxies)) {
+          g.proxies = g.proxies.map(p => stripMap[p] || p);
+        }
+      });
+      if (Array.isArray(config.rules)) {
+        config.rules = config.rules.map(rule => replaceRuleTarget(rule, stripMap));
+      }
+      if (config['rule-providers'] && typeof config['rule-providers'] === 'object') {
+        Object.values(config['rule-providers']).forEach(rp => {
+          if (rp && rp.proxy && stripMap[rp.proxy]) {
+            rp.proxy = stripMap[rp.proxy];
+          }
+        });
+      }
+    }
     return;
   }
 
   // 模式 1: 纯图标模式 (icon) - 内部纯净中文即最终名字，零字符串替换，仅挂载 g.icon
   if (mode === 'icon') {
+    const stripMap = {};
     (config['proxy-groups'] || []).forEach(g => {
-      if (iconMap[g.name] && !g.icon) {
-        g.icon = iconMap[g.name];
+      const rawName = g.name;
+      const clean = stripGroupDecoration(rawName);
+      if (rawName !== clean) {
+        g.name = clean;
+        stripMap[rawName] = clean;
+      }
+      const iconUrl = iconMap[g.name] || iconMap[clean] || iconMap[rawName];
+      if (iconUrl && !g.icon) {
+        g.icon = iconUrl;
       }
     });
+    if (Object.keys(stripMap).length > 0) {
+      (config['proxy-groups'] || []).forEach(g => {
+        if (Array.isArray(g.proxies)) {
+          g.proxies = g.proxies.map(p => stripMap[p] || p);
+        }
+      });
+      if (Array.isArray(config.rules)) {
+        config.rules = config.rules.map(rule => replaceRuleTarget(rule, stripMap));
+      }
+      if (config['rule-providers'] && typeof config['rule-providers'] === 'object') {
+        Object.values(config['rule-providers']).forEach(rp => {
+          if (rp && rp.proxy && stripMap[rp.proxy]) {
+            rp.proxy = stripMap[rp.proxy];
+          }
+        });
+      }
+    }
     return;
   }
 
@@ -248,28 +323,40 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
   (config['proxy-groups'] || []).forEach(g => {
     const rawName = g.name;
     const clean = stripGroupDecoration(rawName);
-    if (emojiMap[rawName]) {
-      g.name = emojiMap[rawName];
+    const targetName = emojiMap[clean] || emojiMap[rawName];
+    if (targetName) {
+      g.name = targetName;
     }
     const shouldMount = needIcons || (explicitIcons && (explicitIcons.has(clean) || explicitIcons.has(rawName)));
-    if (shouldMount && (iconMap[g.name] || iconMap[rawName]) && !g.icon) {
-      g.icon = iconMap[g.name] || iconMap[rawName];
+    const iconUrl = iconMap[g.name] || iconMap[clean] || iconMap[rawName];
+    if (shouldMount && iconUrl && !g.icon) {
+      g.icon = iconUrl;
     }
     if (Array.isArray(g.proxies)) {
-      g.proxies = g.proxies.map(p => emojiMap[p] || p);
+      g.proxies = g.proxies.map(p => emojiMap[stripGroupDecoration(p)] || emojiMap[p] || p);
     }
   });
 
   // 2. 规则组按 TARGET 字段精准替换（杜绝误伤规则类型、参数或域名关键字）
   if (Array.isArray(config.rules)) {
-    config.rules = config.rules.map(rule => replaceRuleTarget(rule, emojiMap));
+    const fullRenameMap = { ...emojiMap };
+    for (const [k, v] of Object.entries(emojiMap)) {
+      const clean = stripGroupDecoration(k);
+      if (clean && !fullRenameMap[clean]) fullRenameMap[clean] = v;
+    }
+    config.rules = config.rules.map(rule => replaceRuleTarget(rule, fullRenameMap));
   }
 
   // 3. Rule-Providers 的 proxy 引用更新
   if (config['rule-providers'] && typeof config['rule-providers'] === 'object') {
     Object.values(config['rule-providers']).forEach(rp => {
-      if (rp && rp.proxy && emojiMap[rp.proxy]) {
-        rp.proxy = emojiMap[rp.proxy];
+      if (rp && rp.proxy) {
+        const clean = stripGroupDecoration(rp.proxy);
+        if (emojiMap[clean]) {
+          rp.proxy = emojiMap[clean];
+        } else if (emojiMap[rp.proxy]) {
+          rp.proxy = emojiMap[rp.proxy];
+        }
       }
     });
   }
