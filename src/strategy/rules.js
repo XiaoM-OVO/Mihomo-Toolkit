@@ -6,6 +6,7 @@
 
 const { FIELDS_BY_KEY } = require('../data');
 const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
+const { buildServiceCatalog } = require('../config/catalog');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
 
 function dedupe(arr) {
@@ -13,46 +14,201 @@ function dedupe(arr) {
 }
 
 /**
+ * 基础网络与常用下载规则集路由定义基线
+ */
+const BASE_PROVIDER_ROUTES = Object.freeze({
+  'lan-domain': 'geosite/private',
+  'lan-ip': 'geoip/private',
+  'non-cn': 'geosite/geolocation-!cn',
+  'cn-domain': 'geosite/cn',
+  'cn-ip': 'geoip/cn',
+  'bt-trackers-pt': 'geosite/category-pt',
+  'bt-trackers-public': 'geosite/category-public-tracker',
+  'download-android': 'geosite/category-android-app-download',
+  'download-games': 'geosite/category-game-platforms-download',
+  'download-games-cn': 'geosite/category-game-platforms-download@cn'
+});
+
+/**
+ * 专项独立服务声明式配置 (Crypto, PayPal, WebRTC, Telegram)
+ */
+const SPECIAL_SERVICES = Object.freeze({
+  crypto: {
+    configKey: 'enableCrypto',
+    providers: { crypto: 'geosite/category-cryptocurrency' },
+    rules: ['RULE-SET,crypto,加密货币']
+  },
+  paypal: {
+    configKey: 'enablePayPal',
+    providers: { paypal: 'geosite/paypal' },
+    rules: ['RULE-SET,paypal,PayPal']
+  },
+  webrtc: {
+    configKey: 'enableWebRTC',
+    providers: {},
+    rules: [
+      'DOMAIN-KEYWORD,webrtc,WebRTC',
+      'DOMAIN-KEYWORD,stun,WebRTC',
+      'DOMAIN-KEYWORD,turn,WebRTC',
+      'DST-PORT,3478,WebRTC',
+      'DST-PORT,5349,WebRTC',
+      'DST-PORT,5350,WebRTC',
+      'DST-PORT,19302,WebRTC'
+    ]
+  },
+  telegram: {
+    configKey: 'enableTelegram',
+    providers: { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' },
+    rules: ({ isWin, isMac, isLin }) => [
+      ...(isWin ? ['PROCESS-NAME,Telegram.exe,Telegram'] : []),
+      ...(isMac || isLin ? ['PROCESS-NAME,Telegram,Telegram'] : []),
+      'RULE-SET,telegram,Telegram',
+      'RULE-SET,telegram-ip,Telegram,no-resolve'
+    ]
+  }
+});
+
+/**
+ * 根据规则集标识与路由定义生成标准 HTTP Rule-Provider 对象
+ * @param {string} name 规则集标识
+ * @param {string} route 相对路径 (如 geosite/cn) 或绝对 URL (如 https://...)
+ * @param {object} [options={}]
+ * @param {string} [options.repoBase=''] 远端 CDN 仓库基准地址
+ * @param {string} [options.ruleFormat='yaml'] 规则集格式 ('mrs' | 'yaml')
+ * @param {string} [options.proxy='DIRECT'] 规则集拉取代理策略
+ * @param {number} [options.interval=86400] 规则集自动更新间隔 (秒)
+ * @returns {object} Rule-Provider 对象
+ */
+function createHttpRuleProvider(name, route, options = {}) {
+  const {
+    repoBase = '',
+    ruleFormat = 'yaml',
+    proxy = 'DIRECT',
+    interval = 86400
+  } = options;
+
+  const isExternal = /^https?:\/\//.test(route);
+  const url = isExternal ? route : `${repoBase}/geo/${route}.${ruleFormat}`;
+  const fmt = isExternal ? (/\.mrs$/i.test(route) ? 'mrs' : 'yaml') : ruleFormat;
+  const behavior = isExternal ? 'domain' : (route.includes('geoip') ? 'ipcidr' : 'domain');
+
+  return {
+    type: 'http',
+    behavior,
+    url,
+    path: `./ruleset/${name}.${fmt}`,
+    interval,
+    format: fmt,
+    proxy
+  };
+}
+
+/**
+ * 声明式装配指定注册表分类的服务规则与 Rule-Providers
+ * @param {object} params
+ * @param {object} params.registry 该分类的服务注册表
+ * @param {Array<string>} params.activeKeys 激活的服务键名列表
+ * @param {Record<string, string>} params.providerBase 收集 Rule-Provider 路由映射的字典
+ * @param {Array<string>} params.routingRules 收集路由规则列表
+ * @param {function} [params.resolveTarget] 自定义目标策略组名称解析器
+ * @param {function} [params.onService] 遍历单个服务时的挂钩回调（用于注入伴生规则集等）
+ */
+function assembleServiceCategory({ registry, activeKeys, providerBase, routingRules, resolveTarget, onService }) {
+  if (!registry || !Array.isArray(activeKeys)) return;
+  activeKeys.forEach(key => {
+    const item = registry[key];
+    if (!item) return;
+
+    const providerKey = item.ruleSet || key;
+    if (item.provider) {
+      providerBase[providerKey] = item.provider;
+    }
+
+    if (typeof onService === 'function') {
+      onService(key, item);
+    }
+
+    if (typeof resolveTarget === 'function') {
+      const target = resolveTarget(key, item);
+      routingRules.push(`RULE-SET,${providerKey},${target}`);
+    } else if (Array.isArray(item.rules) && item.rules.length > 0) {
+      routingRules.push(...item.rules);
+    } else {
+      routingRules.push(`RULE-SET,${providerKey},${item.name || key}`);
+    }
+  });
+}
+
+/**
+ * 展开基于 OS 类型的进程规则
+ * @param {object} processLists
+ * @param {string[]} processLists.win
+ * @param {string[]} processLists.mac
+ * @param {string[]} processLists.lin
+ * @param {string} target 路由目标
+ * @param {object} osInfo
+ * @returns {string[]}
+ */
+function expandProcessRules(processLists, target, osInfo) {
+  const { isWin, isMac, isLin } = osInfo;
+  const rules = [];
+  if (isWin && Array.isArray(processLists.win)) {
+    rules.push(...processLists.win.map(p => `PROCESS-NAME,${p}.exe,${target}`));
+  }
+  if (isMac && Array.isArray(processLists.mac)) {
+    rules.push(...processLists.mac.map(p => `PROCESS-NAME,${p},${target}`));
+  }
+  if (isLin && Array.isArray(processLists.lin)) {
+    rules.push(...processLists.lin.map(p => `PROCESS-NAME,${p},${target}`));
+  }
+  return rules;
+}
+
+/**
  * 组装路由规则与规则集提供者
- * @param {object} userConfig
- * @param {object} registries
+ * @param {object} [userConfig={}]
+ * @param {object} [registries={}]
  * @param {object} [options={}]
  * @param {string} [options.proxyTarget]
  * @returns {object} { rules, providers }
  */
-function buildRoutingRules(userConfig, registries, options = {}) {
+function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
   const effectiveProxyTarget = options.proxyTarget || DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
-  const effectiveRegistries = (registries && Object.keys(registries).length > 0)
-    ? registries
-    : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});
 
-  const repo = `${userConfig.ruleProviderCDN || 'https://fastly.jsdelivr.net/gh'}/MetaCubeX/meta-rules-dat@meta`;
+  let effectiveRegistries = (registries && Object.keys(registries).length > 0) ? registries : null;
+  if (!effectiveRegistries && userConfig.catalog && typeof userConfig.catalog.toRegistries === 'function') {
+    effectiveRegistries = userConfig.catalog.toRegistries();
+  }
+  if (!effectiveRegistries && userConfig.registries && Object.keys(userConfig.registries).length > 0) {
+    effectiveRegistries = userConfig.registries;
+  }
+  if (!effectiveRegistries) {
+    try {
+      effectiveRegistries = buildServiceCatalog(userConfig).toRegistries();
+    } catch {
+      effectiveRegistries = {};
+    }
+  }
+
+  const cdnBase = userConfig.ruleProviderCDN || FIELDS_BY_KEY.ruleProviderCDN.default;
+  const repo = `${cdnBase}/MetaCubeX/meta-rules-dat@meta`;
   const ruleFormat = userConfig.useMRS ? 'mrs' : 'yaml';
 
   const os = (userConfig.osType || 'windows').toLowerCase();
-  const isWin = os === 'windows' || os === 'all';
-  const isMac = os === 'mac'     || os === 'all';
-  const isLin = os === 'linux'   || os === 'all';
-
-  const providerBase = {
-    'lan-domain': 'geosite/private',
-    'lan-ip': 'geoip/private',
-    'non-cn': 'geosite/geolocation-!cn',
-    'cn-domain': 'geosite/cn',
-    'cn-ip': 'geoip/cn',
-    'bt-trackers-pt': 'geosite/category-pt',
-    'bt-trackers-public': 'geosite/category-public-tracker',
-    'download-android': 'geosite/category-android-app-download',
-    'download-games': 'geosite/category-game-platforms-download',
-    'download-games-cn': 'geosite/category-game-platforms-download@cn'
+  const osInfo = {
+    isWin: os === 'windows' || os === 'all',
+    isMac: os === 'mac'     || os === 'all',
+    isLin: os === 'linux'   || os === 'all'
   };
+
+  const providerBase = { ...BASE_PROVIDER_ROUTES };
 
   const routingRules = ['RULE-SET,lan-domain,DIRECT', 'RULE-SET,lan-ip,DIRECT,no-resolve'];
   if (userConfig.enableIPv6) {
     routingRules.push('IP-CIDR6,::1/128,DIRECT,no-resolve', 'IP-CIDR6,fc00::/7,DIRECT,no-resolve', 'IP-CIDR6,fe80::/10,DIRECT,no-resolve');
   }
 
-  // 订阅服务与面板节点直连注入（防止客户端刷新订阅走代理产生延迟叠加或死锁）
+  // 1. 订阅服务与面板节点直连注入（防止客户端刷新订阅走代理产生延迟叠加或死锁）
   const subDomains = normalizeSubDomains(userConfig.subDomain);
   for (const item of subDomains) {
     if (isIPv4(item)) {
@@ -66,12 +222,12 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     }
   }
 
-  // 用户自定义私域分流规则（优先于内置规则集生效，确保自定义私域策略不被通用分流拦截）
+  // 2. 用户自定义私域分流规则（最高业务优先级，确保私域策略不被通用分流拦截）
   if (Array.isArray(userConfig.customRules) && userConfig.customRules.length) {
     routingRules.push(...userConfig.customRules);
   }
 
-  // 用户声明式策略组 (customGroups) 绑定规则注入
+  // 3. 用户声明式策略组 (customGroups) 绑定规则注入
   if (Array.isArray(userConfig.customGroups) && userConfig.customGroups.length) {
     for (const g of userConfig.customGroups) {
       if (!g || !g.name || !g.rules) continue;
@@ -97,7 +253,7 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     }
   }
 
-  // QUIC 分流拦截
+  // 4. QUIC 分流拦截
   if (userConfig.enableQUICReject) {
     const isReturn = userConfig.enableDomesticGroup && !userConfig.proxyFirst;
     if (isReturn) {
@@ -109,159 +265,133 @@ function buildRoutingRules(userConfig, registries, options = {}) {
     }
   }
 
-  // 广告拦截
+  // 5. 广告拦截
   if (userConfig.enableAdBlock) {
     providerBase['ads'] = 'geosite/category-ads-all';
     routingRules.push('RULE-SET,ads,广告拦截');
   }
   if (userConfig.enableAntiAD) {
+    providerBase['anti-ad'] = 'https://anti-ad.net/clash.yaml';
     routingRules.push('RULE-SET,anti-ad,广告拦截');
   }
 
-  // AI 助手服务
-  const aiServices = userConfig.aiServices || ['chatgpt', 'gemini', 'claude', 'copilot'];
-  if (userConfig.enableAI && aiServices.length && effectiveRegistries.ai) {
-    aiServices.forEach(key => {
-      const item = effectiveRegistries.ai[key];
-      if (item) {
-        providerBase[item.ruleSet] = item.provider;
-        routingRules.push(`RULE-SET,${item.ruleSet},${item.name}`);
-      }
+  // 6. AI 助手服务
+  if (userConfig.enableAI && effectiveRegistries.ai) {
+    const activeKeys = userConfig.aiServices || Object.keys(effectiveRegistries.ai);
+    assembleServiceCategory({
+      registry: effectiveRegistries.ai,
+      activeKeys,
+      providerBase,
+      routingRules
     });
   }
 
-  // 流媒体服务
-  const streamingServices = userConfig.streamingServices || ['youtube', 'netflix', 'bilibili', 'disney', 'spotify', 'tiktok', 'bahamut', 'pixiv', 'twitch'];
-  if (userConfig.enableStreaming && streamingServices.length && effectiveRegistries.streaming) {
-    streamingServices.forEach(key => {
-      const item = effectiveRegistries.streaming[key];
-      if (item) {
-        providerBase[key] = item.provider;
-        routingRules.push(`RULE-SET,${key},${item.name}`);
-      }
+  // 7. 流媒体服务
+  if (userConfig.enableStreaming && effectiveRegistries.streaming) {
+    const activeKeys = userConfig.streamingServices || Object.keys(effectiveRegistries.streaming);
+    assembleServiceCategory({
+      registry: effectiveRegistries.streaming,
+      activeKeys,
+      providerBase,
+      routingRules
     });
   }
 
-  // 社交平台
-  const socialServices = userConfig.socialServices || ['twitter', 'facebook', 'instagram', 'discord'];
-  const independentSocial = userConfig.independentSocial || ['twitter'];
-  if (userConfig.enableSocial && socialServices.length && effectiveRegistries.social) {
+  // 8. 社交平台
+  if (userConfig.enableSocial && effectiveRegistries.social) {
+    const socialServices = userConfig.socialServices || Object.keys(effectiveRegistries.social);
+    const independentSocial = userConfig.independentSocial || ['twitter'];
     const nonIndependentKeys = socialServices.filter(k => !independentSocial.includes(k) && effectiveRegistries.social[k]);
     const useCombinedGroup = nonIndependentKeys.length > 1;
 
-    socialServices.forEach(key => {
-      const app = effectiveRegistries.social[key];
-      if (!app) return;
-      const targetGroup = independentSocial.includes(key) ? app.name : (useCombinedGroup ? '社交平台' : app.name);
-      providerBase[key] = app.provider;
-      routingRules.push(`RULE-SET,${key},${targetGroup}`);
-    });
-  }
-
-  // 游戏平台
-  const gameServices = userConfig.gameServices || ['steam', 'epic', 'riot', 'blizzard', 'nintendo', 'playstation', 'xbox', 'ubisoft', 'origin', 'ea'];
-  if (userConfig.enableGame && gameServices.length && effectiveRegistries.game) {
-    gameServices.forEach(key => {
-      const conf = effectiveRegistries.game[key];
-      if (!conf) return;
-      providerBase[key] = conf.provider;
-      if (key === 'steam' && effectiveRegistries.game['steam-cn']) {
-        providerBase['steam-cn'] = effectiveRegistries.game['steam-cn'].provider;
+    assembleServiceCategory({
+      registry: effectiveRegistries.social,
+      activeKeys: socialServices,
+      providerBase,
+      routingRules,
+      resolveTarget: (key, item) => {
+        return independentSocial.includes(key) ? item.name : (useCombinedGroup ? '社交平台' : item.name);
       }
-      if (conf.rules) routingRules.push(...conf.rules);
     });
   }
 
-  // 专项服务 (GitHub, 学术, 虚拟币, PayPal, WebRTC)
-  const devActive = Array.isArray(userConfig.devServices)
-    ? userConfig.devServices
-    : ['github', 'scholar'];
-  const isGitHubActive = Boolean(userConfig.enableGitHub !== false && devActive.includes('github'));
-  const isScholarActive = Boolean(userConfig.enableScholar !== false && devActive.includes('scholar'));
-
-  if (isScholarActive) {
-    providerBase['scholar'] = 'geosite/category-scholar-!cn';
-    routingRules.push('DOMAIN-KEYWORD,sci-hub,学术网站', 'RULE-SET,scholar,学术网站');
+  // 9. 游戏平台
+  if (userConfig.enableGame && effectiveRegistries.game) {
+    const activeKeys = userConfig.gameServices || Object.keys(effectiveRegistries.game);
+    assembleServiceCategory({
+      registry: effectiveRegistries.game,
+      activeKeys,
+      providerBase,
+      routingRules,
+      onService: (key) => {
+        if (key === 'steam' && effectiveRegistries.game['steam-cn']) {
+          providerBase['steam-cn'] = effectiveRegistries.game['steam-cn'].provider;
+        }
+      }
+    });
   }
-  if (isGitHubActive) {
-    providerBase['github'] = 'geosite/github';
-    routingRules.push('RULE-SET,github,GitHub');
-  }
 
-  // 扩展 Dev 服务 (支持通过 customServices.dev 扩展)
+  // 10. 开发者与学术服务 (按 devActive 驱动，消除硬编码分支)
   if (effectiveRegistries.dev) {
-    const extraDevKeys = devActive.filter(k => k !== 'github' && k !== 'scholar' && effectiveRegistries.dev[k]);
-    extraDevKeys.forEach(key => {
-      const conf = effectiveRegistries.dev[key];
-      if (!conf) return;
-      providerBase[key] = conf.provider;
-      if (conf.rules) routingRules.push(...conf.rules);
+    const devActive = Array.isArray(userConfig.devServices)
+      ? userConfig.devServices
+      : Object.keys(effectiveRegistries.dev);
+    const activeKeys = devActive.filter(k => {
+      if (k === 'github' && userConfig.enableGitHub === false) return false;
+      if (k === 'scholar' && userConfig.enableScholar === false) return false;
+      return true;
     });
-  }
-  if (userConfig.enableCrypto) {
-    providerBase['crypto'] = 'geosite/category-cryptocurrency';
-    routingRules.push('RULE-SET,crypto,加密货币');
-  }
-  if (userConfig.enablePayPal) {
-    providerBase['paypal'] = 'geosite/paypal';
-    routingRules.push('RULE-SET,paypal,PayPal');
-  }
-  if (userConfig.enableWebRTC) {
-    routingRules.push(
-      'DOMAIN-KEYWORD,webrtc,WebRTC',
-      'DOMAIN-KEYWORD,stun,WebRTC',
-      'DOMAIN-KEYWORD,turn,WebRTC',
-      'DST-PORT,3478,WebRTC',
-      'DST-PORT,5349,WebRTC',
-      'DST-PORT,5350,WebRTC',
-      'DST-PORT,19302,WebRTC'
-    );
-  }
-
-  // Telegram
-  if (userConfig.enableTelegram) {
-    if (isWin) routingRules.push('PROCESS-NAME,Telegram.exe,Telegram');
-    if (isMac || isLin) routingRules.push('PROCESS-NAME,Telegram,Telegram');
-    routingRules.push('RULE-SET,telegram,Telegram', 'RULE-SET,telegram-ip,Telegram,no-resolve');
-    Object.assign(providerBase, { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' });
-  }
-
-  // 系统服务
-  const systemServices = userConfig.systemServices || ['microsoft', 'apple', 'google'];
-  if (userConfig.enableSystemServices && systemServices.length && effectiveRegistries.system) {
-    systemServices.forEach(key => {
-      const conf = effectiveRegistries.system[key];
-      if (conf) {
-        providerBase[key] = conf.provider;
-        if (conf.rules) routingRules.push(...conf.rules);
-      }
+    assembleServiceCategory({
+      registry: effectiveRegistries.dev,
+      activeKeys,
+      providerBase,
+      routingRules
     });
   }
 
-  // 进程防漏与下载软件规则
-  // 默认名单以只读数据层的字段注册表为单一来源，避免此处再抄一份导致漂移
-  const procDirectWin = userConfig.processDirectWin || FIELDS_BY_KEY.processDirectWin.default;
-  const procDirectMac = userConfig.processDirectMac || FIELDS_BY_KEY.processDirectMac.default;
-  const procDirectLin = userConfig.processDirectLin || FIELDS_BY_KEY.processDirectLin.default;
+  // 11. 专项独立服务 (Crypto, PayPal, WebRTC, Telegram)
+  for (const spec of Object.values(SPECIAL_SERVICES)) {
+    if (userConfig[spec.configKey]) {
+      Object.assign(providerBase, spec.providers);
+      const svcRules = typeof spec.rules === 'function' ? spec.rules(osInfo) : spec.rules;
+      routingRules.push(...svcRules);
+    }
+  }
+
+  // 12. 系统服务
+  if (userConfig.enableSystemServices && effectiveRegistries.system) {
+    const activeKeys = userConfig.systemServices || Object.keys(effectiveRegistries.system);
+    assembleServiceCategory({
+      registry: effectiveRegistries.system,
+      activeKeys,
+      providerBase,
+      routingRules
+    });
+  }
+
+  // 13. 进程防漏与下载软件规则
+  const procDirectLists = {
+    win: userConfig.processDirectWin || FIELDS_BY_KEY.processDirectWin.default,
+    mac: userConfig.processDirectMac || FIELDS_BY_KEY.processDirectMac.default,
+    lin: userConfig.processDirectLin || FIELDS_BY_KEY.processDirectLin.default
+  };
 
   if (userConfig.enableProcessDirect) {
-    if (isWin) routingRules.push(...procDirectWin.map(p => `PROCESS-NAME,${p}.exe,DIRECT`));
-    if (isMac) routingRules.push(...procDirectMac.map(p => `PROCESS-NAME,${p},DIRECT`));
-    if (isLin) routingRules.push(...procDirectLin.map(p => `PROCESS-NAME,${p},DIRECT`));
+    routingRules.push(...expandProcessRules(procDirectLists, 'DIRECT', osInfo));
     routingRules.push('RULE-SET,bt-trackers-pt,DIRECT', 'RULE-SET,bt-trackers-public,DIRECT', 'DOMAIN-KEYWORD,tracker,DIRECT', 'DOMAIN-KEYWORD,announce,DIRECT');
   } else {
     routingRules.push('RULE-SET,bt-trackers-pt,下载策略', 'RULE-SET,bt-trackers-public,下载策略');
   }
 
-  const procProxyWin = userConfig.processProxyWin || FIELDS_BY_KEY.processProxyWin.default;
-  const procProxyMac = userConfig.processProxyMac || FIELDS_BY_KEY.processProxyMac.default;
-  const procProxyLin = userConfig.processProxyLin || FIELDS_BY_KEY.processProxyLin.default;
-  if (isWin) routingRules.push(...procProxyWin.map(p => `PROCESS-NAME,${p}.exe,下载策略`));
-  if (isMac) routingRules.push(...procProxyMac.map(p => `PROCESS-NAME,${p},下载策略`));
-  if (isLin) routingRules.push(...procProxyLin.map(p => `PROCESS-NAME,${p},下载策略`));
+  const procProxyLists = {
+    win: userConfig.processProxyWin || FIELDS_BY_KEY.processProxyWin.default,
+    mac: userConfig.processProxyMac || FIELDS_BY_KEY.processProxyMac.default,
+    lin: userConfig.processProxyLin || FIELDS_BY_KEY.processProxyLin.default
+  };
+  routingRules.push(...expandProcessRules(procProxyLists, '下载策略', osInfo));
   routingRules.push('RULE-SET,download-games-cn,DIRECT', 'RULE-SET,download-games,下载策略', 'RULE-SET,download-android,下载策略');
 
-  // 国内 / 海外路由方向判定
+  // 14. 国内 / 海外路由方向判定
   const isReturn = userConfig.enableDomesticGroup && !userConfig.proxyFirst;
   const cnTarget = userConfig.enableDomesticGroup ? '中国分流' : 'DIRECT';
   const nonCnTarget = isReturn ? 'DIRECT' : effectiveProxyTarget;
@@ -281,37 +411,14 @@ function buildRoutingRules(userConfig, registries, options = {}) {
   const rules = dedupe(routingRules);
 
   const providers = Object.fromEntries(
-    Object.entries(providerBase).map(([name, route]) => {
-      const isExternal = /^https?:\/\//.test(route);
-      const url = isExternal ? route : `${repo}/geo/${route}.${ruleFormat}`;
-      const fmt = isExternal ? (/\.mrs$/i.test(route) ? 'mrs' : 'yaml') : ruleFormat;
-      const behavior = isExternal ? 'domain' : (route.includes('geoip') ? 'ipcidr' : 'domain');
-      return [
-        name,
-        {
-          type: 'http',
-          behavior,
-          url,
-          path: `./ruleset/${name}.${fmt}`,
-          interval: 86400,
-          format: fmt,
-          proxy: 'DIRECT'
-        }
-      ];
-    })
+    Object.entries(providerBase).map(([name, route]) => [
+      name,
+      createHttpRuleProvider(name, route, {
+        repoBase: repo,
+        ruleFormat
+      })
+    ])
   );
-
-  if (userConfig.enableAntiAD) {
-    providers['anti-ad'] = {
-      type: 'http',
-      behavior: 'domain',
-      url: 'https://anti-ad.net/clash.yaml',
-      path: './ruleset/anti-ad.yaml',
-      interval: 86400,
-      format: 'yaml',
-      proxy: 'DIRECT'
-    };
-  }
 
   if (userConfig.customRuleProviders && typeof userConfig.customRuleProviders === 'object') {
     Object.entries(userConfig.customRuleProviders).forEach(([name, conf]) => {
@@ -330,5 +437,9 @@ function buildRoutingRules(userConfig, registries, options = {}) {
 }
 
 module.exports = {
+  BASE_PROVIDER_ROUTES,
+  SPECIAL_SERVICES,
+  createHttpRuleProvider,
+  assembleServiceCategory,
   buildRoutingRules
 };

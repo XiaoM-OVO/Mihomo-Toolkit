@@ -5,7 +5,13 @@ const { DEFAULT_CONFIG, resolveConfig } = require('../../src/config');
 const { applyDnsOverlay } = require('../../src/strategy/dns');
 const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../../src/strategy/kernel');
 const { createServiceRegistries } = require('../../src/strategy/registries');
-const { buildRoutingRules } = require('../../src/strategy/rules');
+const {
+  buildRoutingRules,
+  createHttpRuleProvider,
+  BASE_PROVIDER_ROUTES,
+  SPECIAL_SERVICES,
+  assembleServiceCategory
+} = require('../../src/strategy/rules');
 const { runStrategyPipeline } = require('../../src/pipeline/strategy');
 
 describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
@@ -200,5 +206,101 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
 
     assert.ok(logs.some(m => m.includes('protectedDomains')), '策略流水线应将配置告警透传至注入 logger');
     assert.equal(consoleWarnCalled, false, '注入 logger 时不应再触发裸 console.warn');
+  });
+
+  it('rules - createHttpRuleProvider 构造器与远端/绝对 URL 规整', () => {
+    // 1. 标准 geosite 规则集
+    const p1 = createHttpRuleProvider('ads', 'geosite/category-ads-all', {
+      repoBase: 'https://cdn.example.com/gh',
+      ruleFormat: 'mrs'
+    });
+    assert.equal(p1.type, 'http');
+    assert.equal(p1.behavior, 'domain');
+    assert.equal(p1.url, 'https://cdn.example.com/gh/geo/geosite/category-ads-all.mrs');
+    assert.equal(p1.path, './ruleset/ads.mrs');
+    assert.equal(p1.format, 'mrs');
+    assert.equal(p1.proxy, 'DIRECT');
+
+    // 2. geoip IP 段规则集 (behavior 自动识别为 ipcidr)
+    const p2 = createHttpRuleProvider('cn-ip', 'geoip/cn', {
+      repoBase: 'https://cdn.example.com/gh',
+      ruleFormat: 'yaml'
+    });
+    assert.equal(p2.behavior, 'ipcidr');
+    assert.equal(p2.format, 'yaml');
+    assert.equal(p2.path, './ruleset/cn-ip.yaml');
+
+    // 3. 绝对 URL 外部规则集（例如 anti-ad）
+    const p3 = createHttpRuleProvider('anti-ad', 'https://anti-ad.net/clash.yaml', {
+      repoBase: 'https://cdn.example.com/gh',
+      ruleFormat: 'mrs'
+    });
+    assert.equal(p3.behavior, 'domain');
+    assert.equal(p3.url, 'https://anti-ad.net/clash.yaml');
+    assert.equal(p3.format, 'yaml');
+    assert.equal(p3.path, './ruleset/anti-ad.yaml');
+  });
+
+  it('rules - assembleServiceCategory 声明式分类装配与回调', () => {
+    const registry = {
+      testApp: {
+        name: 'TestApp',
+        ruleSet: 'testapp-rules',
+        provider: 'geosite/testapp',
+        rules: ['RULE-SET,testapp-rules,TestApp']
+      }
+    };
+    const providerBase = {};
+    const routingRules = [];
+
+    assembleServiceCategory({
+      registry,
+      activeKeys: ['testApp'],
+      providerBase,
+      routingRules
+    });
+
+    assert.equal(providerBase['testapp-rules'], 'geosite/testapp');
+    assert.deepEqual(routingRules, ['RULE-SET,testapp-rules,TestApp']);
+  });
+
+  it('rules - 声明式专项独立服务装配 (Crypto, PayPal, WebRTC, Telegram)', () => {
+    const testConfig = {
+      ...DEFAULT_CONFIG,
+      enableCrypto: true,
+      enablePayPal: true,
+      enableWebRTC: true,
+      enableTelegram: true,
+      osType: 'windows'
+    };
+    // 常量基准与专项配置元数据检验
+    assert.ok(BASE_PROVIDER_ROUTES['lan-domain'], 'BASE_PROVIDER_ROUTES 应包含 lan-domain');
+    assert.ok(SPECIAL_SERVICES.crypto && SPECIAL_SERVICES.telegram, 'SPECIAL_SERVICES 应包含 crypto 与 telegram');
+
+    const { rules, providers } = buildRoutingRules(testConfig);
+
+    // 专项服务规则验证
+    assert.ok(rules.includes('RULE-SET,crypto,加密货币'));
+    assert.ok(rules.includes('RULE-SET,paypal,PayPal'));
+    assert.ok(rules.includes('DOMAIN-KEYWORD,webrtc,WebRTC'));
+    assert.ok(rules.includes('PROCESS-NAME,Telegram.exe,Telegram'));
+    assert.ok(rules.includes('RULE-SET,telegram,Telegram'));
+    assert.ok(rules.includes('RULE-SET,telegram-ip,Telegram,no-resolve'));
+
+    // 专项服务 providers 验证
+    assert.ok(providers['crypto']);
+    assert.ok(providers['paypal']);
+    assert.ok(providers['telegram']);
+    assert.ok(providers['telegram-ip']);
+    assert.equal(providers['telegram-ip'].behavior, 'ipcidr');
+  });
+
+  it('rules - 无 registries 参数传入时自动回退 ServiceCatalog 构建', () => {
+    const { rules, providers } = buildRoutingRules({
+      enableAI: true,
+      aiServices: ['chatgpt']
+    });
+    assert.ok(rules.includes('RULE-SET,openai,ChatGPT'));
+    assert.ok(providers['openai']);
   });
 });
