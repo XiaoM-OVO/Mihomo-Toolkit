@@ -305,7 +305,7 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
   });
 
   it('catalog - 游戏子项继承大类默认元数据并支持聚合与专项投影', () => {
-    const { buildServiceCatalog, CATEGORY_DEFAULTS, DEFAULT_AGGREGATE_GROUPS } = require('../../src/config/catalog');
+    const { buildServiceCatalog, CATEGORY_DEFAULTS } = require('../../src/config/catalog');
     const catalog = buildServiceCatalog({});
     const registries = catalog.toRegistries();
 
@@ -332,8 +332,6 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.ok(registries.specialized['telegram'].process.win);
     assert.ok(registries.specialized['telegram'].providers.telegram);
     assert.ok(typeof SPECIAL_SERVICES.telegram.rules !== 'function', 'telegram.rules 必须为纯声明式数组而非函数');
-
-    assert.ok(DEFAULT_AGGREGATE_GROUPS['游戏服务']);
   });
 
   it('game - 游戏子规则集按需激活与防幽灵组 (Ghost Group) 路由归并', () => {
@@ -373,10 +371,6 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
           apex_dl: {
             name: 'Apex下载',
             rules: [{ type: 'DOMAIN-SUFFIX', value: 'apex-dl.ea.com', target: '@download' }]
-          },
-          apex_legacy: {
-            name: 'Apex旧配置',
-            rules: [{ type: 'DOMAIN-SUFFIX', value: 'apex-legacy.ea.com', target: 'GAME_DOWNLOAD' }]
           }
         }
       }
@@ -387,7 +381,6 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.ok(customRules.includes('RULE-SET,lol,游戏服务'), '字符串 rules 默认定向至游戏服务');
     assert.ok(customRules.includes('DOMAIN-SUFFIX,yuanshen.com,游戏服务'), '对象 rules 默认定向至游戏服务');
     assert.ok(customRules.includes('DOMAIN-SUFFIX,apex-dl.ea.com,游戏下载'), '语义化 @download 定向至游戏下载');
-    assert.ok(customRules.includes('DOMAIN-SUFFIX,apex-legacy.ea.com,游戏下载'), '兼容 GAME_DOWNLOAD 定向至游戏下载');
     assert.ok(customProviders['lol'], '自动生成自定义游戏规则提供者');
     // 确保绝对没有定向到不存在的幽灵组
     assert.ok(!customRules.some(r => r.endsWith(',英雄联盟')), '严禁产生以自定义游戏名命名的幽灵目标');

@@ -158,28 +158,13 @@ function buildBuiltinAppRecipes({
       ? [effectiveRegistries.aggregates['游戏服务'], effectiveRegistries.aggregates['游戏下载']].filter(Boolean)
       : [];
 
-    if (gameAggs.length > 0) {
-      gameAggs.forEach(agg => {
-        recipes.push({
-          name: agg.name,
-          type: 'select',
-          proxies: (agg.proxies || []).map(p => (p === '@buckets.game' ? gameBuckets : p)).flat()
-        });
+    gameAggs.forEach(agg => {
+      recipes.push({
+        name: agg.name,
+        type: 'select',
+        proxies: (agg.proxies || []).map(p => (p === '@buckets.game' ? gameBuckets : p)).flat()
       });
-    } else {
-      recipes.push(
-        {
-          name: '游戏服务',
-          type: 'select',
-          proxies: ['DIRECT', '@standardOptions', ...gameBuckets]
-        },
-        {
-          name: '游戏下载',
-          type: 'select',
-          proxies: ['DIRECT', '下载策略', '自动选择', '手动选择', ...gameBuckets]
-        }
-      );
-    }
+    });
   }
 
   // 5. 开发者与学术服务

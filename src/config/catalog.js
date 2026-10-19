@@ -61,12 +61,6 @@ const DEFAULT_AGGREGATES = Object.freeze({
   }
 });
 
-const DEFAULT_AGGREGATE_GROUPS = Object.freeze({
-  '游戏服务': DEFAULT_AGGREGATES.game.service,
-  '游戏下载': DEFAULT_AGGREGATES.game.download,
-  '社交平台': DEFAULT_AGGREGATES.social.combined
-});
-
 const SPECIAL_SERVICES = Object.freeze({
   crypto: {
     key: 'crypto',
@@ -508,16 +502,11 @@ function resolveRuleTarget(rawTarget, cat, cleanName, catDefaults = {}) {
   if (!rawTarget || rawTarget === '@self') {
     return defaultAggName || cleanName;
   }
-  if (typeof rawTarget === 'string') {
-    if (rawTarget.startsWith('@')) {
-      const key = rawTarget.slice(1);
-      if (aggregates[key]) {
-        return aggregates[key].name;
-      }
+  if (typeof rawTarget === 'string' && rawTarget.startsWith('@')) {
+    const key = rawTarget.slice(1);
+    if (aggregates[key]) {
+      return aggregates[key].name;
     }
-    // 向后兼容过渡：GAME_DOWNLOAD -> download, GAME_SERVICE -> service
-    if (rawTarget === 'GAME_DOWNLOAD' && aggregates.download) return aggregates.download.name;
-    if (rawTarget === 'GAME_SERVICE' && aggregates.service) return aggregates.service.name;
   }
   return rawTarget;
 }
@@ -859,7 +848,6 @@ module.exports = {
   deepMerge,
   CATEGORY_DEFAULTS,
   DEFAULT_AGGREGATES,
-  DEFAULT_AGGREGATE_GROUPS,
   SPECIAL_SERVICES,
   BUILTIN_SERVICES,
   ServiceCatalog,

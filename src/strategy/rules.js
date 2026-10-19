@@ -333,8 +333,6 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
       }
       if (Array.isArray(spec.rules)) {
         routingRules.push(...spec.rules);
-      } else if (typeof spec.rules === 'function') {
-        routingRules.push(...spec.rules(osInfo));
       }
     }
   }
