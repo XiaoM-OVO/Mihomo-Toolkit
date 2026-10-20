@@ -372,6 +372,7 @@ groups:
 | `enableGame` + `gameServices` | `{ preset: game }`；`game-service` / `game-download` 随引用生成 |
 | `enableTelegram` / `enableCrypto` / `enablePayPal` / `enableWebRTC` | `{ service: telegram }` 等，或整批 `{ preset: specialized }` |
 | `enableStreaming` / `streamingServices`、`enableSystemServices`、`enableGitHub` / `enableScholar`、`enableAdBlock` / `enableAntiAD`、`enableProcessDirect`、`enableDomesticGroup` | 同上：整批 `preset` 或单项 `service`；广告两条规则源变为 `preset: ads` 的两个默认条目 |
+| `enableDomesticGroup` + `proxyFirst`（组合出回国模式） | `routing` 里 `domestic` 三条规则的顺序与 `to` 表达分流方向；回国不要靠组合，改用显式 `trafficDirection: return`（10.10） |
 | `customRules` | `routing: [{ rule, to }]`（用户段位置不变） |
 | `customGroups` | `groups: [...]`（字段更名，结构一致） |
 | `customServices` | 保留字段名，改为**扁平**服务字典（不再按六维嵌套），新增服务用 `{ service: <键> }` 路由引用 |
@@ -396,6 +397,27 @@ groups:
 - `CONFIGURATION.md` 的默认值表与代码默认值是否一致。
 
 每项变更走 10.8 第 1 条的显式基线流程；「已审、维持」也写进结论，避免下次重新讨论。
+
+**10.10 方向（分流 / 回国）必须显式**
+
+现状是两个布尔量的隐式组合（`enableDomesticGroup` × `proxyFirst`），一次同时改变 **6 处**行为：
+
+1. 规则顺序（`cn-domain` / `cn-ip` 与 `non-cn` 的先后）；
+2. 国内规则目标（`DIRECT` / `中国分流`）；
+3. 海外规则目标（代理 / `DIRECT`）；
+4. 「中国分流」组成员顺序（默认直连 / 默认代理）；
+5. 「漏网之鱼」兜底顺序（代理优先 / 直连优先）；
+6. DNS 直连与代理解析上游互换（`src/strategy/dns.js:83-85`）、QUIC 拦截目标（CN / !CN，`src/strategy/rules.js:283-290`）、WebRTC 规则分支（`src/strategy/topology.js:204`）。
+
+`domestic=true && proxyFirst=false` 即「回国模式」：国内流量走代理组、海外流量直连——一个名字只说「国内组」的开关翻转了整个方向，属于静默语义。实测矩阵见 `DEFAULTS.md` 第四节第 3 条。
+
+决定：
+
+- **规则层面**：顺序与目标全部由 `routing` 表表达。`domestic` 预设展开三条规则（`cn-domain`、`cn-ip`、`non-cn`），先后由表顺序决定、目标由条目 `to` 决定；`proxyFirst` 与 `enableDomesticGroup` 不再是规则生成的输入。
+- **组层面**：`中国分流` 组的存在由引用激活（10.3）——只有某条生效规则以它为 `to` 时才生成；成员顺序写在 `groups` 声明里（顺序 = 默认选中项）。
+- **方向层面**：只保留一个显式字段 `trafficDirection: 'split' | 'return'`（默认 `split`），仅影响三处与规则无关的行为：DNS 上游、QUIC 拦截目标、WebRTC 规则分支。不再由组合推断。
+- **迁移**：`enableDomesticGroup === true && proxyFirst === false` → `trafficDirection: 'return'`，其余组合 → `'split'`。两个旧字段保留为 deprecated 别名一版（映射到新写法并给一次性提示），随后移除。
+- **验收**：`trafficDirection` 两种取值各一条产物回归；`proxyFirst` 不再出现在任何规则顺序判定中；`DEFAULTS.md` 默认值表同步删除 `proxyFirst` 行、加入 `trafficDirection` 行。
 
 **附：选型过程（历史，已归档为结论）**
 
