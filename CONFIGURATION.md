@@ -543,8 +543,7 @@ include:
 | `customServices` | `object` | `{}` | `any` | `override` | **行内自定义服务定义字典**：新增或覆写具体服务的名称、正则、图标及规则集。 |
 | `aiServices` | `string[]` | `['chatgpt', 'gemini', 'claude', 'copilot']` | `any` | `override` | 激活的 AI 细分服务列表（增删 key 即可启闭对应独立策略组）。 |
 | `streamingServices`| `string[]`| `['youtube', 'netflix', ...]` | `any` | `override` | 激活的流媒体细分服务列表。 |
-| `socialServices` | `string[]` | `['twitter', 'facebook', 'instagram', 'discord']`| `any` | `override` | 激活的海外社交平台细分服务列表。 |
-| `independentSocial`| `string[]`| `['twitter']` | `any` | `override` | 在社交平台中需要独立建组的应用（其余合并进入「💬 社交平台」组）。 |
+| `socialServices` | `string[]` | `['twitter', 'facebook', 'instagram', 'discord']`| `any` | `override` | 激活的海外社交平台细分服务列表。每个服务各成一个策略组（一服务一组），可单独引用、单独排序，不再有「社交平台」合并组。 |
 | `gameServices` | `string[]` | `['steam', 'epic', ...]` | `any` | `override` | 激活的游戏细分服务列表（按需拉取对应规则集与 Provider，未声明项不下载不注入，防规则臃肿与幽灵组）。 |
 | `systemServices` | `string[]` | `['microsoft', 'apple', 'google']` | `any` | `override` | 激活的操作系统云服务列表。 |
 | `devServices` | `string[]` | `['github', 'scholar']` | `any` | `override` | 激活的开发者与学术服务列表。 |
