@@ -266,10 +266,10 @@ groups:
 | 项 | 结论 |
 | :--- | :--- |
 | 聚合条目入目录 | `registries.groups` 新增 `game-service` / `game-download` / `social-platform` 三个聚合键。聚合条目与分类条目**完全同构**——都是「自带非空 `proxies` 的组声明」，区别只在它的 `rules`/`providers` 是**成员规则的合并结果**；`rules` 经既有 `rules → RULE-SET + 规则集 Provider` 通道生成（**不引入「产物束」这类新概念**，保持不变量 2），从而杜绝「ref 聚合组只给组不给成员规则」的断裂规则。 |
-| 成员清单 / 合并策略下沉 | 聚合条目在**定义层**声明成员：`game` 未显式声明（默认 = 该分类全量服务，不自建第二份清单，避免与 `BUILTIN_SERVICES` 漂移）；`social.combined` 显式声明 `members: ['facebook','instagram','discord']`（`twitter` 独立成组、`meta` 是 facebook 规则集的别名条目不随合并组默认激活，故均不在其中）。规则归属算法：成员规则按「已解析目标组名」归属；**自路由规则**（目标 = 成员自身组名，如 social 条目的 `rules: 'facebook'`）在聚合语义下改指聚合组名；成员被多个聚合组声明时归属**分类默认聚合组**（game 的 `@service` → `游戏服务`），避免同一条规则被改写成多个目标。`providers` 由成员规则里出现的 `RULE-SET` 名经「分类级 Provider 名 → 路径」映射解析，与内置开关路径同一口径。 |
+| 成员清单 / 合并策略下沉 | 聚合条目在**定义层**声明成员：`game` 未显式声明（默认 = 该分类全量服务，不自建第二份清单，避免与 `BUILTIN_SERVICES` 漂移）；`social.combined` 显式声明 `members: ['facebook','instagram','discord']`（`twitter` 独立成组、`meta` 是 facebook 规则集的别名条目不随合并组默认激活，故均不在其中）。规则归属算法：成员规则按「已解析目标组名」归属；**自路由规则**（目标 = 成员自身组名，如 social 条目的 `rules: 'facebook'`）在聚合语义下改指聚合组名；成员被多个聚合组声明时归属**分类默认聚合组**（game 的 `@service` → `游戏服务`），避免同一条规则被改写成多个目标。`providers` 由成员规则里出现的 `RULE-SET` 名经「分类级 Provider 名 → 路径」映射解析，与内置开关路径同一口径。**（该成员推断/仲裁机制已于同批后续删除，见「机制简化」条。）** |
 | 伪宏退役 | `@buckets.game`（未登记宏、仅由内置分支手工替换）退役：game 两个聚合组改为 `match: { pool: 'game' }` + `proxies` 中的 `@matchedNodes`，与其它类别同构；[topology.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/topology.js) 的游戏分支退化为「按分类挑聚合条目 → 原样透传」。 |
 | 广告拦截模型 | **拆为两条目**：`ad-block`（← `enableAdBlock`，默认开）与 `anti-ad`（← `enableAntiAD`，默认关），二者声明**同一个组名**「广告拦截」（同名后者胜语义合并为一个组），但规则来源与默认开关各自独立、可逐项等价。**未采用「单条目多 Provider/Rule」**：单条目会把 `anti-ad` 规则一并强推为默认生效，破坏「默认输出逐字节等价」验收标准。内置拓扑分支与规则段改为读目录条目，不再各写一份字面量。 |
-| 成员不可单独引用（决策） | 聚合成员（`steam`/`epic`/`facebook`…）**不为其备 `proxies`**、不单独成组。理由：成员的规则目标指向聚合组，单独成组只会得到「无人路由的空转组」；若改成自路由规则，则会与聚合组规则就同一流量互相遮蔽（命中取决于声明顺序），两种结果都不直观。引用成员键仍 **fail-closed**，但报错升级为**指引**：`「steam」是聚合组「游戏服务」的成员条目，不单独成组，请改为 { ref: game-service }`（映射由 `ServiceCatalog#getGroupMemberHints()` 给出，判据与目录一致：不在目录里的同分类条目即为成员）。这正是 ROADMAP 早先并列的「引用期一致性校验 fail-closed」分支。 |
+| 成员不可单独引用（决策） | 聚合成员（`steam`/`epic`/`facebook`…）**不为其备 `proxies`**、不单独成组。理由：成员的规则目标指向聚合组，单独成组只会得到「无人路由的空转组」；若改成自路由规则，则会与聚合组规则就同一流量互相遮蔽（命中取决于声明顺序），两种结果都不直观。引用成员键仍 **fail-closed**，但报错升级为**指引**：`「steam」是聚合组「游戏服务」的成员条目，不单独成组，请改为 { ref: game-service }`（映射由 `buildMemberHints()` 给出，判据是「该条目的规则目标落在哪个聚合组」，不再依赖分类推断）。这正是 ROADMAP 早先并列的「引用期一致性校验 fail-closed」分支。 |
 | 社交合并语义 | 合并组的组名与成员配方改由聚合条目单一给出。此前内置分支按「非独立成员数量」动态决定组名（1 个时用该成员名、多个时用「社交平台」），规则段的目标名同步解耦为聚合组名 —— 两条路径在任何成员数下都一致；唯一漂移是「恰好 1 个非独立成员」的旧动态命名，而该组合只能通过批次 3 将删除的 `socialServices` / `independentSocial` 触达。 |
 | 展示层 | [presentation.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/presentation.js) 的分类遍历新增跳过 `groups`：目录条目与分类/聚合/专项投影同源，展示信息已由各自投影给出；「广告拦截」的 🚫 与图标仍由骨架组基线 `SKELETON_GROUPS` 提供，行为不变。 |
 | 默认输出影响 | **零漂移**：`groups` 仍不设默认值，A 类开关继续驱动默认输出。2b 落地当时以「HEAD 与工作区逐字节对比」人工抽查确认（14 组配置组合，11 组完全一致，3 组为已披露的单成员社交命名变化）；**全量产物基线守卫于 2b 之后补入**（`test/pipeline/default-output-golden.test.js`，见第十节验收标准）。 |
@@ -277,6 +277,7 @@ groups:
 | 残差 2b-1 | 规则注入位置差异（批次 1 残差 1）依旧存在，等价性仍以「集合等价」而非顺序敏感比较守卫，批次 3 收敛后收紧。 |
 | 残差 2b-2 | 内置聚合条目的规则派生自**内置成员**；用户经 `customServices` 新增的游戏/社交服务仍走内置 `assembleServiceCategory`（含 `onService` 伴生 Provider 注入），故 `ref` 路径不含用户新增成员。该字段随批次 3 删除，无需迁移。 |
 | 残差 2b-3 | 成员条目（`steam`/`facebook`…）在批次 3 将成为「无 `ref` 可达」的条目——它们只作为聚合条目的成员清单被引用，用户无法把它们拆成独立组（同上决策）。若后续确有此需求，须先给出「自路由 vs 聚合」的规则遮蔽语义，再谈放开。 |
+| **机制简化（同批后续）** | **取消聚合成员机制**：删除 `members`、`declareCount`、`defaultAggregate` 多聚合仲裁，以及 `getGroupMemberHints()` 的分类推断；归属改由**服务条目自身的规则目标**决定（social 声明 `target: '@combined'`），聚合条目只收集「目标指向自己」的规则。收益：新增聚合成员 = 加一条 `target`（数据）；新增聚合组 = 加一条定义 + 把目标指过去（数据）——都不改代码。同时 BT/下载规则抽为数据表（`BT_TRACKER_RULES` / `DOWNLOAD_RULESETS`），新增下载规则集只加一行。默认产物零漂移（golden 守卫），新增 4 条回归测试。 |
 
 **九、已定稿的决策（仅覆盖批次 1 / 2 / 2b 已落地部分；批次 3 的模型选择尚未定稿，见第十节）**
 
@@ -306,7 +307,7 @@ groups:
 | 顺序语义 | 清单顺序隐式决定规则优先级（实测：声明规则注入在分类规则之前，先到先得；调换清单顺序会改变命中目标） | `routing` 顺序即优先级，显式且可测 |
 | 覆写 `name` | 规则里写死的目标名失配（见缺陷 P1） | 目标按引用解析，改名安全 |
 | 批量关闭 | 逐条 `disabled`，或依赖目录条目 | `routing` 用 `preset` 表达「整批」，能力保留 |
-| 聚合语义 | 需在目录内仲裁成员归属（`declareCount` / 默认聚合组 / `memberHints`） | 成员规则就是若干条 `routing` 记录，无需仲裁 |
+| 聚合语义 | 归属已改为「规则目标驱动」（无成员清单/仲裁）；但规则仍须在目录内**派生**并随组交付 | 成员规则就是若干条 `routing` 记录，目录无需派生任何规则 |
 | 主要代价 | 用户要理解「引用一个组会连带出规则」；改名/顺序是隐式陷阱 | 多一个顶层字段；默认值需内置到两处 |
 
 **无论选哪个模型都必须满足的验收标准**：
@@ -323,9 +324,9 @@ groups:
 | 编号 | 问题 | 证据 | 建议修法 |
 | :--- | :--- | :--- | :--- |
 | P1 | `ref` 覆写 `name` 后规则目标不随动 | 文档示例 `{ ref: copilot, name: 我的 Copilot 线路 }` 产出两个组、规则仍指向旧名；开关关闭时规则指向不存在的组。根因：[rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L227-L228) 对三段式规则原样透传，仅两段式会重写目标 | 目录条目 `rules` 一律不写死目标（两段式），或声明期重写目标并 fail-closed 校验 |
-| P2 | 成员键报错指引对 `meta` 错误 | `ref: meta` 提示改引 `social-platform`，但该聚合组只含 facebook / instagram / discord，不含 meta 规则 | 成员提示表排除「自有规则目标」的条目，或单独给出说明 |
+| P2 | 成员键报错指引对 `meta` 错误 | ~~`ref: meta` 提示改引 `social-platform`，但该聚合组只含 facebook / instagram / discord，不含 meta 规则~~ | ✅ 已修复：指引改由**规则目标**派生（`buildMemberHints`），meta 的目标是自身组名 Meta，不再被错误指引 |
 | P3 | 广告开关仍为硬编码 | [topology.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/topology.js#L246) 写死 `enableAdBlock \|\| enableAntiAD`，而 [rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L254) 已按 `ADS_GROUPS` 数据驱动 | 新增第三条规则源时只需加数据，不再改代码 |
-| P4 | 成员提示表二次投影 | `getGroupMemberHints()` 内部重跑 `toRegistries()` | 直接复用 `merged.registries.groups` 计算 |
+| P4 | 成员提示表二次投影 | ~~`getGroupMemberHints()` 内部重跑 `toRegistries()`~~ | ✅ 已修复：改为 `buildMemberHints(merged.registries)`，复用已构建的注册表 |
 
 **待拍板的产品问题（按顺序回答，前一个决定后一个）**：
 
