@@ -32,11 +32,11 @@
 | `enablePayPal` | 关 | 开 | +1 组、+1 规则、+1 provider |
 | `enableWebRTC` | 关 | 开 | +1 组、+7 规则 |
 | `enableResidential` | 关 | 开 | +1 组（🏠 家宽优选），无规则 |
-| `enableDomesticGroup` | 关 | 开 | +1 组（🇨🇳 中国分流）、+2 规则、−2 规则（国内规则目标由 DIRECT 改为该组） |
+| 国内分流组（`routing` 条目 `to: 中国分流`） | 未引用 | 引用 | +1 组（🇨🇳 中国分流）、国内规则目标由 DIRECT 改为该组；组是否存在只看「有没有规则引用它」 |
 | `enableQUICReject` | 关 | 开 | +2 条 `AND` 规则（UDP 443 → REJECT-DROP） |
 | `enableProcessDirect` | **开** | 关 | −9 规则（进程直连名单）、+2 规则（BT 目标由 DIRECT 改为下载策略） |
 | `enableTrafficAudit` | **开** | 关 | −2 规则（`DST-PORT,53/80/443` 与 `DST-PORT,1-65535`） |
-| `proxyFirst` | **开** | 关 | 规则顺序反转（国内规则提到海外之前）；与 `enableDomesticGroup` 组合时**方向反转**，见第四节第 3 条 |
+| `trafficDirection` | `'split'` | `'return'` | DNS 上游互换、QUIC 拦截的 CN / 非 CN 分支翻转、WebRTC 组成员顺序翻转；规则顺序与目标不变（规则走向由 `routing` 的 `to` 决定） |
 | `enableRegionHashLB` | 关 | 开 | +1 组（⚖️ 负载均衡-哈希），需要节点支持 |
 | `enableDashboard` | **开** | 关 | 样本下无差异（看板依赖节点信息） |
 
@@ -117,23 +117,14 @@
 2. **QUIC 拦截默认关。**
    影响：UDP 443 的 QUIC 流量不会强制降级到 TCP，部分节点上 QUIC 走代理体验更差。
    问题：默认是否应该开？
-3. **国内外「双向」是隐式组合，不是单个开关。**（这是本清单里唯一的「雷」）
-   `enableDomesticGroup` × `proxyFirst` 两个布尔值的组合，会同时改变 **6 处**行为：
+3. **国内外「双向」已改为显式方向（原「雷」已拆）。**
+   旧实现用 `enableDomesticGroup` × `proxyFirst` 组合推断方向：`domestic=true, proxyFirst=false` 会把整个方向翻转（国内走代理、海外直连），且同时改变 6 处行为，开关名上完全看不出来。
+   现已拆成两层，互不推断：
 
-   | 组合 | 规则顺序 | 国内目标 | 海外目标 | 中国分流组成员默认 | 漏网之鱼默认 | 含义 |
-   | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-   | domestic=false, proxyFirst=true（默认） | 海外 → 国内 | DIRECT | 自动选择 | 组不存在 | 代理优先 | 常规分流 |
-   | domestic=false, proxyFirst=false | 国内 → 海外 | DIRECT | 自动选择 | 组不存在 | 直连优先 | 常规分流（顺序不同） |
-   | domestic=true, proxyFirst=true | 海外 → 国内 | 中国分流 | 自动选择 | 直连优先 | 代理优先 | 多一个可手切的国内组 |
-   | domestic=true, proxyFirst=false | 国内 → 海外 | 中国分流 | **DIRECT** | **代理优先** | **直连优先** | **回转 / 回国模式** |
+   - **规则走向**由 `routing` 的 `domestic` 条目表达：默认展开 `non-cn → 自动选择`、`cn-domain / cn-ip → DIRECT`；国内要走组就写 `to: 中国分流`（组随之生成）。
+   - **方向**由一个显式字段 `trafficDirection: 'split' | 'return'` 表达，只影响 3 处与规则无关的行为：DNS 上游（`src/strategy/dns.js:83`）、QUIC 拦截目标（`src/strategy/routing.js` 的 `expandQuic`）、WebRTC 组成员（`src/strategy/topology.js` 的 specialized 分支）。
 
-   最后一行的「雷」在于：关掉 `proxyFirst` 会把**整个方向翻转**——国内流量改走代理（且默认选中地区组），
-   海外流量改直连；同时 DNS 的直连/代理解析上游互换（`src/strategy/dns.js:83-85`），
-   QUIC 拦截规则改成针对 CN（`src/strategy/rules.js:283-290`），WebRTC 规则也走另一条分支
-   （`src/strategy/topology.js:204`）。这些都没有在开关名上体现。
-
-   问题：回国模式要不要保留？保留的话，它应该是一个**显式**的「方向」字段，
-   而不是由两个开关组合推断。本项倾向：批次 3 改为显式方向（见 ROADMAP 第十节 10.10）。
+   问题：`return`（回国）是否还需要保留？留着的话，它只做这三件事，规则怎么写由用户自己排。
 4. **`enableTrafficAudit` 默认开。**
    影响：`DST-PORT,1-65535,DIRECT` 会把所有走到第 57 条之后的非 80/443 流量直连。
    问题：是否有需要走代理的非标准端口服务会被这条静默放行？

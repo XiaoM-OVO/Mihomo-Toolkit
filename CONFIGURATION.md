@@ -23,7 +23,7 @@
   - [2.7 网络抓取策略与容灾重试 (`fetchProxyStrategy` / `fetchProxyPort`)](#27-网络抓取策略与容灾重试-fetchproxystrategy--fetchproxyport)
   - [2.8 动态扩展服务编目 (`customServices` 与 `servicesConfigFile`)](#28-动态扩展服务编目-customservices-与-servicesconfigfile)
   - [2.9 域名多 IP 节点裂变增殖 (`enableFission`)](#29-域名多-ip-节点裂变增殖-enablefission)
-  - [2.10 路由总控偏好 (`proxyFirst`)](#210-路由总控偏好-proxyfirst)
+  - [2.10 流量方向 (`trafficDirection`)](#210-流量方向-trafficdirection)
   - [2.11 节点防环注入模式 (`fakeIpFilterNodes`)](#211-节点防环注入模式-fakeipfilternodes)
   - [2.12 安全铁律 INV-8 (`dnsAllowNonLoopback`)](#212-安全铁律-inv-8-dnsallownonloopback)
 - [三、全量参数字典 (15 大分类)](#三全量参数字典-15-大分类)
@@ -66,7 +66,7 @@
 | 信任等级 | 标记 | 含义与安全约束 | 典型字段 |
 | :--- | :--- | :--- | :--- |
 | **可信本地** | `trust: 'local'` | **仅允许在本地配置文件声明**。远程 `?config=` 参数传入时会被强行剥夺（剥离并发出安全审计警告），防止外部攻击者越权操控服务器。 | `include`, `servicesConfigFile`, `output`, `customRules`, `customRuleProviders`, `customGroups`, `groups`, `dnsListen`, `dnsAllowNonLoopback`, `hosts`, `nameserverPolicy`, `protectedDomains`, `security`, `fakeIpFilter` 等 |
-| **任意来源** | `trust: 'any'` | 本地配置与远程 `?config=` 均有权修改，属于纯粹的展示与节点清洗偏好。 | `logLevel`, `enableAI`, `proxyFirst`, `renameTemplate`, `enableDedupe` 等 |
+| **任意来源** | `trust: 'any'` | 本地配置与远程 `?config=` 均有权修改，属于纯粹的展示与节点清洗偏好。 | `logLevel`, `enableAI`, `trafficDirection`, `renameTemplate`, `enableDedupe` 等 |
 
 ### 1.3 合并语义：覆盖 (Override) 与基线追加 (Additive)
 
@@ -412,15 +412,14 @@ servicesConfigFile: "./services.config.yaml"
 
 ---
 
-### 2.10 路由总控偏好 (`proxyFirst`)
+### 2.10 流量方向 (`trafficDirection`)
 
-在规则匹配的最终兜底阶段，未被任何具体应用规则（AI、流媒体、广告等）命中的**剩余流量**如何走向：
+规则层面的国内 / 海外走向由 `routing` 表表达（`domestic` 预设 + 条目 `to`）；这里只声明**这台机器的流量往哪个方向走**，用于那些「无法只靠规则判断」的部分：
 
-- `proxyFirst: true`（**默认海外代理优先**）：
-  - 路由顺序：私有局域网直连 ➔ 各细分应用独立分流 ➔ 中国大陆域名/IP直连 (GEOIP/GEOSITE CN) ➔ **默认海外代理组 (MATCH)**。
-  - 适合主力使用海外网络、追求安全与防 DNS 污染的用户。
-- `proxyFirst: false`（**国内直连优先**）：
-  - 默认走 DIRECT 直连，仅显式命中代理规则的流量才走代理节点。
+- `split`（**默认**）：国内直连、海外代理。DNS 上游用 `dnsDirect` 解析国内域名、`dnsProxy` 解析海外域名。
+- `return`（回国）：国内代理、海外直连。DNS 上游互换，QUIC 拦截的 CN / 非 CN 分支、WebRTC 组的成员编排同步翻转。
+
+> 早期版本用 `enableDomesticGroup` × `proxyFirst` 两个布尔量组合推断方向，关闭 `proxyFirst` 会静默把整个方向翻转（触发条件为「中国分流组开启 + 直连优先」）。该组合已删除：需要回国请显式写 `trafficDirection: return`，需要国内流量走某个组请写 `routing` 条目 `to: 中国分流`。
 
 ---
 
@@ -455,7 +454,7 @@ servicesConfigFile: "./services.config.yaml"
 | `enablePipeline` | `boolean` | `true` | `any` | `override` | **流水线总控**：设为 `false` 则跳过所有策略拓扑组建、规则集编排与内核优化，仅交付清洗后的节点。 |
 | `logLevel` | `string` | `'info'` | `any` | `override` | **日志输出级别**：可选 `silent` \| `error` \| `warn` \| `info` \| `debug`。日常使用建议 `info`。 |
 | `osType` | `string` | `'windows'` | `any` | `override` | **目标运行环境**：可选 `windows` \| `mac` \| `linux` \| `all`。用于匹配特定操作系统的强制直连进程名单。 |
-| `proxyFirst` | `boolean` | `true` | `any` | `override` | **路由兜底策略**：`true` 为海外代理优先（未命中 CN 规则的流量走代理）；`false` 为国内直连优先。 |
+| `trafficDirection` | `string` | `'split'` | `any` | `override` | **流量方向**：`split` 国内直连 / 海外代理（默认）；`return` 回国（国内代理 / 海外直连）。只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支；规则的国内 / 海外走向由 `routing` 决定。 |
 | `defaultProxyMode` | `string` | `'auto'` | `any` | `override` | **默认代理行为**：可选 `auto` (自动测速) \| `manual` (手动选择) \| `fallback` (故障转移) \| `direct` \| `reject`。 |
 | `enableIPv6` | `boolean` | `false` | `any` | `override` | **全局 IPv6 开关**：控制 TUN、DNS 及路由规则的 IPv6 通道。本机无公网物理 IPv6 时请保持 `false`。 |
 | `enableAirportTag` | `boolean` | `false` | `any` | `override` | **订阅标签提取**：多订阅聚合时，是否自动将订阅来源识别为标签并附着在节点属性中。 |
@@ -466,7 +465,7 @@ servicesConfigFile: "./services.config.yaml"
 
 ```yaml
 # 示例
-proxyFirst: true
+trafficDirection: "split"
 defaultProxyMode: "auto"
 osType: "windows"
 include:
@@ -532,7 +531,7 @@ include:
 | `enableStreaming` | `boolean` | `true` | `any` | `override` | 启用全球流媒体大类与独立分流策略组（YouTube、Netflix、Disney+ 等）。 |
 | `enableGame` | `boolean` | `true` | `any` | `override` | 启用全球主要游戏平台分流策略组（Steam、Epic、PlayStation、Xbox 等）。 |
 | `enableSystemServices`| `boolean`| `true` | `any` | `override` | 启用操作系统云服务分流策略组（Microsoft、Apple、Google）。 |
-| `enableDomesticGroup`| `boolean` | `false` | `any` | `override` | 启用「🇨🇳 中国分流」独立策略组（开启后国内流量由该组统一裁决，可切换直连或回国节点）。 |
+| ~~`enableDomesticGroup`~~ | — | — | — | — | **已删除**：改为在 `routing` 的 `domestic` 条目上写 `to: 中国分流`——中国分流组只在被规则引用时生成。 |
 
 ---
 

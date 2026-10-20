@@ -177,7 +177,7 @@ groups:
 | `enableTelegram` | Telegram 独立分流 | 否 | **删除** | `groups` 列出 `ref: telegram` |
 | `enableAdBlock` / `enableAntiAD` | 广告拦截组 | 否 | **删除** | `groups` 列出对应 `ref`（其规则与 Provider 随条目一起交付） |
 | `enableCrypto` / `enablePayPal` / `enableWebRTC` | 专项分流组 | 否 | **删除** | `groups` 列出对应 `ref` |
-| `enableDomesticGroup` | 中国分流组 | 否 | **删除** | `groups` 列出 `ref: domestic` |
+| `enableDomesticGroup` | 中国分流组 | 否 | **删除** | `routing` 的 `domestic` 条目写 `to: 中国分流`（组随引用生成） |
 | `enableGitHub` / `enableScholar` | 仅具备「关闭」语义的畸形开关 | 否 | **删除** | `groups` 列出对应 `ref` |
 | `aiServices` / `streamingServices` / `socialServices` / `gameServices` / `systemServices` / `devServices` | 内置组条目清单 | 否 | **全部删除** | 无需字段：要哪个服务就列哪条 `ref` |
 | `independentSocial` | 独立成组的社交应用 | 否 | **删除** | 下沉为目录条目属性（该服务是否独立成组） |
@@ -257,7 +257,7 @@ groups:
 | 专项 `@preferredRegions` 展开 | 删掉内置分支里手工预展开（`spec.preferredRegions` + `flatMap`），改由拓扑引擎按条目 `preferredRegions` 统一展开 —— 与 `ref` 路径共用同一实现，杜绝两条展开口径漂移。 |
 | 默认输出影响 | **非零漂移（属修正）**：`tiktok` 的声明里本就写着 `@matchedNodes`，但内置分支此前未把 `match` 传给引擎，该宏恒展开为空 → 只有 `@nonCnRegions` 起作用；`match` 补齐后声明按其字面意图生效。同理，流媒体未显式声明 `proxies` 的条目（`youtube`/`netflix`/`disney`/`spotify`/`pixiv`/`twitch`）现由 `@matchedNodes` 承接特征池成员（此前由内置分支用 `buckets[pool]` 注入，等价）。仅节点名命中服务正则时才会实际多出成员，现有 590 条测试全绿。批次 3 的回归基线快照须在批次 2 之后重新采集。 |
 | 验证 | `npm test` 590 pass / 0 fail（新增 4 条测试：可引用判据、`process` 结构 fail-closed、四类「ref ≡ 内置开关」逐字段等价、`process` 随组交付）；`npm run lint` 零警告；`npm run verify:arch` 零环路零违规；`npm run verify:docs` 通过。 |
-| 残差 2a | `webrtc` 的回国模式成员编排（`enableDomesticGroup && !proxyFirst` 时改写为 `DIRECT` 优先）仍只在内置分支生效、未随目录交付 → 该组合下 `ref: webrtc` 与内置配方不等价（等价性测试亦避开了该组合）。批次 3 随 `enableDomesticGroup` 一并收敛。 |
+| 残差 2a | `webrtc` 的回国模式成员编排（旧为 `enableDomesticGroup && !proxyFirst`）仍只在内置分支生效、未随目录交付；现已改读显式 `trafficDirection`，但「`ref: webrtc` 与内置配方等价」仍未达成——该改写仍在 `buildBuiltinAppRecipes` 内。批次 3 的组目录化一并收敛。 |
 | 残差 2b | **聚合语义未迁移**：`game` 的「游戏服务 / 游戏下载」是「成员服务各带规则、目标指向聚合组」的结构，`social` 的「社交平台」是「非独立服务合并为一组」的合并语义，`ads` 则是两个规则级开关共享同一组名。三者都要求「成员清单 / 合并策略」下沉到目录条目，属批次 2b（列在实施顺序第 2b 项）。 |
 | 残差 2c | 因此 `facebook` / `steam` 等聚合成员条目暂无 `proxies`，当下不可 `ref`。**批次 2b 决策：成员不为其备 `proxies`（保持不可独立引用）**，改为由所属聚合条目统一承载成员规则与 Provider，并将成员键的报错升级为「应改引哪个聚合组」的指引（详见「批次 2b 落地记录」）。 |
 
@@ -371,8 +371,8 @@ groups:
 | `enableSocial` / `socialServices` / `independentSocial` | 开启 `{ preset: social }` 一行；四服务各成一组，合并用 `{ service: facebook, to: 我的社交组 }` |
 | `enableGame` + `gameServices` | `{ preset: game }`；`game-service` / `game-download` 随引用生成 |
 | `enableTelegram` / `enableCrypto` / `enablePayPal` / `enableWebRTC` | `{ service: telegram }` 等，或整批 `{ preset: specialized }` |
-| `enableStreaming` / `streamingServices`、`enableSystemServices`、`enableGitHub` / `enableScholar`、`enableAdBlock` / `enableAntiAD`、`enableProcessDirect`、`enableDomesticGroup` | 同上：整批 `preset` 或单项 `service`；广告两条规则源变为 `preset: ads` 的两个默认条目 |
-| `enableDomesticGroup` + `proxyFirst`（组合出回国模式） | `routing` 里 `domestic` 三条规则的顺序与 `to` 表达分流方向；回国不要靠组合，改用显式 `trafficDirection: return`（10.10） |
+| `enableStreaming` / `streamingServices`、`enableSystemServices`、`enableGitHub` / `enableScholar`、`enableAdBlock` / `enableAntiAD`、`enableProcessDirect` | 同上：整批 `preset` 或单项 `service`；广告两条规则源变为 `preset: ads` 的两个默认条目 |
+| `enableDomesticGroup` + `proxyFirst`（旧组合出回国模式） | 国内侧走向写 `{ preset: domestic, to: '中国分流' }`；方向写 `trafficDirection: return`（不再由两个开关推断，10.10 已实施） |
 | `customRules` | `routing: [{ rule, to }]`（用户段位置不变） |
 | `customGroups` | `groups: [...]`（字段更名，结构一致） |
 | `customServices` | 保留字段名，改为**扁平**服务字典（不再按六维嵌套），新增服务用 `{ service: <键> }` 路由引用 |
@@ -398,33 +398,26 @@ groups:
 
 每项变更走 10.8 第 1 条的显式基线流程；「已审、维持」也写进结论，避免下次重新讨论。
 
-**10.10 方向（分流 / 回国）必须显式**
+**10.10 方向（分流 / 回国）必须显式——已实施（2026-10-20）**
 
-现状是两个布尔量的隐式组合（`enableDomesticGroup` × `proxyFirst`），一次同时改变 **6 处**行为：
+旧实现是两个布尔量的隐式组合（`enableDomesticGroup` × `proxyFirst`），一次同时改变 **6 处**行为：规则顺序、国内规则目标、海外规则目标、「中国分流」成员顺序、「漏网之鱼」兜底顺序、DNS 上游 / QUIC 目标 / WebRTC 分支。`domestic=true && proxyFirst=false` 会把整个方向翻转，而开关名只说了「国内组」，属静默语义。
 
-1. 规则顺序（`cn-domain` / `cn-ip` 与 `non-cn` 的先后）；
-2. 国内规则目标（`DIRECT` / `中国分流`）；
-3. 海外规则目标（代理 / `DIRECT`）；
-4. 「中国分流」组成员顺序（默认直连 / 默认代理）；
-5. 「漏网之鱼」兜底顺序（代理优先 / 直连优先）；
-6. DNS 直连与代理解析上游互换（`src/strategy/dns.js:83-85`）、QUIC 拦截目标（CN / !CN，`src/strategy/rules.js:283-290`）、WebRTC 规则分支（`src/strategy/topology.js:204`）。
+决定（已落地）：
 
-`domestic=true && proxyFirst=false` 即「回国模式」：国内流量走代理组、海外流量直连——一个名字只说「国内组」的开关翻转了整个方向，属于静默语义。实测矩阵见 `DEFAULTS.md` 第四节第 3 条。
+- **规则层面**：顺序与目标由 `routing` 表表达。`domestic` 预设固定展开 `non-cn` → `cn-domain` → `cn-ip`（两侧规则集互不相交，内部顺序只影响文本）；目标由 `trafficDirection` 与条目 `to` 决定：`split` 时海外走代理、国内走 `to ?? DIRECT`，`return` 时国内走代理、海外走 `to ?? DIRECT`。`proxyFirst` / `enableDomesticGroup` 不再是规则生成的输入。
+- **组层面**：`中国分流` 组由引用激活（10.3）——只有某条生效规则以它为 `to` 时才生成（`buildProxyTopology` 的 `ruleTargets`）。
+- **方向层面**：显式字段 `trafficDirection: 'split' | 'return'`（默认 `split`），只影响与规则无关的行为：DNS 上游（`src/strategy/dns.js`）、QUIC 拦截目标（`src/strategy/routing.js` 的 `expandQuic`）、WebRTC 成员编排（`src/strategy/topology.js` 的 specialized 分支）。
+- **迁移**：`enableDomesticGroup` 与 `proxyFirst` 已直接删除，不留兼容别名（`test/security/data-baseline.test.js` 的 `REMOVED_BY_DESIGN` 记录在案）；10.7 对照表写明替代写法。
+- **验收**：`test/pipeline/routing-expansion.test.js` 的「流量方向与国内侧目标」4 条用例覆盖 `split` / `return` / `to: 中国分流` / `return + to`；基线用例中 3 个旧组合已改写为显式方向语义（`_doc` 说明）。
 
-决定：
-
-- **规则层面**：顺序与目标全部由 `routing` 表表达。`domestic` 预设展开三条规则（`cn-domain`、`cn-ip`、`non-cn`），先后由表顺序决定、目标由条目 `to` 决定；`proxyFirst` 与 `enableDomesticGroup` 不再是规则生成的输入。
-- **组层面**：`中国分流` 组的存在由引用激活（10.3）——只有某条生效规则以它为 `to` 时才生成；成员顺序写在 `groups` 声明里（顺序 = 默认选中项）。
-- **方向层面**：只保留一个显式字段 `trafficDirection: 'split' | 'return'`（默认 `split`），仅影响三处与规则无关的行为：DNS 上游、QUIC 拦截目标、WebRTC 规则分支。不再由组合推断。
-- **迁移**：`enableDomesticGroup` 与 `proxyFirst` **直接删除，不留兼容别名**。旧配置在校验期报错，并在错误信息里指向 10.7 对照表（「方向」一项写明 `trafficDirection: return`）。
-- **验收**：`trafficDirection` 两种取值各一条产物回归；`proxyFirst` 不再出现在任何规则顺序判定中；`DEFAULTS.md` 默认值表同步删除 `proxyFirst` 行、加入 `trafficDirection` 行。
+**残留（批次 3 组目录化时收敛）**：`trafficDirection` 目前仍推导两处「展示性默认」——「中国分流」组成员顺序与「漏网之鱼」兜底顺序。10.3 要求成员顺序写在 `groups` 声明里，但这两组由引擎生成，尚无声明载体；等组目录化（10.6）后改为声明驱动。
 
 **10.11 单一路径与默认值即配置**
 
 不为「旧配置还能跑」保留分支，也不为「行为没变」在代码里写双路：
 
 - `routing` 是规则生成的**唯一来源**，`buildRoutingRules` 那套按开关串联的段序直接删除，不存在「没写 routing 就走旧引擎」的分支。配置未写 `routing` 时取自默认数据表（`DEFAULT_ROUTING`），默认值本身就是配置数据，不是代码里的隐式行为。
-- 分流开关（`enableAI` / `enableStreaming` / `enableSocial` / `enableGame` / `enableSystemServices` / `enableGitHub` / `enableScholar` / `enableAdBlock` / `enableAntiAD` / `enableTelegram` / `enableCrypto` / `enablePayPal` / `enableWebRTC` / `enableProcessDirect` / `enableDomesticGroup` / `proxyFirst`）随批次 3 退役：批量开关由 `routing` 的 `preset` / `disabled` 表达，单项由 `service` 表达。
+- 分流开关（`enableAI` / `enableStreaming` / `enableSocial` / `enableGame` / `enableSystemServices` / `enableGitHub` / `enableScholar` / `enableAdBlock` / `enableAntiAD` / `enableTelegram` / `enableCrypto` / `enablePayPal` / `enableWebRTC` / `enableProcessDirect`）随批次 3 退役：批量开关由 `routing` 的 `preset` / `disabled` 表达，单项由 `service` 表达（`enableDomesticGroup` / `proxyFirst` 已在 10.10 删除）。
 - 默认值有问题**直接改默认配置数据**（`src/data/default-routing.js`、`src/data/field-registry.js` 的默认值、`src/config/catalog.js` 的目录条目），改完按 10.8 第 1 条更新基线并在提交信息里说明变化即可；不需要为「保持旧行为」加任何补丁层。
 - 验收：代码里不再出现按开关拼接规则/组的段序；`grep` 不到 `enableAdBlock` 一类字段的生产读取（仅允许出现在迁移文档与校验器的「已删除字段」清单里）。
 
