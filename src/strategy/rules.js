@@ -6,7 +6,7 @@
 
 const { FIELDS_BY_KEY } = require('../data');
 const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
-const { buildServiceCatalog, SPECIAL_SERVICES } = require('../config/catalog');
+const { buildServiceCatalog, SPECIAL_SERVICES, ADS_GROUPS } = require('../config/catalog');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
 const { stripGroupDecoration } = require('./presentation');
 
@@ -249,14 +249,15 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
     }
   }
 
-  // 5. 广告拦截
-  if (userConfig.enableAdBlock) {
-    providerBase['ads'] = 'geosite/category-ads-all';
-    routingRules.push('RULE-SET,ads,广告拦截');
-  }
-  if (userConfig.enableAntiAD) {
-    providerBase['anti-ad'] = 'https://anti-ad.net/clash.yaml';
-    routingRules.push('RULE-SET,anti-ad,广告拦截');
+  // 5. 广告拦截：两条规则来源条目彼此独立（ad-block ← enableAdBlock，anti-ad ← enableAntiAD），
+  //    组配方、Provider 与规则统一由目录条目交付，避免与 `groups: [{ ref: <键> }]` 路径各写一份。
+  for (const [refKey, ads] of Object.entries(ADS_GROUPS)) {
+    if (!userConfig[ads.configKey]) continue;
+    const entry = (effectiveRegistries.groups || {})[refKey] || ads;
+    for (const [name, path] of Object.entries(entry.providers || {})) {
+      providerBase[name] = path;
+    }
+    routingRules.push(...(entry.rules || []));
   }
 
   // 6. AI 助手服务
@@ -285,14 +286,14 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
     });
   }
 
-  // 8. 社交平台
+  // 8. 社交平台：独立条目目标指向自身组名，其余成员统一指向聚合组「社交平台」
+  //    （组名取自 catalog 聚合条目，与拓扑分支同一份定义，避免出现指向不存在组名的断裂规则）
   if (userConfig.enableSocial && effectiveRegistries.social) {
     const customSocialKeys = Object.keys(userConfig.customServices?.social || {});
     const baseActive = userConfig.socialServices || Object.keys(effectiveRegistries.social);
     const socialServices = [...new Set([...baseActive, ...customSocialKeys])];
     const independentSocial = userConfig.independentSocial || ['twitter'];
-    const nonIndependentKeys = socialServices.filter(k => !independentSocial.includes(k) && effectiveRegistries.social[k]);
-    const useCombinedGroup = nonIndependentKeys.length > 1;
+    const combinedName = (effectiveRegistries.aggregates || {})['社交平台']?.name || '社交平台';
 
     assembleServiceCategory({
       registry: effectiveRegistries.social,
@@ -300,7 +301,7 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
       providerBase,
       routingRules,
       resolveTarget: (key, item) => {
-        return independentSocial.includes(key) ? item.name : (useCombinedGroup ? '社交平台' : item.name);
+        return independentSocial.includes(key) ? item.name : combinedName;
       }
     });
   }

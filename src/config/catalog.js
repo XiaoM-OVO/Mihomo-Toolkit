@@ -39,24 +39,36 @@ const DEFAULT_REPOS = {
 const DEFAULT_AGGREGATES = Object.freeze({
   game: {
     service: {
+      refKey: 'game-service',
       name: '游戏服务',
       emoji: '🎮',
       icon: { repo: 'koolson', file: 'Game.png' },
-      proxies: ['DIRECT', '@standardOptions', '@buckets.game']
+      type: 'select',
+      match: { pool: 'game' },
+      proxies: ['DIRECT', '@standardOptions', '@matchedNodes']
+      // 成员清单：未声明时默认为本分类（game）全量服务——不自建第二份清单，避免与 BUILTIN_SERVICES 漂移。
     },
     download: {
+      refKey: 'game-download',
       name: '游戏下载',
       emoji: '🎮',
       icon: { repo: 'koolson', file: 'Game.png' },
-      proxies: ['DIRECT', '下载策略', '自动选择', '手动选择', '@buckets.game']
+      type: 'select',
+      match: { pool: 'game' },
+      proxies: ['DIRECT', '下载策略', '自动选择', '手动选择', '@matchedNodes']
     }
   },
   social: {
     combined: {
+      refKey: 'social-platform',
       name: '社交平台',
       emoji: '💬',
       icon: { repo: 'koolson', file: 'Discord.png' },
-      proxies: ['@standardOptions', 'DIRECT']
+      type: 'select',
+      proxies: ['@standardOptions', 'DIRECT'],
+      // 显式成员清单：twitter 自带成员配方独立成组（见 BUILTIN_SERVICES.social.twitter），故不在合并组内；
+      // meta 是 facebook 规则集的别名条目，默认不随合并组激活（保留其 legacy 激活路径）。
+      members: ['facebook', 'instagram', 'discord']
     }
   }
 });
@@ -118,6 +130,40 @@ const SPECIAL_SERVICES = Object.freeze({
       'RULE-SET,telegram-ip,Telegram,no-resolve'
     ],
     proxies: ['@standardOptions', 'DIRECT']
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// 2.0.5 独立单组规则条目 (ADS_GROUPS)
+// ─────────────────────────────────────────────────────────────
+/**
+ * 「广告拦截」组的规则来源条目。
+ *
+ * 两条目声明的是同一个组名（同名组在合并时归一，见 ROADMAP 九.4），但规则来源与默认开关彼此独立：
+ * - `ad-block`  ← enableAdBlock（默认开启）
+ * - `anti-ad`   ← enableAntiAD（默认关闭）
+ *
+ * 不合并为单条目的原因：单条目会把 anti-ad 规则一并强推为默认生效，破坏「默认输出零漂移」验收标准；
+ * 拆成两条目后，每条目都能与自己的开关逐项等价（ref ≡ 内置开关）。
+ */
+const ADS_GROUPS = Object.freeze({
+  'ad-block': {
+    refKey: 'ad-block',
+    name: '广告拦截',
+    configKey: 'enableAdBlock',
+    type: 'select',
+    proxies: ['REJECT-DROP', 'REJECT', 'DIRECT'],
+    rules: ['RULE-SET,ads,广告拦截'],
+    providers: { ads: 'geosite/category-ads-all' }
+  },
+  'anti-ad': {
+    refKey: 'anti-ad',
+    name: '广告拦截',
+    configKey: 'enableAntiAD',
+    type: 'select',
+    proxies: ['REJECT-DROP', 'REJECT', 'DIRECT'],
+    rules: ['RULE-SET,anti-ad,广告拦截'],
+    providers: { 'anti-ad': 'https://anti-ad.net/clash.yaml' }
   }
 });
 
@@ -309,11 +355,15 @@ const BUILTIN_SERVICES = {
   },
 
   // ③ 海外社交平台
+  // 注：twitter 自带成员配方（proxies），是「独立成组」的那一个，可被 `groups: [{ ref: twitter }]` 直接引用；
+  // 其余条目是聚合组「社交平台」的成员，其规则随聚合条目整体交付，不单独成组。
   social: {
     twitter: {
       name: 'Twitter',
       emoji: '🐦',
       rules: 'twitter',
+      type: 'select',
+      proxies: ['@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Twitter.png' }
     },
     facebook: {
@@ -557,6 +607,83 @@ function resolveRuleTarget(rawTarget, cat, cleanName, catDefaults = {}) {
   return rawTarget;
 }
 
+/**
+ * 解析单个服务条目的路由规则与 Provider 归属。
+ *
+ * 每条规则同时携带「已解析目标组名」与「前缀」，供两层消费者共用：
+ * - 服务条目投影：直接取 `text` 作为最终规则串；
+ * - 聚合条目投影：按 `target` 归属到对应聚合组，并可改写目标组名（自路由规则 → 聚合组名）。
+ *
+ * @param {object} s 服务定义
+ * @param {string} cat 分类键
+ * @param {string} key 服务键
+ * @param {object} catDefaults 分类默认策略
+ * @returns {{ providerPath: string, ruleSetName: string, entries: Array<object> }}
+ */
+function resolveServiceRuleEntries(s, cat, key, catDefaults) {
+  const cleanName = s.name || key;
+  let providerPath = `geosite/${key}`;
+  let ruleSetName = key;
+  const entries = [];
+
+  if (s.provider) {
+    providerPath = s.provider;
+  } else if (s.providerPath) {
+    providerPath = s.providerPath.startsWith('geosite/') || s.providerPath.startsWith('geoip/')
+      ? s.providerPath
+      : `geosite/${s.providerPath}`;
+  }
+
+  if (typeof s.rules === 'string') {
+    if (!s.provider && !s.providerPath) providerPath = `geosite/${s.rules}`;
+    ruleSetName = s.rules;
+    const target = resolveRuleTarget(s.target, cat, cleanName, catDefaults);
+    entries.push({
+      text: `RULE-SET,${s.rules},${target}`,
+      prefix: `RULE-SET,${s.rules}`,
+      suffix: '',
+      target,
+      providerName: s.rules
+    });
+  } else if (Array.isArray(s.rules)) {
+    if (!s.provider && !s.providerPath) {
+      const ruleSetItem = s.rules.find(r => r && r.type === 'RULE-SET' && r.path);
+      if (ruleSetItem) {
+        providerPath = `geosite/${ruleSetItem.path}`;
+      }
+    }
+    for (const r of s.rules) {
+      if (typeof r === 'string') {
+        entries.push({ text: r, prefix: r, suffix: '', target: null, providerName: null });
+        continue;
+      }
+      const target = resolveRuleTarget(r.target, cat, cleanName, catDefaults);
+      entries.push({
+        text: `${r.type},${r.value},${target}`,
+        prefix: `${r.type},${r.value}`,
+        suffix: '',
+        target,
+        providerName: String(r.type).toUpperCase() === 'RULE-SET' ? r.value : null
+      });
+    }
+  } else if (s.rules && typeof s.rules === 'object') {
+    ruleSetName = s.rules.name || key;
+    if (!s.provider && !s.providerPath) {
+      providerPath = s.rules.path ? `geosite/${s.rules.path}` : `geosite/${ruleSetName}`;
+    }
+    const target = resolveRuleTarget(s.rules.target || s.target, cat, cleanName, catDefaults);
+    entries.push({
+      text: `RULE-SET,${ruleSetName},${target}`,
+      prefix: `RULE-SET,${ruleSetName}`,
+      suffix: '',
+      target,
+      providerName: ruleSetName
+    });
+  }
+
+  return { providerPath, ruleSetName, entries };
+}
+
 // ─────────────────────────────────────────────────────────────
 // 5. 编目解析引擎 (ServiceCatalog)
 // ─────────────────────────────────────────────────────────────
@@ -767,14 +894,48 @@ class ServiceCatalog {
   }
 
   /**
+   * 聚合组成员键 → 所属聚合组 ref 键
+   *
+   * 成员条目（如 steam / epic / facebook）不单独成组：它的规则目标指向聚合组，
+   * 单独引用它只会得到「有组无规则」的空壳。因此引用期必须 fail-closed，
+   * 并由本表给出「应当改引哪个聚合组」的指引，而不是只报一个未知键。
+   *
+   * @returns {Record<string, string>}
+   */
+  getGroupMemberHints() {
+    const directory = this.toRegistries().groups || {};
+    const hints = {};
+    for (const [cat, catDef] of Object.entries(CATEGORY_DEFAULTS)) {
+      if (!catDef.aggregates) continue;
+      const aggEntries = Object.entries(catDef.aggregates);
+      if (aggEntries.length === 0) continue;
+      // 指引优先落在分类默认聚合组（如 game 的 @service → game-service）
+      const defaultRef = catDef.defaultAggregate && catDef.aggregates[catDef.defaultAggregate]
+        ? (catDef.aggregates[catDef.defaultAggregate].refKey || catDef.defaultAggregate)
+        : null;
+      const fallbackRef = aggEntries[0][1].refKey || aggEntries[0][0];
+      // 判据与目录一致：不在目录里的条目就是「只能随聚合组交付的成员」
+      for (const serviceKey of Object.keys(this.services[cat] || {})) {
+        if (directory[serviceKey]) continue;
+        hints[serviceKey] = defaultRef || fallbackRef;
+      }
+    }
+    return hints;
+  }
+
+  /**
    * 导出结构化服务注册表对象
-   * @returns {object} { ai, streaming, social, game, dev, system, aggregates, specialized }
+   * @returns {object} { ai, streaming, social, game, dev, system, aggregates, specialized, groups }
    */
   toRegistries() {
     const registries = {};
+    // 规则条目（含已解析目标组名）按分类缓存：聚合组投影需要按目标归属合并成员规则，
+    // 与服务条目投影共用同一份解析结果，避免「同一规则解析两遍」。
+    const ruleEntriesByCategory = {};
     for (const [cat, catServices] of Object.entries(this.services)) {
       const catDefaults = CATEGORY_DEFAULTS[cat] || {};
       registries[cat] = {};
+      ruleEntriesByCategory[cat] = {};
       for (const [key, s] of Object.entries(catServices)) {
         const cleanName = s.name || key;
         const emoji = s.emoji || catDefaults.emoji || '';
@@ -783,43 +944,8 @@ class ServiceCatalog {
         const iconUrl = resolveIconUrl(iconDef, this.repos.icons);
         const compiledReg = compileRegex(s.reg);
 
-        let providerPath = `geosite/${key}`;
-        let ruleSetName = key;
-        let rulesArr = [];
-
-        if (s.provider) {
-          providerPath = s.provider;
-        } else if (s.providerPath) {
-          providerPath = s.providerPath.startsWith('geosite/') || s.providerPath.startsWith('geoip/')
-            ? s.providerPath
-            : `geosite/${s.providerPath}`;
-        }
-
-        if (typeof s.rules === 'string') {
-          if (!s.provider && !s.providerPath) providerPath = `geosite/${s.rules}`;
-          ruleSetName = s.rules;
-          const target = resolveRuleTarget(s.target, cat, cleanName, catDefaults);
-          rulesArr = [`RULE-SET,${s.rules},${target}`];
-        } else if (Array.isArray(s.rules)) {
-          if (!s.provider && !s.providerPath) {
-            const ruleSetItem = s.rules.find(r => r && r.type === 'RULE-SET' && r.path);
-            if (ruleSetItem) {
-              providerPath = `geosite/${ruleSetItem.path}`;
-            }
-          }
-          rulesArr = s.rules.map(r => {
-            if (typeof r === 'string') return r;
-            const target = resolveRuleTarget(r.target, cat, cleanName, catDefaults);
-            return `${r.type},${r.value},${target}`;
-          });
-        } else if (s.rules && typeof s.rules === 'object') {
-          ruleSetName = s.rules.name || key;
-          if (!s.provider && !s.providerPath) {
-            providerPath = s.rules.path ? `geosite/${s.rules.path}` : `geosite/${ruleSetName}`;
-          }
-          const target = resolveRuleTarget(s.rules.target || s.target, cat, cleanName, catDefaults);
-          rulesArr = [`RULE-SET,${ruleSetName},${target}`];
-        }
+        const { providerPath, ruleSetName, entries } = resolveServiceRuleEntries(s, cat, key, catDefaults);
+        ruleEntriesByCategory[cat][key] = entries;
 
         registries[cat][key] = {
           tag: s.tag || key,
@@ -832,7 +958,7 @@ class ServiceCatalog {
           provider: s.provider || providerPath,
           ruleSet: s.ruleSet || ruleSetName,
           pool: s.pool || key,
-          rules: rulesArr,
+          rules: entries.map(e => e.text),
           proxies: s.proxies ? [...s.proxies] : undefined,
           preferredRegions: s.preferredRegions || catDefaults.preferredRegions || [],
           type: s.type,
@@ -843,21 +969,88 @@ class ServiceCatalog {
       }
     }
 
-    // 聚合策略组全量投影 (外观 + 拓扑配方)
+    // 聚合策略组全量投影 (外观 + 拓扑配方) 与「可引用组声明」派生
+    // 聚合条目自身就是一条完整组声明：成员的规则与 Provider 一并随聚合条目交付，
+    // 因此 `groups: [{ ref: <聚合键> }]` 一次到位（组 + 规则 + Provider），不会出现「有组无规则」的断裂规则。
     const aggregates = {};
-    for (const catDef of Object.values(CATEGORY_DEFAULTS)) {
-      if (catDef.aggregates) {
-        for (const [aggKey, meta] of Object.entries(catDef.aggregates)) {
-          aggregates[meta.name] = {
-            key: aggKey,
-            name: meta.name,
-            cleanName: meta.name,
-            fullName: meta.emoji ? `${meta.emoji} ${meta.name}` : meta.name,
-            uiIcon: meta.emoji || '',
-            iconUrl: resolveIconUrl(meta.icon, this.repos.icons),
-            proxies: meta.proxies ? [...meta.proxies] : undefined
-          };
+    const aggregateDirectoryEntries = {};
+    for (const [cat, catDef] of Object.entries(CATEGORY_DEFAULTS)) {
+      if (!catDef.aggregates) continue;
+      const catReg = registries[cat] || {};
+      const catEntries = ruleEntriesByCategory[cat] || {};
+      // Provider 名 → 路径：由本分类各服务条目的 RULE-SET 规则名统一解析（与内置开关路径同一口径）
+      const providerMap = {};
+      for (const item of Object.values(catReg)) {
+        if (item && item.ruleSet && item.provider) providerMap[item.ruleSet] = item.provider;
+      }
+      const aggList = Object.entries(catDef.aggregates).map(([aggKey, meta]) => ({
+        aggKey,
+        meta,
+        // 成员清单：显式声明优先；未声明则默认为本分类全量服务（不自建第二份清单，避免与 BUILTIN_SERVICES 漂移）
+        memberKeys: Array.isArray(meta.members) ? meta.members : Object.keys(catReg)
+      }));
+      // 成员被几个聚合组声明（决定「自路由规则」的归属）
+      const declareCount = {};
+      for (const a of aggList) {
+        for (const k of a.memberKeys) declareCount[k] = (declareCount[k] || 0) + 1;
+      }
+      const defaultAggName = catDef.defaultAggregate
+        ? catDef.aggregates[catDef.defaultAggregate]?.name
+        : undefined;
+
+      for (const { aggKey, meta, memberKeys } of aggList) {
+        aggregates[meta.name] = {
+          key: aggKey,
+          category: cat,
+          refKey: meta.refKey || aggKey,
+          name: meta.name,
+          cleanName: meta.name,
+          fullName: meta.emoji ? `${meta.emoji} ${meta.name}` : meta.name,
+          uiIcon: meta.emoji || '',
+          iconUrl: resolveIconUrl(meta.icon, this.repos.icons),
+          type: meta.type || 'select',
+          match: meta.match,
+          exclude: meta.exclude,
+          proxies: meta.proxies ? [...meta.proxies] : undefined
+        };
+
+        const rules = [];
+        const providers = {};
+        for (const memberKey of memberKeys) {
+          const member = catReg[memberKey];
+          const entries = catEntries[memberKey];
+          if (!member || !entries) {
+            throw new Error(`[catalog] 聚合组「${meta.name}」声明的成员「${memberKey}」不存在于 ${cat} 分类`);
+          }
+          for (const e of entries) {
+            if (!e.target) continue;                    // 无目标裸规则不参与聚合归属
+            let target = e.target;
+            if (target === member.cleanName) {
+              // 自路由规则（目标即成员自身组名）在聚合语义下并入本聚合组；
+              // 成员被多个聚合组声明时归属分类默认聚合组，避免同一条规则被同时改写成多个目标。
+              if (declareCount[memberKey] === 1) target = meta.name;
+              else if (defaultAggName) target = defaultAggName;
+              else continue;
+            }
+            if (target !== meta.name) continue;         // 指向其它组（含其它聚合组）的规则不并入本条目
+            rules.push(`${e.prefix},${target}${e.suffix}`);
+            if (e.providerName && providerMap[e.providerName]) {
+              providers[e.providerName] = providerMap[e.providerName];
+            }
+          }
         }
+
+        aggregateDirectoryEntries[meta.refKey || aggKey] = {
+          name: meta.name,
+          type: meta.type || 'select',
+          match: meta.match,
+          exclude: meta.exclude,
+          proxies: meta.proxies ? [...meta.proxies] : undefined,
+          preferredRegions: undefined,
+          rules,
+          providers: Object.keys(providers).length > 0 ? providers : undefined,
+          hidden: meta.hidden
+        };
       }
     }
     registries.aggregates = aggregates;
@@ -917,6 +1110,28 @@ class ServiceCatalog {
         }
       }
     }
+    // 聚合组条目入目录：与分类条目同构，都是「自带非空 proxies 的组声明」，
+    // 区别只在它的 rules/providers 是成员规则的合并结果（引用它即一次交付组 + 规则 + Provider）。
+    for (const [refKey, item] of Object.entries(aggregateDirectoryEntries)) {
+      if (!Array.isArray(item.proxies) || item.proxies.length === 0) continue;
+      groupDirectory[refKey] = item;
+    }
+
+    // 独立单组规则条目（「广告拦截」的两条规则来源）入目录
+    for (const [refKey, item] of Object.entries(ADS_GROUPS)) {
+      groupDirectory[refKey] = {
+        name: item.name,
+        type: item.type || 'select',
+        match: item.match,
+        exclude: item.exclude,
+        proxies: [...item.proxies],
+        preferredRegions: undefined,
+        rules: [...(item.rules || [])],
+        providers: item.providers ? { ...item.providers } : undefined,
+        hidden: item.hidden
+      };
+    }
+
     registries.groups = groupDirectory;
 
     return registries;
@@ -989,6 +1204,7 @@ module.exports = {
   CATEGORY_DEFAULTS,
   DEFAULT_AGGREGATES,
   SPECIAL_SERVICES,
+  ADS_GROUPS,
   BUILTIN_SERVICES,
   ServiceCatalog,
   buildServiceCatalog

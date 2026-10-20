@@ -119,6 +119,7 @@ function resolveConfig(userConfig = {}, options = {}) {
   //    （批次 3 落地后将由 groups 直接取代 customGroups，届时此处合流即拆除）。
   const declaredGroups = resolveGroupDeclarations(merged.groups, {
     directory: merged.registries.groups,
+    memberHints: merged.catalog.getGroupMemberHints(),
     fieldPath: 'groups'
   });
   if (declaredGroups.length > 0) {

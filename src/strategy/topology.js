@@ -7,6 +7,7 @@
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
 const { getTrustedProxyMetadata } = require('../core/node-trust');
 const { FIELDS_BY_KEY } = require('../data');
+const { ADS_GROUPS } = require('../config/catalog');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
 const { validateCustomGroups } = require('./matcher');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
@@ -125,51 +126,48 @@ function buildBuiltinAppRecipes({
     });
   }
 
-  // 3. 社交分组
+  // 3. 社交分组：独立条目各自成组，其余成员合并为一个聚合组（组名与成员配方取自 catalog 聚合条目），
+  //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
   if (userConfig.enableSocial && effectiveRegistries.social) {
     const socialServices = userConfig.socialServices || Object.keys(effectiveRegistries.social);
     const independentSocial = userConfig.independentSocial || ['twitter'];
-    const nonIndependent = socialServices.filter(k => !independentSocial.includes(k) && effectiveRegistries.social[k]);
+    const combinedAgg = (effectiveRegistries.aggregates || {})['社交平台'];
 
     socialServices.forEach(key => {
       const app = effectiveRegistries.social[key];
-      if (!app) return;
-      if (independentSocial.includes(key)) {
-        recipes.push({
-          name: app.name,
-          type: 'select',
-          proxies: app.proxies || ['@standardOptions', 'DIRECT']
-        });
-      }
+      if (!app || !independentSocial.includes(key)) return;
+      recipes.push({
+        name: app.name,
+        type: app.type || 'select',
+        proxies: app.proxies || ['@standardOptions', 'DIRECT']
+      });
     });
 
-    if (nonIndependent.length === 1) {
+    const hasCombinedMember = socialServices.some(
+      key => !independentSocial.includes(key) && effectiveRegistries.social[key]
+    );
+    if (hasCombinedMember && combinedAgg) {
       recipes.push({
-        name: effectiveRegistries.social[nonIndependent[0]].name,
-        type: 'select',
-        proxies: ['@standardOptions', 'DIRECT']
-      });
-    } else if (nonIndependent.length > 1) {
-      recipes.push({
-        name: '社交平台',
-        type: 'select',
-        proxies: ['@standardOptions', 'DIRECT']
+        name: combinedAgg.name,
+        type: combinedAgg.type || 'select',
+        proxies: combinedAgg.proxies || ['@standardOptions', 'DIRECT']
       });
     }
   }
 
-  // 4. 游戏分组 (由 effectiveRegistries.aggregates 驱动)
+  // 4. 游戏分组：配方直接取自 catalog 聚合条目（match + proxies），
+  //    因此这里生成的组与用户 `groups: [{ ref: <聚合键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
   if (userConfig.enableGame) {
-    const gameBuckets = buckets.game || [];
-    const gameAggs = effectiveRegistries.aggregates
-      ? [effectiveRegistries.aggregates['游戏服务'], effectiveRegistries.aggregates['游戏下载']].filter(Boolean)
-      : [];
+    const gameAggs = Object.values(effectiveRegistries.aggregates || {})
+      .filter(agg => agg.category === 'game');
 
     gameAggs.forEach(agg => {
       recipes.push({
         name: agg.name,
-        type: 'select',
-        proxies: (agg.proxies || []).map(p => (p === '@buckets.game' ? gameBuckets : p)).flat()
+        type: agg.type || 'select',
+        match: agg.match,
+        exclude: agg.exclude,
+        proxies: agg.proxies
       });
     });
   }
@@ -244,12 +242,13 @@ function buildBuiltinAppRecipes({
     });
   }
 
-  // 8. 广告拦截
+  // 8. 广告拦截：组配方取自目录条目（ad-block / anti-ad 两条规则来源声明的是同一个组名，合并时归一）
   if (userConfig.enableAdBlock || userConfig.enableAntiAD) {
+    const adsGroup = (effectiveRegistries.groups || {})['ad-block'] || ADS_GROUPS['ad-block'];
     recipes.push({
-      name: '广告拦截',
-      type: 'select',
-      proxies: ['REJECT-DROP', 'REJECT', 'DIRECT']
+      name: adsGroup.name,
+      type: adsGroup.type || 'select',
+      proxies: adsGroup.proxies
     });
   }
 

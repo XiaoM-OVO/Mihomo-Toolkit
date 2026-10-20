@@ -173,7 +173,9 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
   }
 
   for (const [catName, catServices] of Object.entries(effectiveRegistries)) {
-    if (catName === 'aggregates' || catName === 'specialized') continue;
+    // aggregates / specialized / groups 与分类投影同源，展示信息已由上方各自的投影给出；
+    // 其中 groups 是「可引用组目录」，其条目与分类条目完全同构，重复处理只会引入歧义。
+    if (catName === 'aggregates' || catName === 'specialized' || catName === 'groups') continue;
     if (catServices && typeof catServices === 'object') {
       Object.values(catServices).forEach(item => {
         if (item && item.cleanName) {

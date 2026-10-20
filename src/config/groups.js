@@ -16,10 +16,11 @@
  * @param {Array} rawGroups 原始清单（用户配置 `groups` 字段）
  * @param {object} [options]
  * @param {Record<string, object>} [options.directory] 内置组目录（`registries.groups`）
+ * @param {Record<string, string>} [options.memberHints] 聚合组成员键 → 所属聚合组 ref 键（报错时给出改引指引）
  * @param {string} [options.fieldPath='groups'] 报错时使用的字段路径前缀
  * @returns {Array<object>} 完整组声明列表（已剥离 `ref` / `disabled` 元键）
  */
-function resolveGroupDeclarations(rawGroups, { directory = {}, fieldPath = 'groups' } = {}) {
+function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {}, fieldPath = 'groups' } = {}) {
   if (rawGroups === undefined || rawGroups === null) return [];
   if (!Array.isArray(rawGroups)) {
     throw new TypeError(`${fieldPath}: 期望策略组声明数组 (Array)，实际为 ${typeof rawGroups}`);
@@ -54,8 +55,14 @@ function resolveGroupDeclarations(rawGroups, { directory = {}, fieldPath = 'grou
       const base = directory[refKey];
       if (!base) {
         const available = Object.keys(directory).sort().join(', ');
+        const aggregateRef = memberHints[refKey];
+        // 聚合组成员（如 steam / epic / facebook）不单独成组：其规则目标指向聚合组，
+        // 单独引用它只会得到空壳组。此处给出「应当改引哪个聚合组」的指引，而不是只报未知键。
+        const hint = aggregateRef
+          ? `；「${refKey}」是聚合组「${directory[aggregateRef]?.name || aggregateRef}」的成员条目，不单独成组，请改为 { ref: ${aggregateRef} }`
+          : '';
         throw new Error(
-          `${path}.ref: 未知内置组引用键「${refKey}」` +
+          `${path}.ref: 未知内置组引用键「${refKey}」` + hint +
           (available ? `，可用键: ${available}` : '（当前无可引用的内置组）')
         );
       }

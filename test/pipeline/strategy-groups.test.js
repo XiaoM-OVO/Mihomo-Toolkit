@@ -489,14 +489,17 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.deepEqual(tg.rules, ['RULE-SET,telegram,Telegram', 'RULE-SET,telegram-ip,Telegram,no-resolve']);
     assert.deepEqual(tg.providers, { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' });
 
-    // 成员配方未备齐（无 proxies）的条目不得进入目录：引用它必须配置期 fail-closed
-    for (const key of ['facebook', 'steam']) {
-      assert.throws(
-        () => resolveConfig({ groups: [{ ref: key }] }),
-        /groups\[0\]\.ref: 未知内置组引用键/,
-        `未备齐成员配方的「${key}」不得可作为 ref 目标（禁止空壳组）`
-      );
-    }
+    // 聚合组成员（无 proxies，不单独成组）不得进入目录：引用它必须配置期 fail-closed，并给出改引聚合组的指引
+    assert.throws(
+      () => resolveConfig({ groups: [{ ref: 'steam' }] }),
+      /groups\[0\]\.ref: 未知内置组引用键「steam」；「steam」是聚合组「游戏服务」的成员条目，不单独成组，请改为 \{ ref: game-service \}/,
+      '引用聚合组成员必须 fail-closed（禁止空壳组），且报错须指引到所属聚合组'
+    );
+    assert.throws(
+      () => resolveConfig({ groups: [{ ref: 'facebook' }] }),
+      /「facebook」是聚合组「社交平台」的成员条目，不单独成组，请改为 \{ ref: social-platform \}/,
+      '社交合并组成员同理必须 fail-closed 并指引到合并组'
+    );
   });
 
   test('validateCustomGroups - process 进程名单结构非法时配置期 fail-closed', () => {
@@ -565,6 +568,58 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
       assert.deepEqual(
         Object.keys(byRefDeclaration['rule-providers']).sort(),
         Object.keys(byBuiltinSwitch['rule-providers']).sort(),
+        `${sc.title}: ref 声明与内置开关配方必须登记一致的 Rule-Provider`
+      );
+    }
+  });
+
+  test('strategyMain - groups 的 ref 与内置开关配方等价（游戏聚合 / 社交合并 / 广告拦截）', () => {
+    const buildRawConfig = () => ({
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇯🇵 日本 01', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' },
+        { name: '🎮 游戏专线 01', type: 'ss', server: 'game1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p3' },
+        { name: '🎮 游戏专线 02', type: 'ss', server: 'game2.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p4' }
+      ]
+    });
+
+    const scenarios = [
+      {
+        title: '游戏聚合（含 @matchedNodes 特征池成员）',
+        base: { enableGame: true },
+        refs: ['game-service', 'game-download']
+      },
+      {
+        title: '社交合并（独立条目 + 合并组）',
+        base: { enableSocial: true },
+        refs: ['twitter', 'social-platform']
+      },
+      {
+        title: '广告拦截（同一组名的两条规则来源）',
+        base: { enableAdBlock: true, enableAntiAD: true },
+        refs: ['ad-block', 'anti-ad']
+      }
+    ];
+
+    for (const sc of scenarios) {
+      const base = { minorNodeThreshold: 1, ...sc.base };
+      const byBuiltinSwitch = strategyMain(buildRawConfig(), base);
+      const byRefDeclaration = strategyMain(buildRawConfig(), { ...base, groups: sc.refs.map(ref => ({ ref })) });
+
+      assert.deepEqual(
+        byRefDeclaration['proxy-groups'],
+        byBuiltinSwitch['proxy-groups'],
+        `${sc.title}: ref 声明与内置开关配方必须产出完全一致的策略组清单`
+      );
+      // 规则集合等价（注入位置差异见批次 3 收敛项），Provider 亦须一一对应
+      assert.deepEqual(
+        [...byRefDeclaration.rules].sort(),
+        [...byBuiltinSwitch.rules].sort(),
+        `${sc.title}: ref 声明与内置开关配方必须产出完全一致的分流规则集合`
+      );
+      assert.deepEqual(
+        byRefDeclaration['rule-providers'],
+        byBuiltinSwitch['rule-providers'],
         `${sc.title}: ref 声明与内置开关配方必须登记一致的 Rule-Provider`
       );
     }

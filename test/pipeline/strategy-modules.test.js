@@ -322,8 +322,47 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.equal(registries.aggregates['游戏服务'].fullName, '🎮 游戏服务');
     assert.equal(registries.aggregates['游戏下载'].fullName, '🎮 游戏下载');
     assert.equal(registries.aggregates['社交平台'].fullName, '💬 社交平台');
-    assert.deepStrictEqual(registries.aggregates['游戏下载'].proxies, ['DIRECT', '下载策略', '自动选择', '手动选择', '@buckets.game']);
-    assert.deepStrictEqual(registries.aggregates['游戏服务'].proxies, ['DIRECT', '@standardOptions', '@buckets.game']);
+    assert.deepStrictEqual(registries.aggregates['游戏下载'].proxies, ['DIRECT', '下载策略', '自动选择', '手动选择', '@matchedNodes']);
+    assert.deepStrictEqual(registries.aggregates['游戏服务'].proxies, ['DIRECT', '@standardOptions', '@matchedNodes']);
+    // 聚合组条目同样进入「可引用组目录」，且自带 match 配方（退役 @buckets.game 伪宏）与成员规则/Provider
+    const gameService = registries.groups['game-service'];
+    assert.deepStrictEqual(gameService.match, { pool: 'game' });
+    assert.ok(gameService.rules.includes('RULE-SET,steam,游戏服务'), '聚合组条目必须随组交付成员分流规则');
+    assert.ok(gameService.rules.includes('DOMAIN-SUFFIX,epicgames.com,游戏服务'), '成员规则的目标组名应指向聚合组');
+    assert.deepStrictEqual(gameService.providers, {
+      steam: 'geosite/steam@cn',
+      epic: 'geosite/epicgames',
+      riot: 'geosite/riot',
+      blizzard: 'geosite/blizzard',
+      nintendo: 'geosite/nintendo',
+      playstation: 'geosite/playstation',
+      xbox: 'geosite/xbox',
+      ubisoft: 'geosite/ubisoft',
+      origin: 'geosite/origin',
+      ea: 'geosite/ea'
+    });
+    assert.deepStrictEqual(
+      registries.groups['game-download'].rules,
+      ['DOMAIN-SUFFIX,steamcontent.com,游戏下载', 'RULE-SET,steam-cn,游戏下载', 'DOMAIN-SUFFIX,download.epicgames.com,游戏下载']
+    );
+    assert.deepStrictEqual(registries.groups['game-download'].providers, { 'steam-cn': 'geosite/steam@cn' });
+    // 社交合并组：成员规则（自路由）在聚合语义下改指合并组名
+    assert.deepStrictEqual(registries.groups['social-platform'].rules, [
+      'RULE-SET,facebook,社交平台',
+      'RULE-SET,instagram,社交平台',
+      'RULE-SET,discord,社交平台'
+    ]);
+    assert.deepStrictEqual(registries.groups['social-platform'].providers, {
+      facebook: 'geosite/facebook',
+      instagram: 'geosite/instagram',
+      discord: 'geosite/discord'
+    });
+    // 独立成组的社交条目 twitter 自带成员配方，可直接引用
+    assert.deepStrictEqual(registries.groups['twitter'].proxies, ['@standardOptions', 'DIRECT']);
+    // 广告拦截的两条规则来源：同一组名、各自独立的 Provider/Rule
+    assert.deepStrictEqual(registries.groups['ad-block'].rules, ['RULE-SET,ads,广告拦截']);
+    assert.deepStrictEqual(registries.groups['ad-block'].providers, { ads: 'geosite/category-ads-all' });
+    assert.deepStrictEqual(registries.groups['anti-ad'].providers, { 'anti-ad': 'https://anti-ad.net/clash.yaml' });
 
     assert.equal(registries.specialized['crypto'].fullName, '🪙 加密货币');
     assert.equal(registries.specialized['telegram'].fullName, '✈️ Telegram');
