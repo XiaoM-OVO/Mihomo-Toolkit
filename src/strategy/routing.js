@@ -39,6 +39,40 @@ function dedupe(list) {
 }
 
 /**
+ * 取一条规则的目标字段（`AND,((…)),目标` 单独处理）
+ * @param {string} rule 原始规则文本
+ * @returns {string|null}
+ */
+function ruleTargetOf(rule) {
+  const text = String(rule).trim();
+  if (text.startsWith('AND,')) {
+    const matched = text.match(/^AND,\(\(.*\)\),([^,]+)$/);
+    return matched ? matched[1].trim() : null;
+  }
+  const parts = text.split(',').map(p => p.trim());
+  if (parts.length < 2) return null;
+  const last = parts[parts.length - 1];
+  if (last.toLowerCase() === 'no-resolve') {
+    return parts.length >= 3 ? parts[parts.length - 2] : null;
+  }
+  return last;
+}
+
+/**
+ * 收集规则引用到的目标组（按首次出现顺序去重）
+ * @param {string[]} rules 展开后的规则
+ * @returns {string[]} 非内置目标名
+ */
+function collectTargets(rules) {
+  const targets = [];
+  for (const rule of rules) {
+    const target = ruleTargetOf(rule);
+    if (target && !BUILTIN_TARGETS.has(target.toUpperCase())) targets.push(target);
+  }
+  return dedupe(targets);
+}
+
+/**
  * 解析 `to` 为目标名
  * @param {string} to 内置目标 / ref 键 / 自定义组名
  * @param {object} ctx 展开上下文
@@ -93,13 +127,15 @@ function createContext(userConfig, registries, options) {
     }
   }
 
+  const direction = userConfig && userConfig.trafficDirection === 'return' ? 'return' : 'split';
   return {
     config,
     registries: effective,
     options: options || {},
     providerBase: { ...BASE_PROVIDER_ROUTES },
     rules: [],
-    isReturn: Boolean(config.enableDomesticGroup && !config.proxyFirst),
+    direction,
+    isReturn: direction === 'return',
     proxyTarget: options.proxyTarget
       || DEFAULT_MODE_MAP[config.defaultProxyMode]
       || '自动选择',
@@ -295,24 +331,23 @@ function expandDownload(ctx) {
 
 /**
  * 展开国内 / 海外路由方向段
+ *
+ * 顺序固定为「海外 → 国内域名 → 国内 IP」，两侧目标由 `trafficDirection` 与条目 `to` 决定：
+ *   - `split`（默认）：海外走代理，国内走 `to ?? DIRECT`（`to` 可指向「中国分流」组）
+ *   - `return`（回国）：国内走代理，海外走 `to ?? DIRECT`
+ * 两侧规则集互不相交，因此内部顺序只影响产物文本，不影响命中结果。
  * @param {object} ctx 上下文
+ * @param {string} [to] 直连侧目标覆写
  */
-function expandDomestic(ctx) {
-  const cnTarget = ctx.config.enableDomesticGroup ? '中国分流' : 'DIRECT';
-  const nonCnTarget = ctx.isReturn ? 'DIRECT' : ctx.proxyTarget;
-  if (ctx.config.proxyFirst) {
-    ctx.rules.push(
-      `RULE-SET,non-cn,${nonCnTarget}`,
-      `RULE-SET,cn-domain,${cnTarget}`,
-      `RULE-SET,cn-ip,${cnTarget},no-resolve`
-    );
-  } else {
-    ctx.rules.push(
-      `RULE-SET,cn-domain,${cnTarget}`,
-      `RULE-SET,cn-ip,${cnTarget},no-resolve`,
-      `RULE-SET,non-cn,${nonCnTarget}`
-    );
-  }
+function expandDomestic(ctx, to) {
+  const sideTarget = to === undefined ? 'DIRECT' : resolveTo(to, ctx);
+  const cnTarget = ctx.isReturn ? ctx.proxyTarget : sideTarget;
+  const foreignTarget = ctx.isReturn ? sideTarget : ctx.proxyTarget;
+  ctx.rules.push(
+    `RULE-SET,non-cn,${foreignTarget}`,
+    `RULE-SET,cn-domain,${cnTarget}`,
+    `RULE-SET,cn-ip,${cnTarget},no-resolve`
+  );
 }
 
 /**
@@ -410,7 +445,7 @@ function expandPreset(ctx, preset, entry) {
     case 'specialized': return expandSpecialized(ctx, to);
     case 'process': return expandProcess(ctx);
     case 'download': return expandDownload(ctx);
-    case 'domestic': return expandDomestic(ctx);
+    case 'domestic': return expandDomestic(ctx, to);
     case 'final': return expandFinal(ctx);
     default:
       throw new Error(`routing: 预设 "${preset.label || '?'}" 的 kind "${preset.kind}" 未被支持`);
@@ -539,13 +574,15 @@ function expandRouting(userConfig = {}, registries = {}, options = {}) {
     });
   }
 
-  return { rules, providers };
+  return { rules, providers, targets: collectTargets(rules) };
 }
 
 module.exports = {
   expandRouting,
   resolveTo,
   retarget,
+  collectTargets,
+  ruleTargetOf,
   DEFAULT_ROUTING,
   PRESET_DEFINITIONS
 };

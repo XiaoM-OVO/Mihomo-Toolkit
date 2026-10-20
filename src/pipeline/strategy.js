@@ -36,19 +36,22 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     sourceSkeleton.proxies = classifiedNodes.map(item => item.proxy);
   }
 
-  // 4. 组装服务注册表与策略拓扑
+  // 4. 组装服务注册表与路由规则（规则先展开：组是否生成由「被规则引用」决定）
   const logger = pipelineContext.logger || userConfig.logger;
   const registries = createServiceRegistries(userConfig);
+  const { rules, providers, targets } = expandRouting(userConfig, registries);
+
+  // 5. 组装策略拓扑（ruleTargets 决定哪些内置应用组需要生成）
   const { proxyGroups } = buildProxyTopology({
     classifiedNodes,
     userConfig,
     registries,
+    ruleTargets: targets,
     logger
   });
   sourceSkeleton['proxy-groups'] = proxyGroups;
 
-  // 5. 组装路由规则与 Rule-Providers
-  const { rules, providers } = expandRouting(userConfig, registries);
+  // 5.1 路由规则与 Rule-Providers
   sourceSkeleton['rules'] = rules;
   sourceSkeleton['rule-providers'] = providers;
 

@@ -201,7 +201,7 @@ function buildBuiltinAppRecipes({
     let proxies = spec.proxies ? [...spec.proxies] : ['@standardOptions', 'DIRECT'];
 
     // 处理 WebRTC 回国模式偏好
-    if (spec.key === 'webrtc' && userConfig.enableDomesticGroup && !userConfig.proxyFirst) {
+    if (spec.key === 'webrtc' && userConfig.trafficDirection === 'return') {
       proxies = ['DIRECT', '@defaultProxy', '手动选择', '自动选择', '@activeRegions'];
     }
 
@@ -257,6 +257,7 @@ function buildProxyTopology({
   classifiedNodes = [],
   userConfig = {},
   registries = {},
+  ruleTargets = [],
   logger = null
 }) {
   // 0. 校验声明式策略组 (customGroups) match/exclude 配方合规性
@@ -267,6 +268,9 @@ function buildProxyTopology({
   const effectiveRegistries = (registries && Object.keys(registries).length > 0)
     ? registries
     : (userConfig.catalog ? userConfig.catalog.toRegistries() : {});
+
+  // 规则引用到的目标组名：内置应用组与「中国分流」是否存在，由它决定（引用即激活）
+  const referencedTargets = new Set(Array.isArray(ruleTargets) ? ruleTargets : []);
 
   const regionDefs = getEnhancedRegionDefs();
   const mixedRegionIds = [...CONTINENT_DEFS.map(c => c.id), 'other'];
@@ -495,7 +499,7 @@ function buildProxyTopology({
     regionNames,
     standardOptions,
     residentialGroup: resiPrefix,
-    domesticGroup: userConfig.enableDomesticGroup ? ['中国分流'] : ['DIRECT'],
+    domesticGroup: referencedTargets.has('中国分流') ? ['中国分流'] : ['DIRECT'],
     nonCnRegions: activeRegionGroups.filter(g => !NON_CN_EXCLUDED_GROUPS.includes(g))
   };
 
@@ -540,9 +544,10 @@ function buildProxyTopology({
     finalGroups.push(buildSelect(EXPERIMENTAL_GROUP, buckets.experimental));
   }
 
-  if (userConfig.enableDomesticGroup) {
-    const cnProxies = (userConfig.enableDomesticGroup && !userConfig.proxyFirst)
-      ? [...CN_CORE_PROXY_GROUPS, proxyTarget, 'DIRECT']
+  // 中国分流组：只有某条生效规则把它当目标时才生成（引用即激活）
+  if (referencedTargets.has('中国分流')) {
+    const cnProxies = userConfig.trafficDirection === 'return'
+      ? [proxyTarget, ...CN_CORE_PROXY_GROUPS, 'DIRECT']
       : ['DIRECT', ...CN_CORE_PROXY_GROUPS, proxyTarget];
     finalGroups.push(buildSelect('中国分流', cnProxies));
   }
@@ -555,10 +560,10 @@ function buildProxyTopology({
 
   const fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', '下载策略'];
   if (proxyTarget !== 'DIRECT') {
-    if (userConfig.proxyFirst) {
-      fallbackProxies.push('DIRECT');
-    } else {
+    if (userConfig.trafficDirection === 'return') {
       fallbackProxies.unshift('DIRECT');
+    } else {
+      fallbackProxies.push('DIRECT');
     }
   }
   finalGroups.push(buildSelect('漏网之鱼', dedupe(fallbackProxies)));

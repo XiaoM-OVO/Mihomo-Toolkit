@@ -45,8 +45,8 @@ const FIELDS = [
     group: '基础全局配置', doc: '日志级别: silent | error | warn | info | debug' },
   { key: 'osType', type: 'string', default: 'windows', merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '设备类型: windows | mac | linux | all' },
-  { key: 'proxyFirst', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '基础全局配置', doc: '路由偏好：true(海外代理优先)，false(国内直连优先)' },
+  { key: 'trafficDirection', type: 'string', default: 'split', merge: 'override', trust: 'any',
+    group: '基础全局配置', doc: '流量方向: split(默认，国内直连/海外代理) | return(回国，国内代理/海外直连)——只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支' },
   { key: 'defaultProxyMode', type: 'string', default: 'auto', merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '默认代理策略: auto / manual / fallback（特殊: direct / reject）' },
   { key: 'enableIPv6', type: 'boolean', default: false, merge: 'override', trust: 'any',
@@ -149,8 +149,6 @@ const FIELDS = [
     group: '核心分流开关', doc: '游戏平台分流' },
   { key: 'enableSystemServices', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '核心分流开关', doc: '系统服务分流' },
-  { key: 'enableDomesticGroup', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '核心分流开关', doc: '中国分流独立策略组' },
 
   // ── 【5. 扩展分流开关】 ───────────────────────────────────────────────────
   { key: 'customServices', type: 'object', default: {}, merge: 'override', trust: 'any',

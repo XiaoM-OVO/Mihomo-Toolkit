@@ -80,7 +80,7 @@ const DEFAULT_SCRIPT_FILTERS = [...FAKEIP_FILTER_BASELINE];
 function applyDnsOverlay(config, userConfig = {}, options = {}) {
   const logger = options.logger;
   const findings = [];
-  const isReturn = userConfig.enableDomesticGroup && !userConfig.proxyFirst;
+  const isReturn = userConfig.trafficDirection === 'return';
   const directDNS = isReturn ? userConfig.dnsProxy : userConfig.dnsDirect;
   const proxyDNS  = isReturn ? userConfig.dnsDirect : userConfig.dnsProxy;
   const serverDNS = userConfig.dnsServer;

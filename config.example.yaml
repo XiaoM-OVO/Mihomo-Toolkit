@@ -181,7 +181,7 @@ showFeatureIcon: true              # 是否在节点名后追加特征 Emoji 图
 # ⑧ 策略组总控与拓扑模式（profile）
 # ─────────────────────────────────────────────────────────────────────
 # 核心策略总控
-proxyFirst: true                   # true=海外代理优先 / false=国内直连优先
+trafficDirection: "split"          # split=国内直连/海外代理（默认） | return=回国（国内代理/海外直连）
 defaultProxyMode: "manual"         # auto (自动测速) | manual (手动选择) | fallback (故障转移) | direct | reject
 regionGroupType: "url-test"        # 地区策略组类型: url-test (测速优选) | select (手动选择) | fallback (故障转移)
 # enableRegionHashLB: false        # 为达到条件的地区组增加哈希负载均衡（建议配合 regionGroupType: "select"）
@@ -212,7 +212,6 @@ enableSocial: true                 # 启用社交应用策略组 (Telegram, Twit
 enableGame: true                   # 启用游戏平台策略组 (Steam, Epic, PlayStation 等)
 enableGitHub: true                 # 启用 GitHub 极速策略组
 enableScholar: false               # 启用学术资源策略组 (Google Scholar, Sci-Hub 等)
-enableDomesticGroup: false         # 启用中国大陆分流策略组 (🇨🇳 中国分流)
 enableAdBlock: true                # 启用内置轻量广告拦截策略组 (🚫 广告拦截)
 enableAntiAD: false                # 启用激进广告拦截规则集 (anti-ad)
 enableTelegram: true               # Telegram 独立分流策略组

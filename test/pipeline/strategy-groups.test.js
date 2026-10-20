@@ -160,8 +160,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     const resBoth = strategyMain(rawConfig, {
       groupIconMode: 'both',
       iconRepoOrz: 'https://test-icon.com/',
-      minorNodeThreshold: 1,
-      enableDomesticGroup: true
+      minorNodeThreshold: 1
     });
     const autoBoth = resBoth['proxy-groups'].find(g => g.name.includes('自动选择'));
     assert.ok(autoBoth && autoBoth.icon && autoBoth.icon.includes('test-icon.com'), 'both 模式应注入在线 icon 链接');

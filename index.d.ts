@@ -259,8 +259,8 @@ export interface ToolkitConfig {
   enablePipeline?: boolean;
   /** 设备类型: windows | mac | linux | all */
   osType?: string;
-  /** 路由偏好：true(海外代理优先) / false(国内直连优先) */
-  proxyFirst?: boolean;
+  /** 流量方向: split(默认，国内直连/海外代理) | return(回国，国内代理/海外直连)——只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支 */
+  trafficDirection?: 'split' | 'return';
   /** 默认代理策略: auto | manual | fallback（特殊: direct / reject） */
   defaultProxyMode?: string;
   /** 全局 IPv6：控制 TUN / DNS 及路由（本地无物理 IPv6 请保持 false） */
@@ -319,8 +319,6 @@ export interface ToolkitConfig {
   enableGame?: boolean;
   /** 系统服务分流 */
   enableSystemServices?: boolean;
-  /** 中国分流独立策略组 */
-  enableDomesticGroup?: boolean;
 
   // 扩展分流开关
   /** 激进广告拦截规则集 (anti-AD) */

@@ -119,3 +119,52 @@ describe('routing 展开引擎：条目语义', () => {
     assert.throws(() => expandRouting(config, registries, { routing: [{ service: 'netflix', to: '' }] }), /缺少目标/);
   });
 });
+
+describe('routing 展开引擎：流量方向与国内侧目标', () => {
+  const domesticOnly = [{ preset: 'domestic' }];
+
+  it('split（默认）：海外走代理，国内直连', () => {
+    const { config, registries } = pair({ trafficDirection: 'split' });
+    const { rules } = expandRouting(config, registries, { routing: domesticOnly });
+    assert.deepStrictEqual(rules, [
+      'RULE-SET,non-cn,自动选择',
+      'RULE-SET,cn-domain,DIRECT',
+      'RULE-SET,cn-ip,DIRECT,no-resolve'
+    ]);
+  });
+
+  it('return：国内走代理，海外直连', () => {
+    const { config, registries } = pair({ trafficDirection: 'return' });
+    const { rules } = expandRouting(config, registries, { routing: domesticOnly });
+    assert.deepStrictEqual(rules, [
+      'RULE-SET,non-cn,DIRECT',
+      'RULE-SET,cn-domain,自动选择',
+      'RULE-SET,cn-ip,自动选择,no-resolve'
+    ]);
+  });
+
+  it('domestic + to：国内侧改指「中国分流」，并被目标收集器记下', () => {
+    const { config, registries } = pair();
+    const { rules, targets } = expandRouting(config, registries, {
+      routing: [{ preset: 'domestic', to: '中国分流' }]
+    });
+    assert.deepStrictEqual(rules, [
+      'RULE-SET,non-cn,自动选择',
+      'RULE-SET,cn-domain,中国分流',
+      'RULE-SET,cn-ip,中国分流,no-resolve'
+    ]);
+    assert.ok(targets.includes('中国分流'), '规则引用到的组必须出现在 targets 里');
+  });
+
+  it('return + to：`to` 作用于海外侧', () => {
+    const { config, registries } = pair({ trafficDirection: 'return' });
+    const { rules } = expandRouting(config, registries, {
+      routing: [{ preset: 'domestic', to: 'DIRECT' }]
+    });
+    assert.deepStrictEqual(rules, [
+      'RULE-SET,non-cn,DIRECT',
+      'RULE-SET,cn-domain,自动选择',
+      'RULE-SET,cn-ip,自动选择,no-resolve'
+    ]);
+  });
+});

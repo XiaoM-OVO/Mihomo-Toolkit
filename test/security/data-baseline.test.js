@@ -62,7 +62,7 @@ const LEGACY_REMOTE_DENIED = [
 describe('【Security】数据层基线与字段注册表防漂移 (data-baseline)', () => {
   describe('field-registry - 字段注册表与默认配置自洽', () => {
     it('registry - 默认值 golden 基线与注册表一一对应', () => {
-      const REMOVED_BY_DESIGN = ['dnsMergeMode', 'airportTagReg'];
+      const REMOVED_BY_DESIGN = ['dnsMergeMode', 'airportTagReg', 'enableDomesticGroup', 'proxyFirst'];
       for (const [key, expected] of Object.entries(GOLDEN)) {
         if (REMOVED_BY_DESIGN.includes(key)) {
           assert.ok(!(key in DEFAULT_CONFIG), `${key} 应已被移除（无效字段撤回）`);
@@ -85,7 +85,7 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
           'processProxyLin', 'processProxyMac', 'processProxyWin',
           'blockKeywords', 'blockServers',
           'nodeIpVersion',
-          'routing'
+          'routing', 'trafficDirection'
         ].sort(),
         '出现了未登记的默认字段：新增字段必须先在 field-registry.js 声明'
       );
