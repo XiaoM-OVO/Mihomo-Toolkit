@@ -126,12 +126,13 @@ function buildBuiltinAppRecipes({
     });
   }
 
-  // 3. 社交分组：独立条目各自成组，其余成员合并为一个聚合组（组名与成员配方取自 catalog 聚合条目），
-  //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
+  // 3. 社交分组：独立条目各自成组；聚合组按「规则目标」判定是否生成（不再硬编码合并组名）。
+  //    组名与成员配方取自 catalog 聚合条目，与 `groups: [{ ref: <聚合键> }]` 引用到的声明完全同构。
   if (userConfig.enableSocial && effectiveRegistries.social) {
     const socialServices = userConfig.socialServices || Object.keys(effectiveRegistries.social);
     const independentSocial = userConfig.independentSocial || ['twitter'];
-    const combinedAgg = (effectiveRegistries.aggregates || {})['社交平台'];
+    const socialAggs = Object.values(effectiveRegistries.aggregates || {})
+      .filter(agg => agg.category === 'social');
 
     socialServices.forEach(key => {
       const app = effectiveRegistries.social[key];
@@ -143,14 +144,19 @@ function buildBuiltinAppRecipes({
       });
     });
 
-    const hasCombinedMember = socialServices.some(
-      key => !independentSocial.includes(key) && effectiveRegistries.social[key]
-    );
-    if (hasCombinedMember && combinedAgg) {
+    for (const agg of socialAggs) {
+      // 判据 = 是否有激活的非独立条目把规则目标指向本聚合组（与规则段同一口径）
+      const hasActiveSource = socialServices.some(key => {
+        if (independentSocial.includes(key)) return false;
+        const app = effectiveRegistries.social[key];
+        return Boolean(app && Array.isArray(app.rules)
+          && app.rules.some(rule => String(rule).split(',').pop().trim() === agg.name));
+      });
+      if (!hasActiveSource) continue;
       recipes.push({
-        name: combinedAgg.name,
-        type: combinedAgg.type || 'select',
-        proxies: combinedAgg.proxies || ['@standardOptions', 'DIRECT']
+        name: agg.name,
+        type: agg.type || 'select',
+        proxies: agg.proxies || ['@standardOptions', 'DIRECT']
       });
     }
   }

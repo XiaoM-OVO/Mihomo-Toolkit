@@ -65,10 +65,9 @@ const DEFAULT_AGGREGATES = Object.freeze({
       emoji: '💬',
       icon: { repo: 'koolson', file: 'Discord.png' },
       type: 'select',
-      proxies: ['@standardOptions', 'DIRECT'],
-      // 显式成员清单：twitter 自带成员配方独立成组（见 BUILTIN_SERVICES.social.twitter），故不在合并组内；
-      // meta 是 facebook 规则集的别名条目，默认不随合并组激活（保留其 legacy 激活路径）。
-      members: ['facebook', 'instagram', 'discord']
+      proxies: ['@standardOptions', 'DIRECT']
+      // 成员由「规则目标」表达：facebook / instagram / discord 的 rules 声明 target: '@combined'，
+      // 聚合条目按目标名收集规则。取消成员清单 = 取消「成员推断 + 多聚合仲裁」这套机制。
     }
   }
 });
@@ -355,8 +354,11 @@ const BUILTIN_SERVICES = {
   },
 
   // ③ 海外社交平台
-  // 注：twitter 自带成员配方（proxies），是「独立成组」的那一个，可被 `groups: [{ ref: twitter }]` 直接引用；
-  // 其余条目是聚合组「社交平台」的成员，其规则随聚合条目整体交付，不单独成组。
+  // 注：归属由「规则目标」表达，不再维护成员清单：
+  //   - twitter 自带 proxies → 独立成组，可被 `groups: [{ ref: twitter }]` 直接引用；
+  //   - facebook / instagram / discord 的 rules 声明 `target: '@combined'` → 规则目标解析为
+  //     聚合条目「社交平台」，聚合组按目标名收集规则（见 toRegistries 的聚合投影）；
+  //   - meta 的目标是自己的组名（Meta），故不并入聚合组。
   social: {
     twitter: {
       name: 'Twitter',
@@ -370,18 +372,21 @@ const BUILTIN_SERVICES = {
       name: 'Facebook',
       emoji: '👥',
       rules: 'facebook',
+      target: '@combined',
       icon: { repo: 'koolson', file: 'Facebook.png' }
     },
     instagram: {
       name: 'Instagram',
       emoji: '📸',
       rules: 'instagram',
+      target: '@combined',
       icon: { repo: 'koolson', file: 'Instagram.png' }
     },
     discord: {
       name: 'Discord',
       emoji: '🎮',
       rules: 'discord',
+      target: '@combined',
       icon: { repo: 'koolson', file: 'Discord.png' }
     },
     meta: {
@@ -894,36 +899,6 @@ class ServiceCatalog {
   }
 
   /**
-   * 聚合组成员键 → 所属聚合组 ref 键
-   *
-   * 成员条目（如 steam / epic / facebook）不单独成组：它的规则目标指向聚合组，
-   * 单独引用它只会得到「有组无规则」的空壳。因此引用期必须 fail-closed，
-   * 并由本表给出「应当改引哪个聚合组」的指引，而不是只报一个未知键。
-   *
-   * @returns {Record<string, string>}
-   */
-  getGroupMemberHints() {
-    const directory = this.toRegistries().groups || {};
-    const hints = {};
-    for (const [cat, catDef] of Object.entries(CATEGORY_DEFAULTS)) {
-      if (!catDef.aggregates) continue;
-      const aggEntries = Object.entries(catDef.aggregates);
-      if (aggEntries.length === 0) continue;
-      // 指引优先落在分类默认聚合组（如 game 的 @service → game-service）
-      const defaultRef = catDef.defaultAggregate && catDef.aggregates[catDef.defaultAggregate]
-        ? (catDef.aggregates[catDef.defaultAggregate].refKey || catDef.defaultAggregate)
-        : null;
-      const fallbackRef = aggEntries[0][1].refKey || aggEntries[0][0];
-      // 判据与目录一致：不在目录里的条目就是「只能随聚合组交付的成员」
-      for (const serviceKey of Object.keys(this.services[cat] || {})) {
-        if (directory[serviceKey]) continue;
-        hints[serviceKey] = defaultRef || fallbackRef;
-      }
-    }
-    return hints;
-  }
-
-  /**
    * 导出结构化服务注册表对象
    * @returns {object} { ai, streaming, social, game, dev, system, aggregates, specialized, groups }
    */
@@ -969,9 +944,10 @@ class ServiceCatalog {
       }
     }
 
-    // 聚合策略组全量投影 (外观 + 拓扑配方) 与「可引用组声明」派生
-    // 聚合条目自身就是一条完整组声明：成员的规则与 Provider 一并随聚合条目交付，
-    // 因此 `groups: [{ ref: <聚合键> }]` 一次到位（组 + 规则 + Provider），不会出现「有组无规则」的断裂规则。
+    // 聚合策略组投影：**归属完全由「规则目标名」决定**，不再有成员清单 / 多聚合仲裁。
+    // 服务条目的 `target`（如 game 的 '@download'、social 的 '@combined'）在解析期就落成组名，
+    // 聚合条目只负责收集「目标指向自己」的规则——新增一个聚合组只需：
+    //   1) 在 CATEGORY_DEFAULTS 里加一条组定义；2) 把相关规则的 target 指过去。本段代码无需改动。
     const aggregates = {};
     const aggregateDirectoryEntries = {};
     for (const [cat, catDef] of Object.entries(CATEGORY_DEFAULTS)) {
@@ -983,22 +959,8 @@ class ServiceCatalog {
       for (const item of Object.values(catReg)) {
         if (item && item.ruleSet && item.provider) providerMap[item.ruleSet] = item.provider;
       }
-      const aggList = Object.entries(catDef.aggregates).map(([aggKey, meta]) => ({
-        aggKey,
-        meta,
-        // 成员清单：显式声明优先；未声明则默认为本分类全量服务（不自建第二份清单，避免与 BUILTIN_SERVICES 漂移）
-        memberKeys: Array.isArray(meta.members) ? meta.members : Object.keys(catReg)
-      }));
-      // 成员被几个聚合组声明（决定「自路由规则」的归属）
-      const declareCount = {};
-      for (const a of aggList) {
-        for (const k of a.memberKeys) declareCount[k] = (declareCount[k] || 0) + 1;
-      }
-      const defaultAggName = catDef.defaultAggregate
-        ? catDef.aggregates[catDef.defaultAggregate]?.name
-        : undefined;
 
-      for (const { aggKey, meta, memberKeys } of aggList) {
+      for (const [aggKey, meta] of Object.entries(catDef.aggregates)) {
         aggregates[meta.name] = {
           key: aggKey,
           category: cat,
@@ -1016,24 +978,11 @@ class ServiceCatalog {
 
         const rules = [];
         const providers = {};
-        for (const memberKey of memberKeys) {
-          const member = catReg[memberKey];
-          const entries = catEntries[memberKey];
-          if (!member || !entries) {
-            throw new Error(`[catalog] 聚合组「${meta.name}」声明的成员「${memberKey}」不存在于 ${cat} 分类`);
-          }
+        for (const [serviceKey, entries] of Object.entries(catEntries)) {
+          if (!catReg[serviceKey]) continue;
           for (const e of entries) {
-            if (!e.target) continue;                    // 无目标裸规则不参与聚合归属
-            let target = e.target;
-            if (target === member.cleanName) {
-              // 自路由规则（目标即成员自身组名）在聚合语义下并入本聚合组；
-              // 成员被多个聚合组声明时归属分类默认聚合组，避免同一条规则被同时改写成多个目标。
-              if (declareCount[memberKey] === 1) target = meta.name;
-              else if (defaultAggName) target = defaultAggName;
-              else continue;
-            }
-            if (target !== meta.name) continue;         // 指向其它组（含其它聚合组）的规则不并入本条目
-            rules.push(`${e.prefix},${target}${e.suffix}`);
+            if (!e.target || e.target !== meta.name) continue;
+            rules.push(`${e.prefix},${e.target}${e.suffix}`);
             if (e.providerName && providerMap[e.providerName]) {
               providers[e.providerName] = providerMap[e.providerName];
             }
@@ -1196,11 +1145,51 @@ function buildServiceCatalog(userConfig = {}) {
   return new ServiceCatalog(mergedServices, repos, userConfig);
 }
 
+/**
+ * 聚合组成员键 → 所属聚合组 ref 键（引用期报错指引）
+ *
+ * 成员条目（如 steam / epic / facebook）不单独成组：它的规则目标指向聚合组，
+ * 单独引用它只会得到「有组无规则」的空壳，因此引用期必须 fail-closed。
+ * 本函数给出「应当改引哪个聚合组」的指引——判据与聚合投影完全一致：
+ * **看条目自己的规则目标名落在哪个聚合组上**，不再依赖任何成员清单或分类推断。
+ *
+ * @param {object} registries `ServiceCatalog#toRegistries()` 的返回值
+ * @returns {Record<string, string>} 服务键 → 聚合组 ref 键
+ */
+function buildMemberHints(registries = {}) {
+  const aggregates = registries.aggregates || {};
+  const directory = registries.groups || {};
+  const byName = new Map(Object.values(aggregates).map(agg => [agg.name, agg]));
+  const hints = {};
+
+  for (const [cat, catReg] of Object.entries(registries)) {
+    if (cat === 'aggregates' || cat === 'groups' || !catReg || typeof catReg !== 'object') continue;
+    const catDef = CATEGORY_DEFAULTS[cat] || {};
+    // 指引优先落在分类默认聚合组（如 game 的 @service → game-service），避免多目标条目指向次要聚合组
+    const defaultAggName = catDef.defaultAggregate
+      ? catDef.aggregates?.[catDef.defaultAggregate]?.name
+      : null;
+
+    for (const [key, item] of Object.entries(catReg)) {
+      if (directory[key] || !item || !Array.isArray(item.rules)) continue;
+      const targets = new Set(
+        item.rules.map(rule => String(rule).split(',').pop().trim()).filter(Boolean)
+      );
+      const agg = (defaultAggName && targets.has(defaultAggName) && byName.get(defaultAggName))
+        || [...targets].map(t => byName.get(t)).find(Boolean);
+      if (agg) hints[key] = agg.refKey || agg.key;
+    }
+  }
+
+  return hints;
+}
+
 module.exports = {
   compileRegex,
   resolveIconUrl,
   resolveRuleTarget,
   deepMerge,
+  buildMemberHints,
   CATEGORY_DEFAULTS,
   DEFAULT_AGGREGATES,
   SPECIAL_SERVICES,

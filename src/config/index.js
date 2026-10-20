@@ -8,7 +8,7 @@ const { DEFAULT_CONFIG } = require('./defaults');
 const { ADDITIVE_FIELDS, ENTRY_NORMALIZERS, mergeBaseline } = require('../data');
 const { resolveMountPath, readMountFile } = require('./mounts');
 const { expandIncludes } = require('./include');
-const { buildServiceCatalog, deepMerge } = require('./catalog');
+const { buildServiceCatalog, buildMemberHints, deepMerge } = require('./catalog');
 const { resolveGroupDeclarations } = require('./groups');
 
 /**
@@ -119,7 +119,7 @@ function resolveConfig(userConfig = {}, options = {}) {
   //    （批次 3 落地后将由 groups 直接取代 customGroups，届时此处合流即拆除）。
   const declaredGroups = resolveGroupDeclarations(merged.groups, {
     directory: merged.registries.groups,
-    memberHints: merged.catalog.getGroupMemberHints(),
+    memberHints: buildMemberHints(merged.registries),
     fieldPath: 'groups'
   });
   if (declaredGroups.length > 0) {

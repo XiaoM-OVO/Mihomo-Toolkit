@@ -31,6 +31,47 @@ const BASE_PROVIDER_ROUTES = Object.freeze({
 });
 
 /**
+ * BT / 下载类分流规则的数据表
+ * -----------------------------------------------------------------------------
+ * 规则集、目标与开关条件都由数据表达：新增一个规则集只加一行，不再改组装代码。
+ * 顺序即优先级（先到先得），因此表的顺序就是最终规则顺序。
+ */
+const BT_TRACKER_RULES = Object.freeze([
+  // 开启「进程直连」时全部直连；关闭时交给下载策略组
+  { provider: 'bt-trackers-pt', target: { on: 'DIRECT', off: '下载策略' } },
+  { provider: 'bt-trackers-public', target: { on: 'DIRECT', off: '下载策略' } },
+  // 仅在「进程直连」开启时注入的关键字兜底
+  { keyword: 'tracker', target: 'DIRECT', onlyWhen: 'processDirect' },
+  { keyword: 'announce', target: 'DIRECT', onlyWhen: 'processDirect' }
+]);
+
+const DOWNLOAD_RULESETS = Object.freeze([
+  { provider: 'download-games-cn', target: 'DIRECT' },
+  { provider: 'download-games', target: '下载策略' },
+  { provider: 'download-android', target: '下载策略' }
+]);
+
+/**
+ * 按数据表注入下载类规则
+ * @param {string[]} routingRules 目标规则数组（原地追加）
+ * @param {ReadonlyArray<object>} table 规则数据表
+ * @param {boolean} processDirect 是否开启进程直连
+ */
+function pushDownloadRules(routingRules, table, processDirect) {
+  for (const item of table) {
+    if (item.onlyWhen === 'processDirect' && !processDirect) continue;
+    const target = typeof item.target === 'string'
+      ? item.target
+      : (processDirect ? item.target.on : item.target.off);
+    routingRules.push(
+      item.keyword
+        ? `DOMAIN-KEYWORD,${item.keyword},${target}`
+        : `RULE-SET,${item.provider},${target}`
+    );
+  }
+}
+
+/**
  * 根据规则集标识与路由定义生成标准 HTTP Rule-Provider 对象
  * @param {string} name 规则集标识
  * @param {string} route 相对路径 (如 geosite/cn) 或绝对 URL (如 https://...)
@@ -286,14 +327,16 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
     });
   }
 
-  // 8. 社交平台：独立条目目标指向自身组名，其余成员统一指向聚合组「社交平台」
-  //    （组名取自 catalog 聚合条目，与拓扑分支同一份定义，避免出现指向不存在组名的断裂规则）
+  // 8. 社交平台：独立条目目标指向自身组名，其余条目统一指向其规则声明里的聚合目标
+  //    （聚合组名取自 catalog 聚合条目，与拓扑分支同一份定义，不在本处硬编码组名）
   if (userConfig.enableSocial && effectiveRegistries.social) {
     const customSocialKeys = Object.keys(userConfig.customServices?.social || {});
     const baseActive = userConfig.socialServices || Object.keys(effectiveRegistries.social);
     const socialServices = [...new Set([...baseActive, ...customSocialKeys])];
     const independentSocial = userConfig.independentSocial || ['twitter'];
-    const combinedName = (effectiveRegistries.aggregates || {})['社交平台']?.name || '社交平台';
+    const socialAgg = Object.values(effectiveRegistries.aggregates || {})
+      .find(agg => agg.category === 'social');
+    const combinedName = socialAgg ? socialAgg.name : null;
 
     assembleServiceCategory({
       registry: effectiveRegistries.social,
@@ -301,7 +344,8 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
       providerBase,
       routingRules,
       resolveTarget: (key, item) => {
-        return independentSocial.includes(key) ? item.name : combinedName;
+        if (independentSocial.includes(key)) return item.name;
+        return combinedName || item.name;
       }
     });
   }
@@ -380,10 +424,9 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
 
   if (userConfig.enableProcessDirect) {
     routingRules.push(...expandProcessRules(procDirectLists, 'DIRECT', osInfo));
-    routingRules.push('RULE-SET,bt-trackers-pt,DIRECT', 'RULE-SET,bt-trackers-public,DIRECT', 'DOMAIN-KEYWORD,tracker,DIRECT', 'DOMAIN-KEYWORD,announce,DIRECT');
-  } else {
-    routingRules.push('RULE-SET,bt-trackers-pt,下载策略', 'RULE-SET,bt-trackers-public,下载策略');
   }
+  // BT 追踪器：直连或下载策略，由数据表决定（新增规则集只加数据，不再改这里）
+  pushDownloadRules(routingRules, BT_TRACKER_RULES, Boolean(userConfig.enableProcessDirect));
 
   const procProxyLists = {
     win: userConfig.processProxyWin || FIELDS_BY_KEY.processProxyWin.default,
@@ -391,7 +434,8 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
     lin: userConfig.processProxyLin || FIELDS_BY_KEY.processProxyLin.default
   };
   routingRules.push(...expandProcessRules(procProxyLists, '下载策略', osInfo));
-  routingRules.push('RULE-SET,download-games-cn,DIRECT', 'RULE-SET,download-games,下载策略', 'RULE-SET,download-android,下载策略');
+  // 游戏 / 安卓下载：目标固定，同样由数据表决定
+  pushDownloadRules(routingRules, DOWNLOAD_RULESETS, Boolean(userConfig.enableProcessDirect));
 
   // 14. 国内 / 海外路由方向判定
   const isReturn = userConfig.enableDomesticGroup && !userConfig.proxyFirst;
