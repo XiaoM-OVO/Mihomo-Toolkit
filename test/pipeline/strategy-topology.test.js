@@ -385,8 +385,6 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
 
     const recipes = buildBuiltinAppRecipes({
       userConfig: {
-        enableAI: true,
-        enableStreaming: true,
         aiServices: ['chatgpt'],
         streamingServices: ['custom_stream', 'direct_stream']
       },
@@ -394,7 +392,9 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
       regionNames,
       activeRegionGroups: ['香港节点', '美国节点', '新加坡节点'],
       buckets: { ai: ['AI专线1'], custom_stream: ['流媒体1'] },
-      proxyTarget: '自动选择'
+      proxyTarget: '自动选择',
+      // 建组由「被规则引用的目标名」驱动，开关不再参与
+      referencedTargets: new Set(['ChatGPT', '自定义流媒体', '免翻流媒体'])
     });
 
     const chatgpt = recipes.find(r => r.name === 'ChatGPT');

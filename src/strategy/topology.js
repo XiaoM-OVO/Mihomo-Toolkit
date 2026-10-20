@@ -60,23 +60,29 @@ function resolveTargetGroup(groups, rawTarget) {
  * @param {object} params.regionNames
  * @param {Array<string>} params.activeRegionGroups
  * @param {object} params.buckets
+ * @param {Set<string>} params.referencedTargets 被分流规则实际引用到的目标组名（去装饰）
  * @returns {Array<object>} 声明式策略组配方列表
  */
 function buildBuiltinAppRecipes({
   userConfig = {},
   effectiveRegistries = {},
   regionNames = {},
-  buckets = {}
+  buckets = {},
+  referencedTargets = new Set()
 }) {
   const recipes = [];
 
+  // 建组口径：只有「被规则引用到的目标」才建组，组不再由开关直接驱动。
+  // 开关只决定规则是否生成（进而决定目标是否出现），组永远跟着规则走——单一来源。
+
   // 1. AI 分组：配方直接取自 catalog 条目（match + proxies + preferredRegions），
   //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
-  if (userConfig.enableAI && effectiveRegistries.ai) {
+  if (effectiveRegistries.ai) {
     const aiServices = userConfig.aiServices || Object.keys(effectiveRegistries.ai);
     aiServices.forEach(key => {
       const ai = effectiveRegistries.ai[key];
       if (!ai) return;
+      if (!referencedTargets.has(ai.name)) return;
       // aiPreferredRegions 为全局覆写（与内置组目录构建口径一致）
       const prefList = Array.isArray(userConfig.aiPreferredRegions) && userConfig.aiPreferredRegions.length > 0
         ? userConfig.aiPreferredRegions
@@ -104,11 +110,12 @@ function buildBuiltinAppRecipes({
 
   // 2. 流媒体分组：与 AI 同构，配方直接取自 catalog 条目（match + proxies + preferredRegions），
   //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
-  if (userConfig.enableStreaming && effectiveRegistries.streaming) {
+  if (effectiveRegistries.streaming) {
     const streamingServices = userConfig.streamingServices || Object.keys(effectiveRegistries.streaming);
     streamingServices.forEach(key => {
       const st = effectiveRegistries.streaming[key];
       if (!st) return;
+      if (!referencedTargets.has(st.name)) return;
 
       // 用户自建条目 (customServices) 多半只给了 reg，回落「特征桶 + 偏好地区」内置模板，保持既有行为
       const matched = buckets[st.pool] || buckets[st.tag] || [];
@@ -128,11 +135,11 @@ function buildBuiltinAppRecipes({
 
   // 3. 社交分组：一服务一组（与 AI / 流媒体同构）。
   //    合并组与「独立/合并」二分已取消：每个社交服务都是一条完整组声明，可单独引用、单独排序。
-  if (userConfig.enableSocial && effectiveRegistries.social) {
+  if (effectiveRegistries.social) {
     const socialServices = userConfig.socialServices || Object.keys(effectiveRegistries.social);
     socialServices.forEach(key => {
       const s = effectiveRegistries.social[key];
-      if (!s) return;
+      if (!s || !referencedTargets.has(s.name)) return;
       const matched = buckets[s.pool] || buckets[s.tag] || [];
       const pref = (s.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
       recipes.push({
@@ -147,11 +154,12 @@ function buildBuiltinAppRecipes({
 
   // 4. 游戏分组：配方直接取自 catalog 聚合条目（match + proxies），
   //    因此这里生成的组与用户 `groups: [{ ref: <聚合键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
-  if (userConfig.enableGame) {
+  if (effectiveRegistries.aggregates) {
     const gameAggs = Object.values(effectiveRegistries.aggregates || {})
       .filter(agg => agg.category === 'game');
 
     gameAggs.forEach(agg => {
+      if (!referencedTargets.has(agg.name)) return;
       recipes.push({
         name: agg.name,
         type: agg.type || 'select',
@@ -169,11 +177,9 @@ function buildBuiltinAppRecipes({
       : Object.keys(effectiveRegistries.dev);
 
     devActive.forEach(key => {
-      if (key === 'github' && userConfig.enableGitHub === false) return;
-      if (key === 'scholar' && userConfig.enableScholar === false) return;
-
       const conf = effectiveRegistries.dev[key];
       if (!conf) return;
+      if (!referencedTargets.has(conf.name)) return;
 
       // 用户自建条目回落模板，保持既有行为
       const pref = (conf.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
@@ -196,7 +202,7 @@ function buildBuiltinAppRecipes({
   //    成员的 `@preferredRegions` 由拓扑引擎按条目 preferredRegions 展开（不再在此处手工预展开）
   const specializedMap = effectiveRegistries.specialized || {};
   for (const spec of Object.values(specializedMap)) {
-    if (!userConfig[spec.configKey]) continue;
+    if (!referencedTargets.has(spec.name)) continue;
 
     let proxies = spec.proxies ? [...spec.proxies] : ['@standardOptions', 'DIRECT'];
 
@@ -216,11 +222,11 @@ function buildBuiltinAppRecipes({
   }
 
   // 7. 系统服务：配方直接取自 catalog 条目（含 match / proxies）
-  if (userConfig.enableSystemServices && effectiveRegistries.system) {
+  if (effectiveRegistries.system) {
     const systemServices = userConfig.systemServices || Object.keys(effectiveRegistries.system);
     systemServices.forEach(key => {
       const sys = effectiveRegistries.system[key];
-      if (sys) {
+      if (sys && referencedTargets.has(sys.name)) {
         recipes.push({
           name: sys.name,
           type: sys.type || 'select',
@@ -233,8 +239,8 @@ function buildBuiltinAppRecipes({
   }
 
   // 8. 广告拦截：组配方取自目录条目（ad-block / anti-ad 两条规则来源声明的是同一个组名，合并时归一）
-  if (userConfig.enableAdBlock || userConfig.enableAntiAD) {
-    const adsGroup = (effectiveRegistries.groups || {})['ad-block'] || ADS_GROUPS['ad-block'];
+  const adsGroup = (effectiveRegistries.groups || {})['ad-block'] || ADS_GROUPS['ad-block'];
+  if (referencedTargets.has(adsGroup.name)) {
     recipes.push({
       name: adsGroup.name,
       type: adsGroup.type || 'select',
@@ -508,7 +514,8 @@ function buildProxyTopology({
     effectiveRegistries,
     regionNames,
     activeRegionGroups,
-    buckets
+    buckets,
+    referencedTargets
   });
 
   const appGroups = appRecipes
