@@ -348,7 +348,35 @@
       "type": "select"
     },
     {
-      "name": "💬 社交平台",
+      "name": "👥 Facebook",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "DIRECT"
+      ],
+      "type": "select"
+    },
+    {
+      "name": "📸 Instagram",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "DIRECT"
+      ],
+      "type": "select"
+    },
+    {
+      "name": "🎮 Discord",
       "proxies": [
         "🚀 自动选择",
         "📍 手动选择",
@@ -978,9 +1006,9 @@
     "RULE-SET,pixiv,🅿️ Pixiv",
     "RULE-SET,twitch,🎮 Twitch",
     "RULE-SET,twitter,🐦 Twitter",
-    "RULE-SET,facebook,💬 社交平台",
-    "RULE-SET,instagram,💬 社交平台",
-    "RULE-SET,discord,💬 社交平台",
+    "RULE-SET,facebook,👥 Facebook",
+    "RULE-SET,instagram,📸 Instagram",
+    "RULE-SET,discord,🎮 Discord",
     "DOMAIN-SUFFIX,steamcontent.com,🎮 游戏下载",
     "RULE-SET,steam-cn,🎮 游戏下载",
     "RULE-SET,steam,🎮 游戏服务",

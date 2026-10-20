@@ -305,8 +305,6 @@ export interface ToolkitConfig {
   enableDomesticGroup?: boolean;
 
   // 扩展分流开关
-  /** 独立成组的社交应用（其余合并到「💬 社交平台」） */
-  independentSocial?: string[];
   /** 激进广告拦截规则集 (anti-AD) */
   enableAntiAD?: boolean;
   /** GitHub 极速分流 */

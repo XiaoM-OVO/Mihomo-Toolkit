@@ -57,19 +57,9 @@ const DEFAULT_AGGREGATES = Object.freeze({
       match: { pool: 'game' },
       proxies: ['DIRECT', '下载策略', '自动选择', '手动选择', '@matchedNodes']
     }
-  },
-  social: {
-    combined: {
-      refKey: 'social-platform',
-      name: '社交平台',
-      emoji: '💬',
-      icon: { repo: 'koolson', file: 'Discord.png' },
-      type: 'select',
-      proxies: ['@standardOptions', 'DIRECT']
-      // 成员由「规则目标」表达：facebook / instagram / discord 的 rules 声明 target: '@combined'，
-      // 聚合条目按目标名收集规则。取消成员清单 = 取消「成员推断 + 多聚合仲裁」这套机制。
-    }
   }
+  // social 已取消聚合：社交服务一律「一服务一组」，不再有合并组与成员归属概念。
+  // 若将来需要重新合并，用一条显式聚合组定义 + 把相关规则的 target 指过去即可（纯数据）。
 });
 
 const SPECIAL_SERVICES = Object.freeze({
@@ -177,8 +167,7 @@ const CATEGORY_DEFAULTS = {
     preferredRegions: []
   },
   social: {
-    preferredRegions: [],
-    aggregates: DEFAULT_AGGREGATES.social
+    preferredRegions: []
   },
   game: {
     preferredRegions: [],
@@ -353,12 +342,10 @@ const BUILTIN_SERVICES = {
     }
   },
 
-  // ③ 海外社交平台
-  // 注：归属由「规则目标」表达，不再维护成员清单：
-  //   - twitter 自带 proxies → 独立成组，可被 `groups: [{ ref: twitter }]` 直接引用；
-  //   - facebook / instagram / discord 的 rules 声明 `target: '@combined'` → 规则目标解析为
-  //     聚合条目「社交平台」，聚合组按目标名收集规则（见 toRegistries 的聚合投影）；
-  //   - meta 的目标是自己的组名（Meta），故不并入聚合组。
+  // ③ 海外社交平台：一服务一组，无合并组、无成员归属概念。
+  //   - 每个条目自带 proxies → 可被 `groups: [{ ref: <键> }]` 直接引用；
+  //   - 规则目标就是自己的组名（无需 target 声明）；
+  //   - meta 条目已删除：它是 facebook 规则集的别名，与 facebook 同源同规则，保留只会制造重叠规则与认知负担。
   social: {
     twitter: {
       name: 'Twitter',
@@ -372,28 +359,25 @@ const BUILTIN_SERVICES = {
       name: 'Facebook',
       emoji: '👥',
       rules: 'facebook',
-      target: '@combined',
+      type: 'select',
+      proxies: ['@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Facebook.png' }
     },
     instagram: {
       name: 'Instagram',
       emoji: '📸',
       rules: 'instagram',
-      target: '@combined',
+      type: 'select',
+      proxies: ['@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Instagram.png' }
     },
     discord: {
       name: 'Discord',
       emoji: '🎮',
       rules: 'discord',
-      target: '@combined',
+      type: 'select',
+      proxies: ['@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Discord.png' }
-    },
-    meta: {
-      name: 'Meta',
-      emoji: '♾️',
-      rules: { name: 'meta', path: 'facebook' },
-      icon: { repo: 'koolson', file: 'Meta.png' }
     }
   },
 

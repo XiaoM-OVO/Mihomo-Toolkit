@@ -321,7 +321,8 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.ok(registries.specialized);
     assert.equal(registries.aggregates['游戏服务'].fullName, '🎮 游戏服务');
     assert.equal(registries.aggregates['游戏下载'].fullName, '🎮 游戏下载');
-    assert.equal(registries.aggregates['社交平台'].fullName, '💬 社交平台');
+    assert.equal(registries.aggregates['游戏下载'].fullName, '🎮 游戏下载');
+    assert.equal(registries.aggregates['社交平台'], undefined, '社交聚合组已取消：一服务一组');
     assert.deepStrictEqual(registries.aggregates['游戏下载'].proxies, ['DIRECT', '下载策略', '自动选择', '手动选择', '@matchedNodes']);
     assert.deepStrictEqual(registries.aggregates['游戏服务'].proxies, ['DIRECT', '@standardOptions', '@matchedNodes']);
     // 聚合组条目同样进入「可引用组目录」，且自带 match 配方（退役 @buckets.game 伪宏）与成员规则/Provider
@@ -346,18 +347,9 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
       ['DOMAIN-SUFFIX,steamcontent.com,游戏下载', 'RULE-SET,steam-cn,游戏下载', 'DOMAIN-SUFFIX,download.epicgames.com,游戏下载']
     );
     assert.deepStrictEqual(registries.groups['game-download'].providers, { 'steam-cn': 'geosite/steam@cn' });
-    // 社交合并组：成员规则（自路由）在聚合语义下改指合并组名
-    assert.deepStrictEqual(registries.groups['social-platform'].rules, [
-      'RULE-SET,facebook,社交平台',
-      'RULE-SET,instagram,社交平台',
-      'RULE-SET,discord,社交平台'
-    ]);
-    assert.deepStrictEqual(registries.groups['social-platform'].providers, {
-      facebook: 'geosite/facebook',
-      instagram: 'geosite/instagram',
-      discord: 'geosite/discord'
-    });
-    // 独立成组的社交条目 twitter 自带成员配方，可直接引用
+    // 社交服务一服务一组：规则目标即自身组名，且每条都自带可引用配方（无合并组）
+    assert.deepStrictEqual(registries.groups['facebook'].rules, ['RULE-SET,facebook,Facebook']);
+    assert.deepStrictEqual(registries.groups['facebook'].providers, { facebook: 'geosite/facebook' });
     assert.deepStrictEqual(registries.groups['twitter'].proxies, ['@standardOptions', 'DIRECT']);
     // 广告拦截的两条规则来源：同一组名、各自独立的 Provider/Rule
     assert.deepStrictEqual(registries.groups['ad-block'].rules, ['RULE-SET,ads,广告拦截']);

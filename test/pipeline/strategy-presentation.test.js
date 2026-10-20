@@ -87,7 +87,7 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
       assert.equal(skeletonKeys.length, 15, 'SKELETON_GROUPS 应精确包含 15 个纯基础设施组');
       assert.ok(!skeletonKeys.includes('游戏服务'), 'SKELETON_GROUPS 严禁包含业务服务：游戏服务');
       assert.ok(!skeletonKeys.includes('游戏下载'), 'SKELETON_GROUPS 严禁包含业务服务：游戏下载');
-      assert.ok(!skeletonKeys.includes('社交平台'), 'SKELETON_GROUPS 严禁包含业务服务：社交平台');
+      assert.ok(!skeletonKeys.includes('Twitter'), 'SKELETON_GROUPS 严禁包含业务服务：Twitter');
       assert.ok(!skeletonKeys.includes('Telegram'), 'SKELETON_GROUPS 严禁包含专项服务：Telegram');
       assert.ok(!skeletonKeys.includes('加密货币'), 'SKELETON_GROUPS 严禁包含专项服务：加密货币');
       assert.ok(!skeletonKeys.includes('PayPal'), 'SKELETON_GROUPS 严禁包含专项服务：PayPal');
@@ -97,14 +97,15 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
       // 聚合与专项策略组依然必须被完整映射且带有正确徽标与图标
       assert.equal(emojiMap['游戏服务'], '🎮 游戏服务');
       assert.equal(emojiMap['游戏下载'], '🎮 游戏下载');
-      assert.equal(emojiMap['社交平台'], '💬 社交平台');
+      assert.equal(emojiMap['Twitter'], '🐦 Twitter');
+      assert.equal(emojiMap['Facebook'], '👥 Facebook');
       assert.equal(emojiMap['Telegram'], '✈️ Telegram');
       assert.equal(emojiMap['加密货币'], '🪙 加密货币');
       assert.equal(emojiMap['PayPal'], '💳 PayPal');
       assert.equal(emojiMap['WebRTC'], '🗣 WebRTC');
 
       assert.ok(iconMap['游戏服务'].includes('Game.png'));
-      assert.ok(iconMap['社交平台'].includes('Discord.png'));
+      assert.ok(iconMap['Facebook'].includes('Facebook.png'));
       assert.ok(iconMap['Telegram'].includes('Telegram.png'));
     });
   });

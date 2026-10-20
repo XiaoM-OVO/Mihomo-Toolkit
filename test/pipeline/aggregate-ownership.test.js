@@ -22,44 +22,35 @@ const NODES = [
 const withNodes = extra => ({ proxies: structuredClone(NODES), ...extra });
 
 describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownership)', () => {
-  it('聚合归属由 target 决定：自定义服务声明 target 即并入聚合，未声明则保持自身组名', () => {
+  it('聚合归属由规则目标决定：自定义 game 服务声明 target:@service 即并入「游戏服务」', () => {
     const registries = buildServiceCatalog({
       customServices: {
-        social: {
-          threads: { name: 'Threads', rules: 'threads', target: '@combined' },
-          solo: { name: 'Solo', rules: 'solo' }
-        }
+        game: { mygame: { name: 'MyGame', rules: 'mygame', target: '@service' } }
       }
     }).toRegistries();
 
     assert.ok(
-      registries.groups['social-platform'].rules.includes('RULE-SET,threads,社交平台'),
-      '声明 target: @combined 的服务，其规则必须并入「社交平台」聚合组'
+      registries.groups['game-service'].rules.includes('RULE-SET,mygame,游戏服务'),
+      '声明 target: @service 的服务，其规则必须并入「游戏服务」聚合组'
     );
-    assert.equal(registries.groups['social-platform'].providers.threads, 'geosite/threads');
-    assert.ok(
-      !registries.groups['social-platform'].rules.some(rule => rule.includes('Solo')),
-      '未声明 target 的服务不得被推断进聚合组'
-    );
-    assert.deepEqual(registries.social.solo.rules, ['RULE-SET,solo,Solo']);
+    assert.deepEqual(registries.game.mygame.rules, ['RULE-SET,mygame,游戏服务']);
   });
 
-  it('内置社交成员的规则在解析期就落成聚合组名（不再依赖成员清单事后改写）', () => {
+  it('社交服务一服务一组：规则目标即自身组名，且各自可被 groups 引用', () => {
     const registries = buildServiceCatalog({}).toRegistries();
-    for (const key of ['facebook', 'instagram', 'discord']) {
-      assert.deepEqual(
-        registries.social[key].rules,
-        [`RULE-SET,${key},社交平台`],
-        `${key} 的规则目标必须在解析期就是聚合组名`
-      );
+    assert.equal(registries.groups['social-platform'], undefined, '社交聚合组已取消（一服务一组）');
+    for (const [key, name] of [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['discord', 'Discord']]) {
+      assert.deepEqual(registries.social[key].rules, [`RULE-SET,${key},${name}`], `${key} 的规则目标必须是自身组名`);
+      assert.deepEqual(registries.social[key].proxies, ['@standardOptions', 'DIRECT'], `${key} 必须自带可引用配方`);
+      assert.ok(registries.groups[key], `${key} 必须可被 groups 引用`);
     }
   });
 
-  it('成员键报错指引取自规则目标：meta 不再被错误指引到 social-platform', () => {
+  it('成员键报错指引只指向真正不可单独引用的聚合成员', () => {
     const hints = buildMemberHints(resolveConfig({}).registries);
-    assert.equal(hints.facebook, 'social-platform');
     assert.equal(hints.steam, 'game-service');
-    assert.equal(hints.meta, undefined, 'meta 的目标是自身组名 Meta，不属于任何聚合组');
+    assert.equal(hints.facebook, undefined, 'facebook 现在可单独引用，不应再给聚合指引');
+    assert.equal(hints.meta, undefined, 'meta 条目已删除');
   });
 
   it('BT / 下载规则由数据表驱动：进程直连开关只切换目标，不增删代码分支', () => {

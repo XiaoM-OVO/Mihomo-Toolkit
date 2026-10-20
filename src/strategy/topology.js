@@ -126,39 +126,23 @@ function buildBuiltinAppRecipes({
     });
   }
 
-  // 3. 社交分组：独立条目各自成组；聚合组按「规则目标」判定是否生成（不再硬编码合并组名）。
-  //    组名与成员配方取自 catalog 聚合条目，与 `groups: [{ ref: <聚合键> }]` 引用到的声明完全同构。
+  // 3. 社交分组：一服务一组（与 AI / 流媒体同构）。
+  //    合并组与「独立/合并」二分已取消：每个社交服务都是一条完整组声明，可单独引用、单独排序。
   if (userConfig.enableSocial && effectiveRegistries.social) {
     const socialServices = userConfig.socialServices || Object.keys(effectiveRegistries.social);
-    const independentSocial = userConfig.independentSocial || ['twitter'];
-    const socialAggs = Object.values(effectiveRegistries.aggregates || {})
-      .filter(agg => agg.category === 'social');
-
     socialServices.forEach(key => {
-      const app = effectiveRegistries.social[key];
-      if (!app || !independentSocial.includes(key)) return;
+      const s = effectiveRegistries.social[key];
+      if (!s) return;
+      const matched = buckets[s.pool] || buckets[s.tag] || [];
+      const pref = (s.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
       recipes.push({
-        name: app.name,
-        type: app.type || 'select',
-        proxies: app.proxies || ['@standardOptions', 'DIRECT']
+        name: s.name,
+        type: s.type || 'select',
+        match: s.match,
+        exclude: s.exclude,
+        proxies: s.proxies || [...matched, ...pref, '@standardOptions', 'DIRECT']
       });
     });
-
-    for (const agg of socialAggs) {
-      // 判据 = 是否有激活的非独立条目把规则目标指向本聚合组（与规则段同一口径）
-      const hasActiveSource = socialServices.some(key => {
-        if (independentSocial.includes(key)) return false;
-        const app = effectiveRegistries.social[key];
-        return Boolean(app && Array.isArray(app.rules)
-          && app.rules.some(rule => String(rule).split(',').pop().trim() === agg.name));
-      });
-      if (!hasActiveSource) continue;
-      recipes.push({
-        name: agg.name,
-        type: agg.type || 'select',
-        proxies: agg.proxies || ['@standardOptions', 'DIRECT']
-      });
-    }
   }
 
   // 4. 游戏分组：配方直接取自 catalog 聚合条目（match + proxies），

@@ -161,8 +161,6 @@ const FIELDS = [
     merge: 'override', trust: 'any', group: '扩展分流开关', doc: '流媒体服务清单' },
   { key: 'socialServices', type: 'string[]', default: ['twitter', 'facebook', 'instagram', 'discord'],
     merge: 'override', trust: 'any', group: '扩展分流开关', doc: '海外社交服务清单' },
-  { key: 'independentSocial', type: 'string[]', default: ['twitter'],
-    merge: 'override', trust: 'any', group: '扩展分流开关', doc: '独立成组的社交应用' },
   { key: 'gameServices', type: 'string[]',
     default: ['steam', 'epic', 'riot', 'blizzard', 'nintendo', 'playstation', 'xbox', 'ubisoft', 'origin', 'ea'],
     merge: 'override', trust: 'any', group: '扩展分流开关', doc: '游戏平台服务清单' },

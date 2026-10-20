@@ -495,11 +495,9 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
       /groups\[0\]\.ref: 未知内置组引用键「steam」；「steam」是聚合组「游戏服务」的成员条目，不单独成组，请改为 \{ ref: game-service \}/,
       '引用聚合组成员必须 fail-closed（禁止空壳组），且报错须指引到所属聚合组'
     );
-    assert.throws(
-      () => resolveConfig({ groups: [{ ref: 'facebook' }] }),
-      /「facebook」是聚合组「社交平台」的成员条目，不单独成组，请改为 \{ ref: social-platform \}/,
-      '社交合并组成员同理必须 fail-closed 并指引到合并组'
-    );
+    // 社交服务一服务一组：每个社交服务自带配方，可直接引用（不再有合并组）
+    const fb = resolveConfig({ groups: [{ ref: 'facebook' }] });
+    assert.ok(fb.customGroups.find(g => g.name === 'Facebook'), 'facebook 应可直接作为 ref 目标');
   });
 
   test('validateCustomGroups - process 进程名单结构非法时配置期 fail-closed', () => {
@@ -590,9 +588,9 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
         refs: ['game-service', 'game-download']
       },
       {
-        title: '社交合并（独立条目 + 合并组）',
+        title: '社交（一服务一组）',
         base: { enableSocial: true },
-        refs: ['twitter', 'social-platform']
+        refs: ['twitter', 'facebook', 'instagram', 'discord']
       },
       {
         title: '广告拦截（同一组名的两条规则来源）',

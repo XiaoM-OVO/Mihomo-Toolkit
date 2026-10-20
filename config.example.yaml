@@ -259,13 +259,12 @@ streamingServices:
 # ⚠️ biliPreferredRegions 已移除：该字段从未被实现（历史文档遗留的空承诺）
 
 # 💬 海外社交平台服务列表 (需开启 enableSocial: true)
+# 每个服务各成一个策略组（一服务一组），可分别引用、分别排序
 socialServices:
   - twitter
   - facebook
   - instagram
   - discord
-independentSocial:                 # 独立成组的社交应用 (其余自动合并到「💬 社交平台」)
-  - twitter
 
 # 🎮 游戏平台服务列表 (需开启 enableGame: true)
 gameServices:

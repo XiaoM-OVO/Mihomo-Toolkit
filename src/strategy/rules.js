@@ -327,26 +327,16 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
     });
   }
 
-  // 8. 社交平台：独立条目目标指向自身组名，其余条目统一指向其规则声明里的聚合目标
-  //    （聚合组名取自 catalog 聚合条目，与拓扑分支同一份定义，不在本处硬编码组名）
+  // 8. 社交平台：一服务一组，规则目标即自身组名（无合并组、无目标改写）
   if (userConfig.enableSocial && effectiveRegistries.social) {
     const customSocialKeys = Object.keys(userConfig.customServices?.social || {});
     const baseActive = userConfig.socialServices || Object.keys(effectiveRegistries.social);
-    const socialServices = [...new Set([...baseActive, ...customSocialKeys])];
-    const independentSocial = userConfig.independentSocial || ['twitter'];
-    const socialAgg = Object.values(effectiveRegistries.aggregates || {})
-      .find(agg => agg.category === 'social');
-    const combinedName = socialAgg ? socialAgg.name : null;
-
+    const activeKeys = [...new Set([...baseActive, ...customSocialKeys])];
     assembleServiceCategory({
       registry: effectiveRegistries.social,
-      activeKeys: socialServices,
+      activeKeys,
       providerBase,
-      routingRules,
-      resolveTarget: (key, item) => {
-        if (independentSocial.includes(key)) return item.name;
-        return combinedName || item.name;
-      }
+      routingRules
     });
   }
 
