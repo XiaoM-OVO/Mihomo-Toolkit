@@ -14,6 +14,7 @@
   - [1.4 通用配置片段挂载 (include)](#14-通用配置片段挂载-include)
 - [二、焦点破译：消除“谜语人”参数](#二焦点破译消除谜语人参数)
   - [2.1 声明式策略组 DSL (`customGroups`) 完全指南](#21-声明式策略组-dsl-customgroups-完全指南)
+    - [2.1.1 统一策略组声明清单 (`groups`)](#211-统一策略组声明清单-groups)
   - [2.2 节点专属 DNS 依赖闭包 (`assetClosure`)](#22-节点专属-dns-依赖闭包-assetclosure)
   - [2.3 地区识别策略：严格字典 vs 宽松捕获 (`strictRegionMatch`)](#23-地区识别策略严格字典-vs-宽松捕获-strictregionmatch)
   - [2.4 DAG 级联空组剪枝与豁免机制 (`exemptGroups`)](#24-dag-级联空组剪枝与豁免机制-exemptgroups)
@@ -64,7 +65,7 @@
 
 | 信任等级 | 标记 | 含义与安全约束 | 典型字段 |
 | :--- | :--- | :--- | :--- |
-| **可信本地** | `trust: 'local'` | **仅允许在本地配置文件声明**。远程 `?config=` 参数传入时会被强行剥夺（剥离并发出安全审计警告），防止外部攻击者越权操控服务器。 | `include`, `servicesConfigFile`, `output`, `customRules`, `customRuleProviders`, `customGroups`, `dnsListen`, `dnsAllowNonLoopback`, `hosts`, `nameserverPolicy`, `protectedDomains`, `security`, `fakeIpFilter` 等 |
+| **可信本地** | `trust: 'local'` | **仅允许在本地配置文件声明**。远程 `?config=` 参数传入时会被强行剥夺（剥离并发出安全审计警告），防止外部攻击者越权操控服务器。 | `include`, `servicesConfigFile`, `output`, `customRules`, `customRuleProviders`, `customGroups`, `groups`, `dnsListen`, `dnsAllowNonLoopback`, `hosts`, `nameserverPolicy`, `protectedDomains`, `security`, `fakeIpFilter` 等 |
 | **任意来源** | `trust: 'any'` | 本地配置与远程 `?config=` 均有权修改，属于纯粹的展示与节点清洗偏好。 | `logLevel`, `enableAI`, `proxyFirst`, `renameTemplate`, `enableDedupe` 等 |
 
 ### 1.3 合并语义：覆盖 (Override) 与基线追加 (Additive)
@@ -112,10 +113,14 @@ include:
 | `lazy` | boolean | 否 | 是否启用懒加载测速（默认 `true`） |
 | `icon` | string / object | 否 | 图标 URL 或仓库对象 `{ repo: 'koolson', file: 'YouTube.png' }` |
 | `emoji` | string | 否 | Emoji 徽标（如 `🎬`） |
+| `hidden` | boolean | 否 | 是否在前端界面隐藏该策略组（默认 `false`） |
+| `filter` | string | 否 | Mihomo 原生成员过滤正则（在 `match` 之外追加的二次过滤） |
+| `exclude-filter` | string | 否 | Mihomo 原生成员排除正则 |
 | `match` | Recipe / Recipe[] | 否 | **节点匹配配方（正向命中条件）**，可写对象或数组 |
 | `exclude` | Recipe / Recipe[] | 否 | **黑名单配方（反向剔除条件）**，任一命中立即排除 |
 | `proxies` | string[] | 否 | **策略组成员声明**，支持纯节点名、下游策略组引用以及**宏变量** |
 | `rules` | string / string[] | 否 | 绑定的分流规则名称（会自动注入到 rules 规则链，如 `youtube`） |
+| `providers` | object | 否 | 该组随组交付的规则集 Provider 映射（规则集名 → `geosite/x` 或绝对 URL），`{ ref }` 引用内置组时会自动带上 |
 
 #### 配方 (Recipe) 支持的匹配维度
 
@@ -141,15 +146,19 @@ match:
   # 6. 订阅来源标签 (匹配来自特定机场的节点)
   airport: ["主力机场A"]
 
-  # 7. 复合条件模式: all (默认全部满足) | any (任一满足即可)
+  # 7. 复合条件模式: all (match 配方默认全部满足) | any (exclude 配方默认任一满足即排除)
   mode: all
 ```
 
 > [!IMPORTANT]
 > **配方合规校验与严格阻断 (Fail-Closed)**：
-> 在构建策略拓扑前，系统会对所有 `customGroups` 的 `match` 与 `exclude` 配方进行强类型校验：
-> - **未知键拦截**：配方对象仅允许支持的匹配维度键，未知键会直接抛出包含所属策略组与字段路径的错误并中断流程。
+> 在构建策略拓扑前，系统会对所有 `customGroups` 进行强类型校验：
+> - **顶层未知字段拦截**：策略组对象仅允许上表列出的字段，任何未声明的字段（如历史遗留的 `pool` / `tag` / `includeInfo`）都会直接抛出错误并中断流程，杜绝"幽灵配置"被静默忽略。
+> - **组类型白名单**：`type` 必须为 `select` / `url-test` / `fallback` / `load-balance` 之一，非法值直接抛错（不再静默降级为 `select`）；`proxies` 必须为 `string[]`，`rules` 必须为 `string` 或 `string[]`。
+> - **未知键拦截**：`match` / `exclude` 配方对象仅允许支持的匹配维度键，未知键会直接抛出包含所属策略组与字段路径的错误并中断流程。
 > - **类型与空值约束**：各字段必须符合规定类型（如 `multi` 必须为数值、区间字符串或二元数组），禁止空对象 `{}` 或空配方数组 `[]`。
+> - **未知宏配置期 fail-closed**：`proxies` 中未登记的 `@` 宏变量会在**配置校验期直接抛出错误并报出字段路径**（如 `策略组 X.proxies[0]: 未知宏「@foo」`），杜绝带病配置流入内核；引擎内部配方（内置目录）仍保留运行期告警兜底。既非物理节点、亦非已知策略组与内置目标（`DIRECT`/`REJECT`/`REJECT-DROP`/`COMPATIBLE`/`PASS`/`GLOBAL`）的目标同样会输出告警，交由后续裁剪兜底。
+> - **`groups` 未知引用键拦截**：`groups` 中 `{ ref: <键> }` 指向不存在的内置组键时，会在配置装载期抛出错误并报出字段路径（如 `groups[0].ref: 未知内置组引用键「xxx」`），并附上当前可用键清单。
 > - **循环依赖阻断 (Cycle Detection)**：若策略组之间声明了循环引用（例如 A 包含 B 且 B 包含 A），拓扑装配引擎会直接抛出错误并终止生成输出，杜绝死锁配置输出到内核。
 
 
@@ -161,19 +170,25 @@ match:
 | :--- | :--- | :--- |
 | `@matchedNodes` | `@matched`, `@nodes` | 由当前策略组 `match` 与 `exclude` 规则动态计算出的最终节点名单 |
 | `@residential` | `@resi` | 当前订阅中被识别出的所有家宽/住宅 IP 实体节点 |
-| `@residentialGroup` | `@resigroup` | 若开启了家宽分组且存在有效节点，则展开为 `['🏠 家宽优选']`，否则为空 |
+| `@residentialGroup` | `@resigroup` | 若开启了家宽分组且存在有效节点，则展开为 `['家宽优选']`，否则为空 |
 | `@allStandard` | `@all` | 清洗后进入主力池的所有标准代理节点全集 |
 | `@highMulti` | - | 所有被隔离的高倍率节点全集 |
 | `@special` | - | 所有被识别的特殊节点全集 |
-| `@activeRegions` | `@regions` | 当前所有成功建组的活跃地区策略组名称列表（如 `['🇭🇰 香港节点', '🇯🇵 日本节点']`） |
+| `@activeRegions` | `@regions` | 当前所有成功建组的活跃地区策略组名称列表（如 `['香港节点', '日本节点']`，均为内部规范纯净名） |
 | `@asia` | `@asiaRegions`, `@亚洲` | 当前活跃地区组中归属于**亚洲**的所有策略组（含东亚、东南亚、南亚、中东等） |
 | `@europe` | `@eu`, `@euRegions`, `@欧洲` | 当前活跃地区组中归属于**欧洲**的所有策略组 |
 | `@americas` | `@america`, `@am`, `@美洲` | 当前活跃地区组中归属于**美洲**的所有策略组（美、加、拉美等） |
 | `@oceania` | `@oc`, `@大洋洲` | 当前活跃地区组中归属于**大洋洲**的所有策略组（澳大利亚等） |
 | `@africa` | `@af`, `@非洲` | 当前活跃地区组中归属于**非洲**的所有策略组 |
 | `@sea` | `@seaRegions`, `@东南亚` | 当前活跃地区组中归属于**东南亚**的所有策略组（新加坡、马来西亚、泰国等） |
-| `@domesticGroup` | `@domestic` | 若开启中国分流则展开为 `['🇨🇳 中国分流']`，否则展开为 `['DIRECT']` |
-| `@nonCnRegions` | `@noncn`, `@tiktokregions` | 当前活跃地区组中剔除中国大中华核心区（大陆/香港等）后的纯海外地区组 |
+| `@me` | `@中东` | 当前活跃地区组中归属于**中东**的所有策略组 |
+| `@sas` | `@南亚` | 当前活跃地区组中归属于**南亚**的所有策略组 |
+| `@na` | `@北美` | 当前活跃地区组中归属于**北美**的所有策略组 |
+| `@latam` | `@拉美` | 当前活跃地区组中归属于**拉丁美洲**的所有策略组 |
+| `@ea` | `@东亚` | 当前活跃地区组中归属于**东亚**的所有策略组 |
+| `@domesticGroup` | `@domestic` | 若开启中国分流则展开为 `['中国分流']`，否则展开为 `['DIRECT']` |
+| `@preferredRegions` | `@preferred` | 将当前策略组 `preferredRegions`（地区 id 列表，如 `['us','jp']`）展开为对应地区策略组名（如 `['美国节点','日本节点']`） |
+| `@nonCnRegions` | `@noncn` | 当前活跃地区组中剔除中国大中华核心区（大陆/香港/中国/未知识别）后的纯海外地区组 |
 | `@defaultProxy` | `@proxy` | 根据 `defaultProxyMode` 计算出的默认代理组（`自动选择` / `手动选择` / `DIRECT`） |
 | `@standardOptions` | `@standard` | 标准应用组的前置选项（依序展开：默认代理组 ➔ 各活跃地区组 ➔ 家宽组 ➔ DIRECT） |
 
@@ -181,8 +196,9 @@ match:
 
 ```yaml
 customGroups:
-  # 示例 1：纯新增一个「低倍率极速日韩」测速组
-  - name: "⚡ 极速日韩"
+  # 示例 1：纯新增一个「极速日韩」测速组（推荐使用规范纯净组名，徽标与图标交给系统自适应）
+  - name: "极速日韩"
+    emoji: "⚡"
     type: url-test
     tolerance: 30
     match:
@@ -193,16 +209,49 @@ customGroups:
       - "@matchedNodes"
       - "DIRECT"
 
-  # 示例 2：覆写出厂内置的「🤖 ChatGPT」组（增加自选前置与家宽优先）
-  - name: "🤖 ChatGPT"
+  # 示例 2：覆写出厂内置的「ChatGPT」组（增加自选前置与家宽优先）
+  - name: "ChatGPT"
     type: select
     proxies:
       - "@residentialGroup"   # 家宽有节点时优先排在第一位
-      - "🇺🇸 美国节点"
-      - "🇯🇵 日本节点"
+      - "美国节点"            # 引用现有地区策略组（内部规范纯净名）
+      - "日本节点"
       - "@defaultProxy"
       - "DIRECT"
 ```
+
+> [!TIP]
+> **最佳实践：为什么推荐在配置中书写纯净组名？**  
+> - **跨模式完美自适应**：系统支持 `groupIconMode: "emoji" | "icon" | "both" | "none"`。书写纯净名（如 `ChatGPT`、`美国节点`）配合可选的 `emoji: "🤖"`，能让配置在纯图标模式（`icon`）或无图纯文本模式（`none`）下获得真正纯净的展示体验，杜绝硬编码 Emoji 带来的视觉冲突。
+> - **宽进严出双重容错**：虽然底层引擎已内置容错机制（即便直接写 `"🤖 ChatGPT"` 或在 `proxies` 中写 `"🇺🇸 美国节点"` 也会自动识别归一化），但书写规范纯净名依然是最稳健、最不易出错的书写规范。
+
+#### 2.1.1 统一策略组声明清单 (`groups`)
+
+`groups` 是策略组的**单一声明入口**：它把「要哪些组」收敛成一张清单，取代过去散落的 `enableAI` / `enableStreaming` 等建组开关与 `aiServices` / `streamingServices` 等服务清单字段。
+
+- **声明即激活，注释即关闭**：列在清单里的条目就生效，从清单里删掉（或注释掉）即关闭；不存在「某个开关决定某个组存不存在」的第二条路径。
+- **`{ ref: <键> }` 引用内置组目录**：内置组定义内置于程序（`src/config/catalog.js`），无需外部文件。引用即原样插入该组的完整声明（含其 `match` / `proxies` / `rules` / `providers`），并允许**条目内覆写任意字段**。
+- **`{ ref }` 与手写声明同构**：引用进来的东西和用户自己写的一条完整声明结构完全一致，不需要额外学一套概念——`ref` 只是一个「不用手抄」的快捷方式。
+- **`disabled: true` 显式关闭**：`include` 片段的数组语义是**并集去重**（片段的条目会被并集加回），因此「注释掉即关闭」只在单文件内成立。要跨片段关闭，必须显式书写 `disabled: true`。
+
+```yaml
+groups:
+  # 引用内置组目录里的条目：列了即激活（不需要先打开任何开关）
+  - { ref: chatgpt }
+  - { ref: gemini }
+  - { ref: claude, disabled: true }   # 显式关闭（跨 include 片段时必需）
+  - ref: copilot                      # 引用条目亦可覆写任意字段
+    name: 我的 Copilot 线路
+    type: url-test
+
+  # 目录之外的自定义组：字段与目录条目完全同构
+  - name: 我的专属线路
+    match: { region: ['hk', 'jp'] }
+    proxies: ['@matchedNodes', 'DIRECT']
+```
+
+> [!TIP]
+> 内置组目录当前已为 AI 大类（`chatgpt` / `gemini` / `claude` / `copilot`）备齐全量声明字段；其余服务类别的目录条目将在后续批次同构补齐。不确定有哪些可用键？写一个不存在的键即可——错误信息会直接列出全部可用键。
 
 ---
 
@@ -639,6 +688,7 @@ subscriptions:
 | `customRules` | `string[]` | `[]` | `local` | `override` | **最先执行的自定义规则**：直接注入到 MATCH 之前，优先级最高（如 `DOMAIN-SUFFIX,company.com,DIRECT`）。 |
 | `customRuleProviders`| `object` | `{}` | `local` | `override` | 自定义 Mihomo `rule-providers` 字典（声明外部规则集地址、行为与更新周期）。 |
 | `customGroups` | `object[]` | `[]` | `local` | `override` | **声明式策略组 DSL 清单**：完整支持配方、宏展开与原生参数透传。 |
+| `groups` | `object[]` | - | `local` | `override` | **统一策略组声明清单**：`{ ref: <键> }` 引用内置组目录（列了即激活，可覆写任意字段 / `disabled: true` 关闭），目录之外的组直接完整声明。 |
 | `subDomain` | `string \| string[]` | `[]` | `any` | `override` | **订阅服务域名或 IP**：自动注入为最前列直连规则与 fake-ip-filter，防刷新订阅陷入代理死锁。 |
 
 ---
@@ -720,7 +770,8 @@ enableQUICReject: true # 拒绝海外 QUIC 强制回退 TCP 提高画质
 
 # 自定义流媒体策略组
 customGroups:
-  - name: "🎬 专属流媒体"
+  - name: "专属流媒体"
+    emoji: "🎬"
     type: url-test
     tolerance: 30
     match:
@@ -782,7 +833,8 @@ groupIconMode: "emoji"
 **`configs/my-custom-groups.yaml`（策略组片段）**：
 ```yaml
 customGroups:
-  - name: "⚡ 极速日韩"
+  - name: "极速日韩"
+    emoji: "⚡"
     type: url-test
     match:
       region: ["jp", "kr"]

@@ -332,15 +332,17 @@ systemServices:
 # 🏠 家宽节点注入 (需开启 enableResidential: true)
 # enableResidential: false         # 家宽节点独立成组「🏠 家宽优选」，不混入普通池
 # residentialNodeGroups:           # 将家宽节点注入到应用策略组：键=地区("all"或"hk"/"us")，值=策略组列表
-#   "all": ["🤖 ChatGPT", "♊ Gemini"]
-#   "hk": ["🤖 ChatGPT"]
+#   "all": ["ChatGPT", "Gemini"]
+#   "hk": ["ChatGPT"]
 
 # ─────────────────────────────────────────────────────────────────────
 # ⑩-B 声明式自定义策略组 DSL (customGroups)
 # ─────────────────────────────────────────────────────────────────────
 # 支持声明全新策略组或覆写现有策略组；Mihomo 原生字段完全透传，支持动态配方 match / exclude 与宏引用
+# 推荐书写规范纯净中文名（徽标由 groupIconMode 统一根据 emoji / icon 自适应渲染）
 # customGroups:
-#   - name: "🎬 专属流媒体"
+#   - name: "专属流媒体"
+#     emoji: "🎬"
 #     type: url-test               # select | url-test | fallback | load-balance
 #     url: "https://www.youtube.com/generate_204"
 #     interval: 300
@@ -355,8 +357,26 @@ systemServices:
 #     proxies:
 #       - "@matchedNodes"          # 宏变量：上述 match/exclude 筛选出的节点
 #       - "@residential"           # 宏变量：家宽优选节点
-#       - "自动选择"                # 策略组引用
+#       - "自动选择"                # 策略组引用（规范纯净名）
 #       - "DIRECT"                 # 原生保留字
+
+# ─────────────────────────────────────────────────────────────────────
+# ⑩-C 统一策略组声明清单 (groups)
+# ─────────────────────────────────────────────────────────────────────
+# 策略组的单一声明入口：列了即激活，注释即关闭。
+# - { ref: <键> } 引用内置组目录（定义内置于程序，无需外部文件），可覆写任意字段
+# - 目录之外的组直接写完整声明，字段与目录条目完全同构
+# - 跨 include 片段关闭某组时，必须显式书写 disabled: true（片段数组是并集去重）
+# groups:
+#   - { ref: chatgpt }               # 引用内置 ChatGPT 组（含其规则与规则集 Provider）
+#   - { ref: gemini }
+#   - { ref: claude, disabled: true } # 显式关闭
+#   - ref: copilot                   # 引用条目亦可覆写字段
+#     name: 我的 Copilot 线路
+#     type: url-test
+#   - name: 我的专属线路              # 目录之外的自定义组
+#     match: { region: ["hk", "jp"] }
+#     proxies: ["@matchedNodes", "DIRECT"]
 
 
 

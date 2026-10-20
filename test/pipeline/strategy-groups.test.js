@@ -2,6 +2,8 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { runStrategyPipeline: strategyMain } = require('../../src/pipeline/strategy.js');
 const { markTrustedSynthetic } = require('../../src/core/node-trust');
+const { resolveConfig } = require('../../src/config');
+const { validateCustomGroups } = require('../../src/strategy/matcher');
 
 describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () => {
   test('strategyMain - AI / 流媒体 / 社交策略组生成与节点注入测试', () => {
@@ -365,6 +367,114 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(manualGroup, '应存在手动选择策略组');
     assert.equal(manualGroup.name, '🎯 手动选择', '手动选择组 Emoji 应被 groupIcons 成功覆盖为 🎯');
     assert.equal(manualGroup.icon, 'https://custom.icon/static.png', '手动选择组 Icon 应被 groupIcons 成功覆盖');
+  });
+
+  test('resolveConfig - groups 的 { ref } 展开结果与手写完整声明逐字段同构（不变量 2）', () => {
+    const resolved = resolveConfig({ groups: [{ ref: 'chatgpt' }] });
+    const declared = resolved.customGroups.find(g => g.name === 'ChatGPT');
+
+    assert.ok(declared, 'ref 条目应被展开为一条完整组声明');
+    // 手写同一条声明必须得到完全一致的字段（ref 不引入任何独有概念）
+    assert.deepEqual(declared, {
+      name: 'ChatGPT',
+      type: 'select',
+      match: { pool: 'chatgpt' },
+      exclude: undefined,
+      proxies: ['@residentialGroup', '@preferredRegions', '@matchedNodes', '@defaultProxy', 'DIRECT'],
+      preferredRegions: ['us', 'jp', 'tw', 'sg', 'kr', 'eu'],
+      rules: ['RULE-SET,openai,ChatGPT'],
+      providers: { openai: 'geosite/openai' },
+      hidden: undefined
+    });
+  });
+
+  test('resolveConfig - groups 支持条目内覆写与 disabled 显式关闭', () => {
+    const overridden = resolveConfig({ groups: [{ ref: 'chatgpt', type: 'url-test', name: '我的 GPT 专线' }] });
+    const declared = overridden.customGroups.find(g => g.name === '我的 GPT 专线');
+    assert.ok(declared, 'ref 条目应允许覆写 name');
+    assert.equal(declared.type, 'url-test', 'ref 条目应允许覆写 type');
+    assert.deepEqual(declared.match, { pool: 'chatgpt' }, '未覆写字段应保留目录声明原值');
+
+    const disabled = resolveConfig({ groups: [{ ref: 'chatgpt', disabled: true }] });
+    assert.equal(disabled.customGroups, undefined, 'disabled: true 的条目不得进入引擎消费清单');
+  });
+
+  test('resolveConfig - groups 未知 ref 键 fail-closed 并报出字段路径（不变量 6）', () => {
+    assert.throws(
+      () => resolveConfig({ groups: [{ ref: 'no-such-group' }] }),
+      /groups\[0\]\.ref: 未知内置组引用键/,
+      '未知 ref 键必须配置期 fail-closed，禁止静默跳过'
+    );
+    assert.throws(
+      () => resolveConfig({ groups: [{ ref: '' }] }),
+      /groups\[0\]\.ref: 期望非空字符串引用键/
+    );
+  });
+
+  test('validateCustomGroups - 未知宏配置期 fail-closed 并报出字段路径', () => {
+    assert.throws(
+      () => validateCustomGroups([{ name: '未知宏组', proxies: ['@bogusMacro'] }]),
+      /proxies\[0\]: 未知宏/,
+      '未知宏必须在配置期 fail-closed（禁止运行期静默跳过）'
+    );
+    // 已登记宏不得误报
+    validateCustomGroups([{ name: '合法宏组', proxies: ['@matchedNodes', '@preferredRegions', 'DIRECT'] }]);
+  });
+
+  test('strategyMain - groups 引用内置组目录：声明即激活、组/规则/Provider 全链路贯通（不变量 3）', () => {
+    const buildRawConfig = () => ({
+      proxies: [
+        { name: '🇺🇸 美国 ChatGPT 01', type: 'ss', server: 'us1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' }
+      ]
+    });
+
+    const result = strategyMain(buildRawConfig(), {
+      enableAI: false,
+      minorNodeThreshold: 1,
+      groups: [{ ref: 'chatgpt' }]
+    });
+
+    const gpt = result['proxy-groups'].find(g => g.name === '🤖 ChatGPT');
+    assert.ok(gpt, 'AI 总开关关闭时，groups 里的 ref 声明仍应建组（声明即激活）');
+    assert.ok(
+      gpt.proxies.some(p => p.includes('🤖')),
+      'ref 组应按目录 match 配方命中节点（标签打标不被总开关掐断）'
+    );
+    assert.ok(
+      result.rules.includes('RULE-SET,openai,🤖 ChatGPT'),
+      'ref 条目应随组一起交付分流规则'
+    );
+    const provider = result['rule-providers'].openai;
+    assert.ok(provider && provider.url.includes('geosite/openai'), 'ref 条目应随组一起登记规则集 Provider');
+  });
+
+  test('strategyMain - groups 的 { ref } 与内置开关配方产出的策略组逐字段等价（等价性守卫）', () => {
+    const buildRawConfig = () => ({
+      proxies: [
+        { name: '🇺🇸 美国 ChatGPT 01', type: 'ss', server: 'us1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇯🇵 日本 01', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' },
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p3' }
+      ]
+    });
+    const base = { minorNodeThreshold: 1, enableAI: true, aiServices: ['chatgpt'] };
+
+    const byBuiltinSwitch = strategyMain(buildRawConfig(), base);
+    const byRefDeclaration = strategyMain(buildRawConfig(), { ...base, groups: [{ ref: 'chatgpt' }] });
+
+    assert.deepEqual(
+      byRefDeclaration['proxy-groups'],
+      byBuiltinSwitch['proxy-groups'],
+      'ref 声明与内置开关配方必须产出完全一致的策略组清单'
+    );
+    // 规则集合必须等价。当下 A 类开关与 groups 两条路径并存，同一规则集的注入位置不同
+    // （开关路径在广告拦截之后、groups 路径在其之前），因此比较集合而非顺序；
+    // 批次 3 收敛为单一来源后此处可收紧为顺序敏感比较。
+    assert.deepEqual(
+      [...byRefDeclaration.rules].sort(),
+      [...byBuiltinSwitch.rules].sort(),
+      'ref 声明与内置开关配方必须产出完全一致的分流规则集合'
+    );
   });
 });
 

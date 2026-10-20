@@ -54,19 +54,11 @@ export interface CustomGroupRecipe {
   multi?: string | number | [number, number];
   /** 节点名称子串或正则 (如 '专线', '/(?:专线|iepl)/i') */
   pattern?: string | RegExp | (string | RegExp)[];
-  /** 节点名称别名 (等同于 pattern) */
-  name?: string | RegExp | (string | RegExp)[];
   /** 协议类型 (如 'ss', ['vless', 'hysteria2'], '!http') */
   protocol?: string | string[];
-  /** 协议类型别名 (等同于 protocol) */
-  type?: string | string[];
   /** 机场订阅标签 */
   airport?: string | string[];
-  /** 机场订阅标签别名 (等同于 airport) */
-  subTag?: string | string[];
   /** 业务特征池 (如 'ai', 'streaming') */
-  featurePools?: string | string[];
-  /** 业务特征池别名 (等同于 featurePools) */
   pool?: string | string[];
   /** 是否为特殊节点 */
   isSpecial?: boolean;
@@ -111,7 +103,20 @@ export interface CustomGroupConfig {
   proxies?: string[];
   /** 绑定的分流规则或规则集名称 (自动挂载至 rules 流水线) */
   rules?: string | string[];
+  /** 组声明携带的规则集 Provider 映射 (规则集名 → geosite/x 或绝对 URL) */
+  providers?: Record<string, string>;
+  /** `@preferredRegions` 宏展开用的地区 id 列表 (如 ['us', 'jp', 'tw']) */
+  preferredRegions?: string[];
 }
+
+/**
+ * 统一策略组声明清单条目：要么引用内置组目录 (`{ ref: <键> }`)，要么是一条完整自写声明。
+ * 两者字段完全同构——`ref` 条目的其余字段会覆写被引用声明的同名字段。
+ */
+export type GroupDeclarationEntry = (
+  | { ref: string }
+  | CustomGroupConfig
+) & { disabled?: boolean };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 节点清洗模块配置 (pure-nodes)
@@ -360,6 +365,11 @@ export interface ToolkitConfig {
   customRuleProviders?: Record<string, any>;
   /** 声明式自定义策略组 DSL 清单（支持 match/exclude 配方、宏引用与原生字段透传） */
   customGroups?: CustomGroupConfig[];
+  /**
+   * 统一策略组声明清单：`{ ref: <键> }` 引用内置组目录（列了即激活，可覆写字段 / `disabled: true` 关闭），
+   * 目录之外的组直接完整声明。声明即激活，注释即关闭。
+   */
+  groups?: GroupDeclarationEntry[];
   /**
    * 订阅服务域名或 IP（自动注入为最前列直连规则与 fake-ip-filter，防止客户端拉取订阅走代理循环或延迟叠加）。
    * 支持单个域名/IP 字符串，或域名/IP 数组。常驻服务端亦会自动自适应提取请求 Host。

@@ -93,6 +93,18 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
       assert.equal(matcher('上海-东京 BGP'), true);
       assert.equal(matcher('普通直连'), false);
     });
+
+    it('带全局 /g 或 /y 标志的正则匹配器保持无状态且连续调用幂等', () => {
+      const matcherStr = compilePatternMatcher('/专线/g');
+      const matcherReg = compilePatternMatcher(new RegExp('专线', 'gy'));
+      // 连续多次调用，检验不会因 lastIndex 前移导致隔次失效
+      assert.equal(matcherStr('节点1 专线'), true);
+      assert.equal(matcherStr('节点2 专线'), true);
+      assert.equal(matcherStr('节点3 专线'), true);
+      assert.equal(matcherReg('节点1 专线'), true);
+      assert.equal(matcherReg('节点2 专线'), true);
+      assert.equal(matcherReg('节点3 专线'), true);
+    });
   });
 
   describe('3. 地区匹配器 (compileRegionMatcher)', () => {
@@ -430,6 +442,73 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
           }
         ]);
       });
+    });
+
+    it('顶层未知字段拦截 (Fail-Closed)', () => {
+      assert.throws(
+        () => validateCustomGroups([{ name: '幽灵组', pool: 'ai' }]),
+        /未知字段「pool」/
+      );
+      assert.throws(
+        () => validateCustomGroups([{ name: '幽灵组', includeInfo: true }]),
+        /未知字段「includeInfo」/
+      );
+      assert.throws(
+        () => validateCustomGroups([{ name: '幽灵组', tag: 'ai' }]),
+        /未知字段「tag」/
+      );
+    });
+
+    it('组类型白名单：非法 type 直接抛错，不再静默降级', () => {
+      assert.throws(
+        () => validateCustomGroups([{ name: '测试组', type: 'selector' }]),
+        /未知策略组类型「selector」/
+      );
+      assert.doesNotThrow(() => validateCustomGroups([{ name: '测试组', type: 'load-balance' }]));
+      assert.doesNotThrow(() => validateCustomGroups([{ name: '测试组', type: 'URL-TEST' }]));
+    });
+
+    it('proxies 与 rules 类型约束', () => {
+      assert.throws(
+        () => validateCustomGroups([{ name: '测试组', proxies: 'DIRECT' }]),
+        /\.proxies: 期望 string\[\] 数组/
+      );
+      assert.throws(
+        () => validateCustomGroups([{ name: '测试组', proxies: ['DIRECT', 123] }]),
+        /\.proxies\[1\]: 期望非空 string/
+      );
+      assert.throws(
+        () => validateCustomGroups([{ name: '测试组', rules: { a: 1 } }]),
+        /\.rules: 期望 string 或 string\[\]/
+      );
+      assert.throws(
+        () => validateCustomGroups([{ name: '测试组', rules: ['youtube', ''] }]),
+        /\.rules\[1\]: 期望非空 string/
+      );
+      assert.doesNotThrow(() => validateCustomGroups([{ name: '测试组', rules: 'youtube' }]));
+    });
+
+    it('完整合法声明通过校验 (含 hidden / filter / exclude-filter)', () => {
+      assert.doesNotThrow(() => validateCustomGroups([
+        {
+          name: '专属流媒体',
+          type: 'url-test',
+          url: 'https://example.com',
+          interval: 300,
+          tolerance: 50,
+          lazy: false,
+          strategy: 'consistent-hashing',
+          icon: { repo: 'koolson', file: 'YouTube.png' },
+          emoji: '🎬',
+          hidden: true,
+          filter: '(?i)专线',
+          'exclude-filter': '(?i)过期',
+          match: { region: 'us' },
+          exclude: [{ tags: ['download'] }],
+          proxies: ['@matchedNodes', 'DIRECT'],
+          rules: ['youtube']
+        }
+      ]));
     });
   });
 

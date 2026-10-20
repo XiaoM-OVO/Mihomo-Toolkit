@@ -8,6 +8,7 @@ const { FIELDS_BY_KEY } = require('../data');
 const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
 const { buildServiceCatalog, SPECIAL_SERVICES } = require('../config/catalog');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
+const { stripGroupDecoration } = require('./presentation');
 
 function dedupe(arr) {
   return [...new Set(arr)];
@@ -191,11 +192,20 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
     routingRules.push(...userConfig.customRules);
   }
 
-  // 3. 用户声明式策略组 (customGroups) 绑定规则注入
+  // 3. 声明式策略组 (groups / customGroups) 绑定规则注入
   if (Array.isArray(userConfig.customGroups) && userConfig.customGroups.length) {
     for (const g of userConfig.customGroups) {
-      if (!g || !g.name || !g.rules) continue;
-      const targetName = g.name;
+      if (!g || typeof g !== 'object') continue;
+      // 组声明显式携带的规则集 Provider 先注册（`{ ref }` 引用条目由内置目录随组一起交付）
+      if (g.providers && typeof g.providers === 'object' && !Array.isArray(g.providers)) {
+        for (const [name, path] of Object.entries(g.providers)) {
+          if (typeof name === 'string' && name.trim() && typeof path === 'string' && path.trim()) {
+            providerBase[name.trim()] = path.trim();
+          }
+        }
+      }
+      if (!g.name || !g.rules) continue;
+      const targetName = stripGroupDecoration(g.name);
       const rulesList = Array.isArray(g.rules) ? g.rules : [g.rules];
       for (const r of rulesList) {
         if (!r || typeof r !== 'string') continue;
@@ -204,6 +214,8 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
           const parts = trimmed.split(',');
           if (parts.length === 2) {
             routingRules.push(`${parts[0].trim()},${parts[1].trim()},${targetName}`);
+          } else if (parts.length === 3 && parts[2].trim().toLowerCase() === 'no-resolve') {
+            routingRules.push(`${parts[0].trim()},${parts[1].trim()},${targetName},no-resolve`);
           } else {
             routingRules.push(trimmed);
           }

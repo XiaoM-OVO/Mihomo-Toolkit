@@ -11,11 +11,13 @@
  * 6. 支持出厂内置组的声明式覆盖 (Override) 与全新策略组追加 (Append)。
  */
 
-const { filterNodes } = require('./matcher');
-const { filterRegionsByContinent } = require('../core/shared/regions');
+const { filterNodes, SUPPORTED_GROUP_TYPES } = require('./matcher');
+const { resolveMacro } = require('./macros');
+const { stripGroupDecoration } = require('./presentation');
 const { FIELDS_BY_KEY } = require('../data');
 
-const SUPPORTED_GROUP_TYPES = new Set(['select', 'url-test', 'fallback', 'load-balance']);
+/** Mihomo 内置代理目标，非组引用，不参与悬空目标告警 */
+const BUILTIN_PROXY_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS', 'GLOBAL']);
 
 /** 默认测速参数取自字段注册表（单一真相源，避免与配置默认值多处漂移） */
 const DEFAULT_TEST_URL = FIELDS_BY_KEY.testURL.default;
@@ -54,13 +56,32 @@ function detectGroupCycles(groups = []) {
   }
 
   const groupNames = new Set(groups.map(g => g?.name).filter(Boolean));
+  // 建立规范化组名映射 (支持去装饰匹配)
+  const canonicalMap = new Map();
+  for (const g of groups) {
+    if (!g || !g.name) continue;
+    canonicalMap.set(g.name, g.name);
+    const stripped = stripGroupDecoration(g.name);
+    if (!canonicalMap.has(stripped)) {
+      canonicalMap.set(stripped, g.name);
+    }
+    canonicalMap.set(stripped.toLowerCase(), g.name);
+  }
+
   // 建立邻接表：仅记录组与组之间的引用边
   const adj = new Map();
   for (const g of groups) {
     if (!g || !g.name) continue;
-    const targets = (Array.isArray(g.proxies) ? g.proxies : [])
-      .filter(p => typeof p === 'string' && groupNames.has(p) && p !== g.name);
-    adj.set(g.name, targets);
+    const targets = [];
+    for (const p of (Array.isArray(g.proxies) ? g.proxies : [])) {
+      if (typeof p !== 'string') continue;
+      const strippedP = stripGroupDecoration(p);
+      const targetGroup = canonicalMap.get(p) || canonicalMap.get(strippedP) || canonicalMap.get(strippedP.toLowerCase());
+      if (targetGroup && targetGroup !== g.name && stripGroupDecoration(targetGroup) !== stripGroupDecoration(g.name)) {
+        targets.push(targetGroup);
+      }
+    }
+    adj.set(g.name, dedupe(targets));
   }
 
   const visited = new Set();
@@ -108,7 +129,14 @@ function detectGroupCycles(groups = []) {
  * @param {object} params.macroContext 宏替换上下文
  * @returns {Array<string>}
  */
-function resolveGroupProxies({ declaredProxies = [], matchedNodeNames = [], macroContext = {} }) {
+function resolveGroupProxies({
+  declaredProxies = [],
+  matchedNodeNames = [],
+  macroContext = {},
+  knownGroups = null,
+  physicalNodeNames = null,
+  logger = null
+}) {
   const resolved = [];
 
   // 若用户未声明 proxies，默认交付所有匹配到的节点
@@ -116,152 +144,49 @@ function resolveGroupProxies({ declaredProxies = [], matchedNodeNames = [], macr
     return matchedNodeNames.length > 0 ? [...matchedNodeNames] : [];
   }
 
-  const {
-    residential = [],
-    allStandard = [],
-    highMulti = [],
-    special = [],
-    activeRegions = [],
-    defaultProxy = '自动选择'
-  } = macroContext;
+  const macroCtx = { ...macroContext, matchedNodeNames };
 
   for (const item of declaredProxies) {
     if (!item || typeof item !== 'string') continue;
     const token = item.trim();
     const tokenLower = token.toLowerCase();
 
-    switch (tokenLower) {
-      case '@matchednodes':
-      case '@matched':
-      case '@nodes':
-        resolved.push(...matchedNodeNames);
-        break;
-
-      case '@residential':
-      case '@resi':
-        resolved.push(...residential);
-        break;
-
-      case '@residentialgroup':
-      case '@resigroup':
-        resolved.push(...(macroContext.residentialGroup || []));
-        break;
-
-      case '@allstandard':
-      case '@all':
-        resolved.push(...allStandard);
-        break;
-
-      case '@highmulti':
-        resolved.push(...highMulti);
-        break;
-
-      case '@special':
-        resolved.push(...special);
-        break;
-
-      case '@activeregions':
-      case '@regions':
-        resolved.push(...activeRegions);
-        break;
-
-      case '@asia':
-      case '@asiaregions':
-      case '@亚洲':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'asia'));
-        break;
-
-      case '@europe':
-      case '@eu':
-      case '@euregions':
-      case '@欧洲':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'europe'));
-        break;
-
-      case '@americas':
-      case '@america':
-      case '@am':
-      case '@americaregions':
-      case '@美洲':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'americas'));
-        break;
-
-      case '@oceania':
-      case '@oc':
-      case '@oceaniaregions':
-      case '@大洋洲':
-      case '@澳洲':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'oceania'));
-        break;
-
-      case '@africa':
-      case '@af':
-      case '@africaregions':
-      case '@非洲':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'africa'));
-        break;
-
-      case '@sea':
-      case '@searegions':
-      case '@东南亚':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'sea'));
-        break;
-
-      case '@me':
-      case '@meregions':
-      case '@中东':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'me'));
-        break;
-
-      case '@sas':
-      case '@sasregions':
-      case '@southasia':
-      case '@南亚':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'sas'));
-        break;
-
-      case '@na':
-      case '@naregions':
-      case '@北美':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'na'));
-        break;
-
-      case '@latam':
-      case '@南美':
-      case '@拉美':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'latam'));
-        break;
-
-      case '@ea':
-      case '@东亚':
-        resolved.push(...filterRegionsByContinent(activeRegions, 'ea'));
-        break;
-
-      case '@defaultproxy':
-      case '@proxy':
-        resolved.push(defaultProxy);
-        break;
-
-      case '@standardoptions':
-      case '@standard':
-        resolved.push(...(macroContext.standardOptions || []));
-        break;
-
-      case '@domesticgroup':
-      case '@domestic':
-        resolved.push(...(macroContext.domesticGroup || []));
-        break;
-
-      case '@noncnregions':
-      case '@noncn':
-      case '@tiktokregions':
-        resolved.push(...(macroContext.nonCnRegions || []));
-        break;
-
-      default:
-        resolved.push(token);
-        break;
+    // 1. 已登记宏：别名与求值口径统一来自 ./macros（与配方校验器共用同一真相源）
+    const macroValues = resolveMacro(tokenLower, macroCtx);
+    if (macroValues !== null) {
+      resolved.push(...macroValues);
+      continue;
     }
+
+    // 2. 未命中任何已知宏的 `@` 符号：视为配置错误，告警并跳过（禁止退化为字面组名）
+    if (token.startsWith('@')) {
+      if (logger && typeof logger.warn === 'function') {
+        logger.warn(`⚠️ [TopologyEngine] 未知宏变量「${token}」已跳过，可用宏见 CONFIGURATION.md 动态拓扑宏变量清单`);
+      }
+      continue;
+    }
+
+    // 3. 非宏 token：按「物理节点 / 已知组 / 内置目标」归一化
+    let target = token;
+    const isPhysical = physicalNodeNames && physicalNodeNames.has(token);
+    if (!isPhysical) {
+      const stripped = stripGroupDecoration(token);
+      const knownTarget = knownGroups && (
+        knownGroups.get(token) ||
+        knownGroups.get(tokenLower) ||
+        knownGroups.get(stripped) ||
+        knownGroups.get(stripped.toLowerCase())
+      );
+      if (knownTarget) {
+        target = knownTarget;
+      } else if (token !== stripped) {
+        target = stripped;
+      } else if (!BUILTIN_PROXY_TARGETS.has(token.toUpperCase()) && logger && typeof logger.warn === 'function') {
+        // 既非物理节点、也非已知组或内置目标：保留 token 交由 prune 兜底，但显式告警（避免静默悬空）
+        logger.warn(`⚠️ [TopologyEngine] 目标「${token}」不是物理节点、已知策略组或内置目标，可能在生成配置中悬空`);
+      }
+    }
+    resolved.push(target);
   }
 
   return dedupe(resolved);
@@ -276,43 +201,51 @@ function resolveGroupProxies({ declaredProxies = [], matchedNodeNames = [], macr
 function evaluateGroupDefinition(groupDef, context = {}) {
   if (!groupDef || typeof groupDef !== 'object') return null;
 
-  const name = String(groupDef.name || '').trim();
-  if (!name) return null;
+  const rawName = String(groupDef.name || '').trim();
+  if (!rawName) return null;
+  const name = rawName;
+  const cleanName = stripGroupDecoration(rawName);
 
   const {
     classifiedNodes = [],
     buckets = {},
     userConfig = {},
-    activeRegionGroups = []
+    activeRegionGroups = [],
+    existingGroups = [],
+    customGroups = []
   } = context;
 
-  // 1. 规范化组类型 (Mihomo 原生类型)
-  let rawType = String(groupDef.type || 'select').toLowerCase().trim();
+  // 1. 规范化组类型 (Mihomo 原生类型，支持继承已有骨架组类型)
+  const existingGroup = context.existingGroupMap?.get(cleanName.toLowerCase());
+  let rawType = groupDef.type
+    ? String(groupDef.type).toLowerCase().trim()
+    : (existingGroup?.type || 'select');
   if (!SUPPORTED_GROUP_TYPES.has(rawType)) {
     rawType = 'select';
   }
 
-  // 2. 节点匹配与筛选
+  // 2. 节点匹配与筛选 (声明式 DSL 仅支持 match/exclude 配方，不再提供 pool/tag 组级捷径)
   let matchedNodeNames = [];
   if (groupDef.match || groupDef.exclude) {
     const matched = filterNodes(classifiedNodes, {
       match: groupDef.match,
-      exclude: groupDef.exclude,
-      includeInfo: Boolean(groupDef.includeInfo),
-      includeSpecial: groupDef.includeSpecial !== false
+      exclude: groupDef.exclude
     });
     matchedNodeNames = matched.map(item => item.proxy?.name || item.rawName).filter(Boolean);
-  } else if (groupDef.pool || groupDef.tag) {
-    const poolNodes = buckets[groupDef.pool] || [];
-    const tagNodes = buckets[groupDef.tag] || [];
-    matchedNodeNames = dedupe([...poolNodes, ...tagNodes]);
   }
 
-  // 3. 构建宏上下文
+  // 3. 构建宏上下文 (地区/家宽/中国分流等口径一律由调用方显式传入，禁止在此启发式推断)
   const defaultProxy = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
   const resiGroup = context.residentialGroup || ((userConfig.enableResidential && buckets.residential?.length) ? ['家宽优选'] : []);
-  const domesticGroup = context.domesticGroup || (userConfig.enableDomesticGroup ? ['中国分流'] : ['DIRECT']);
-  const nonCnRegions = context.nonCnRegions || activeRegionGroups.filter(g => !['香港节点', '大陆节点', '中国节点', '未知识别'].includes(g));
+  const domesticGroup = context.domesticGroup || [];
+  const nonCnRegions = context.nonCnRegions || [];
+
+  // `@preferredRegions` 口径：组声明中的地区 id 经调用方显式传入的 regionNames 映射为地区组名，
+  // 与内置配方 (AI/Crypto 等) 的「preferredRegions → regionNames」展开保持同一事实源。
+  const regionNames = context.regionNames || {};
+  const preferredRegions = Array.isArray(groupDef.preferredRegions)
+    ? groupDef.preferredRegions.map(id => regionNames[id] || id)
+    : [];
 
   const macroContext = {
     residential: buckets.residential || [],
@@ -324,14 +257,42 @@ function evaluateGroupDefinition(groupDef, context = {}) {
     defaultProxy,
     standardOptions: context.standardOptions || [],
     domesticGroup,
-    nonCnRegions
+    nonCnRegions,
+    preferredRegions
   };
+
+  const physicalNodeNames = new Set(
+    (classifiedNodes || []).map(item => item.proxy?.name || item.rawName).filter(Boolean)
+  );
+
+  // 已知组名注册表：原始名 / 小写名 / 去装饰名 / 去装饰小写名 四种键统一映射到真实组名
+  // 全部键按小写归一，修复 `proxies: ['chatgpt']` 无法命中「ChatGPT」组的大小写问题。
+  const knownGroups = new Map();
+  const registerKnownGroup = (candidate) => {
+    if (!candidate) return;
+    const realName = candidate;
+    const stripped = stripGroupDecoration(candidate);
+    knownGroups.set(candidate, realName);
+    knownGroups.set(candidate.toLowerCase(), realName);
+    knownGroups.set(stripped, realName);
+    knownGroups.set(stripped.toLowerCase(), realName);
+  };
+  if (Array.isArray(existingGroups)) {
+    existingGroups.forEach(g => registerKnownGroup(g?.name));
+  }
+  if (Array.isArray(customGroups)) {
+    customGroups.forEach(g => registerKnownGroup(g?.name));
+  }
+  (activeRegionGroups || []).forEach(registerKnownGroup);
 
   // 4. 组装并去重 proxies
   const proxies = resolveGroupProxies({
     declaredProxies: groupDef.proxies,
     matchedNodeNames,
-    macroContext
+    macroContext,
+    knownGroups,
+    physicalNodeNames,
+    logger: context.logger || null
   });
 
   // 5. 组装基础 proxy-group 对象 (零字段丢失)
@@ -397,28 +358,37 @@ function evaluateCustomTopology({
   userConfig = {},
   standardOptions = [],
   residentialGroup = [],
+  activeRegionGroups = [],
+  regionNames = {},
+  nonCnRegions = [],
+  domesticGroup = [],
   logger = null
 } = {}) {
   if (!Array.isArray(customGroups) || customGroups.length === 0) {
     return { evaluatedGroups: [], cycles: [] };
   }
 
-  const activeRegionGroups = existingGroups
-    .map(g => g.name)
-    .filter(name => name.endsWith('节点'));
-
-  const domesticGroup = userConfig.enableDomesticGroup ? ['中国分流'] : ['DIRECT'];
-  const nonCnRegions = activeRegionGroups.filter(g => !['香港节点', '大陆节点', '中国节点', '未知识别'].includes(g));
+  const existingGroupMap = new Map();
+  for (const g of existingGroups) {
+    if (!g || !g.name) continue;
+    existingGroupMap.set(g.name.toLowerCase(), g);
+    existingGroupMap.set(stripGroupDecoration(g.name).toLowerCase(), g);
+  }
 
   const context = {
     classifiedNodes,
     buckets,
     userConfig,
     activeRegionGroups,
+    regionNames,
     standardOptions,
     residentialGroup,
     domesticGroup,
-    nonCnRegions
+    nonCnRegions,
+    existingGroups,
+    existingGroupMap,
+    customGroups,
+    logger
   };
 
   const evaluatedGroups = [];
@@ -455,7 +425,6 @@ function evaluateCustomTopology({
 }
 
 module.exports = {
-  SUPPORTED_GROUP_TYPES,
   DEFAULT_MODE_MAP,
   detectGroupCycles,
   resolveGroupProxies,

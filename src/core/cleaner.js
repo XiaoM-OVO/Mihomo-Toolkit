@@ -248,15 +248,19 @@ function checkNodeBlockReason(proxy, rawName, _userConfig = {}, options = {}) {
 function getFeatureRules(userConfig = {}) {
   const rules = [...STATIC_FEATURE_RULES];
 
-  const enableAI = userConfig.enableAI !== false;
-  const enableStreaming = userConfig.enableStreaming !== false;
+  const catalog = userConfig.catalog;
+  // 分类门禁 = 总开关打开 或 该分类被 `groups` ref 显式引用（列了即生效，与 catalog.getActiveServices 同一口径）
+  const hasRefActivation = (category) => Boolean(
+    catalog && typeof catalog.hasRefActivation === 'function' && catalog.hasRefActivation(category, userConfig)
+  );
+  const enableAI = userConfig.enableAI !== false || hasRefActivation('ai');
+  const enableStreaming = userConfig.enableStreaming !== false || hasRefActivation('streaming');
 
   // 若明确关闭了所有动态编目服务，直接返回纯净的静态特征基线 (零依赖纯函数)
   if (!enableAI && !enableStreaming) {
     return rules;
   }
 
-  const catalog = userConfig.catalog;
   if (!catalog) {
     throw new TypeError(
       'getFeatureRules: userConfig.catalog (ServiceCatalog) is required when dynamic service rules (enableAI/enableStreaming) are active. ' +

@@ -9,6 +9,7 @@ const { ADDITIVE_FIELDS, ENTRY_NORMALIZERS, mergeBaseline } = require('../data')
 const { resolveMountPath, readMountFile } = require('./mounts');
 const { expandIncludes } = require('./include');
 const { buildServiceCatalog, deepMerge } = require('./catalog');
+const { resolveGroupDeclarations } = require('./groups');
 
 /**
  * 加载外部服务定义配置文件 (.js, .cjs, .yaml, .yml, .json)
@@ -110,6 +111,20 @@ function resolveConfig(userConfig = {}, options = {}) {
   // 4. 构建单一事实来源 ServiceCatalog 实例
   merged.catalog = buildServiceCatalog(merged);
   merged.registries = merged.catalog.toRegistries();
+
+  // 5. 归一化声明式策略组清单：`groups` → 引擎可直接消费的完整组声明。
+  //    `{ ref: <键> }` 从内置组目录取出完整声明（含 rules → 自动生成 RULE-SET 与规则集 Provider），
+  //    并允许条目内覆写任意字段；`disabled: true` 显式关闭；未知 ref 键 fail-closed。
+  //    归一化结果并入 customGroups，作为引擎/规则/展示层当下唯一的内部入口
+  //    （批次 3 落地后将由 groups 直接取代 customGroups，届时此处合流即拆除）。
+  const declaredGroups = resolveGroupDeclarations(merged.groups, {
+    directory: merged.registries.groups,
+    fieldPath: 'groups'
+  });
+  if (declaredGroups.length > 0) {
+    const baseGroups = Array.isArray(merged.customGroups) ? merged.customGroups : [];
+    merged.customGroups = [...baseGroups, ...declaredGroups];
+  }
 
   return merged;
 }

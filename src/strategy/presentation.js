@@ -15,6 +15,15 @@ const { FIELDS_BY_KEY } = require('../data');
 
 const GROUP_DECORATION_PREFIX = /^[^\p{L}\p{N}]+/u;
 
+/**
+ * 非中国大中华核心区组名集合：用于 `@nonCnRegions` 宏剔除。
+ * 语义与 catalog.js 的 TikTok 组选点保持一致（含「未知识别」，不含澳门/台湾）。
+ */
+const NON_CN_EXCLUDED_GROUPS = ['香港节点', '大陆节点', '中国节点', '未知识别'];
+
+/** 「中国分流」策略组引用的中国大中华核心地区组（含港澳台） */
+const CN_CORE_PROXY_GROUPS = ['大陆节点', '香港节点', '澳门节点', '台湾节点'];
+
 function stripGroupDecoration(rawName) {
   const stripped = String(rawName || '').replace(GROUP_DECORATION_PREFIX, '').trim();
   return stripped || String(rawName || '').trim();
@@ -386,6 +395,8 @@ function applyPresentation(config, userConfig = {}, registries = {}) {
 
 module.exports = {
   SKELETON_GROUPS,
+  NON_CN_EXCLUDED_GROUPS,
+  CN_CORE_PROXY_GROUPS,
   stripGroupDecoration,
   buildPresentationMaps,
   applyPresentation

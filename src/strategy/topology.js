@@ -10,7 +10,7 @@ const { FIELDS_BY_KEY } = require('../data');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
 const { validateCustomGroups } = require('./matcher');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
-const { stripGroupDecoration } = require('./presentation');
+const { stripGroupDecoration, NON_CN_EXCLUDED_GROUPS, CN_CORE_PROXY_GROUPS } = require('./presentation');
 
 const HIGH_MULTI_GROUP = '高倍率优选';
 const EXPERIMENTAL_GROUP = '实验节点';
@@ -69,30 +69,34 @@ function buildBuiltinAppRecipes({
 }) {
   const recipes = [];
 
-  // 1. AI 分组
+  // 1. AI 分组：配方直接取自 catalog 条目（match + proxies + preferredRegions），
+  //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
   if (userConfig.enableAI && effectiveRegistries.ai) {
     const aiServices = userConfig.aiServices || Object.keys(effectiveRegistries.ai);
-    const defaultAiPref = userConfig.aiPreferredRegions || ['us', 'jp', 'tw', 'sg', 'kr', 'eu'];
-
     aiServices.forEach(key => {
       const ai = effectiveRegistries.ai[key];
       if (!ai) return;
-      const matchedNodes = buckets[ai.tag] || buckets[ai.pool] || [];
-      const prefList = userConfig.aiPreferredRegions
+      // aiPreferredRegions 为全局覆写（与内置组目录构建口径一致）
+      const prefList = Array.isArray(userConfig.aiPreferredRegions) && userConfig.aiPreferredRegions.length > 0
         ? userConfig.aiPreferredRegions
-        : (ai.preferredRegions && ai.preferredRegions.length > 0 ? ai.preferredRegions : defaultAiPref);
-      const servicePreferred = prefList.map(id => regionNames[id]).filter(Boolean);
-
+        : ai.preferredRegions;
+      const servicePreferred = (prefList || []).map(id => regionNames[id]).filter(Boolean);
+      // 内置条目 = 完整组声明（match + proxies 齐备）；用户 customsServices 条目多半只给了 reg，
+      // 此时回落到「偏好地区 + 特征桶」内置模板，保持既有行为不变。
+      const proxies = ai.proxies || [
+        '@residentialGroup',
+        ...servicePreferred,
+        ...(buckets[ai.tag] || buckets[ai.pool] || []),
+        '@defaultProxy',
+        'DIRECT'
+      ];
       recipes.push({
         name: ai.name,
-        type: 'select',
-        proxies: ai.proxies || [
-          '@residentialGroup',
-          ...servicePreferred,
-          ...matchedNodes,
-          '@defaultProxy',
-          'DIRECT'
-        ]
+        type: ai.type || 'select',
+        match: ai.match,
+        exclude: ai.exclude,
+        proxies,
+        preferredRegions: prefList
       });
     });
   }
@@ -111,8 +115,6 @@ function buildBuiltinAppRecipes({
       recipes.push({
         name: st.name,
         type: 'select',
-        pool: st.pool,
-        tag: st.tag,
         proxies: st.proxies || defaultProxies
       });
     });
@@ -188,8 +190,6 @@ function buildBuiltinAppRecipes({
       recipes.push({
         name: conf.name,
         type: 'select',
-        pool: conf.pool,
-        tag: conf.tag,
         proxies: conf.proxies || defaultProxies
       });
     });
@@ -493,10 +493,11 @@ function buildProxyTopology({
     buckets,
     userConfig,
     activeRegionGroups,
+    regionNames,
     standardOptions,
     residentialGroup: resiPrefix,
     domesticGroup: userConfig.enableDomesticGroup ? ['中国分流'] : ['DIRECT'],
-    nonCnRegions: activeRegionGroups.filter(g => !['香港节点', '大陆节点', '中国节点', '未知识别'].includes(g))
+    nonCnRegions: activeRegionGroups.filter(g => !NON_CN_EXCLUDED_GROUPS.includes(g))
   };
 
   const appRecipes = buildBuiltinAppRecipes({
@@ -541,10 +542,9 @@ function buildProxyTopology({
   }
 
   if (userConfig.enableDomesticGroup) {
-    const cnCore = ['大陆节点', '香港节点', '澳门节点', '台湾节点'];
     const cnProxies = (userConfig.enableDomesticGroup && !userConfig.proxyFirst)
-      ? [...cnCore, proxyTarget, 'DIRECT']
-      : ['DIRECT', ...cnCore, proxyTarget];
+      ? [...CN_CORE_PROXY_GROUPS, proxyTarget, 'DIRECT']
+      : ['DIRECT', ...CN_CORE_PROXY_GROUPS, proxyTarget];
     finalGroups.push(buildSelect('中国分流', cnProxies));
   }
 
@@ -605,13 +605,26 @@ function buildProxyTopology({
       userConfig,
       standardOptions,
       residentialGroup: resiPrefix,
+      activeRegionGroups,
+      regionNames,
+      nonCnRegions: engineContext.nonCnRegions,
+      domesticGroup: engineContext.domesticGroup,
       logger
     });
     for (const eg of evaluatedGroups) {
       const idx = finalGroups.findIndex(g => stripGroupDecoration(g.name).toLowerCase() === stripGroupDecoration(eg.name).toLowerCase());
       if (idx !== -1) {
         // 同名策略组覆盖/合并现有骨架组
-        finalGroups[idx] = { ...finalGroups[idx], ...eg };
+        const existing = finalGroups[idx];
+        const mergedProxies = (Array.isArray(eg.proxies) && eg.proxies.length > 0)
+          ? eg.proxies
+          : existing.proxies;
+        finalGroups[idx] = {
+          ...existing,
+          ...eg,
+          name: existing.name,
+          proxies: mergedProxies
+        };
       } else {
         finalGroups.push(eg);
       }

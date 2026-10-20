@@ -155,12 +155,17 @@ const CATEGORY_DEFAULTS = {
 // ─────────────────────────────────────────────────────────────
 const BUILTIN_SERVICES = {
   // ① AI 助手
+  // 注：AI 条目同时是「完整组声明」——match/proxies/rules 三件套齐备，
+  // 因此可被用户以 `groups: [{ ref: chatgpt }]` 直接引用，无需在配置里重抄成员配方。
   ai: {
     chatgpt: {
       name: 'ChatGPT',
       emoji: '🤖',
       reg: /\b(?:GPT|ChatGPT|OpenAI)\b/i,
       rules: 'openai',
+      type: 'select',
+      match: { pool: 'chatgpt' },
+      proxies: ['@residentialGroup', '@preferredRegions', '@matchedNodes', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'orz', file: 'OpenAI.png' }
     },
     gemini: {
@@ -168,6 +173,9 @@ const BUILTIN_SERVICES = {
       emoji: '♊',
       reg: /\bGemini\b/i,
       rules: { name: 'gemini', path: 'google-gemini' },
+      type: 'select',
+      match: { pool: 'gemini' },
+      proxies: ['@residentialGroup', '@preferredRegions', '@matchedNodes', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'koolson', file: 'AI.png' }
     },
     claude: {
@@ -175,6 +183,9 @@ const BUILTIN_SERVICES = {
       emoji: '🦀',
       reg: /\bClaude\b/i,
       rules: { name: 'claude', path: 'anthropic' },
+      type: 'select',
+      match: { pool: 'claude' },
+      proxies: ['@residentialGroup', '@preferredRegions', '@matchedNodes', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'lige47', file: '04ProxySoft/claude(1).png' }
     },
     copilot: {
@@ -182,6 +193,9 @@ const BUILTIN_SERVICES = {
       emoji: '🐙',
       reg: /\b(?:Copilot|Bing)\b/i,
       rules: { name: 'bing', path: 'bing' },
+      type: 'select',
+      match: { pool: 'copilot' },
+      proxies: ['@residentialGroup', '@preferredRegions', '@matchedNodes', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Copilot.png' }
     }
   },
@@ -533,7 +547,46 @@ class ServiceCatalog {
   }
 
   /**
+   * 收集配置中通过 `groups: [{ ref: <键> }]` 显式引用的内置组键（未禁用者）
+   * @param {object} [runtimeConfig]
+   * @returns {string[]}
+   */
+  getDeclaredRefKeys(runtimeConfig) {
+    const cfg = runtimeConfig || this.userConfig;
+    if (!cfg || !Array.isArray(cfg.groups)) return [];
+    return cfg.groups
+      .filter(g => g && typeof g === 'object' && g.disabled !== true && typeof g.ref === 'string' && g.ref.trim())
+      .map(g => g.ref.trim());
+  }
+
+  /**
+   * 判定某分类是否被 `groups` 引用激活（用于「开关关闭但 ref 声明在」时仍开启打标/建组）
+   * @param {string} category
+   * @param {object} [runtimeConfig]
+   * @returns {boolean}
+   */
+  hasRefActivation(category, runtimeConfig) {
+    const cfg = runtimeConfig || this.userConfig;
+    return this.getDeclaredRefKeys(cfg).some(key => this.isRefableGroup(key, category));
+  }
+
+  /**
+   * 判定某个键是否为「可引用的完整组声明」（必须有 match + proxies，否则引用只会得到空壳）
+   * @param {string} key
+   * @param {string} [category] 限定分类；省略则在全部分类中查找
+   * @returns {boolean}
+   */
+  isRefableGroup(key, category) {
+    const cats = category ? [category] : Object.keys(this.services);
+    return cats.some(cat => {
+      const s = this.services[cat]?.[key];
+      return Boolean(s && s.match && Array.isArray(s.proxies) && s.proxies.length > 0);
+    });
+  }
+
+  /**
    * 获取某分类下所有有效/激活的服务列表
+   * 激活口径 = 「分类总开关打开」或「该分类被 groups 引用激活」；两者取并集后再叠加自定义服务键。
    * @param {string} category
    * @param {object} [runtimeConfig] 可选运行时配置覆写
    * @returns {Array<{ key: string, category: string, service: object }>}
@@ -541,6 +594,16 @@ class ServiceCatalog {
   getActiveServices(category, runtimeConfig) {
     const cfg = runtimeConfig || this.userConfig;
     const catServices = this.services[category] || {};
+
+    // 分类总开关（与 getCoreMatchers / cleaner 的门禁语义保持一致，单一真相源）
+    const switchOn = {
+      ai: cfg.enableAI !== false,
+      streaming: cfg.enableStreaming !== false,
+      social: cfg.enableSocial === true,
+      game: cfg.enableGame === true,
+      system: cfg.enableSystemServices === true,
+      dev: true
+    }[category] ?? true;
 
     // 默认激活键表映射
     const activeKeysMap = {
@@ -553,14 +616,16 @@ class ServiceCatalog {
     };
 
     const customKeys = Object.keys(cfg.customServices?.[category] || {});
-    const baseKeys = activeKeysMap[category] || Object.keys(catServices);
-    const allowedKeys = [...new Set([...baseKeys, ...customKeys])];
+    const refKeys = this.getDeclaredRefKeys(cfg).filter(k => this.isRefableGroup(k, category));
+    // 总开关关闭时不再回落到「全部内置键」，只保留 ref 显式声明与自定义服务（列了才激活）
+    const baseKeys = switchOn ? (activeKeysMap[category] || Object.keys(catServices)) : [];
+    const allowedKeys = [...new Set([...baseKeys, ...customKeys, ...refKeys])];
     const result = [];
 
     allowedKeys.forEach(key => {
       if (category === 'dev') {
-        if (key === 'github' && cfg.enableGitHub === false) return;
-        if (key === 'scholar' && cfg.enableScholar === false) return;
+        if (key === 'github' && cfg.enableGitHub === false && !refKeys.includes(key)) return;
+        if (key === 'scholar' && cfg.enableScholar === false && !refKeys.includes(key)) return;
       }
       const s = catServices[key];
       if (s) {
@@ -584,12 +649,12 @@ class ServiceCatalog {
     // 遍历所有允许打标分类
     const categories = ['ai', 'streaming', 'social', 'game', 'dev', 'system'];
     for (const cat of categories) {
-      // 检查分类总控开关
-      if (cat === 'ai' && cfg.enableAI === false) continue;
-      if (cat === 'streaming' && cfg.enableStreaming === false) continue;
-      if (cat === 'social' && !cfg.enableSocial) continue;
-      if (cat === 'game' && !cfg.enableGame) continue;
-      if (cat === 'system' && !cfg.enableSystemServices) continue;
+      // 检查分类总控开关：开关关闭但被 `groups` ref 显式引用时，仍需打标（列了即生效）
+      if (cat === 'ai' && cfg.enableAI === false && !this.hasRefActivation('ai', cfg)) continue;
+      if (cat === 'streaming' && cfg.enableStreaming === false && !this.hasRefActivation('streaming', cfg)) continue;
+      if (cat === 'social' && !cfg.enableSocial && !this.hasRefActivation('social', cfg)) continue;
+      if (cat === 'game' && !cfg.enableGame && !this.hasRefActivation('game', cfg)) continue;
+      if (cat === 'system' && !cfg.enableSystemServices && !this.hasRefActivation('system', cfg)) continue;
 
       const active = this.getActiveServices(cat, cfg);
       const catDefaults = CATEGORY_DEFAULTS[cat] || {};
@@ -735,7 +800,11 @@ class ServiceCatalog {
           pool: s.pool || key,
           rules: rulesArr,
           proxies: s.proxies ? [...s.proxies] : undefined,
-          preferredRegions: s.preferredRegions || catDefaults.preferredRegions || []
+          preferredRegions: s.preferredRegions || catDefaults.preferredRegions || [],
+          type: s.type,
+          match: s.match,
+          exclude: s.exclude,
+          hidden: s.hidden
         };
       }
     }
@@ -778,6 +847,36 @@ class ServiceCatalog {
       };
     }
     registries.specialized = specialized;
+
+    // 内置策略组目录 (供 `groups: [{ ref: <键> }]` 引用)：
+    // 条目必须自身就是一条「完整组声明」(match + proxies 齐备) 才可被引用，
+    // 否则引用它只会得到空壳组——那是「配了不生效」，必须 fail-closed 而非静默降级。
+    // 该目录不是第二份真相源：它只是同一批 catalog 条目的另一种投影形态。
+    const groupDirectory = {};
+    for (const [cat, catReg] of Object.entries(registries)) {
+      if (cat === 'aggregates' || cat === 'specialized') continue;
+      for (const [key, item] of Object.entries(catReg)) {
+        if (!item || !item.match || !Array.isArray(item.proxies) || item.proxies.length === 0) continue;
+        // AI 大类偏好地区允许用户用 aiPreferredRegions 全局覆写（与内置配方口径一致）
+        const prefOverride = cat === 'ai' && Array.isArray(this.userConfig.aiPreferredRegions)
+          ? this.userConfig.aiPreferredRegions
+          : null;
+        groupDirectory[key] = {
+          name: item.cleanName,
+          type: item.type || 'select',
+          match: item.match,
+          exclude: item.exclude,
+          proxies: [...item.proxies],
+          preferredRegions: prefOverride || [...(item.preferredRegions || [])],
+          rules: [...(item.rules || [])],
+          providers: (item.rules && item.rules.length > 0 && item.provider)
+            ? { [item.ruleSet]: item.provider }
+            : undefined,
+          hidden: item.hidden
+        };
+      }
+    }
+    registries.groups = groupDirectory;
 
     return registries;
   }

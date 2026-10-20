@@ -62,6 +62,15 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
         /\[customGroups\] 检测到策略组存在循环依赖 \(Cycle Dependency\): 组A -> 组B -> 组A/
       );
     });
+
+    it('带 Emoji 装饰的组名与引用 (🤖 组A <-> 组B) 依然准确检出环路', () => {
+      const groups = [
+        { name: '🤖 组A', proxies: ['组B'] },
+        { name: '组B', proxies: ['🤖 组A'] }
+      ];
+      const result = detectGroupCycles(groups);
+      assert.equal(result.hasCycle, true);
+    });
   });
 
   describe('2. 宏变量与代理列表解析 (resolveGroupProxies)', () => {
@@ -179,6 +188,71 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
         macroContext
       });
       assert.deepEqual(seaResolved, ['新加坡节点', '东南亚节点', 'DIRECT']);
+    });
+
+    it('次大区宏与中文别名逐一展开 (@me / @sas / @na / @latam / @ea)', () => {
+      const activeRegions = ['中东节点', '印度节点', '美国节点', '巴西节点', '日本节点', '其他节点'];
+      const resolve = (token) => resolveGroupProxies({
+        declaredProxies: [token],
+        macroContext: { activeRegions }
+      });
+
+      assert.deepEqual(resolve('@me'), ['中东节点']);
+      assert.deepEqual(resolve('@中东'), ['中东节点']);
+      assert.deepEqual(resolve('@sas'), ['印度节点']);
+      assert.deepEqual(resolve('@南亚'), ['印度节点']);
+      assert.deepEqual(resolve('@na'), ['美国节点']);
+      assert.deepEqual(resolve('@北美'), ['美国节点']);
+      assert.deepEqual(resolve('@latam'), ['巴西节点']);
+      assert.deepEqual(resolve('@拉美'), ['巴西节点']);
+      assert.deepEqual(resolve('@ea'), ['日本节点']);
+      assert.deepEqual(resolve('@东亚'), ['日本节点']);
+    });
+
+    it('未知宏变量被跳过并告警 (不再退化为字面组名)', () => {
+      const warnings = [];
+      const logger = { warn: (msg) => warnings.push(msg) };
+
+      const resolved = resolveGroupProxies({
+        declaredProxies: ['@tiktokregions', '@nope', 'DIRECT'],
+        macroContext: {},
+        logger
+      });
+
+      assert.deepEqual(resolved, ['DIRECT']);
+      assert.equal(warnings.length, 2);
+      assert.ok(warnings[0].includes('@tiktokregions'));
+      assert.ok(warnings[1].includes('@nope'));
+    });
+
+    it('未知非宏目标告警但保留 token (内置目标不告警)', () => {
+      const warnings = [];
+      const logger = { warn: (msg) => warnings.push(msg) };
+
+      const resolved = resolveGroupProxies({
+        declaredProxies: ['幽灵组', 'DIRECT', 'REJECT-DROP'],
+        macroContext: {},
+        logger
+      });
+
+      assert.deepEqual(resolved, ['幽灵组', 'DIRECT', 'REJECT-DROP']);
+      assert.equal(warnings.length, 1);
+      assert.ok(warnings[0].includes('幽灵组'));
+    });
+
+    it('策略组引用自动剥离 Emoji 装饰 (如 🇺🇸 美国节点 -> 美国节点) 而保留物理节点名称', () => {
+      const declared = ['🇺🇸 美国节点', '🚀 自动选择', '🇺🇸 美国 01 物理节点', 'DIRECT'];
+      const knownGroups = new Map([
+        ['美国节点', '美国节点'],
+        ['自动选择', '自动选择']
+      ]);
+      const physicalNodeNames = new Set(['🇺🇸 美国 01 物理节点']);
+      const resolved = resolveGroupProxies({
+        declaredProxies: declared,
+        knownGroups,
+        physicalNodeNames
+      });
+      assert.deepEqual(resolved, ['美国节点', '自动选择', '🇺🇸 美国 01 物理节点', 'DIRECT']);
     });
   });
 
@@ -330,6 +404,92 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       const { evaluatedGroups } = evaluateCustomTopology({ customGroups });
       assert.equal(evaluatedGroups.length, 1);
       assert.equal(evaluatedGroups[0].name, '正常组');
+    });
+
+    it('策略组引用大小写不敏感 (chatgpt 命中 ChatGPT)', () => {
+      const { evaluatedGroups } = evaluateCustomTopology({
+        customGroups: [
+          { name: 'ChatGPT', proxies: ['DIRECT'] },
+          { name: 'AI 合集', proxies: ['chatgpt', 'DIRECT'] }
+        ]
+      });
+      const ai = evaluatedGroups.find(g => g.name === 'AI 合集');
+      assert.deepEqual(ai.proxies, ['ChatGPT', 'DIRECT']);
+    });
+
+    it('@activeRegions 采用调用方显式传入的地区组口径 (含「其他节点」)', () => {
+      const { evaluatedGroups } = evaluateCustomTopology({
+        customGroups: [{ name: '海外优选', proxies: ['@activeRegions', 'DIRECT'] }],
+        activeRegionGroups: ['香港节点', '其他节点']
+      });
+      assert.deepEqual(evaluatedGroups[0].proxies, ['香港节点', '其他节点', 'DIRECT']);
+    });
+
+    it('未传入 activeRegionGroups 时不再启发式推断地区组', () => {
+      const { evaluatedGroups } = evaluateCustomTopology({
+        customGroups: [{ name: '海外优选', proxies: ['@activeRegions', 'DIRECT'] }],
+        existingGroups: [{ name: '香港节点', type: 'select', proxies: ['DIRECT'] }]
+      });
+      assert.deepEqual(evaluatedGroups[0].proxies, ['DIRECT']);
+    });
+
+    it('@nonCnRegions 与 @domesticGroup 由调用方口径驱动', () => {
+      const { evaluatedGroups } = evaluateCustomTopology({
+        customGroups: [
+          { name: '海外组', proxies: ['@nonCnRegions', 'DIRECT'] },
+          { name: '回国组', proxies: ['@domesticGroup', 'DIRECT'] }
+        ],
+        activeRegionGroups: ['香港节点', '日本节点', '未知识别'],
+        nonCnRegions: ['日本节点'],
+        domesticGroup: ['中国分流']
+      });
+      assert.deepEqual(evaluatedGroups[0].proxies, ['日本节点', 'DIRECT']);
+      assert.deepEqual(evaluatedGroups[1].proxies, ['中国分流', 'DIRECT']);
+    });
+  });
+
+  describe('5. 拓扑与展示层集成 (全链路防剪枝与 Emoji 渲染)', () => {
+    const { runStrategyPipeline } = require('../../src/pipeline/strategy');
+
+    it('官方示例: 覆写 🤖 ChatGPT 并引用 🇺🇸 美国节点 与 🇯🇵 日本节点 不被误剪枝', () => {
+      const sourceSkeleton = {
+        proxies: [
+          { name: 'US 01', type: 'ss', server: 'us.example.com', port: 8388, cipher: 'aes-128-gcm', password: 'pass' },
+          { name: 'JP 01', type: 'ss', server: 'jp.example.com', port: 8388, cipher: 'aes-128-gcm', password: 'pass' }
+        ]
+      };
+
+      const userConfig = {
+        customGroups: [
+          {
+            name: '🤖 ChatGPT',
+            type: 'select',
+            proxies: [
+              '🇺🇸 美国节点',
+              '🇯🇵 日本节点',
+              '@defaultProxy',
+              'DIRECT'
+            ],
+            rules: [
+              'DOMAIN-SUFFIX,openai.com',
+              'IP-CIDR,192.168.0.0/16,no-resolve'
+            ]
+          }
+        ]
+      };
+
+      const result = runStrategyPipeline(sourceSkeleton, userConfig);
+      const groups = result['proxy-groups'];
+      const chatgpt = groups.find(g => g.name.includes('ChatGPT'));
+      assert.ok(chatgpt, 'ChatGPT 策略组不应该被剪枝淘汰');
+      assert.equal(chatgpt.name, '🤖 ChatGPT');
+      assert.ok(chatgpt.proxies.includes('🇺🇸 美国节点'));
+      assert.ok(chatgpt.proxies.includes('🇯🇵 日本节点'));
+
+      // 验证规则成功注入且 target 正确
+      const rules = result.rules;
+      assert.ok(rules.some(r => r === 'DOMAIN-SUFFIX,openai.com,🤖 ChatGPT'));
+      assert.ok(rules.some(r => r === 'IP-CIDR,192.168.0.0/16,🤖 ChatGPT,no-resolve'));
     });
   });
 

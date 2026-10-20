@@ -84,9 +84,25 @@ function pruneEmptyGroups({
     });
   }
 
-  // 合法目标判定：物理节点、内核内置目标或当前策略组均属于语法合法目标（非 Ghost 目标）
-  function isValidTarget(target) {
-    return builtinTargets.has(target) || physicalNodeNames.has(target) || groupMap.has(target);
+  const groupStrippedMap = new Map();
+  for (const name of groupMap.keys()) {
+    const stripped = stripGroupDecoration(name).toLowerCase();
+    if (!groupStrippedMap.has(stripped)) {
+      groupStrippedMap.set(stripped, name);
+    }
+  }
+
+  // 合法目标判定与归一化：物理节点、内核内置目标或当前策略组均属于语法合法目标（非 Ghost 目标）
+  function resolveValidTarget(target) {
+    if (typeof target !== 'string') return null;
+    if (builtinTargets.has(target) || physicalNodeNames.has(target) || groupMap.has(target)) {
+      return target;
+    }
+    const stripped = stripGroupDecoration(target).toLowerCase();
+    if (groupStrippedMap.has(stripped)) {
+      return groupStrippedMap.get(stripped);
+    }
+    return null;
   }
 
   // 生产性汇点判定：能证明具备真实代理能力或安全拦截动作的终点（纯 DIRECT 不作为生产性终点）
@@ -94,13 +110,16 @@ function pruneEmptyGroups({
     return physicalNodeNames.has(target) || PRODUCTIVE_BUILTIN_SINKS.has(target);
   }
 
-  // 预清理：剔除自环（A -> A）以及虚空目标（Ghost targets）
+  // 预清理：剔除自环（A -> A）以及虚空目标（Ghost targets），并归一化策略组引用
   for (const group of groupMap.values()) {
-    group.proxies = group.proxies.filter(target => {
-      if (typeof target !== 'string') return false;
-      if (target === group.name) return false; // 阻断自环
-      return isValidTarget(target);
-    });
+    const nextProxies = [];
+    for (const target of group.proxies) {
+      const resolved = resolveValidTarget(target);
+      if (!resolved) continue;
+      if (resolved === group.name || stripGroupDecoration(resolved) === stripGroupDecoration(group.name)) continue;
+      nextProxies.push(resolved);
+    }
+    group.proxies = [...new Set(nextProxies)];
   }
 
   const removedGroups = new Set();
@@ -310,8 +329,9 @@ function pruneEmptyGroups({
       if (typeof rule !== 'string') return true;
       const parts = rule.split(',').map(s => s.trim());
       const last = parts[parts.length - 1] ? parts[parts.length - 1].toLowerCase() : '';
-      const target = last === 'no-resolve' ? parts[parts.length - 2] : parts[parts.length - 1];
-      return !removedGroups.has(target);
+      const rawTarget = last === 'no-resolve' ? parts[parts.length - 2] : parts[parts.length - 1];
+      const cleanTarget = stripGroupDecoration(rawTarget);
+      return !removedGroups.has(rawTarget) && !removedGroups.has(cleanTarget);
     });
     const droppedRulesCount = originalRuleCount - currentRules.length;
     if (droppedRulesCount > 0 && logger && typeof logger.debug === 'function') {

@@ -9,9 +9,17 @@
  */
 
 const { isRegionInContinent } = require('../core/shared/regions');
+const { isKnownMacro } = require('./macros');
 
+/** 声明式策略组允许的 Mihomo 原生组类型（单一真相源，供拓扑引擎与校验器共用） */
+const SUPPORTED_GROUP_TYPES = new Set(['select', 'url-test', 'fallback', 'load-balance']);
 
-
+/** customGroups 顶层允许字段白名单（未列出的键一律 fail-closed 抛错） */
+const ALLOWED_GROUP_KEYS = new Set([
+  'name', 'type', 'url', 'interval', 'tolerance', 'lazy', 'strategy',
+  'icon', 'emoji', 'hidden', 'filter', 'exclude-filter',
+  'match', 'exclude', 'proxies', 'rules', 'providers', 'preferredRegions'
+]);
 
 /**
  * 编译倍率匹配器
@@ -78,7 +86,10 @@ function compilePatternMatcher(spec) {
   if (spec == null || spec === '') return null;
 
   const compileSingle = (item) => {
-    if (item instanceof RegExp) return item;
+    if (item instanceof RegExp) {
+      const flags = (item.flags || '').replace(/[gy]/g, '');
+      return new RegExp(item.source, flags);
+    }
     if (typeof item !== 'string') return null;
     const str = item.trim();
     if (!str) return null;
@@ -87,7 +98,8 @@ function compilePatternMatcher(spec) {
     const regMatch = str.match(/^\/(.+)\/([a-z]*)$/i);
     if (regMatch) {
       try {
-        return new RegExp(regMatch[1], regMatch[2]);
+        const safeFlags = (regMatch[2] || '').replace(/[gy]/g, '');
+        return new RegExp(regMatch[1], safeFlags);
       } catch {
         // 非法正则安全降级为子串
       }
@@ -106,7 +118,10 @@ function compilePatternMatcher(spec) {
     const str = String(name || '');
     const lower = str.toLowerCase();
     return list.some(matcher => {
-      if (matcher instanceof RegExp) return matcher.test(str);
+      if (matcher instanceof RegExp) {
+        matcher.lastIndex = 0;
+        return matcher.test(str);
+      }
       if (matcher && matcher.substring) return lower.includes(matcher.substring);
       return false;
     });
@@ -577,6 +592,84 @@ function validateCustomGroups(customGroups) {
 
     const groupName = group.name ? `「${group.name}」` : `[${index}]`;
 
+    // 1. 顶层字段白名单 (Fail-Closed)：未知字段直接抛错，杜绝静默忽略的"幽灵配置"
+    for (const key of Object.keys(group)) {
+      if (!ALLOWED_GROUP_KEYS.has(key)) {
+        throw new Error(`[customGroups] 策略组 ${groupName}: 未知字段「${key}」，支持字段: ${[...ALLOWED_GROUP_KEYS].join(', ')}`);
+      }
+    }
+
+    // 2. 组类型白名单：禁止非法类型静默降级为 select
+    if (group.type !== undefined && group.type !== null) {
+      const type = String(group.type).toLowerCase().trim();
+      if (!SUPPORTED_GROUP_TYPES.has(type)) {
+        throw new Error(`[customGroups] 策略组 ${groupName}.type: 未知策略组类型「${group.type}」，支持: ${[...SUPPORTED_GROUP_TYPES].join(' | ')}`);
+      }
+    }
+
+    // 3. proxies 必须为 string[]，且其中出现的 `@` 宏必须是已登记宏（配置期 fail-closed）
+    if (group.proxies !== undefined && group.proxies !== null) {
+      if (!Array.isArray(group.proxies)) {
+        throw new TypeError(`[customGroups] 策略组 ${groupName}.proxies: 期望 string[] 数组`);
+      }
+      group.proxies.forEach((item, pIdx) => {
+        if (typeof item !== 'string' || !item.trim()) {
+          throw new TypeError(`[customGroups] 策略组 ${groupName}.proxies[${pIdx}]: 期望非空 string`);
+        }
+        const token = item.trim();
+        if (token.startsWith('@') && !isKnownMacro(token)) {
+          throw new Error(
+            `[customGroups] 策略组 ${groupName}.proxies[${pIdx}]: 未知宏「${token}」，` +
+            '可用宏见 CONFIGURATION.md 动态拓扑宏变量清单'
+          );
+        }
+      });
+    }
+
+    // 3.1 providers 必须为「规则集名 → 路径/URL」字符串映射
+    if (group.providers !== undefined && group.providers !== null) {
+      const providers = group.providers;
+      if (typeof providers !== 'object' || Array.isArray(providers) || Object.keys(providers).length === 0) {
+        throw new TypeError(`[customGroups] 策略组 ${groupName}.providers: 期望非空对象映射`);
+      }
+      for (const [name, path] of Object.entries(providers)) {
+        if (!name.trim() || typeof path !== 'string' || !path.trim()) {
+          throw new TypeError(`[customGroups] 策略组 ${groupName}.providers.${name}: 期望非空 string 规则集路径`);
+        }
+      }
+    }
+
+    // 3.2 preferredRegions 必须为非空字符串数组（供 `@preferredRegions` 宏展开）
+    if (group.preferredRegions !== undefined && group.preferredRegions !== null) {
+      const pref = group.preferredRegions;
+      if (!Array.isArray(pref) || pref.length === 0) {
+        throw new TypeError(`[customGroups] 策略组 ${groupName}.preferredRegions: 期望非空 string[] 数组`);
+      }
+      pref.forEach((item, pIdx) => {
+        if (typeof item !== 'string' || !item.trim()) {
+          throw new TypeError(`[customGroups] 策略组 ${groupName}.preferredRegions[${pIdx}]: 期望非空 string`);
+        }
+      });
+    }
+
+    // 4. rules 必须为 string 或 string[]
+    if (group.rules !== undefined && group.rules !== null) {
+      const rules = group.rules;
+      if (typeof rules === 'string') {
+        if (!rules.trim()) {
+          throw new Error(`[customGroups] 策略组 ${groupName}.rules: 规则名不能为空`);
+        }
+      } else if (Array.isArray(rules)) {
+        rules.forEach((item, rIdx) => {
+          if (typeof item !== 'string' || !item.trim()) {
+            throw new TypeError(`[customGroups] 策略组 ${groupName}.rules[${rIdx}]: 期望非空 string`);
+          }
+        });
+      } else {
+        throw new TypeError(`[customGroups] 策略组 ${groupName}.rules: 期望 string 或 string[]`);
+      }
+    }
+
     for (const field of ['match', 'exclude']) {
       if (group[field] === undefined || group[field] === null) continue;
 
@@ -708,6 +801,7 @@ function filterNodes(nodes = [], { match, exclude, includeInfo = false, includeS
 }
 
 module.exports = {
+  SUPPORTED_GROUP_TYPES,
   compileMultiMatcher,
   compilePatternMatcher,
   compileRegionMatcher,

@@ -324,6 +324,8 @@ const FIELDS = [
     group: '自定义规则入口', doc: '自定义 Rule-Provider 定义（name → {type, behavior, url…}，防出网探测仅可信来源可写）' },
   { key: 'customGroups', type: 'object[]', merge: 'override', trust: 'local',
     group: '自定义规则入口', doc: '声明式自定义策略组 DSL 清单（支持 match/exclude 配方、宏引用与原生字段透传）' },
+  { key: 'groups', type: 'object[]', merge: 'override', trust: 'local',
+    group: '自定义规则入口', doc: '统一策略组声明清单（`{ ref: <键> }` 引用内置组目录并允许条目内覆写字段，`disabled: true` 显式关闭；声明即激活，注释即关闭）' },
   { key: 'subDomain', type: 'string[]', merge: 'override', trust: 'any',
     group: '自定义规则入口', doc: '订阅服务域名或 IP（自动注入为直连分流规则与 fake-ip-filter，防止客户端拉取订阅走代理循环与高延迟）' },
 
