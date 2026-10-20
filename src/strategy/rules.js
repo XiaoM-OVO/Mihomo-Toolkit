@@ -474,8 +474,12 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
 
 module.exports = {
   BASE_PROVIDER_ROUTES,
+  BT_TRACKER_RULES,
+  DOWNLOAD_RULESETS,
   SPECIAL_SERVICES,
   createHttpRuleProvider,
   assembleServiceCategory,
+  expandProcessRules,
+  pushDownloadRules,
   buildRoutingRules
 };
