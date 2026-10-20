@@ -17,9 +17,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     };
 
     const userConfig = {
-      enableAI: true,
-      enableStreaming: true,
-      enableSocial: true,
       minorNodeThreshold: 1
     };
 
@@ -98,7 +95,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
 
     const userConfig = {
       enableResidential: true,
-      enableAI: true,
       residentialNodeGroups: {
         'hk': ['🤖 ChatGPT'],
         'all': ['🐱 GitHub']
@@ -173,17 +169,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     const resIcon = strategyMain(rawConfig, {
       groupIconMode: 'icon',
       minorNodeThreshold: 1,
-      enableAI: true,
-      enableStreaming: true,
-      enableSocial: true,
-      enableGame: true,
-      enableTelegram: true,
-      enableGitHub: true,
-      enableScholar: true,
-      enableCrypto: true,
-      enablePayPal: true,
-      enableWebRTC: true,
-      streamingServices: ['bahamut', 'bilibili', 'tiktok']
     });
 
     const autoIcon = resIcon['proxy-groups'].find(g => g.name === '自动选择');
@@ -311,8 +296,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
 
     const userConfig = {
       groupIconMode: 'none',
-      enableAI: true,
-      enableStreaming: true,
       minorNodeThreshold: 1
     };
 
@@ -429,7 +412,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     });
 
     const result = strategyMain(buildRawConfig(), {
-      enableAI: false,
       minorNodeThreshold: 1,
       groups: [{ ref: 'chatgpt' }]
     });
@@ -446,34 +428,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     );
     const provider = result['rule-providers'].openai;
     assert.ok(provider && provider.url.includes('geosite/openai'), 'ref 条目应随组一起登记规则集 Provider');
-  });
-
-  test('strategyMain - groups 的 { ref } 与内置开关配方产出的策略组逐字段等价（等价性守卫）', () => {
-    const buildRawConfig = () => ({
-      proxies: [
-        { name: '🇺🇸 美国 ChatGPT 01', type: 'ss', server: 'us1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
-        { name: '🇯🇵 日本 01', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' },
-        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p3' }
-      ]
-    });
-    const base = { minorNodeThreshold: 1, enableAI: true, aiServices: ['chatgpt'] };
-
-    const byBuiltinSwitch = strategyMain(buildRawConfig(), base);
-    const byRefDeclaration = strategyMain(buildRawConfig(), { ...base, groups: [{ ref: 'chatgpt' }] });
-
-    assert.deepEqual(
-      byRefDeclaration['proxy-groups'],
-      byBuiltinSwitch['proxy-groups'],
-      'ref 声明与内置开关配方必须产出完全一致的策略组清单'
-    );
-    // 规则集合必须等价。当下 A 类开关与 groups 两条路径并存，同一规则集的注入位置不同
-    // （开关路径在广告拦截之后、groups 路径在其之前），因此比较集合而非顺序；
-    // 批次 3 收敛为单一来源后此处可收紧为顺序敏感比较。
-    assert.deepEqual(
-      [...byRefDeclaration.rules].sort(),
-      [...byBuiltinSwitch.rules].sort(),
-      'ref 声明与内置开关配方必须产出完全一致的分流规则集合'
-    );
   });
 
   test('resolveConfig - 可引用判据 = 条目自带非空 proxies（成员配方未备齐者仍 fail-closed）', () => {
@@ -601,7 +555,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     };
     const result = strategyMain(rawConfig, {
       minorNodeThreshold: 1,
-      enableTelegram: false,
       groups: [{ ref: 'telegram' }]
     });
 

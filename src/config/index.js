@@ -5,7 +5,7 @@
  */
 
 const { DEFAULT_CONFIG } = require('./defaults');
-const { ADDITIVE_FIELDS, ENTRY_NORMALIZERS, mergeBaseline } = require('../data');
+const { ADDITIVE_FIELDS, ENTRY_NORMALIZERS, REMOVED_FIELDS, mergeBaseline } = require('../data');
 const { resolveMountPath, readMountFile } = require('./mounts');
 const { expandIncludes } = require('./include');
 const { buildServiceCatalog, buildMemberHints, deepMerge } = require('./catalog');
@@ -67,6 +67,31 @@ function applyAdditiveFields(merged, logger) {
 }
 
 /**
+ * 已删除字段 fail-closed。
+ *
+ * 退役字段（`enableAI` / `aiServices` 一类）如果被静默忽略，用户会以为开关还生效，
+ * 实际产物已按新默认表生成——属于最隐蔽的 fail-open。因此配置里再出现它们直接报错，
+ * 并指向迁移对照表。
+ *
+ * 只拦「已退役的公开字段」，不拦内部运行时选项与未知拼写（后者由远程配置的
+ * 白名单收敛负责）。
+ *
+ * @param {object} config 展开 include 之后的用户配置
+ * @throws {Error} 出现已删除字段时
+ */
+const REMOVED_FIELD_SET = new Set(REMOVED_FIELDS);
+
+function assertNoRemovedFields(config) {
+  const removed = Object.keys(config || {}).filter(key => REMOVED_FIELD_SET.has(key));
+  if (removed.length === 0) return;
+  const names = removed.map(key => `\`${key}\``).join('、');
+  throw new Error(
+    `[Config] 已删除字段 ${names}：批次 3 起分流由 \`routing\` 表表达` +
+      '（批量用 preset、单项用 service），迁移对照见 ROADMAP.md 10.7'
+  );
+}
+
+/**
  * 解析并生成最终生效的配置对象
  * @param {object} [userConfig={}] 用户自定义配置
  * @param {object} [options={}] 可选解析选项 (baseDir: 相对挂载路径基准目录, logger)
@@ -79,6 +104,7 @@ function resolveConfig(userConfig = {}, options = {}) {
   //    挂载路径转成绝对路径（absolutizeMountPaths），此处不再受 cwd 影响。
   const baseDir = options.baseDir || process.cwd();
   const expanded = expandIncludes(userConfig || {}, baseDir);
+  assertNoRemovedFields(expanded);
 
   // 深层合并出厂默认与用户配置：
   //   - 深合并：嵌套子对象**递归**合并，避免浅拷贝把默认值里的子属性整体覆盖丢失；

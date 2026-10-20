@@ -16,9 +16,6 @@ describe('【Pipeline】端到端构建流程集成测试 (builder-integration)'
         }
       ],
       minorNodeThreshold: 1, // 允许单节点独立建组
-      enableAI: true,
-      enableStreaming: true,
-      enableGame: true
     };
 
     const { yamlStr } = await buildProfile(userConfig, { mode: 'config', production: true });

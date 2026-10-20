@@ -22,8 +22,6 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
 
     const userConfig = {
       enableResidential: true,
-      enableStreaming: true,
-      streamingServices: ['netflix'],
       isolateHighMulti: true,
       highMultiThreshold: 2.5,
       enableNodeRename: false
@@ -157,8 +155,6 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
     };
 
     const userConfig = {
-      enableAI: true,
-      aiServices: ['chatgpt'],
       enableNodeRename: false
     };
 
@@ -190,8 +186,6 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
     const config = {
       enablePipeline: true,
       enableNodeRename: true,
-      enableAI: true,
-      aiServices: ['chatgpt'],
       minorNodeThreshold: 1
     };
 

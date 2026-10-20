@@ -385,8 +385,6 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
 
     const recipes = buildBuiltinAppRecipes({
       userConfig: {
-        aiServices: ['chatgpt'],
-        streamingServices: ['custom_stream', 'direct_stream']
       },
       effectiveRegistries,
       regionNames,

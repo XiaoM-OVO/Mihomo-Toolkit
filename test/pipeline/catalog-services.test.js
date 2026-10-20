@@ -102,7 +102,6 @@ describe('【Pipeline】服务编目引擎与特征装配 (catalog-services)', (
 
     const userConfig = {
       enableNodeRename: true,
-      aiServices: ['chatgpt', 'deepseek'],
       customServices: {
         ai: {
           deepseek: {
@@ -135,8 +134,6 @@ describe('【Pipeline】服务编目引擎与特征装配 (catalog-services)', (
     };
 
     const userConfig = {
-      enableAI: true,
-      aiServices: ['chatgpt', 'deepseek'],
       customServices: {
         ai: {
           deepseek: {

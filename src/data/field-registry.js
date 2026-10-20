@@ -307,6 +307,29 @@ const FIELDS_BY_KEY = Object.freeze(
 );
 
 /**
+ * 已删除字段名单（校验期用于给出迁移提示）。
+ *
+ * 这些键曾经是合法配置，删掉后若被静默忽略，用户会以为开关还生效、实际产物
+ * 已按新默认表生成——属于最隐蔽的 fail-open。因此配置里再出现它们时直接报错，
+ * 并指向迁移对照表。
+ *
+ * 注意：这里只登记**已退役的公开字段**。内部的运行时选项（`mode` / `silent`
+ * 一类）不走本名单，也不进入字段注册表。
+ */
+const REMOVED_FIELDS = Object.freeze([
+  // 批次 3 之前退役
+  'dnsMergeMode', 'airportTagReg', 'enableDomesticGroup', 'proxyFirst',
+  // 批次 3 退役：分流开关
+  'enableAdBlock', 'enableAntiAD', 'enableAI', 'enableStreaming', 'enableSocial',
+  'enableGame', 'enableSystemServices', 'enableGitHub', 'enableScholar',
+  'enableTelegram', 'enableCrypto', 'enablePayPal', 'enableWebRTC',
+  'enableProcessDirect', 'enableQUICReject',
+  // 批次 3 退役：服务清单（改由 routing 表表达）
+  'aiServices', 'streamingServices', 'socialServices', 'gameServices',
+  'systemServices', 'devServices'
+]);
+
+/**
  * 由注册表派生出厂默认配置（保持声明顺序）。
  *
  * `default` 为 `undefined` 的字段**不进入** DEFAULT_CONFIG：它们代表「代码内有兜底、
@@ -354,6 +377,7 @@ const REMOTE_ALLOWED_FIELDS = Object.freeze(
 module.exports = {
   FIELDS,
   FIELDS_BY_KEY,
+  REMOVED_FIELDS,
   ADDITIVE_FIELDS,
   DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,

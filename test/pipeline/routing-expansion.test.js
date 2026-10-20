@@ -99,7 +99,6 @@ describe('routing 展开引擎：条目语义', () => {
 
   it('customRules 仍排在 QUIC 拦截之前（旧优先级不变）', () => {
     const { config, registries } = pair({
-      enableQUICReject: true,
       customRules: ['DOMAIN-SUFFIX,corp.example,DIRECT']
     });
     const { rules } = expandRouting(config, registries, {

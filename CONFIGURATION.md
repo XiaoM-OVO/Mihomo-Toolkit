@@ -562,7 +562,7 @@ routing:
   - preset: final
 ```
 
-> 从旧版开关（`enableAI` / `enableStreaming` / `aiServices` …）迁移：对照表见 `ROADMAP.md` 第 10.7 节。旧字段已从 schema 删除，配置里再写会在校验期报「未知字段」。
+> 从旧版开关（`enableAI` / `enableStreaming` / `aiServices` …）迁移：对照表见 `ROADMAP.md` 第 10.7 节。旧字段已从 schema 删除，配置里再写会在解析期直接报「已删除字段」并指出新写法。
 
 ---
 

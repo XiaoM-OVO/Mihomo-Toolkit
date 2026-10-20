@@ -59,7 +59,7 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
     });
 
     it('未显式声明 registries 时自动安全回退至 Catalog 构建', () => {
-      const userConfig = { enableAI: true };
+      const userConfig = { groupIconMode: 'icon' };
       const { emojiMap, iconMap } = buildPresentationMaps(userConfig);
 
       assert.ok(emojiMap['ChatGPT']);

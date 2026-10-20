@@ -112,7 +112,6 @@ describe('【Pipeline】核心流水线装配与交付形态 (pipeline)', () => 
     const { buildProfile } = require('../../src/pipeline/engine');
     const validUri = 'ss://YWVzLTEyOC1nY206bXktc2VjcmV0QG15LWhvc3QuY29tOjQ0Mw==#MyDirect';
     const cfg = {
-      enableAI: true,
       subscriptions: [
         {
           uri: validUri,

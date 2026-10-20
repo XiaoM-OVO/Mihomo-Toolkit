@@ -60,8 +60,6 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
 
   it('cleaner - 识别矩阵 (AI / 流媒体 / IPv6 / 双栈 / 家宽)', () => {
     const userConfig = resolveConfig({
-      enableAI: true,
-      enableStreaming: true,
       showFeatureIcon: true
     });
 
@@ -102,7 +100,7 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
 
     // 2. 显式关闭开关也不能绕过依赖（开关已退役，不再是「关掉就不需要 catalog」）
     assert.throws(
-      () => getFeatureRules({ enableAI: false, enableStreaming: false }),
+      () => getFeatureRules({ logLevel: 'silent' }),
       /userConfig\.catalog.*is required/
     );
 
@@ -135,7 +133,6 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     const config = {
       renameTemplate: '{icon} {region} {index} {features} | {ip_stack}',
       showFeatureIcon: true,
-      enableAI: true
     };
 
     const result = await runNodesPipeline(proxies, config);
@@ -164,7 +161,6 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     };
     const result = await runNodesPipeline(proxies, {
       logger,
-      enableStreaming: true,
       enableResidential: true
     });
     assert.equal(result.length, 1);
