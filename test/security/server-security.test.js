@@ -175,6 +175,47 @@ describe('【Security】常驻服务安全姿态与防御 (server-security)', ()
       assert.equal(r.config.subscriptions.length, 2);
     });
 
+    it('hardenRemoteConfig - 拒绝内联 uri 的非节点协议，放行解析器认识的 scheme 与纯 base64', () => {
+      for (const bad of [
+        'file:///etc/passwd',
+        'javascript:alert(1)',
+        'data:text/yaml,proxies%3A%20%5B%5D'
+      ]) {
+        const r = hardenRemoteConfig({ subscriptions: [{ uri: bad }] });
+        assert.equal(r.ok, false, `非法内联 uri scheme 未被拒绝: ${bad}`);
+      }
+      for (const good of [
+        'vless://x@1.2.3.4:443',
+        'trojan://pass@1.2.3.4:443#n',
+        'aGVsbG8=' // 纯 base64 订阅块：无 scheme，照常放行
+      ]) {
+        const r = hardenRemoteConfig({ subscriptions: [{ uri: good }] });
+        assert.equal(r.ok, true, `合法内联 uri 被误拒: ${good}`);
+      }
+    });
+
+    it('hardenRemoteConfig - 图标字段只允许 https 公网地址（阻断客户端侧内网探测）', () => {
+      const r = hardenRemoteConfig({
+        groupIcons: {
+          自动选择: 'http://127.0.0.1:8080/x.png',
+          漏网之鱼: 'https://cdn.example.com/y.png',
+          广告拦截: { emoji: '🚫', icon: 'http://192.168.1.5/x.png' },
+          流媒体: { icon: 'http://localhost/x.png' }
+        },
+        iconRepoKoolson: 'http://10.0.0.5/icons/',
+        customServices: { streaming: { netflix: { name: 'Netflix', icon: 'http://169.254.169.254/i.png' } } }
+      });
+      assert.equal(r.ok, true);
+      assert.equal(r.config.groupIcons['自动选择'], undefined, '回环图标未被丢弃');
+      assert.equal(r.config.groupIcons['漏网之鱼'], 'https://cdn.example.com/y.png', '合法 https 图标被误删');
+      assert.equal(r.config.groupIcons['广告拦截'].icon, undefined, '内网图标未被丢弃');
+      assert.equal(r.config.groupIcons['广告拦截'].emoji, '🚫', 'emoji 展示应保留');
+      assert.equal(r.config.groupIcons['流媒体'], undefined, '单 label 主机名图标未被丢弃');
+      assert.equal(r.config.iconRepoKoolson, undefined, '内网图标仓库未被丢弃');
+      assert.equal(r.config.customServices.streaming.netflix.icon, undefined, '自定义服务内网图标未被丢弃');
+      assert.equal(r.config.customServices.streaming.netflix.name, 'Netflix', '服务定义本体应保留');
+    });
+
     it('isLoopbackHost & safeTokenEqual - 回环判定与恒定时间防时序攻击比较', () => {
       for (const h of ['127.0.0.1', '127.1.2.3', 'localhost', '::1', '[::1]']) {
         assert.equal(isLoopbackHost(h), true, `${h} 应判为回环`);
