@@ -65,8 +65,10 @@
 
 | 信任等级 | 标记 | 含义与安全约束 | 典型字段 |
 | :--- | :--- | :--- | :--- |
-| **可信本地** | `trust: 'local'` | **仅允许在本地配置文件声明**。远程 `?config=` 参数传入时会被强行剥夺（剥离并发出安全审计警告），防止外部攻击者越权操控服务器。 | `include`, `servicesConfigFile`, `output`, `customRules`, `customRuleProviders`, `customGroups`, `groups`, `dnsListen`, `dnsAllowNonLoopback`, `hosts`, `nameserverPolicy`, `protectedDomains`, `security`, `fakeIpFilter` 等 |
-| **任意来源** | `trust: 'any'` | 本地配置与远程 `?config=` 均有权修改，属于纯粹的展示与节点清洗偏好。 | `logLevel`, `routing`, `trafficDirection`, `renameTemplate`, `enableDedupe` 等 |
+| **可信本地** | `trust: 'local'` | **仅允许在本地配置文件声明**。远程 `?config=` 参数传入时会被强行剥夺（剥离并发出安全审计警告），防止外部攻击者越权操控服务器。 | `include`, `servicesConfigFile`, `output`, `customRules`, `customRuleProviders`, `customGroups`, `groups`, `routing`, `dnsListen`, `dnsAllowNonLoopback`, `hosts`, `nameserverPolicy`, `protectedDomains`, `security`, `fakeIpFilter` 等 |
+| **任意来源** | `trust: 'any'` | 本地配置与远程 `?config=` 均有权修改，属于纯粹的展示与节点清洗偏好。 | `logLevel`, `trafficDirection`, `renameTemplate`, `enableDedupe` 等 |
+
+> `routing` 属于**可信本地**：远程配置能改写分流表，等于让一条分享链接决定「哪些流量走代理、哪些直连」，属于出口劫持，必须由本机配置决定。同理，远程配置里的图标类字段（`groupIcons`、`iconRepo*`、`customServices.*.icon`）只接受 `https` 公网地址——图标由客户端加载配置时请求，指向内网就是客户端侧的内网探测通道。
 
 ### 1.3 合并语义：覆盖 (Override) 与基线追加 (Additive)
 
@@ -527,7 +529,7 @@ include:
 
 | 参数名 | 类型 | 默认值 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| `routing` | `object[]` | 出厂默认表（13 条） | `any` | `override` | **分流表**：数组顺序即优先级；条目三选一（`preset` / `service` / `rule`），均可带 `to` 覆写目标、`disabled: true` 跳过。 |
+| `routing` | `object[]` | 出厂默认表（13 条） | `local` | `override` | **分流表**：数组顺序即优先级；条目三选一（`preset` / `service` / `rule`），均可带 `to` 覆写目标、`disabled: true` 跳过。远程配置不可修改（见 1.2 信任边界）。 |
 
 条目形态：
 

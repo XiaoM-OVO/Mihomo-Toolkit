@@ -206,7 +206,10 @@ async function safeFetchText(url, options = {}) {
       const fetchOpts = buildFetchOpts(parsedUrl, controller.signal);
       const res = await fetch(parsedUrl.toString(), proxyDispatcher ? { ...fetchOpts, dispatcher: proxyDispatcher } : fetchOpts);
 
-      if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+      // 说明：浏览器里 `redirect: 'manual'` 会产生 `type === 'opaqueredirect'`，
+      // 但 Node/undici 不会（实测 302 的 response.type 为 'basic'，状态码仍是 302），
+      // 因此这里只看状态码；不要依赖 `res.type` 判断重定向。
+      if (res.status >= 300 && res.status < 400) {
         redirects++;
         if (redirects > maxRedirects) {
           try { if (res.body && typeof res.body.cancel === 'function') await res.body.cancel(); } catch {}

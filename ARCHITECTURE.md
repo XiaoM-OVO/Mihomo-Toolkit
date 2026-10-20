@@ -271,7 +271,15 @@ src/
 - **控制面字段剥离 (`control-plane.js`)**：
   严格剥离订阅自带的特权控制键（如 `external-controller`、`secret`、`allow-lan`、`tun` 等），防止订阅接管本地运行环境。
 - **远程配置降级 (`remote-config.js`)**：
-  服务端接收到 `?config=<URL>` 时，基于 `field-registry.js` 中的 `trust: 'any'` 白名单进行收敛过滤，剥离本地读写字段（`include`、`output`）及特权 DNS 控制面字段。
+  服务端接收到 `?config=<URL>` 时，基于 `field-registry.js` 中的 `trust: 'any'` 白名单进行收敛过滤，剥离本地读写字段（`include`、`output`）及特权 DNS 控制面字段；内联订阅内容（`subscriptions[].uri`）只放行解析器注册表中真实存在的节点协议 scheme，图标类字段只放行 `https` 公网地址（图标由**客户端**加载，指向内网即客户端侧探测通道）。
+- **节点资产闭包 (`pipeline/ingestion.js`)**：
+  订阅自带的 `hosts` / `nameserver-policy` / `fake-ip-filter` 只继承「指向自身节点域名」的条目，且只允许向下（子域）与比 TLD 更窄的向上通配（`+.example.com`）；单 label 泛域名（`+.com`）在任何路径上都会被拒绝。
+- **DNS 安全配置沙箱 (`dns-sanitizer.js`)**：
+  强制引导 DNS 采用纯 IP 地址以避免解析死锁；剥离 DoH 中的危险修饰符；默认强制 DNS 监听本地回环地址（`127.0.0.1`）。
+
+已知边界（不是缺陷，但需要知道）：
+- **节点字段不做地理/私网校验**：`proxies[].server` 可以是 `127.0.0.1` 或内网地址（局域网代理是合法用法）。本工具只**生成**配置，不主动连接节点；真正发起连接的是内核，因此这属于「订阅使用者自己的选择」，不是服务端 SSRF。
+- **`res.type === 'opaqueredirect'` 在 Node 下不出现**：重定向判定只看状态码（浏览器 no-cors 才产生 opaqueredirect）。
 - **DNS 安全配置沙箱 (`dns-sanitizer.js`)**：
   强制引导 DNS 采用纯 IP 地址以避免解析死锁；剥离 DoH 中的危险修饰符；默认强制 DNS 监听本地回环地址（`127.0.0.1`）。
 
