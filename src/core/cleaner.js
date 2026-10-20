@@ -238,39 +238,25 @@ function checkNodeBlockReason(proxy, rawName, _userConfig = {}, options = {}) {
  * 编译全量特征规则列表（包含静态特征基线、AI 服务注册表、流媒体注册表与自定义服务）
  * 严格遵循洋葱模型：本函数为纯计算函数，不再反向依赖 config/catalog。
  * 动态服务规则统一由入参中的 userConfig.catalog (ServiceCatalog 实例) 提供。
+ * 分流开关已退役：特征打标不再有「分类总开关」，catalog 里声明的服务全部参与匹配。
  *
  * @param {object} [userConfig={}]
  * @param {object} [userConfig.catalog] 由配置层编译生成的 ServiceCatalog 实例
- * @param {boolean} [userConfig.enableAI]
- * @param {boolean} [userConfig.enableStreaming]
  * @returns {Array<{ reg: RegExp, tag: string, pool?: string, groupName?: string }>}
  */
 function getFeatureRules(userConfig = {}) {
   const rules = [...STATIC_FEATURE_RULES];
 
   const catalog = userConfig.catalog;
-  // 分类门禁 = 总开关打开 或 该分类被 `groups` ref 显式引用（列了即生效，与 catalog.getActiveServices 同一口径）
-  const hasRefActivation = (category) => Boolean(
-    catalog && typeof catalog.hasRefActivation === 'function' && catalog.hasRefActivation(category, userConfig)
-  );
-  const enableAI = userConfig.enableAI !== false || hasRefActivation('ai');
-  const enableStreaming = userConfig.enableStreaming !== false || hasRefActivation('streaming');
-
-  // 若明确关闭了所有动态编目服务，直接返回纯净的静态特征基线 (零依赖纯函数)
-  if (!enableAI && !enableStreaming) {
-    return rules;
-  }
-
   if (!catalog) {
     throw new TypeError(
-      'getFeatureRules: userConfig.catalog (ServiceCatalog) is required when dynamic service rules (enableAI/enableStreaming) are active. ' +
-      'Please construct catalog via resolveConfig(userConfig) or buildServiceCatalog(userConfig) in the configuration/pipeline layer, ' +
-      'or disable dynamic rules with { enableAI: false, enableStreaming: false }.'
+      'getFeatureRules: userConfig.catalog (ServiceCatalog) is required. ' +
+      'Please construct catalog via resolveConfig(userConfig) or buildServiceCatalog(userConfig) in the configuration/pipeline layer.'
     );
   }
 
   // AI 助手特征规则（逆序 unshift，确保高优先级）
-  if (enableAI) {
+  {
     const aiActive = catalog.getActiveServices('ai', userConfig);
     aiActive.slice().reverse().forEach(({ key, service }) => {
       if (service.reg) {
@@ -285,7 +271,7 @@ function getFeatureRules(userConfig = {}) {
   }
 
   // 流媒体服务特征规则
-  if (enableStreaming) {
+  {
     const streamActive = catalog.getActiveServices('streaming', userConfig);
     streamActive.forEach(({ key, service }) => {
       if (service.reg) {
@@ -427,12 +413,8 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
   // 7. 特征标签与规则匹配 (不论是否有明确大区，客观存在的业务特征规则均予匹配，不丢失业务能力)
   let rules = options.featureRules;
   if (!rules) {
-    if (userConfig.catalog || userConfig.enableAI !== undefined || userConfig.enableStreaming !== undefined) {
-      rules = getFeatureRules(userConfig);
-    } else {
-      // 默认独立/无配置调用场景：无 catalog 且未显式指定动态服务开关，默认采用静态基线规则
-      rules = STATIC_FEATURE_RULES;
-    }
+    // 有注册表 → 动态特征；没有注册表（独立调用）→ 静态基线，业务打标降级但不伪造服务知识。
+    rules = userConfig.catalog ? getFeatureRules(userConfig) : STATIC_FEATURE_RULES;
   }
   for (const rule of rules) {
     if (rule.reg.test(rawName)) {

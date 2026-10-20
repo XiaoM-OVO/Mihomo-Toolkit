@@ -78,8 +78,7 @@ function buildBuiltinAppRecipes({
   // 1. AI 分组：配方直接取自 catalog 条目（match + proxies + preferredRegions），
   //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
   if (effectiveRegistries.ai) {
-    const aiServices = userConfig.aiServices || Object.keys(effectiveRegistries.ai);
-    aiServices.forEach(key => {
+    Object.keys(effectiveRegistries.ai).forEach(key => {
       const ai = effectiveRegistries.ai[key];
       if (!ai) return;
       if (!referencedTargets.has(ai.name)) return;
@@ -111,8 +110,7 @@ function buildBuiltinAppRecipes({
   // 2. 流媒体分组：与 AI 同构，配方直接取自 catalog 条目（match + proxies + preferredRegions），
   //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
   if (effectiveRegistries.streaming) {
-    const streamingServices = userConfig.streamingServices || Object.keys(effectiveRegistries.streaming);
-    streamingServices.forEach(key => {
+    Object.keys(effectiveRegistries.streaming).forEach(key => {
       const st = effectiveRegistries.streaming[key];
       if (!st) return;
       if (!referencedTargets.has(st.name)) return;
@@ -136,8 +134,7 @@ function buildBuiltinAppRecipes({
   // 3. 社交分组：一服务一组（与 AI / 流媒体同构）。
   //    合并组与「独立/合并」二分已取消：每个社交服务都是一条完整组声明，可单独引用、单独排序。
   if (effectiveRegistries.social) {
-    const socialServices = userConfig.socialServices || Object.keys(effectiveRegistries.social);
-    socialServices.forEach(key => {
+    Object.keys(effectiveRegistries.social).forEach(key => {
       const s = effectiveRegistries.social[key];
       if (!s || !referencedTargets.has(s.name)) return;
       const matched = buckets[s.pool] || buckets[s.tag] || [];
@@ -172,11 +169,7 @@ function buildBuiltinAppRecipes({
 
   // 5. 开发者与学术服务：配方直接取自 catalog 条目（含 match / proxies / preferredRegions）
   if (effectiveRegistries.dev) {
-    const devActive = Array.isArray(userConfig.devServices)
-      ? userConfig.devServices
-      : Object.keys(effectiveRegistries.dev);
-
-    devActive.forEach(key => {
+    Object.keys(effectiveRegistries.dev).forEach(key => {
       const conf = effectiveRegistries.dev[key];
       if (!conf) return;
       if (!referencedTargets.has(conf.name)) return;
@@ -223,8 +216,7 @@ function buildBuiltinAppRecipes({
 
   // 7. 系统服务：配方直接取自 catalog 条目（含 match / proxies）
   if (effectiveRegistries.system) {
-    const systemServices = userConfig.systemServices || Object.keys(effectiveRegistries.system);
-    systemServices.forEach(key => {
+    Object.keys(effectiveRegistries.system).forEach(key => {
       const sys = effectiveRegistries.system[key];
       if (sys && referencedTargets.has(sys.name)) {
         recipes.push({

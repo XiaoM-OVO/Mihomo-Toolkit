@@ -205,19 +205,48 @@ regionGroupType: "url-test"        # 地区策略组类型: url-test (测速优�
 #                                  # 同样只增不减：用于保护自建常驻组不被 DAG 级联清理误删
 #   - "🏠 家宽优选"
 
-# 基础应用策略组开关
-enableAI: true                     # 启用独立 AI 策略组 (ChatGPT, Claude, Gemini, Copilot 等)
-enableStreaming: true              # 启用独立流媒体策略组 (YouTube, Netflix, Disney+, Spotify 等)
-enableSocial: true                 # 启用社交应用策略组 (Telegram, Twitter 等)
-enableGame: true                   # 启用游戏平台策略组 (Steam, Epic, PlayStation 等)
-enableGitHub: true                 # 启用 GitHub 极速策略组
-enableScholar: false               # 启用学术资源策略组 (Google Scholar, Sci-Hub 等)
-enableAdBlock: true                # 启用内置轻量广告拦截策略组 (🚫 广告拦截)
-enableAntiAD: false                # 启用激进广告拦截规则集 (anti-ad)
-enableTelegram: true               # Telegram 独立分流策略组
-# enableCrypto: false              # 启用加密货币交易所分流策略组
-# enablePayPal: false              # 启用 PayPal 独立分流策略组
-# enableWebRTC: false              # 启用 WebRTC 专项分流策略组
+# 分流表 (routing)：唯一规则来源，数组顺序即优先级
+#
+# 「表里出现即生效，没写就没有」——分流不再有开关，要少一点分流就删条目，
+# 只要某几个服务就把整段 preset 换成逐条 service。
+# 条目形式：
+#   - preset: ai                      整段展开该分类下的全部服务（含自定义服务）
+#   - service: twitter                单个服务（可用 customServices 里自定义的键）
+#   - { rule: "DOMAIN,example.com", to: 自动选择 }   直接写一条规则，to 可省略（三段式天然带目标）
+#   - { preset: ai, to: 手动选择 }     给整段统一换目标
+#   - { service: twitter, disabled: true }           临时停用一条
+#
+# 默认表（src/data/default-routing.js）等价于下面这份：
+routing:
+  - preset: subscription
+  - service: ad-block
+  - preset: ai
+  - preset: streaming
+  - preset: game
+  - preset: dev
+  - service: telegram
+  - preset: system
+  - preset: process
+  - preset: download
+  - preset: domestic
+  - preset: final
+#
+# 常用改动示例：
+#   开社交整段：   - preset: social
+#   只开某一个：   - service: twitter
+#   激进广告拦截： - service: anti-ad
+#   拦截 QUIC：    - preset: quic
+#   开专项：       - service: crypto / paypal / webrtc
+
+# AI 策略组地区保底优先列表 (默认无专属节点时兜底)
+aiPreferredRegions:
+  - us
+  - jp
+  - tw
+  - sg
+  - kr
+  - eu
+# ⚠️ biliPreferredRegions 已移除：该字段从未被实现（历史文档遗留的空承诺）
 
 # 高级节点隔离
 # lowMultiThreshold: 0.99          # 倍率 <= 此值的节点自动标记为下载节点 (0 关闭)
@@ -226,69 +255,6 @@ enableTelegram: true               # Telegram 独立分流策略组
 # highMultiThreshold: 2.5          # 高倍率判定阈值
 # isolateExperimental: false       # true=将含测试/实验/备用字样的节点剔除聚合入「🧪 实验节点」组
 
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑨ 动态服务注册表（增删 key 即开关对应策略组）
-# ─────────────────────────────────────────────────────────────────────
-# 🤖 AI 助手服务列表 (需开启 enableAI: true)
-aiServices:
-  - chatgpt
-  - gemini
-  - claude
-  - copilot
-aiPreferredRegions:                # AI 策略组地区保底优先列表 (默认无专属节点时兜底)
-  - us
-  - jp
-  - tw
-  - sg
-  - kr
-  - eu
-
-# 📺 流媒体服务列表 (需开启 enableStreaming: true)
-streamingServices:
-  - youtube
-  - netflix
-  - disney
-  - bilibili
-  - tiktok
-  - spotify
-  - bahamut
-  - pixiv
-  - twitch
-# ⚠️ biliPreferredRegions 已移除：该字段从未被实现（历史文档遗留的空承诺）
-
-# 💬 海外社交平台服务列表 (需开启 enableSocial: true)
-# 每个服务各成一个策略组（一服务一组），可分别引用、分别排序
-socialServices:
-  - twitter
-  - facebook
-  - instagram
-  - discord
-
-# 🎮 游戏平台服务列表 (需开启 enableGame: true)
-gameServices:
-  - steam
-  - epic
-  - riot
-  - blizzard
-  - nintendo
-  - playstation
-  - xbox
-  - ubisoft
-  - origin
-  - ea
-
-# 🪟 操作系统基础云服务列表
-enableSystemServices: true
-systemServices:
-  - microsoft
-  - apple
-  - google
-
-# 🐱 开发者服务列表 (dev 分类；此前该分类无法从配置控制，只能全开)
-# devServices:
-#   - github
-#   - scholar
 
 # 🧩 通用配置片段挂载（include）：把配置拆成多个片段，片段与主文件共用同一份 schema
 # 优先级：主文件优先（合并顺序 = include[0] ⊕ include[1] ⊕ … ⊕ 主文件自身）
@@ -382,7 +348,7 @@ systemServices:
 # ⑪ 进程级分流名单与自定义分流规则
 # ─────────────────────────────────────────────────────────────────────
 # 🛑 BT / P2P 下载软件直连防封号
-enableProcessDirect: true          # P2P/BT 强制直连
+# 这一段由 routing 表的 `{ preset: process }` 启用：表里没有这一条就没有进程直连规则。
 # processDirectWin:                # Windows 强制直连进程名单 (覆写默认)
 #   - qBittorrent
 #   - Thunder
@@ -480,7 +446,7 @@ testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，
 # ⑭ 内核优化与网络安全
 # ─────────────────────────────────────────────────────────────────────
 # enableTrafficAudit: true         # 审计非标端口流量，非 53/80/443 强制直连
-enableQUICReject: true             # 屏蔽海外 UDP 443 (QUIC)，强制降级 TCP 保证画质与速度
+# QUIC 拦截：由 routing 表的 `{ preset: quic }` 启用（默认表不含）
 # overwriteTun: true               # 注入高性能 TUN 虚拟网卡配置
 # overwriteSniffer: true           # 注入域名嗅探器配置 (强制精确嗅探 TLS/HTTP)
 # enableCoreOptimize: true         # 启用内核层全面性能调优与指纹伪装

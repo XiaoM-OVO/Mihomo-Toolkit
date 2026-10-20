@@ -68,7 +68,6 @@ const SPECIAL_SERVICES = Object.freeze({
     name: '加密货币',
     emoji: '🪙',
     icon: { repo: 'koolson', file: 'Cryptocurrency.png' },
-    configKey: 'enableCrypto',
     providers: { crypto: 'geosite/category-cryptocurrency' },
     rules: ['RULE-SET,crypto,加密货币'],
     preferredRegions: ['tw', 'jp', 'eu'],
@@ -79,7 +78,6 @@ const SPECIAL_SERVICES = Object.freeze({
     name: 'PayPal',
     emoji: '💳',
     icon: { repo: 'koolson', file: 'PayPal.png' },
-    configKey: 'enablePayPal',
     providers: { paypal: 'geosite/paypal' },
     rules: ['RULE-SET,paypal,PayPal'],
     proxies: ['DIRECT', '@defaultProxy', '@activeRegions', '@residentialGroup']
@@ -89,7 +87,6 @@ const SPECIAL_SERVICES = Object.freeze({
     name: 'WebRTC',
     emoji: '🗣',
     icon: { repo: 'koolson', file: 'Direct.png' },
-    configKey: 'enableWebRTC',
     providers: {},
     rules: [
       'DOMAIN-KEYWORD,webrtc,WebRTC',
@@ -107,7 +104,6 @@ const SPECIAL_SERVICES = Object.freeze({
     name: 'Telegram',
     emoji: '✈️',
     icon: { repo: 'koolson', file: 'Telegram.png' },
-    configKey: 'enableTelegram',
     providers: { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' },
     process: {
       win: ['Telegram'],
@@ -139,7 +135,6 @@ const ADS_GROUPS = Object.freeze({
   'ad-block': {
     refKey: 'ad-block',
     name: '广告拦截',
-    configKey: 'enableAdBlock',
     type: 'select',
     proxies: ['REJECT-DROP', 'REJECT', 'DIRECT'],
     rules: ['RULE-SET,ads,广告拦截'],
@@ -148,7 +143,6 @@ const ADS_GROUPS = Object.freeze({
   'anti-ad': {
     refKey: 'anti-ad',
     name: '广告拦截',
-    configKey: 'enableAntiAD',
     type: 'select',
     proxies: ['REJECT-DROP', 'REJECT', 'DIRECT'],
     rules: ['RULE-SET,anti-ad,广告拦截'],
@@ -263,6 +257,17 @@ const BUILTIN_SERVICES = {
       proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Netflix.png' }
     },
+    bilibili: {
+      name: 'BiliBili',
+      emoji: '📺',
+      tag: 'streaming',
+      pool: 'bilibili',
+      preferredRegions: ['cn', 'tw', 'mo', 'hk'],
+      rules: 'bilibili',
+      type: 'select',
+      proxies: ['@domesticGroup', '台湾节点', '澳门节点', '香港节点', 'DIRECT'],
+      icon: { repo: 'orz', file: 'Bili.png' }
+    },
     disney: {
       name: 'Disney+',
       emoji: '🪄',
@@ -275,18 +280,6 @@ const BUILTIN_SERVICES = {
       proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Disney.png' }
     },
-    tiktok: {
-      name: 'TikTok',
-      emoji: '🎵',
-      tag: 'tk',
-      pool: 'tiktok',
-      reg: /\b(?:TikTok|抖音海外|TT)\b/i,
-      rules: 'tiktok',
-      type: 'select',
-      match: { pool: 'tiktok' },
-      proxies: ['@matchedNodes', '@nonCnRegions', '@defaultProxy', 'DIRECT'],
-      icon: { repo: 'koolson', file: 'TikTok.png' }
-    },
     spotify: {
       name: 'Spotify',
       emoji: '🎧',
@@ -298,6 +291,18 @@ const BUILTIN_SERVICES = {
       match: { pool: 'spotify' },
       proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Spotify.png' }
+    },
+    tiktok: {
+      name: 'TikTok',
+      emoji: '🎵',
+      tag: 'tk',
+      pool: 'tiktok',
+      reg: /\b(?:TikTok|抖音海外|TT)\b/i,
+      rules: 'tiktok',
+      type: 'select',
+      match: { pool: 'tiktok' },
+      proxies: ['@matchedNodes', '@nonCnRegions', '@defaultProxy', 'DIRECT'],
+      icon: { repo: 'koolson', file: 'TikTok.png' }
     },
     bahamut: {
       name: 'Bahamut',
@@ -328,17 +333,6 @@ const BUILTIN_SERVICES = {
       match: { pool: 'twitch' },
       proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Twitch.png' }
-    },
-    bilibili: {
-      name: 'BiliBili',
-      emoji: '📺',
-      tag: 'streaming',
-      pool: 'bilibili',
-      preferredRegions: ['cn', 'tw', 'mo', 'hk'],
-      rules: 'bilibili',
-      type: 'select',
-      proxies: ['@domesticGroup', '台湾节点', '澳门节点', '香港节点', 'DIRECT'],
-      icon: { repo: 'orz', file: 'Bili.png' }
     }
   },
 
@@ -467,13 +461,13 @@ const BUILTIN_SERVICES = {
 
   // ⑥ 系统基础服务
   system: {
-    google: {
-      name: 'Google',
-      emoji: '🔍',
-      rules: 'google',
+    microsoft: {
+      name: 'Microsoft',
+      emoji: '🪟',
+      rules: 'microsoft',
       type: 'select',
-      proxies: ['@standardOptions', 'DIRECT'],
-      icon: { repo: 'orz', file: 'Google.png' }
+      proxies: ['DIRECT', '@standardOptions'],
+      icon: { repo: 'orz', file: 'Microsoft.png' }
     },
     apple: {
       name: 'Apple',
@@ -483,13 +477,13 @@ const BUILTIN_SERVICES = {
       proxies: ['DIRECT', '@standardOptions'],
       icon: { repo: 'orz', file: 'Apple.png' }
     },
-    microsoft: {
-      name: 'Microsoft',
-      emoji: '🪟',
-      rules: 'microsoft',
+    google: {
+      name: 'Google',
+      emoji: '🔍',
+      rules: 'google',
       type: 'select',
-      proxies: ['DIRECT', '@standardOptions'],
-      icon: { repo: 'orz', file: 'Microsoft.png' }
+      proxies: ['@standardOptions', 'DIRECT'],
+      icon: { repo: 'orz', file: 'Google.png' }
     }
   }
 };
@@ -745,38 +739,12 @@ class ServiceCatalog {
     const cfg = runtimeConfig || this.userConfig;
     const catServices = this.services[category] || {};
 
-    // 分类总开关（与 getCoreMatchers / cleaner 的门禁语义保持一致，单一真相源）
-    const switchOn = {
-      ai: cfg.enableAI !== false,
-      streaming: cfg.enableStreaming !== false,
-      social: cfg.enableSocial === true,
-      game: cfg.enableGame === true,
-      system: cfg.enableSystemServices === true,
-      dev: true
-    }[category] ?? true;
-
-    // 默认激活键表映射
-    const activeKeysMap = {
-      ai: cfg.aiServices || Object.keys(catServices),
-      streaming: cfg.streamingServices || Object.keys(catServices),
-      social: cfg.socialServices || Object.keys(catServices),
-      game: cfg.gameServices || Object.keys(catServices),
-      system: cfg.systemServices || Object.keys(catServices),
-      dev: cfg.devServices || Object.keys(catServices)
-    };
-
     const customKeys = Object.keys(cfg.customServices?.[category] || {});
     const refKeys = this.getDeclaredRefKeys(cfg).filter(k => this.isRefableGroup(k, category));
-    // 总开关关闭时不再回落到「全部内置键」，只保留 ref 显式声明与自定义服务（列了才激活）
-    const baseKeys = switchOn ? (activeKeysMap[category] || Object.keys(catServices)) : [];
-    const allowedKeys = [...new Set([...baseKeys, ...customKeys, ...refKeys])];
+    const allowedKeys = [...new Set([...Object.keys(catServices), ...customKeys, ...refKeys])];
     const result = [];
 
     allowedKeys.forEach(key => {
-      if (category === 'dev') {
-        if (key === 'github' && cfg.enableGitHub === false && !refKeys.includes(key)) return;
-        if (key === 'scholar' && cfg.enableScholar === false && !refKeys.includes(key)) return;
-      }
       const s = catServices[key];
       if (s) {
         result.push({ key, category, service: s });
@@ -796,16 +764,9 @@ class ServiceCatalog {
     const cfg = runtimeConfig || this.userConfig;
     const matchers = [];
 
-    // 遍历所有允许打标分类
+    // 遍历所有允许打标分类（分流开关已退役，打标不再按分类门禁）
     const categories = ['ai', 'streaming', 'social', 'game', 'dev', 'system'];
     for (const cat of categories) {
-      // 检查分类总控开关：开关关闭但被 `groups` ref 显式引用时，仍需打标（列了即生效）
-      if (cat === 'ai' && cfg.enableAI === false && !this.hasRefActivation('ai', cfg)) continue;
-      if (cat === 'streaming' && cfg.enableStreaming === false && !this.hasRefActivation('streaming', cfg)) continue;
-      if (cat === 'social' && !cfg.enableSocial && !this.hasRefActivation('social', cfg)) continue;
-      if (cat === 'game' && !cfg.enableGame && !this.hasRefActivation('game', cfg)) continue;
-      if (cat === 'system' && !cfg.enableSystemServices && !this.hasRefActivation('system', cfg)) continue;
-
       const active = this.getActiveServices(cat, cfg);
       const catDefaults = CATEGORY_DEFAULTS[cat] || {};
       for (const { key, service } of active) {
@@ -923,7 +884,8 @@ class ServiceCatalog {
           type: s.type,
           match: s.match,
           exclude: s.exclude,
-          hidden: s.hidden
+          hidden: s.hidden,
+          providerOnly: Boolean(s.providerOnly)
         };
       }
     }
@@ -998,7 +960,6 @@ class ServiceCatalog {
         fullName: spec.emoji ? `${spec.emoji} ${spec.name}` : spec.name,
         uiIcon: spec.emoji || '',
         iconUrl: resolveIconUrl(spec.icon, this.repos.icons),
-        configKey: spec.configKey,
         providers: spec.providers ? { ...spec.providers } : {},
         rules: spec.rules ? [...spec.rules] : [],
         process: spec.process ? { ...spec.process } : undefined,

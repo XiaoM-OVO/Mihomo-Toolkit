@@ -30,16 +30,15 @@ const BASE_PROVIDER_ROUTES = Object.freeze({
 /**
  * BT / 下载类分流规则的数据表
  * -----------------------------------------------------------------------------
- * 规则集、目标与开关条件都由数据表达：新增一个规则集只加一行，不再改组装代码。
+ * 规则集与目标都由数据表达：新增一个规则集只加一行，不再改组装代码。
  * 顺序即优先级（先到先得），因此表的顺序就是最终规则顺序。
+ * 这段的语义是「BT 与下载软件直连」——写进 `routing` 表即启用。
  */
 const BT_TRACKER_RULES = Object.freeze([
-  // 开启「进程直连」时全部直连；关闭时交给下载策略组
-  { provider: 'bt-trackers-pt', target: { on: 'DIRECT', off: '下载策略' } },
-  { provider: 'bt-trackers-public', target: { on: 'DIRECT', off: '下载策略' } },
-  // 仅在「进程直连」开启时注入的关键字兜底
-  { keyword: 'tracker', target: 'DIRECT', onlyWhen: 'processDirect' },
-  { keyword: 'announce', target: 'DIRECT', onlyWhen: 'processDirect' }
+  { provider: 'bt-trackers-pt', target: 'DIRECT' },
+  { provider: 'bt-trackers-public', target: 'DIRECT' },
+  { keyword: 'tracker', target: 'DIRECT' },
+  { keyword: 'announce', target: 'DIRECT' }
 ]);
 
 const DOWNLOAD_RULESETS = Object.freeze([
@@ -52,18 +51,13 @@ const DOWNLOAD_RULESETS = Object.freeze([
  * 按数据表注入下载类规则
  * @param {string[]} routingRules 目标规则数组（原地追加）
  * @param {ReadonlyArray<object>} table 规则数据表
- * @param {boolean} processDirect 是否开启进程直连
  */
-function pushDownloadRules(routingRules, table, processDirect) {
+function pushDownloadRules(routingRules, table) {
   for (const item of table) {
-    if (item.onlyWhen === 'processDirect' && !processDirect) continue;
-    const target = typeof item.target === 'string'
-      ? item.target
-      : (processDirect ? item.target.on : item.target.off);
     routingRules.push(
       item.keyword
-        ? `DOMAIN-KEYWORD,${item.keyword},${target}`
-        : `RULE-SET,${item.provider},${target}`
+        ? `DOMAIN-KEYWORD,${item.keyword},${item.target}`
+        : `RULE-SET,${item.provider},${item.target}`
     );
   }
 }

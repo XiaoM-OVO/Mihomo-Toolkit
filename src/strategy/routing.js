@@ -177,12 +177,11 @@ function expandSubscription(ctx) {
 }
 
 /**
- * 展开 QUIC 拦截段（`enableQUICReject` 关闭时为空）
+ * 展开 QUIC 拦截段（表里有这一条即启用，默认表不含）
  * @param {object} ctx 上下文
  * @param {string} [to] 统一目标覆写（默认 REJECT-DROP）
  */
 function expandQuic(ctx, to) {
-  if (!ctx.config.enableQUICReject) return;
   const target = to === undefined ? 'REJECT-DROP' : resolveTo(to, ctx);
   const cnSuffix = ctx.isReturn
     ? ['(GEOSITE,cn)', '(GEOIP,CN)']
@@ -200,7 +199,6 @@ function expandQuic(ctx, to) {
 function expandAds(ctx, to) {
   const target = to === undefined ? null : resolveTo(to, ctx);
   for (const [refKey, ads] of Object.entries(ADS_GROUPS)) {
-    if (!ctx.config[ads.configKey]) continue;
     const entry = (ctx.registries.groups || {})[refKey] || ads;
     for (const [name, path] of Object.entries(entry.providers || {})) {
       ctx.providerBase[name] = path;
@@ -220,8 +218,17 @@ function expandAds(ctx, to) {
 function expandService(ctx, key, item, to) {
   if (!item) return;
   const providerKey = item.ruleSet || key;
+  // 游戏平台：steam 的下载域名规则依赖伴随规则集 steam-cn（逐条点名与整段展开都要注册）
+  const companion = key === 'steam' ? ctx.registries.game?.['steam-cn'] : null;
+  if (companion && companion.provider) ctx.providerBase['steam-cn'] = companion.provider;
+  for (const [name, path] of Object.entries(item.providers || {})) {
+    ctx.providerBase[name] = path;
+  }
   if (item.provider) ctx.providerBase[providerKey] = item.provider;
   const target = to === undefined ? null : resolveTo(to, ctx);
+  if (item.process && typeof item.process === 'object') {
+    ctx.rules.push(...expandProcessRules(item.process, target || item.name || key, ctx.osInfo));
+  }
   if (Array.isArray(item.rules) && item.rules.length > 0) {
     ctx.rules.push(...(target ? item.rules.map(r => retarget(r, target)) : item.rules));
     return;
@@ -231,6 +238,9 @@ function expandService(ctx, key, item, to) {
 
 /**
  * 展开分类预设（AI / 流媒体 / 社交 / 游戏 / 系统）
+ *
+ * 预设 = 「该分类下全部服务 + 用户自定义服务」，不再受开关或服务清单字段影响：
+ * 表里写这一条就是全都要，只要一部分就改用逐条 `{ service }`。
  * @param {object} ctx 上下文
  * @param {object} preset 预设定义
  * @param {string} [to] 目标覆写
@@ -238,25 +248,17 @@ function expandService(ctx, key, item, to) {
 function expandCategory(ctx, preset, to) {
   const registry = ctx.registries[preset.registry];
   if (!registry) return;
-  if (preset.switchKey && ctx.config[preset.switchKey] === false) return;
-  const base = Array.isArray(ctx.config[preset.listField])
-    ? ctx.config[preset.listField]
-    : Object.keys(registry);
   const customKeys = Object.keys(ctx.config.customServices?.[preset.registry] || {});
-  const activeKeys = [...new Set([...base, ...customKeys])];
+  const activeKeys = [...new Set([...Object.keys(registry), ...customKeys])];
   for (const key of activeKeys) {
     const item = registry[key];
-    if (!item) continue;
-    // 游戏平台：steam 伴随规则集 steam-cn（下载域名的目标在条目 rules 里）
-    if (preset.registry === 'game' && key === 'steam' && registry['steam-cn']) {
-      ctx.providerBase['steam-cn'] = registry['steam-cn'].provider;
-    }
+    if (!item || item.providerOnly) continue;
     expandService(ctx, key, item, to);
   }
 }
 
 /**
- * 展开开发者 / 学术预设（逐服务开关）
+ * 展开开发者 / 学术预设（分类下全部服务 + 自定义服务）
  * @param {object} ctx 上下文
  * @param {object} preset 预设定义
  * @param {string} [to] 目标覆写
@@ -264,12 +266,9 @@ function expandCategory(ctx, preset, to) {
 function expandDev(ctx, preset, to) {
   const registry = ctx.registries[preset.registry];
   if (!registry) return;
-  const base = Array.isArray(ctx.config[preset.listField])
-    ? ctx.config[preset.listField]
-    : Object.keys(registry);
-  for (const key of base) {
-    const switchKey = preset.switches?.[key];
-    if (switchKey && ctx.config[switchKey] === false) continue;
+  const customKeys = Object.keys(ctx.config.customServices?.[preset.registry] || {});
+  const keys = [...new Set([...Object.keys(registry), ...customKeys])];
+  for (const key of keys) {
     expandService(ctx, key, registry[key], to);
   }
 }
@@ -282,7 +281,6 @@ function expandDev(ctx, preset, to) {
 function expandSpecialized(ctx, to) {
   const map = ctx.registries.specialized || SPECIAL_SERVICES;
   for (const spec of Object.values(map)) {
-    if (!ctx.config[spec.configKey]) continue;
     if (spec.providers) Object.assign(ctx.providerBase, spec.providers);
     if (spec.process) {
       ctx.rules.push(...expandProcessRules(spec.process, spec.name, ctx.osInfo));
@@ -296,24 +294,23 @@ function expandSpecialized(ctx, to) {
 
 /**
  * 展开进程直连 / BT / 下载软件段
+ *
+ * 这一段的语义是「BT 与下载软件的进程/规则集直连」，写进表里就是启用；
+ * 不需要时整条删掉即可，不再有单独的开关。
  * @param {object} ctx 上下文
  */
 function expandProcess(ctx) {
   const {
     processDirectWin, processDirectMac, processDirectLin,
-    processProxyWin, processProxyMac, processProxyLin,
-    enableProcessDirect
+    processProxyWin, processProxyMac, processProxyLin
   } = ctx.config;
-  const processDirect = Boolean(enableProcessDirect);
 
-  if (processDirect) {
-    ctx.rules.push(...expandProcessRules({
-      win: processDirectWin || FIELDS_BY_KEY.processDirectWin.default,
-      mac: processDirectMac || FIELDS_BY_KEY.processDirectMac.default,
-      lin: processDirectLin || FIELDS_BY_KEY.processDirectLin.default
-    }, 'DIRECT', ctx.osInfo));
-  }
-  pushDownloadRules(ctx.rules, BT_TRACKER_RULES, processDirect);
+  ctx.rules.push(...expandProcessRules({
+    win: processDirectWin || FIELDS_BY_KEY.processDirectWin.default,
+    mac: processDirectMac || FIELDS_BY_KEY.processDirectMac.default,
+    lin: processDirectLin || FIELDS_BY_KEY.processDirectLin.default
+  }, 'DIRECT', ctx.osInfo));
+  pushDownloadRules(ctx.rules, BT_TRACKER_RULES);
   ctx.rules.push(...expandProcessRules({
     win: processProxyWin || FIELDS_BY_KEY.processProxyWin.default,
     mac: processProxyMac || FIELDS_BY_KEY.processProxyMac.default,
@@ -326,7 +323,7 @@ function expandProcess(ctx) {
  * @param {object} ctx 上下文
  */
 function expandDownload(ctx) {
-  pushDownloadRules(ctx.rules, DOWNLOAD_RULESETS, Boolean(ctx.config.enableProcessDirect));
+  pushDownloadRules(ctx.rules, DOWNLOAD_RULESETS);
 }
 
 /**
@@ -425,6 +422,9 @@ function findService(registries, key) {
   }
   const spec = registries.specialized?.[key];
   if (spec) return { category: 'specialized', item: spec };
+  // 单组规则来源（广告拦截）与其它自带完整声明的目录条目
+  const grouped = registries.groups?.[key] || ADS_GROUPS[key];
+  if (grouped) return { category: 'groups', item: grouped };
   return null;
 }
 

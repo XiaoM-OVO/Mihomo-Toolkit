@@ -214,16 +214,6 @@ export interface ToolkitConfig {
   include?: string[];
   /** 动态自定义服务字典 */
   customServices?: Record<string, any>;
-  /** 激活的 AI 服务列表 */
-  aiServices?: string[];
-  /** 激活的流媒体服务列表 */
-  streamingServices?: string[];
-  /** 激活的社交平台服务列表 */
-  socialServices?: string[];
-  /** 激活的游戏平台服务列表 */
-  gameServices?: string[];
-  /** 激活的系统服务列表 */
-  systemServices?: string[];
   /** AI 兜底优选地区列表 */
   aiPreferredRegions?: string[];
 
@@ -307,34 +297,10 @@ export interface ToolkitConfig {
   iconRepoLige47?: string;
 
   // 核心分流开关
-  /** 广告拦截分流 */
-  enableAdBlock?: boolean;
-  /** AI 助手独立分流 */
-  enableAI?: boolean;
-  /** Telegram 独立分流 */
-  enableTelegram?: boolean;
-  /** 流媒体服务分流 */
-  enableStreaming?: boolean;
-  /** 游戏平台分流 */
-  enableGame?: boolean;
   /** 系统服务分流 */
-  enableSystemServices?: boolean;
 
   // 扩展分流开关
-  /** 激进广告拦截规则集 (anti-AD) */
-  enableAntiAD?: boolean;
-  /** GitHub 极速分流 */
-  enableGitHub?: boolean;
-  /** 学术资源分流 */
-  enableScholar?: boolean;
-  /** 海外社交分流 */
-  enableSocial?: boolean;
-  /** 加密货币分流 */
-  enableCrypto?: boolean;
   /** 金融支付分流 */
-  enablePayPal?: boolean;
-  /** WebRTC 专项分流 */
-  enableWebRTC?: boolean;
   /** 家宽节点注入映射：键=地区("all" / "hk" / "us")，值=目标策略组列表 */
   residentialNodeGroups?: Record<string, string[]>;
 
@@ -355,8 +321,6 @@ export interface ToolkitConfig {
   geositeRepo?: string;
   /** geoip 网段规则集仓库路径（默认 MetaCubeX/meta-rules-dat@meta/geo/geoip） */
   geoipRepo?: string;
-  /** dev 分类下启用的服务 key 列表（默认 ["github", "scholar"]） */
-  devServices?: string[];
 
   // 进程分流名单（P2P 下载软件防封号）
   /** Windows 强制直连进程名单 */
@@ -451,12 +415,8 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   // 📡 DNS 策略与安全沙箱
   /** DNS 覆写总开关 */
   overwriteDns?: boolean;
-  /** 进程直连防漏开关（P2P/BT 应用强制直连，见 processDirectWin/Mac/Lin） */
-  enableProcessDirect?: boolean;
   /** 流量审计：非标端口流量强制直连 */
   enableTrafficAudit?: boolean;
-  /** 屏蔽海外 UDP 443 (QUIC)，强制降级 TCP */
-  enableQUICReject?: boolean;
   /** 覆写 TUN 配置 */
   overwriteTun?: boolean;
   /** 覆写 Sniffer 域名嗅探器配置 */

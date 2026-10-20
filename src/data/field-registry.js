@@ -136,60 +136,17 @@ const FIELDS = [
     baseline: SKELETON_EXEMPT_GROUPS, normalize: 'text', group: '策略组建组与 UI 面板',
     doc: '在骨架豁免基线之外追加「豁免空组剪枝清理」的策略组名' },
 
-  // ── 【4. 核心分流开关】 ───────────────────────────────────────────────────
-  { key: 'enableAdBlock', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '核心分流开关', doc: '广告拦截' },
-  { key: 'enableAI', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '核心分流开关', doc: 'AI 助手独立分流' },
-  { key: 'enableTelegram', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '核心分流开关', doc: 'Telegram 独立分流' },
-  { key: 'enableStreaming', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '核心分流开关', doc: '流媒体服务分流' },
-  { key: 'enableGame', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '核心分流开关', doc: '游戏平台分流' },
-  { key: 'enableSystemServices', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '核心分流开关', doc: '系统服务分流' },
-
-  // ── 【5. 扩展分流开关】 ───────────────────────────────────────────────────
+  // ── 【4. 扩展分流服务】 ───────────────────────────────────────────────────
+  // 分流不再有开关：哪些品类 / 服务参与分流，只由 `routing` 表决定
+  // （默认表见 src/data/default-routing.js：表里出现即生效，没写就没有）。
   { key: 'customServices', type: 'object', default: {}, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '行内自定义服务字典' },
-  { key: 'aiServices', type: 'string[]', default: ['chatgpt', 'gemini', 'claude', 'copilot'],
-    merge: 'override', trust: 'any', group: '扩展分流开关', doc: 'AI 服务清单' },
-  { key: 'streamingServices', type: 'string[]',
-    default: ['youtube', 'netflix', 'bilibili', 'disney', 'spotify', 'tiktok', 'bahamut', 'pixiv', 'twitch'],
-    merge: 'override', trust: 'any', group: '扩展分流开关', doc: '流媒体服务清单' },
-  { key: 'socialServices', type: 'string[]', default: ['twitter', 'facebook', 'instagram', 'discord'],
-    merge: 'override', trust: 'any', group: '扩展分流开关', doc: '海外社交服务清单' },
-  { key: 'gameServices', type: 'string[]',
-    default: ['steam', 'epic', 'riot', 'blizzard', 'nintendo', 'playstation', 'xbox', 'ubisoft', 'origin', 'ea'],
-    merge: 'override', trust: 'any', group: '扩展分流开关', doc: '游戏平台服务清单' },
-  { key: 'systemServices', type: 'string[]', default: ['microsoft', 'apple', 'google'],
-    merge: 'override', trust: 'any', group: '扩展分流开关', doc: '操作系统云服务清单' },
-  { key: 'devServices', type: 'string[]', default: ['github', 'scholar'],
-    merge: 'override', trust: 'any', group: '扩展分流开关', doc: '开发者与学术服务清单' },
+    group: '扩展分流服务', doc: '行内自定义服务字典' },
   { key: 'aiPreferredRegions', type: 'string[]', default: ['us', 'jp', 'tw', 'sg', 'kr', 'eu'],
-    merge: 'override', trust: 'any', group: '扩展分流开关', doc: 'AI 策略组地区保底优先列表' },
-  { key: 'enableAntiAD', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '激进广告拦截 (anti-AD)' },
-  // 注：GitHub / 学术 的启停以 devServices 为准，下述开关仅具备「关闭」语义
-  //     （置 false 可强制关闭，置 true 不会在 devServices 缺失该项时反向启用）。
-  //     本区域策略组将改为声明式拓扑，详见 ROADMAP M3「策略组硬编码不可扩展」。
-  { key: 'enableGitHub', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '开发者选项分流（仅关闭：需 devServices 含 github）' },
-  { key: 'enableScholar', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '学术资源分流（仅关闭：需 devServices 含 scholar）' },
-  { key: 'enableSocial', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '海外社交分流' },
-  { key: 'enableCrypto', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '加密货币分流' },
-  { key: 'enablePayPal', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '金融支付分流' },
-  { key: 'enableResidential', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '家宽节点分流' },
-  { key: 'enableWebRTC', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: 'WebRTC 专项分流' },
+    merge: 'override', trust: 'any', group: '扩展分流服务', doc: 'AI 策略组地区保底优先列表' },
   { key: 'residentialNodeGroups', type: 'object', default: {}, merge: 'override', trust: 'any',
-    group: '扩展分流开关', doc: '家宽节点注入映射' },
+    group: '扩展分流服务', doc: '家宽节点注入映射' },
+  { key: 'enableResidential', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '扩展分流服务', doc: '家宽节点分流' },
 
   // ── 【6. 网络测速与规则集】 ───────────────────────────────────────────────
   { key: 'testInterval', type: 'number', default: 300, merge: 'override', trust: 'any',
@@ -228,12 +185,8 @@ const FIELDS = [
     merge: 'override', trust: 'local', group: 'DNS 与 Hosts 安全面', doc: '节点服务器域名专用解析 DNS' },
 
   // ── 【8. 安全防漏与内核覆写】 ─────────────────────────────────────────
-  { key: 'enableProcessDirect', type: 'boolean', default: true, merge: 'override', trust: 'any',
-    group: '安全防漏与内核覆写', doc: '进程直连防漏' },
   { key: 'enableTrafficAudit', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '安全防漏与内核覆写', doc: '流量审计' },
-  { key: 'enableQUICReject', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '安全防漏与内核覆写', doc: 'QUIC 智能分流' },
   { key: 'overwriteTun', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '安全防漏与内核覆写', doc: '覆写 TUN 配置' },
   { key: 'overwriteDns', type: 'boolean', default: true, merge: 'override', trust: 'any',
