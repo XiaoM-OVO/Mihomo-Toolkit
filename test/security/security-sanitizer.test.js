@@ -246,6 +246,22 @@ describe('【Security】控制面净化与 DNS 消毒沙箱 (sanitizer)', () => 
       assert.deepStrictEqual(hosts['tracker.example.net'], '93.184.216.34');
     });
 
+    it('sanitizeHosts - 拒绝单 label 泛域名（+.com 等价于劫持整个 TLD）', () => {
+      const { hosts, findings, dropped } = sanitizeHosts({
+        '+.com': '6.6.6.6',
+        '*.cn': '6.6.6.6',
+        '+.example.com': '1.2.3.4',
+        'nas': '1.2.3.4'
+      });
+      assert.strictEqual(hosts['+.com'], undefined, 'TLD 泛域名未被拒绝');
+      assert.strictEqual(hosts['*.cn'], undefined, 'TLD 泛域名未被拒绝');
+      assert.deepStrictEqual(hosts['+.example.com'], '1.2.3.4', '正常泛域名不应被误杀');
+      // 单 label 的普通映射（局域网主机名）不受影响，只有泛域名写法才是劫持
+      assert.deepStrictEqual(hosts.nas, '1.2.3.4');
+      assert.ok(findings.some(f => f.id === 'HOSTS-TLD-WILDCARD'));
+      assert.strictEqual(dropped.filter(d => d.reason === 'tld-wildcard').length, 2);
+    });
+
     it('sanitizeHosts - allowInternal 仅在用户显式开启时放行内网映射', () => {
       const { hosts } = sanitizeHosts({ 'nas.lan': '192.168.1.5' }, { allowInternal: true });
       assert.deepStrictEqual(hosts['nas.lan'], '192.168.1.5');

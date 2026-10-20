@@ -44,6 +44,7 @@ hosts:
   "github.com": "6.6.6.6"
   "paypal.com": "6.6.6.6"
   "node.airport.com": "104.16.1.1"
+  "+.com": "6.6.6.6"
 dns:
   enable: true
   listen: "0.0.0.0:53"
@@ -120,6 +121,8 @@ describe('【Security】交付契约与控制面净化 (delivery-contract)', () 
         assert.equal(d.hosts['github.com'], undefined, 'hosts 劫持 github.com 未被拦截');
         assert.equal(d.hosts['paypal.com'], undefined, 'hosts 劫持 paypal.com 未被拦截');
         assert.equal(d.dns['nameserver-policy']['paypal.com'], undefined, 'DNS 通道劫持 paypal.com 未被拦截');
+        // 5b. 父域方向不得继承：`+.com` 曾是节点域名的「父域」，能整域劫持全部 .com
+        assert.equal(d.hosts['+.com'], undefined, 'TLD 泛域名 hosts 未被拦截');
 
         // 6. 保留键不得被订阅覆盖
         const cnPolicy = d.dns['nameserver-policy']['rule-set:cn-domain'];

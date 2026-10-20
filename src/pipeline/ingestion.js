@@ -205,12 +205,28 @@ function extractAssetDomains(proxies = [], subUrl = '') {
   return domains;
 }
 
-/** 判定是否属于该订阅资产域名的子域或所属域 */
+/**
+ * 判定是否属于该订阅资产（节点域名）自身或其子域。
+ *
+ * 两条边界：
+ *   - 向下继承：`cdn.node.example.com` 受资产 `node.example.com` 覆盖（合法用途）。
+ *   - 向上覆盖：订阅自己的 `+.example.com` 可以覆盖资产 `node.example.com`，
+ *     但**必须比 TLD 更窄**（至少两个 label）。历史实现无条件允许父域方向，
+ *     于是 `hosts: { "+.com": "6.6.6.6" }` 把整个 TLD 纳入闭包——节点域名永远是
+ *     `something.com`，`com` 就成了它的「父域」；而 `sanitizeHosts` 的受保护域名
+ *     判定只查子域方向，拦不住单 label 域名，产物里就出现整域劫持。
+ *     单 label 的向上覆盖没有任何正当用途，一律拒绝。
+ */
 function matchesAssetDomain(domainOrPattern, assetDomains) {
   if (!domainOrPattern || typeof domainOrPattern !== 'string') return false;
-  const clean = domainOrPattern.toLowerCase().replace(/^\+?\./, '').replace(/^\*\./, '');
+  const raw = domainOrPattern.trim().toLowerCase();
+  const isWildcard = /^(\+|\*)\./.test(raw);
+  const clean = raw.replace(/^\+?\./, '').replace(/^\*\./, '');
   for (const asset of assetDomains) {
-    if (asset === clean || asset.endsWith('.' + clean) || clean.endsWith('.' + asset)) {
+    if (asset === clean || clean.endsWith('.' + asset)) {
+      return true;
+    }
+    if (isWildcard && clean.includes('.') && asset.endsWith('.' + clean)) {
       return true;
     }
   }

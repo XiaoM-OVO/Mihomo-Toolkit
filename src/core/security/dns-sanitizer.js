@@ -436,6 +436,19 @@ function sanitizeHosts(hostsMap, options = {}) {
 
     if (values.length === 0) continue;
 
+    // 单 label 泛域名（`+.com` / `*.cn`）等价于「劫持整个 TLD」，
+    // 受保护域名清单是逐域名的，天然拦不住这种「父域」写法。
+    // hosts 的合法用途不会以顶级域为键，因此这里无条件拒绝（fail-closed）。
+    const isWildcard = /^(\+|\*)\./.test(key);
+    if (isWildcard && !bare.includes('.')) {
+      findings.push({
+        id: 'HOSTS-TLD-WILDCARD', severity: 'critical',
+        note: `订阅试图用泛域名劫持整个顶级域 ${key} -> ${values.join(', ')}`
+      });
+      dropped.push({ key, values, reason: 'tld-wildcard' });
+      continue;
+    }
+
     // 受保护域名检测（支持用户显式白名单 userTrustedDomains 豁免）
     const isExempt = trustedSet.has(bare) || [...trustedSet].some(t => bare.endsWith('.' + t));
     const suffixHit = !isExempt && [...protectedSet].find(p => bare === p || bare.endsWith(`.${p}`));
