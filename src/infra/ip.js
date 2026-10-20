@@ -61,13 +61,12 @@ function isPrivateIPv6(ip) {
       } catch {}
     }
 
-    // NAT64 (64:ff9b::/96)
-    if (clean.startsWith('64:ff9b::')) {
-      const rest = clean.slice(9);
-      if (ipaddr.isValid(rest)) {
-        const parsedRest = ipaddr.parse(rest);
-        if (parsedRest.kind() === 'ipv4') return parsedRest.range() !== 'unicast';
-      }
+    // NAT64 (64:ff9b::/96)：内嵌 IPv4 看最后 32 位，**不能依赖文本形态**——
+    // `64:ff9b::7f00:1` 与 `64:ff9b::127.0.0.1` 是同一个地址，
+    // 旧实现按字符串取 `rest` 再解析，十六进制写法会被当成 IPv6 而漏判。
+    if (addr.range() === 'rfc6052' || clean.startsWith('64:ff9b::')) {
+      const embedded = new ipaddr.IPv4(addr.toByteArray().slice(12));
+      return embedded.range() !== 'unicast';
     }
 
     return addr.range() !== 'unicast';
