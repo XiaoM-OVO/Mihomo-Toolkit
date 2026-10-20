@@ -316,7 +316,7 @@ groups:
 
 **10.3 激活语义（`ref` 组按引用生成）**
 
-- 由 `ref` 派生的服务组，只有被至少一条生效的 `routing` 条目（显式 `rule` / `service`，或启用的 `preset`）作为目标引用时，才实际生成；无引用 = 不生成 → 与今日「开关关闭」等价，默认产物因此零漂移。
+- 由 `ref` 派生的服务组，只有被至少一条生效的 `routing` 条目（显式 `rule` / `service`，或启用的 `preset`）作为目标引用时，才实际生成；无引用 = 不生成 → 与今日「开关关闭」等价。**机制迁移本身不应改变默认产物**；默认值的主动调整另按 10.9 走显式变更流程。
 - 用户完整自写的组（无 `ref`）始终生成，即使暂无路由引用（允许占位组 / 手选组）。
 - 因此批量开启 / 关闭是**一行**：`routing: [{ preset: social }]` 或 `{ preset: social, disabled: true }`，不必逐条增删 `groups`。
 
@@ -378,13 +378,24 @@ groups:
 
 **10.8 验收标准（批次 3 完成判据）**
 
-1. **默认产物逐字节基线**：`test/pipeline/default-output-golden.test.js` 仍比对 `proxies` / `proxy-groups` / `rules` / `rule-providers` / `dns` / `tun` / `sniffer`，规则顺序参与比较；批次 3 后默认 golden **零漂移**，任何漂移须在提交信息说明原因。
+1. **默认产物基线（允许变更，但必须显式）**：`test/pipeline/default-output-golden.test.js` 仍比对 `proxies` / `proxy-groups` / `rules` / `rule-providers` / `dns` / `tun` / `sniffer`，规则顺序参与比较。基线**不是「不可变的真理」**——默认值本来就是可修的对象；它的职责是让**每一次变化显式可见**：任何默认产物差异只能通过 `node scripts/gen-default-output-golden.js` 更新，且必须在该笔提交信息中逐条说明「变了什么、为什么、影响谁」；未说明的差异一律视为回归。计划内的默认值调整（修正规则顺序、增删默认组、改默认开关等）单独成笔，不与机制迁移混提，保证可单独回滚。
 2. **顺序可测**：新增「调换两条 `routing` 条目 → 命中目标随之改变」的回归测试。
 3. **改名不断链**：`{ ref: X, name: Y }` 后 `routing` 目标随动；目标指向不存在组 → 配置期 fail-closed。
 4. **批量一行**：`{ preset: X }` 与 `{ preset: X, disabled: true }` 各一条集成测试。
 5. **组合场景回归**：默认 / 停用单项 / 停用整批 / 覆盖同名组 / include 片段 / 悬空目标 / 重复匹配式 / 空节点池。
 6. **结构性字段核对**：`coreRegions` / `minorNodeThreshold` / `regionGroupType` / `enableRegionHashLB` 逐项确认只影响分池与折叠。
 7. **合并表达**：`{ service: facebook, to: <自定义组> }` 产出的规则目标与组清单一致（取代聚合机制的回归守卫）。
+
+**10.9 默认值审查（批次 3 附带，不阻塞机制迁移）**
+
+机制迁移完成后单独一笔「默认值复审」，逐项确认（可判定「维持现状」并要求在文档记录）：
+
+- A 类开关的默认值：现默认开 = AI / 流媒体 / 游戏 / 系统服务 / 专项 telegram / GitHub / 学术 / 广告 / 进程直连；默认关 = 社交 / 加密 / PayPal / WebRTC / QUIC 拒绝 / 国内组 / anti-ad。
+- 默认 `routing` 顺序是否仍然合理（例如 `ads` 与 `lan-domain` 的先后、`domestic` 是否应在 `non-cn` 之前）。
+- 默认组名 / 展示（含 emoji）是否仍合适。
+- `CONFIGURATION.md` 的默认值表与代码默认值是否一致。
+
+每项变更走 10.8 第 1 条的显式基线流程；「已审、维持」也写进结论，避免下次重新讨论。
 
 **附：选型过程（历史，已归档为结论）**
 
