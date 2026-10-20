@@ -227,10 +227,19 @@ coreRegions:                     # 主力免折叠大区清单 (低于阈值也�
   - "kr"
   - "sg"
   - "us"
-enableAI: true                   # 独立 ChatGPT / Claude / Gemini 策略组
-enableStreaming: true            # 独立 Netflix / YouTube / Disney+ 策略组
-enableSocial: true               # 独立 Telegram / Twitter 策略组
-enableGame: true                 # 独立游戏平台策略组
+routing:                          # 分流表：顺序即优先级，表里没有的分类不会建组
+  - preset: subscription
+  - service: ad-block
+  - preset: ai                    # 独立 ChatGPT / Claude / Gemini 策略组
+  - preset: streaming             # 独立 Netflix / YouTube / Disney+ 策略组
+  - preset: game                  # 独立游戏平台策略组
+  - preset: dev
+  - service: telegram
+  - preset: system
+  - preset: process
+  - preset: download
+  - preset: domestic
+  - preset: final
 isolateHighMulti: true           # 大倍率节点专属隔离组 (防偷跑流量)
 
 # 6. 内核优化

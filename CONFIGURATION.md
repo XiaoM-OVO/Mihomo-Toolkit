@@ -30,8 +30,8 @@
   - [1. 基础全局配置](#1-基础全局配置)
   - [2. 节点清洗与处理](#2-节点清洗与处理)
   - [3. 策略组建组与 UI 面板](#3-策略组建组与-ui-面板)
-  - [4. 核心分流开关](#4-核心分流开关)
-  - [5. 扩展分流开关](#5-扩展分流开关)
+  - [4. 分流表 (routing)](#4-分流表-routing)
+  - [5. 扩展分流服务](#5-扩展分流服务)
   - [6. 网络测速与规则集](#6-网络测速与规则集)
   - [7. DNS 与 Hosts 安全面](#7-dns-与-hosts-安全面)
   - [8. 安全防漏与内核覆写](#8-安全防漏与内核覆写)
@@ -66,7 +66,7 @@
 | 信任等级 | 标记 | 含义与安全约束 | 典型字段 |
 | :--- | :--- | :--- | :--- |
 | **可信本地** | `trust: 'local'` | **仅允许在本地配置文件声明**。远程 `?config=` 参数传入时会被强行剥夺（剥离并发出安全审计警告），防止外部攻击者越权操控服务器。 | `include`, `servicesConfigFile`, `output`, `customRules`, `customRuleProviders`, `customGroups`, `groups`, `dnsListen`, `dnsAllowNonLoopback`, `hosts`, `nameserverPolicy`, `protectedDomains`, `security`, `fakeIpFilter` 等 |
-| **任意来源** | `trust: 'any'` | 本地配置与远程 `?config=` 均有权修改，属于纯粹的展示与节点清洗偏好。 | `logLevel`, `enableAI`, `trafficDirection`, `renameTemplate`, `enableDedupe` 等 |
+| **任意来源** | `trust: 'any'` | 本地配置与远程 `?config=` 均有权修改，属于纯粹的展示与节点清洗偏好。 | `logLevel`, `routing`, `trafficDirection`, `renameTemplate`, `enableDedupe` 等 |
 
 ### 1.3 合并语义：覆盖 (Override) 与基线追加 (Additive)
 
@@ -227,7 +227,7 @@ customGroups:
 
 #### 2.1.1 统一策略组声明清单 (`groups`)
 
-`groups` 是策略组的**单一声明入口**：它把「要哪些组」收敛成一张清单，取代过去散落的 `enableAI` / `enableStreaming` 等建组开关与 `aiServices` / `streamingServices` 等服务清单字段。
+`groups` 是策略组的**单一声明入口**：它把「要哪些组」收敛成一张清单，取代过去散落的建组开关与服务清单字段（两者已在批次 3 删除，建组改为「规则引用驱动」，见第 4 节）。
 
 - **声明即激活，注释即关闭**：列在清单里的条目就生效，从清单里删掉（或注释掉）即关闭；不存在「某个开关决定某个组存不存在」的第二条路径。
 - **`{ ref: <键> }` 引用内置组目录**：内置组定义内置于程序（`src/config/catalog.js`），无需外部文件。引用即原样插入该组的完整声明（含其 `match` / `proxies` / `rules` / `providers`），并允许**条目内覆写任意字段**。
@@ -389,13 +389,13 @@ servicesConfigFile: "./services.config.yaml"
 
 #### 规则语法与语义化宏目标 (`target`)
 - **语义继承**：如果服务 key 与官方内置服务相同（如 `chatgpt`），系统会自动执行属性合并，你可以仅覆盖名称、图标或地区偏好，其余底层规则完全继承。
-- **自动激活**：在 `customServices` 中声明的自定义服务会自动并入激活列表，无需在 `aiServices` 或 `gameServices` 中再次重复声明。
+- **自动激活**：在 `customServices` 中声明的自定义服务会自动并入对应分类的预设展开，无需在 `routing` 里再点名（想只留它一个就改用逐条 `{ service }`）。
 - **语义化宏目标 (`target`)**：
   - `@service`（或 `@self` / 省略目标）：动态路由至该分类的默认聚合组（如游戏的 `🎮 游戏服务`）或独立策略组；
   - `@download`：动态路由至该分类的下载聚合组（如游戏的 `🎮 游戏下载`）；
   - 显式目标名（如 `DIRECT`、`香港节点` 或自定义策略组）：原样透传。
 - **防幽灵组铁律 (Anti-Ghost Group)**：游戏分类下的自定义规则严禁直接以自定义游戏名称作为路由目标，默认与宏目标严格归并在预设聚合组中，杜绝产生不存在的幽灵策略组。
-- **声明驱动子规则集按需激活**：游戏平台规则集庞大，系统默认仅根据 `gameServices`（如 `['steam', 'epic']`）激活并拉取对应 Provider；未声明的内置平台不会拉取网络规则集，杜绝配置臃肿。
+- **声明驱动子规则集按需激活**：游戏平台规则集庞大，用 `{ service: 'steam' }` 这类逐条点名即可只激活需要的平台；未写进表的平台不会拉取网络规则集，杜绝配置臃肿。
 
 ---
 
@@ -521,41 +521,61 @@ include:
 
 ---
 
-### 4. 核心分流开关
+### 4. 分流表 (`routing`)
+
+`routing` 是**规则生成的唯一来源**：数组顺序即匹配优先级，前面写什么就先匹配什么。不写这张表时用出厂默认表（`src/data/default-routing.js`），因此「默认值就是配置」——想改默认行为，改表即可，不再有第二套开关。
 
 | 参数名 | 类型 | 默认值 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| `enableAdBlock` | `boolean` | `true` | `any` | `override` | 启用内置轻量广告与隐私追踪拦截分流（默认 REJECT）。 |
-| `enableAI` | `boolean` | `true` | `any` | `override` | 启用独立 AI 助手大类与分流策略组（ChatGPT、Claude、Gemini 等）。 |
-| `enableTelegram` | `boolean` | `true` | `any` | `override` | 启用 Telegram 独立分流策略组。 |
-| `enableStreaming` | `boolean` | `true` | `any` | `override` | 启用全球流媒体大类与独立分流策略组（YouTube、Netflix、Disney+ 等）。 |
-| `enableGame` | `boolean` | `true` | `any` | `override` | 启用全球主要游戏平台分流策略组（Steam、Epic、PlayStation、Xbox 等）。 |
-| `enableSystemServices`| `boolean`| `true` | `any` | `override` | 启用操作系统云服务分流策略组（Microsoft、Apple、Google）。 |
-| ~~`enableDomesticGroup`~~ | — | — | — | — | **已删除**：改为在 `routing` 的 `domestic` 条目上写 `to: 中国分流`——中国分流组只在被规则引用时生成。 |
+| `routing` | `object[]` | 出厂默认表（13 条） | `any` | `override` | **分流表**：数组顺序即优先级；条目三选一（`preset` / `service` / `rule`），均可带 `to` 覆写目标、`disabled: true` 跳过。 |
+
+条目形态：
+
+| 写法 | 含义 | 例 |
+| :--- | :--- | :--- |
+| `{ preset: '<名>' }` | 展开一整个预设段 | `{ preset: 'ai' }` |
+| `{ service: '<键>' }` | 只展开单个服务（内置目录键或 `customServices` 键） | `{ service: 'netflix' }` |
+| `{ rule: '<规则>' }` | 一条原生规则，两段式自动补目标、三段式替换目标 | `{ rule: 'DOMAIN-SUFFIX,example.com', to: 'DIRECT' }` |
+| `to` | 目标覆写：内置目标（`DIRECT` / `REJECT` / `REJECT-DROP`）或组引用键 | `{ service: 'twitter', to: 'chatgpt' }` |
+| `disabled: true` | 跳过该条目（用于「默认表里保留、按需打开」） | 见 `quic` / `social` 示例 |
+
+预设清单（`PRESET_DEFINITIONS`）：`subscription`（订阅直连与基础网络）、`quic`、`ads`、`ai`、`streaming`、`social`、`game`、`dev`、`specialized`、`system`、`process`、`download`、`domestic`、`final`。分类预设 = **该分类下全部服务 + `customServices` 里新增的服务**；只要一部分就改用逐条 `{ service }`。
+
+组与规则的关系：**规则指向谁，谁才会被建出来**。表里没有出现的分类不会生成策略组；反过来，`groups` 里用 `{ ref }` 声明的组即使表里没有规则也会建出来（供手动切换），只是不会有流量进它。
+
+常用改动：
+
+```yaml
+routing:
+  - preset: subscription
+  - service: ad-block
+  - preset: ai
+  - preset: streaming
+  - service: netflix        # 只留 Netflix
+  - preset: game
+  - preset: dev
+  - service: telegram
+  - preset: system
+  - preset: process         # 去掉这一条 = 不要进程直连 / BT 规则
+  - preset: download
+  - preset: domestic
+  - preset: final
+```
+
+> 从旧版开关（`enableAI` / `enableStreaming` / `aiServices` …）迁移：对照表见 `ROADMAP.md` 第 10.7 节。旧字段已从 schema 删除，配置里再写会在校验期报「未知字段」。
 
 ---
 
-### 5. 扩展分流开关
+### 5. 扩展分流服务
 
 | 参数名 | 类型 | 默认值 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| `customServices` | `object` | `{}` | `any` | `override` | **行内自定义服务定义字典**：新增或覆写具体服务的名称、正则、图标及规则集。 |
-| `aiServices` | `string[]` | `['chatgpt', 'gemini', 'claude', 'copilot']` | `any` | `override` | 激活的 AI 细分服务列表（增删 key 即可启闭对应独立策略组）。 |
-| `streamingServices`| `string[]`| `['youtube', 'netflix', ...]` | `any` | `override` | 激活的流媒体细分服务列表。 |
-| `socialServices` | `string[]` | `['twitter', 'facebook', 'instagram', 'discord']`| `any` | `override` | 激活的海外社交平台细分服务列表。每个服务各成一个策略组（一服务一组），可单独引用、单独排序，不再有「社交平台」合并组。 |
-| `gameServices` | `string[]` | `['steam', 'epic', ...]` | `any` | `override` | 激活的游戏细分服务列表（按需拉取对应规则集与 Provider，未声明项不下载不注入，防规则臃肿与幽灵组）。 |
-| `systemServices` | `string[]` | `['microsoft', 'apple', 'google']` | `any` | `override` | 激活的操作系统云服务列表。 |
-| `devServices` | `string[]` | `['github', 'scholar']` | `any` | `override` | 激活的开发者与学术服务列表。 |
+| `customServices` | `object` | `{}` | `any` | `override` | **行内自定义服务定义字典**：新增或覆写具体服务的名称、正则、图标及规则集。新增服务在预设展开时自动并入对应分类，也可用 `{ service: '<键>' }` 单独点名。 |
 | `aiPreferredRegions`| `string[]`| `['us', 'jp', 'tw', 'sg', 'kr', 'eu']` | `any` | `override` | AI 服务策略组默认保底优选的大区排序（无专属节点时依序排布）。 |
-| `enableAntiAD` | `boolean` | `false` | `any` | `override` | 启用激进第三方 anti-AD 规则集（高强度去广告）。 |
-| `enableGitHub` | `boolean` | `true` | `any` | `override` | 开发者服务分流（控制 GitHub 独立组，需 devServices 包含 github）。 |
-| `enableScholar` | `boolean` | `true` | `any` | `override` | 学术资源分流（控制 Scholar 独立组，需 devServices 包含 scholar）。 |
-| `enableSocial` | `boolean` | `false` | `any` | `override` | 海外社交网络聚合分流开关。 |
-| `enableCrypto` | `boolean` | `false` | `any` | `override` | 加密货币交易所与行情分流策略组（Binance、OKX、Coinbase 等）。 |
-| `enablePayPal` | `boolean` | `false` | `any` | `override` | PayPal 独立金融分流策略组。 |
 | `enableResidential`| `boolean`| `false` | `any` | `override` | 启用家宽/住宅 IP 节点独立成组（「🏠 家宽优选」）。 |
-| `enableWebRTC` | `boolean` | `false` | `any` | `override` | WebRTC 专项分流策略组（针对 STUN / 实时音视频）。 |
 | `residentialNodeGroups`| `object`| `{}` | `any` | `override` | 将家宽节点注入到指定业务策略组的映射表（如 `{ all: ['🤖 ChatGPT'] }`）。 |
+
+专项服务（加密货币 / PayPal / WebRTC / QUIC / Telegram）不再有独立开关：要就在表里写 `{ service: 'crypto' }`、`{ preset: 'quic' }` 之类，不要就删掉。
 
 ---
 
@@ -591,9 +611,9 @@ include:
 
 | 参数名 | 类型 | 默认值 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| `enableProcessDirect`| `boolean`| `true` | `any` | `override` | **P2P/BT 进程防漏**：强制将 qBittorrent、Thunder 等下载工具直连，防机场封号。 |
 | `enableTrafficAudit` | `boolean`| `true` | `any` | `override` | **流量审计防漏**：强制非标端口（非 53/80/443 等常用服务端口）直连，防恶意吸血流量。 |
-| `enableQUICReject` | `boolean` | `false` | `any` | `override` | **QUIC (UDP 443) 拦截**：海外 QUIC 连接拒绝，强制回退 TCP，有效缓解 UDP QoS 限速与缓冲。 |
+
+> **进程直连 / BT 防漏**：不再有独立开关，由 `routing` 的 `{ preset: 'process' }` 整段控制（删掉该条即关闭）；**QUIC 拦截**同理，由 `{ preset: 'quic' }` 控制。
 | `overwriteTun` | `boolean` | `true` | `any` | `override` | 注入高性能 TUN 虚拟网卡配置（包括 gvisor 协议栈、mtu 优化与自动路由）。 |
 | `overwriteDns` | `boolean` | `true` | `any` | `override` | 覆写内核 DNS 总开关（启用权威防污染 Fake-IP 分流解析体系）。 |
 | `overwriteSniffer` | `boolean` | `true` | `any` | `override` | 注入精确域名嗅探器配置（嗅探 TLS SNI 与 HTTP Host，提高路由准确度）。 |
@@ -758,13 +778,22 @@ isolateHighMulti: true
 highMultiThreshold: 2.5
 isolateDownload: true
 
-# 分流开关全开
-enableAI: true
-enableStreaming: true
-enableSocial: true
-enableGame: true
-enableGitHub: true
-enableQUICReject: true # 拒绝海外 QUIC 强制回退 TCP 提高画质
+# 分流表：按需增删（顺序即优先级）
+routing:
+  - preset: subscription
+  - preset: quic            # 拒绝海外 QUIC，强制回退 TCP 提高画质
+  - service: ad-block
+  - preset: ai
+  - preset: streaming
+  - preset: social          # 打开社交（默认表里没有）
+  - preset: game
+  - preset: dev
+  - service: telegram
+  - preset: system
+  - preset: process
+  - preset: download
+  - preset: domestic
+  - preset: final
 
 # 自定义流媒体策略组
 customGroups:
@@ -806,7 +835,6 @@ fakeIpFilterNodes: "smart"
 # 核心安全与防漏
 overwriteTun: true
 overwriteDns: true
-enableProcessDirect: true
 enableTrafficAudit: true
 ```
 

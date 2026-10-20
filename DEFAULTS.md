@@ -13,37 +13,40 @@
 | 路由规则 | 59 |
 | Rule-Provider | 42 |
 
-## 二、开关默认值
+## 二、默认表与开关默认值
 
-「翻转影响」是该开关从默认值改成相反值后，产物增减的数量（样本固定，不含节点信息差异）。
+批次 3 之后，规则与建组都由 `routing` 表决定，`routing` 之外的开关只剩「与规则无关」的几个。
+下表第一列是**表里的条目**：「默认」列说它在出厂表里在不在，最后一列是删/加它以后产物增减多少
+（样本固定，不含节点信息差异；数字来自当初翻转同名旧开关的实测，机制等价）。
 
-| 开关 | 默认 | 翻转 | 产物影响 |
+| `routing` 条目 | 出厂表里 | 改动 | 产物影响 |
 | :--- | :--- | :--- | :--- |
-| `enableAdBlock` | **开** | 关 | −1 组（🚫 广告拦截）、−1 规则、−1 provider |
-| `enableAntiAD` | 关 | 开 | +1 规则、+1 provider（同组） |
-| `enableAI` | **开** | 关 | −4 组（ChatGPT / Gemini / Claude / Copilot）、−4 规则、−4 provider |
-| `enableStreaming` | **开** | 关 | −9 组、−9 规则、−9 provider |
-| `enableSocial` | 关 | 开 | +4 组（Twitter / Facebook / Instagram / Discord）、+4 规则、+4 provider |
-| `enableGame` | **开** | 关 | −2 组（游戏服务 / 游戏下载）、−14 规则、−11 provider |
-| `enableDevServices`（GitHub / 学术） | **开** | 关 | GitHub：−1 组、−1 规则、−1 provider；学术：−1 组、−2 规则、−1 provider |
-| `enableSystemServices` | **开** | 关 | −3 组（Microsoft / Apple / Google）、−3 规则、−3 provider |
-| `enableTelegram` | **开** | 关 | −1 组、−3 规则、−2 provider |
-| `enableCrypto` | 关 | 开 | +1 组、+1 规则、+1 provider |
-| `enablePayPal` | 关 | 开 | +1 组、+1 规则、+1 provider |
-| `enableWebRTC` | 关 | 开 | +1 组、+7 规则 |
+| `{ service: 'ad-block' }` | 有 | 删 | −1 组（🚫 广告拦截）、−1 规则、−1 provider |
+| `{ service: 'anti-ad' }` | 无 | 加 | +1 规则、+1 provider（与 ad-block 同组） |
+| `{ preset: 'ai' }` | 有 | 删 | −4 组（ChatGPT / Gemini / Claude / Copilot）、−4 规则、−4 provider |
+| `{ preset: 'streaming' }` | 有 | 删 | −9 组、−9 规则、−9 provider |
+| `{ preset: 'social' }` | 无 | 加 | +4 组（Twitter / Facebook / Instagram / Discord）、+4 规则、+4 provider |
+| `{ preset: 'game' }` | 有 | 删 | −2 组（游戏服务 / 游戏下载）、−14 规则、−11 provider |
+| `{ preset: 'dev' }` | 有 | 删 | −2 组（GitHub / 学术）、−3 规则、−2 provider |
+| `{ preset: 'system' }` | 有 | 删 | −3 组（Microsoft / Apple / Google）、−3 规则、−3 provider |
+| `{ service: 'telegram' }` | 有 | 删 | −1 组、−3 规则、−2 provider |
+| `{ service: 'crypto' }` | 无 | 加 | +1 组、+1 规则、+1 provider |
+| `{ service: 'paypal' }` | 无 | 加 | +1 组、+1 规则、+1 provider |
+| `{ service: 'webrtc' }` | 无 | 加 | +1 组、+7 规则 |
+| `{ preset: 'quic' }` | 无 | 加 | +2 条 `AND` 规则（UDP 443 → REJECT-DROP） |
+| `{ preset: 'process' }` | 有 | 删 | −11 规则（5 进程直连 + 4 BT + 2 下载软件）；BT 不再有规则 |
+| `{ preset: 'download' }` | 有 | 删 | −3 规则（`download-games-cn` / `download-games` / `download-android`） |
+| `{ preset: 'domestic', to: '中国分流' }` | 无 | 加 | +1 组（🇨🇳 中国分流）、国内规则目标由 DIRECT 改为该组 |
 | `enableResidential` | 关 | 开 | +1 组（🏠 家宽优选），无规则 |
-| 国内分流组（`routing` 条目 `to: 中国分流`） | 未引用 | 引用 | +1 组（🇨🇳 中国分流）、国内规则目标由 DIRECT 改为该组；组是否存在只看「有没有规则引用它」 |
-| `enableQUICReject` | 关 | 开 | +2 条 `AND` 规则（UDP 443 → REJECT-DROP） |
-| `enableProcessDirect` | **开** | 关 | −9 规则（进程直连名单）、+2 规则（BT 目标由 DIRECT 改为下载策略） |
 | `enableTrafficAudit` | **开** | 关 | −2 规则（`DST-PORT,53/80/443` 与 `DST-PORT,1-65535`） |
-| `trafficDirection` | `'split'` | `'return'` | DNS 上游互换、QUIC 拦截的 CN / 非 CN 分支翻转、WebRTC 组成员顺序翻转；规则顺序与目标不变（规则走向由 `routing` 的 `to` 决定） |
+| `trafficDirection` | `'split'` | `'return'` | DNS 上游互换、QUIC 拦截的 CN / 非 CN 分支翻转、WebRTC 组成员顺序翻转；规则顺序与目标不变（走向由 `routing` 的 `to` 决定） |
 | `enableRegionHashLB` | 关 | 开 | +1 组（⚖️ 负载均衡-哈希），需要节点支持 |
 | `enableDashboard` | **开** | 关 | 样本下无差异（看板依赖节点信息） |
 
 ## 三、默认规则顺序（59 条）
 
 顺序即优先级（先到先得）。下表是产物中的最终顺序，组名带 emoji 是因为展示层已装饰；
-组装期内部用的是干净名（如 `ChatGPT`、`广告拦截`）。`default-routing` 表必须逐条复现这个顺序。
+组装期内部用的是干净名（如 `ChatGPT`、`广告拦截`）。出厂 `default-routing` 表已逐条复现这个顺序，并由 `test/pipeline/routing-expansion.test.js` 的等价用例守住。
 
 ```text
  1  RULE-SET,lan-domain,DIRECT
@@ -128,10 +131,10 @@
 4. **`enableTrafficAudit` 默认开。**
    影响：`DST-PORT,1-65535,DIRECT` 会把所有走到第 57 条之后的非 80/443 流量直连。
    问题：是否有需要走代理的非标准端口服务会被这条静默放行？
-5. **`enableProcessDirect` 默认开。**
-   影响：BT 客户端进程 + `tracker` / `announce` 关键字直连；关闭后 BT 规则集改走下载策略组。
+5. **`{ preset: 'process' }` 默认在表里（进程直连 / BT 默认直连）。**
+   影响：BT 客户端进程 + `tracker` / `announce` 关键字直连；删掉这一条则 BT 规则整段消失。
    问题：默认直连是否与「下载也走代理」的使用习惯冲突？
-6. **`enableSocial` 默认关，但 `socialServices` 已预置 4 项。**
+6. **`{ preset: 'social' }` 默认不在表里（4 个社交组不生成）。**
    问题：保持默认关，还是像流媒体一样默认开？
 7. **`enableDashboard` 默认开。**
    影响：样本下无产物差异；真实节点上会多出看板相关产物。
@@ -148,6 +151,6 @@
 
 ## 五、结论
 
-- 批次 3 的机制迁移**不改动任何默认值**；上表如有调整，单独成笔并在提交信息中说明变化与影响。
-- 本文的 59 条顺序将作为 `src/data/default-routing.js` 的等价校验基准（见
+- 批次 3 的机制迁移**不改动任何默认值**（基线零漂移由 golden 与等价用例守住）；上表如有调整，改 `src/data/default-routing.js` 或字段注册表的默认值即可，须单独成笔并在提交信息中说明变化与影响。
+- 本文的 59 条顺序是 `src/data/default-routing.js` 的等价校验基准（见
   `test/pipeline/routing-expansion.test.js`）。

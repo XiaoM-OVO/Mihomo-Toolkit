@@ -229,8 +229,8 @@ groups:
 1. ✅ **批次 1（试点 · AI 类别）已完成**：`groups` + `{ ref }` + `rules` 全链路贯通，不变量 2 / 3 / 6 均已有测试守卫（详见下方「批次 1 落地记录」）。
 2. ✅ **批次 2 已完成**（流媒体 / 开发学术 / 系统服务 / 专项服务）：按同构方式迁移，逐个补齐 catalog 条目的 `match` / `proxies` / `type`；`specialized` 条目（telegram 等）一并解决 `process` 进程名单随组交付（详见下方「批次 2 落地记录」）。
    2b. ✅ **批次 2b 已完成**（聚合语义与广告拦截组迁移）：`game` 两个聚合组、`social` 合并组、`ads` 双开关共享组名三类一并下沉到目录条目（详见下方「批次 2b 落地记录」）。
-3. ⏳ **批次 3（规格已定，待实施）**：按第十节「两表模型规格」实施——删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，新增 `routing` 表与 `src/data/default-routing.js` 默认顺序表；`groups` 归一化结果直接落在 `groups` 字段（拆掉当下并入 `customGroups` 的过渡合流）。**本批会改写用户配置，属于用户面不可逆迁移**；实施规格见第十节（已定稿），迁移对照表见 10.7。
-4. ⏳ 批次 4（随批次 3 实施）：文档与类型声明对齐 + 迁移对照表随发版说明给出。
+3. ✅ **批次 3（已实施，2026-10-20）**：按第十节「两表模型规格」实施——删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，新增 `routing` 表与 `src/data/default-routing.js` 默认顺序表；`groups` 归一化结果直接落在 `groups` 字段（拆掉当下并入 `customGroups` 的过渡合流）。**本批会改写用户配置，属于用户面不可逆迁移**；实施规格见第十节（已定稿），迁移对照表见 10.7。
+4. ✅ 批次 4（随批次 3 完成）：文档与类型声明已对齐（CONFIGURATION / DEFAULTS / README / index.d.ts）；迁移对照表见 10.7，随发版说明给出。
 
 **八之二、批次 1 落地记录（含自主决策与残差）**
 
@@ -296,7 +296,7 @@ groups:
 
 **十、已定：两表模型 `groups` + `routing`（批次 3 规格）**
 
-> **状态：已定稿（2026-10-20）。** 批次 3 按本节实施，实施前不改动用户面字段。选型过程、缺陷与已答问题压缩保留在文末附录，便于追溯。
+> **状态：已实施（2026-10-20）。** 本节即批次 3 的实施规格；落地结论见 10.11。选型过程、缺陷与已答问题压缩保留在文末附录，便于追溯。
 
 **10.1 职责边界**
 
@@ -412,14 +412,15 @@ groups:
 
 **残留（批次 3 组目录化时收敛）**：`trafficDirection` 目前仍推导两处「展示性默认」——「中国分流」组成员顺序与「漏网之鱼」兜底顺序。10.3 要求成员顺序写在 `groups` 声明里，但这两组由引擎生成，尚无声明载体；等组目录化（10.6）后改为声明驱动。
 
-**10.11 单一路径与默认值即配置**
+**10.11 单一路径与默认值即配置（已实施）**
 
-不为「旧配置还能跑」保留分支，也不为「行为没变」在代码里写双路：
+> 2026-10-20 落地。结论：不为「旧配置还能跑」保留分支，也不为「行为没变」在代码里写双路。
 
-- `routing` 是规则生成的**唯一来源**，`buildRoutingRules` 那套按开关串联的段序直接删除，不存在「没写 routing 就走旧引擎」的分支。配置未写 `routing` 时取自默认数据表（`DEFAULT_ROUTING`），默认值本身就是配置数据，不是代码里的隐式行为。
-- 分流开关（`enableAI` / `enableStreaming` / `enableSocial` / `enableGame` / `enableSystemServices` / `enableGitHub` / `enableScholar` / `enableAdBlock` / `enableAntiAD` / `enableTelegram` / `enableCrypto` / `enablePayPal` / `enableWebRTC` / `enableProcessDirect`）随批次 3 退役：批量开关由 `routing` 的 `preset` / `disabled` 表达，单项由 `service` 表达（`enableDomesticGroup` / `proxyFirst` 已在 10.10 删除）。
-- 默认值有问题**直接改默认配置数据**（`src/data/default-routing.js`、`src/data/field-registry.js` 的默认值、`src/config/catalog.js` 的目录条目），改完按 10.8 第 1 条更新基线并在提交信息里说明变化即可；不需要为「保持旧行为」加任何补丁层。
-- 验收：代码里不再出现按开关拼接规则/组的段序；`grep` 不到 `enableAdBlock` 一类字段的生产读取（仅允许出现在迁移文档与校验器的「已删除字段」清单里）。
+- `routing` 是规则生成的**唯一来源**：`buildRoutingRules`（段序按开关串联）与 `assembleServiceCategory` 已整段删除，不存在「没写 routing 就走旧引擎」的分支。未写时取自 `DEFAULT_ROUTING`，默认值本身就是配置数据。
+- 退役清单已全部删除（字段注册表 + `index.d.ts` + 示例配置 + golden）：14 个分流开关 + `enableQUICReject` + 6 个服务清单字段（`aiServices` / `streamingServices` / `socialServices` / `gameServices` / `systemServices` / `devServices`）；`enableDomesticGroup` / `proxyFirst` 已在 10.10 删除。批量开关由 `routing` 的 `preset` / `disabled` 表达，单项由 `service` 表达。
+- 建组改为「规则引用驱动」：`buildBuiltinAppRecipes` 只按「规则目标名集合」决定建哪些组，开关不再参与建组；`registries.groups` 与 `{ ref }` 声明继续作为显式建组入口。
+- 默认值改动**直接改数据**（`src/data/default-routing.js`、`src/data/field-registry.js`、`src/config/catalog.js` 条目），按 10.8 第 1 条更新基线并说明。
+- 验收：`grep` 生产代码已无 `enableAdBlock` 一类字段读取（仅存在于迁移文档与「已删除字段」清单）；625 条测试全绿，默认产物零漂移。
 
 **附：选型过程（历史，已归档为结论）**
 
