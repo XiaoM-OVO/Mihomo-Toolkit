@@ -513,113 +513,84 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     validateCustomGroups([{ name: '进程组', process: { win: ['Telegram'] } }]);
   });
 
-  test('strategyMain - groups 的 ref 与内置开关配方等价（流媒体 / 专项 / 开发学术 / 系统服务）', () => {
+  test('strategyMain - ref 与默认表叠加时幂等：不产生重复组、重复规则或重复 Provider', () => {
     const buildRawConfig = () => ({
       proxies: [
         { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
         { name: '🇯🇵 日本 01', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' },
         { name: '🇹🇼 台湾 YouTube 专线', type: 'ss', server: 'tw1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p3' },
-        { name: '🇺🇸 美国 Netflix 专线', type: 'ss', server: 'us1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p4' }
+        { name: '🇺🇸 美国 Netflix 专线', type: 'ss', server: 'us1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p4' },
+        { name: '🎮 游戏专线 01', type: 'ss', server: 'game1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p5' }
       ]
     });
 
-    const scenarios = [
-      {
-        title: '流媒体（含 @matchedNodes 特征池成员）',
-        base: { enableStreaming: true, streamingServices: ['youtube', 'netflix', 'tiktok', 'bahamut', 'bilibili'] },
-        refs: ['youtube', 'netflix', 'tiktok', 'bahamut', 'bilibili']
-      },
-      {
-        title: '专项服务（含 telegram 进程名单）',
-        base: { enableTelegram: true, enableCrypto: true, enablePayPal: true, enableWebRTC: true },
-        refs: ['telegram', 'crypto', 'paypal', 'webrtc']
-      },
-      {
-        title: '开发与学术',
-        base: {},
-        refs: ['github', 'scholar']
-      },
-      {
-        title: '系统服务',
-        base: { enableSystemServices: true },
-        refs: ['google', 'apple', 'microsoft']
-      }
+    const refs = [
+      'youtube', 'netflix', 'telegram', 'github', 'google', 'apple',
+      'game-service', 'game-download', 'ad-block'
     ];
 
-    for (const sc of scenarios) {
-      const base = { minorNodeThreshold: 1, ...sc.base };
-      const byBuiltinSwitch = strategyMain(buildRawConfig(), base);
-      const byRefDeclaration = strategyMain(buildRawConfig(), { ...base, groups: sc.refs.map(ref => ({ ref })) });
+    const plain = strategyMain(buildRawConfig(), { minorNodeThreshold: 1 });
+    const withRefs = strategyMain(buildRawConfig(), {
+      minorNodeThreshold: 1,
+      groups: refs.map(ref => ({ ref }))
+    });
 
-      assert.deepEqual(
-        byRefDeclaration['proxy-groups'],
-        byBuiltinSwitch['proxy-groups'],
-        `${sc.title}: ref 声明与内置开关配方必须产出完全一致的策略组清单`
-      );
-      // 规则集合等价（注入位置差异见批次 3 收敛项），Provider 亦须一一对应
-      assert.deepEqual(
-        [...byRefDeclaration.rules].sort(),
-        [...byBuiltinSwitch.rules].sort(),
-        `${sc.title}: ref 声明与内置开关配方必须产出完全一致的分流规则集合`
-      );
-      assert.deepEqual(
-        Object.keys(byRefDeclaration['rule-providers']).sort(),
-        Object.keys(byBuiltinSwitch['rule-providers']).sort(),
-        `${sc.title}: ref 声明与内置开关配方必须登记一致的 Rule-Provider`
-      );
-    }
+    assert.deepEqual(
+      withRefs['proxy-groups'],
+      plain['proxy-groups'],
+      '默认表已经建好的组，再声明 ref 不得重复建组或改变顺序'
+    );
+    assert.deepEqual(
+      [...withRefs.rules].sort(),
+      [...plain.rules].sort(),
+      'ref 与预设展开指向同一目标时不得产生多余规则'
+    );
+    assert.deepEqual(
+      Object.keys(withRefs['rule-providers']).sort(),
+      Object.keys(plain['rule-providers']).sort(),
+      'ref 与预设展开不得产生多余 Rule-Provider'
+    );
   });
 
-  test('strategyMain - groups 的 ref 与内置开关配方等价（游戏聚合 / 社交合并 / 广告拦截）', () => {
-    const buildRawConfig = () => ({
+  test('strategyMain - 路由表未展开的分类，ref 仍可单独建组（组不依赖规则）', () => {
+    const { DEFAULT_ROUTING } = require('../../src/data/default-routing');
+    const withoutSystem = DEFAULT_ROUTING.filter(entry => entry.preset !== 'system');
+    const rawConfig = {
       proxies: [
-        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
-        { name: '🇯🇵 日本 01', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' },
-        { name: '🎮 游戏专线 01', type: 'ss', server: 'game1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p3' },
-        { name: '🎮 游戏专线 02', type: 'ss', server: 'game2.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p4' }
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
       ]
+    };
+
+    const result = strategyMain(rawConfig, {
+      minorNodeThreshold: 1,
+      routing: withoutSystem,
+      groups: [{ ref: 'google' }]
     });
 
-    const scenarios = [
-      {
-        title: '游戏聚合（含 @matchedNodes 特征池成员）',
-        base: { enableGame: true },
-        refs: ['game-service', 'game-download']
-      },
-      {
-        title: '社交（一服务一组）',
-        base: { enableSocial: true },
-        refs: ['twitter', 'facebook', 'instagram', 'discord']
-      },
-      {
-        title: '广告拦截（同一组名的两条规则来源）',
-        base: { enableAdBlock: true, enableAntiAD: true },
-        refs: ['ad-block', 'anti-ad']
-      }
-    ];
+    assert.ok(
+      result['proxy-groups'].some(g => g.name === '🔍 Google'),
+      '表里没有 system 段时，ref 声明仍应把组建出来（组由引用驱动）'
+    );
+  });
 
-    for (const sc of scenarios) {
-      const base = { minorNodeThreshold: 1, ...sc.base };
-      const byBuiltinSwitch = strategyMain(buildRawConfig(), base);
-      const byRefDeclaration = strategyMain(buildRawConfig(), { ...base, groups: sc.refs.map(ref => ({ ref })) });
+  test('strategyMain - 同一组名的多条规则来源（广告）在表里出现一次即只建一组', () => {
+    const { DEFAULT_ROUTING } = require('../../src/data/default-routing');
+    const routing = DEFAULT_ROUTING.map(entry => (entry.service === 'ad-block' ? { service: 'anti-ad' } : entry));
+    const rawConfig = {
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
+      ]
+    };
 
-      assert.deepEqual(
-        byRefDeclaration['proxy-groups'],
-        byBuiltinSwitch['proxy-groups'],
-        `${sc.title}: ref 声明与内置开关配方必须产出完全一致的策略组清单`
-      );
-      // 规则集合等价（注入位置差异见批次 3 收敛项），Provider 亦须一一对应
-      assert.deepEqual(
-        [...byRefDeclaration.rules].sort(),
-        [...byBuiltinSwitch.rules].sort(),
-        `${sc.title}: ref 声明与内置开关配方必须产出完全一致的分流规则集合`
-      );
-      assert.deepEqual(
-        byRefDeclaration['rule-providers'],
-        byBuiltinSwitch['rule-providers'],
-        `${sc.title}: ref 声明与内置开关配方必须登记一致的 Rule-Provider`
-      );
-    }
+    const result = strategyMain(rawConfig, { minorNodeThreshold: 1, routing });
+    const ads = result['proxy-groups'].filter(g => g.name === '🚫 广告拦截');
+
+    assert.equal(ads.length, 1, 'ad-block / anti-ad 共享同一目标组，只能建一组');
+    assert.ok(
+      result.rules.includes('RULE-SET,anti-ad,🚫 广告拦截'),
+      'anti-ad 条目仍应把规则指向共享组'
+    );
+    assert.ok(!result.rules.some(r => /^RULE-SET,ads,/.test(r)), '换成 anti-ad 后不应再出现 ads 规则');
   });
 
   test('strategyMain - ref 引用专项组时随组交付 PROCESS-NAME 进程规则', () => {

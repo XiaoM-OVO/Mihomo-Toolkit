@@ -142,34 +142,42 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     }
   });
 
-  it('strategy - devServices 与 enableGitHub / enableScholar 动态开关联动', () => {
-    // 1. 默认状态：同时启用 GitHub 与 学术
+  it('strategy - 开发与学术服务由路由表条目决定，可与自定义 dev 服务混排', () => {
+    const { DEFAULT_ROUTING } = require('../../src/data/default-routing');
+
+    // 1. 默认表含 dev 预设：GitHub 与 学术 同时产出
     const defaultCfg = resolveConfig({});
     const defaultRes = expandRouting(defaultCfg, defaultCfg.registries);
     assert.ok(defaultRes.rules.includes('RULE-SET,github,GitHub'));
     assert.ok(defaultRes.rules.includes('RULE-SET,scholar,学术网站'));
 
-    // 2. 仅启用 github
-    const ghOnlyCfg = resolveConfig({ devServices: ['github'] });
-    const ghOnlyRes = expandRouting(ghOnlyCfg, ghOnlyCfg.registries);
-    assert.ok(ghOnlyRes.rules.includes('RULE-SET,github,GitHub'));
-    assert.ok(!ghOnlyRes.rules.includes('RULE-SET,scholar,学术网站'));
-
-    // 3. 清空 devServices
-    const noneCfg = resolveConfig({ devServices: [] });
+    // 2. 删掉 dev 预设：两条规则一起消失
+    const withoutDev = DEFAULT_ROUTING.filter(entry => entry.preset !== 'dev');
+    const noneCfg = resolveConfig({ routing: withoutDev });
     const noneRes = expandRouting(noneCfg, noneCfg.registries);
     assert.ok(!noneRes.rules.includes('RULE-SET,github,GitHub'));
     assert.ok(!noneRes.rules.includes('RULE-SET,scholar,学术网站'));
 
-    // 4. legacy 开关显式为 false 时即使 devServices 声明也生效关闭
-    const offGhCfg = resolveConfig({ enableGitHub: false, devServices: ['github', 'scholar'] });
-    const offGhRes = expandRouting(offGhCfg, offGhCfg.registries);
-    assert.ok(!offGhRes.rules.includes('RULE-SET,github,GitHub'));
-    assert.ok(offGhRes.rules.includes('RULE-SET,scholar,学术网站'));
+    // 3. 只点名 github：学术规则不再出现
+    const ghOnlyCfg = resolveConfig({
+      routing: [
+        ...withoutDev.filter(entry => entry.preset !== 'final'),
+        { service: 'github' },
+        { preset: 'final' }
+      ]
+    });
+    const ghOnlyRes = expandRouting(ghOnlyCfg, ghOnlyCfg.registries);
+    assert.ok(ghOnlyRes.rules.includes('RULE-SET,github,GitHub'));
+    assert.ok(!ghOnlyRes.rules.includes('RULE-SET,scholar,学术网站'));
 
-    // 5. 支持 customServices.dev 扩展
+    // 4. 自定义 dev 服务与内置服务混排（不需要任何开关）
     const customDevCfg = resolveConfig({
-      devServices: ['github', 'huggingface'],
+      routing: [
+        ...withoutDev.filter(entry => entry.preset !== 'final'),
+        { service: 'github' },
+        { service: 'huggingface' },
+        { preset: 'final' }
+      ],
       customServices: {
         dev: {
           huggingface: {
@@ -241,19 +249,19 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
   });
 
   it('rules - 声明式专项独立服务装配 (Crypto, PayPal, WebRTC, Telegram)', () => {
-    const testConfig = {
-      ...DEFAULT_CONFIG,
-      enableCrypto: true,
-      enablePayPal: true,
-      enableWebRTC: true,
-      enableTelegram: true,
-      osType: 'windows'
-    };
+    const { DEFAULT_ROUTING } = require('../../src/data/default-routing');
+    const routing = [
+      ...DEFAULT_ROUTING.filter(entry => entry.preset !== 'final'),
+      { service: 'crypto' },
+      { service: 'paypal' },
+      { service: 'webrtc' },
+      { preset: 'final' }
+    ];
     // 常量基准与专项配置元数据检验
     assert.ok(BASE_PROVIDER_ROUTES['lan-domain'], 'BASE_PROVIDER_ROUTES 应包含 lan-domain');
     assert.ok(SPECIAL_SERVICES.crypto && SPECIAL_SERVICES.telegram, 'SPECIAL_SERVICES 应包含 crypto 与 telegram');
 
-    const { rules, providers } = expandRouting(testConfig);
+    const { rules, providers } = expandRouting({ ...DEFAULT_CONFIG, osType: 'windows', routing });
 
     // 专项服务规则验证
     assert.ok(rules.includes('RULE-SET,crypto,加密货币'));
@@ -273,8 +281,7 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
 
   it('rules - 无 registries 参数传入时自动回退 ServiceCatalog 构建', () => {
     const { rules, providers } = expandRouting({
-      enableAI: true,
-      aiServices: ['chatgpt']
+      routing: [{ preset: 'ai' }, { preset: 'final' }]
     });
     assert.ok(rules.includes('RULE-SET,openai,ChatGPT'));
     assert.ok(providers['openai']);
@@ -342,10 +349,9 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
   });
 
   it('game - 游戏子规则集按需激活与防幽灵组 (Ghost Group) 路由归并', () => {
-    // 1. 按需激活：仅声明 steam 与 epic 时，不加载其他 8 个游戏平台的规则与提供者
+    // 1. 按需激活：只点名 steam 与 epic 时，不加载其他 8 个游戏平台的规则与提供者
     const selectiveConfig = resolveConfig({
-      enableGame: true,
-      gameServices: ['steam', 'epic']
+      routing: [{ service: 'steam' }, { service: 'epic' }, { preset: 'final' }]
     });
     const { rules: selRules, providers: selProviders } = expandRouting(selectiveConfig);
 
@@ -366,8 +372,13 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
 
     // 2. 自定义游戏扩展：自动并入激活列表并安全路由到游戏聚合组，绝不产生幽灵策略组
     const customGameConfig = resolveConfig({
-      enableGame: true,
-      gameServices: ['steam'],
+      routing: [
+        { service: 'steam' },
+        { service: 'lol' },
+        { service: 'genshin' },
+        { service: 'apex_dl' },
+        { preset: 'final' }
+      ],
       customServices: {
         game: {
           lol: { name: '英雄联盟', rules: 'lol' },

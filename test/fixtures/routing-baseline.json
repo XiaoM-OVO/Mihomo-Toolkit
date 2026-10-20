@@ -1,5 +1,5 @@
 {
-  "_doc": "旧实现 buildRoutingRules 的冻结产物（2026-10-20）。批次 3 删除旧实现后，此文件是 routing 展开引擎的等价基线。国内分流 / 代理优先三类用例已随「显式方向」改写为 routing `to` 与 trafficDirection 语义（见用例名），其余用例仍是旧实现的逐条快照。任何差异都必须显式更新并说明。",
+  "_doc": "routing 展开引擎的冻结基线（批次 3 起由 routing 表驱动；每条用例的 overrides 即路由表语义）。等价测试逐条断言 rules/providers 完全相等，防止展开逻辑或默认表被无意改动。默认用例与 default-output.golden.json 的 59 条规则同源，互为交叉验证。",
   "cases": [
     {
       "name": "出厂默认",
@@ -282,20 +282,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -449,7 +449,47 @@
     {
       "name": "社交开启",
       "overrides": {
-        "enableSocial": true
+        "routing": [
+          {
+            "preset": "subscription"
+          },
+          {
+            "service": "ad-block"
+          },
+          {
+            "preset": "ai"
+          },
+          {
+            "preset": "streaming"
+          },
+          {
+            "preset": "social"
+          },
+          {
+            "preset": "game"
+          },
+          {
+            "preset": "dev"
+          },
+          {
+            "service": "telegram"
+          },
+          {
+            "preset": "system"
+          },
+          {
+            "preset": "process"
+          },
+          {
+            "preset": "download"
+          },
+          {
+            "preset": "domestic"
+          },
+          {
+            "preset": "final"
+          }
+        ]
       },
       "rules": [
         "RULE-SET,lan-domain,DIRECT",
@@ -769,20 +809,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -941,10 +981,7 @@
             "preset": "subscription"
           },
           {
-            "preset": "quic"
-          },
-          {
-            "preset": "ads"
+            "service": "ad-block"
           },
           {
             "preset": "ai"
@@ -953,16 +990,13 @@
             "preset": "streaming"
           },
           {
-            "preset": "social"
-          },
-          {
             "preset": "game"
           },
           {
             "preset": "dev"
           },
           {
-            "preset": "specialized"
+            "service": "telegram"
           },
           {
             "preset": "system"
@@ -2158,20 +2192,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -2325,7 +2359,47 @@
     {
       "name": "QUIC 拦截开启",
       "overrides": {
-        "enableQUICReject": true
+        "routing": [
+          {
+            "preset": "subscription"
+          },
+          {
+            "preset": "quic"
+          },
+          {
+            "service": "ad-block"
+          },
+          {
+            "preset": "ai"
+          },
+          {
+            "preset": "streaming"
+          },
+          {
+            "preset": "game"
+          },
+          {
+            "preset": "dev"
+          },
+          {
+            "service": "telegram"
+          },
+          {
+            "preset": "system"
+          },
+          {
+            "preset": "process"
+          },
+          {
+            "preset": "download"
+          },
+          {
+            "preset": "domestic"
+          },
+          {
+            "preset": "final"
+          }
+        ]
       },
       "rules": [
         "RULE-SET,lan-domain,DIRECT",
@@ -2607,20 +2681,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -2782,7 +2856,7 @@
             "preset": "quic"
           },
           {
-            "preset": "ads"
+            "service": "ad-block"
           },
           {
             "preset": "ai"
@@ -2791,16 +2865,13 @@
             "preset": "streaming"
           },
           {
-            "preset": "social"
-          },
-          {
             "preset": "game"
           },
           {
             "preset": "dev"
           },
           {
-            "preset": "specialized"
+            "service": "telegram"
           },
           {
             "preset": "system"
@@ -2818,8 +2889,7 @@
           {
             "preset": "final"
           }
-        ],
-        "enableQUICReject": true
+        ]
       },
       "rules": [
         "RULE-SET,lan-domain,DIRECT",
@@ -3268,8 +3338,44 @@
     {
       "name": "广告只开 AntiAD",
       "overrides": {
-        "enableAdBlock": false,
-        "enableAntiAD": true
+        "routing": [
+          {
+            "preset": "subscription"
+          },
+          {
+            "service": "anti-ad"
+          },
+          {
+            "preset": "ai"
+          },
+          {
+            "preset": "streaming"
+          },
+          {
+            "preset": "game"
+          },
+          {
+            "preset": "dev"
+          },
+          {
+            "service": "telegram"
+          },
+          {
+            "preset": "system"
+          },
+          {
+            "preset": "process"
+          },
+          {
+            "preset": "download"
+          },
+          {
+            "preset": "domestic"
+          },
+          {
+            "preset": "final"
+          }
+        ]
       },
       "rules": [
         "RULE-SET,lan-domain,DIRECT",
@@ -3549,20 +3655,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -3716,8 +3822,41 @@
     {
       "name": "广告全关",
       "overrides": {
-        "enableAdBlock": false,
-        "enableAntiAD": false
+        "routing": [
+          {
+            "preset": "subscription"
+          },
+          {
+            "preset": "ai"
+          },
+          {
+            "preset": "streaming"
+          },
+          {
+            "preset": "game"
+          },
+          {
+            "preset": "dev"
+          },
+          {
+            "service": "telegram"
+          },
+          {
+            "preset": "system"
+          },
+          {
+            "preset": "process"
+          },
+          {
+            "preset": "download"
+          },
+          {
+            "preset": "domestic"
+          },
+          {
+            "preset": "final"
+          }
+        ]
       },
       "rules": [
         "RULE-SET,lan-domain,DIRECT",
@@ -3987,20 +4126,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -4154,7 +4293,41 @@
     {
       "name": "进程直连关闭",
       "overrides": {
-        "enableProcessDirect": false
+        "routing": [
+          {
+            "preset": "subscription"
+          },
+          {
+            "service": "ad-block"
+          },
+          {
+            "preset": "ai"
+          },
+          {
+            "preset": "streaming"
+          },
+          {
+            "preset": "game"
+          },
+          {
+            "preset": "dev"
+          },
+          {
+            "service": "telegram"
+          },
+          {
+            "preset": "system"
+          },
+          {
+            "preset": "download"
+          },
+          {
+            "preset": "domestic"
+          },
+          {
+            "preset": "final"
+          }
+        ]
       },
       "rules": [
         "RULE-SET,lan-domain,DIRECT",
@@ -4196,10 +4369,6 @@
         "RULE-SET,microsoft,Microsoft",
         "RULE-SET,apple,Apple",
         "RULE-SET,google,Google",
-        "RULE-SET,bt-trackers-pt,下载策略",
-        "RULE-SET,bt-trackers-public,下载策略",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -4427,20 +4596,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -4594,7 +4763,41 @@
     {
       "name": "流媒体关闭",
       "overrides": {
-        "enableStreaming": false
+        "routing": [
+          {
+            "preset": "subscription"
+          },
+          {
+            "service": "ad-block"
+          },
+          {
+            "preset": "ai"
+          },
+          {
+            "preset": "game"
+          },
+          {
+            "preset": "dev"
+          },
+          {
+            "service": "telegram"
+          },
+          {
+            "preset": "system"
+          },
+          {
+            "preset": "process"
+          },
+          {
+            "preset": "download"
+          },
+          {
+            "preset": "domestic"
+          },
+          {
+            "preset": "final"
+          }
+        ]
       },
       "rules": [
         "RULE-SET,lan-domain,DIRECT",
@@ -4784,20 +4987,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -5231,20 +5434,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -5676,20 +5879,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"
@@ -6131,20 +6334,20 @@
           "format": "mrs",
           "proxy": "DIRECT"
         },
-        "steam": {
-          "type": "http",
-          "behavior": "domain",
-          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
-          "path": "./ruleset/steam.mrs",
-          "interval": 86400,
-          "format": "mrs",
-          "proxy": "DIRECT"
-        },
         "steam-cn": {
           "type": "http",
           "behavior": "domain",
           "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
           "path": "./ruleset/steam-cn.mrs",
+          "interval": 86400,
+          "format": "mrs",
+          "proxy": "DIRECT"
+        },
+        "steam": {
+          "type": "http",
+          "behavior": "domain",
+          "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+          "path": "./ruleset/steam.mrs",
           "interval": 86400,
           "format": "mrs",
           "proxy": "DIRECT"

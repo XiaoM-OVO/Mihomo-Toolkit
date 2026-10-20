@@ -160,7 +160,7 @@ describe('【Security】常驻服务安全姿态与防御 (server-security)', ()
         dnsProxy: ['https://evil.example.com/dns-query'],
         nameserverPolicy: { 'paypal.com': 'https://evil.example.com/dns-query' },
         hosts: { 'github.com': '6.6.6.6' },
-        enableAI: true
+        enableRegionHashLB: true
       });
       assert.equal(r.ok, true);
       assert.deepEqual(
@@ -171,7 +171,7 @@ describe('【Security】常驻服务安全姿态与防御 (server-security)', ()
       for (const k of ['servicesConfigFile', 'fetchProxyPort', 'dnsListen', 'dnsProxy', 'nameserverPolicy', 'hosts']) {
         assert.equal(r.config[k], undefined, `${k} 未被剥夺`);
       }
-      assert.equal(r.config.enableAI, true);
+      assert.equal(r.config.enableRegionHashLB, true);
       assert.equal(r.config.subscriptions.length, 2);
     });
 

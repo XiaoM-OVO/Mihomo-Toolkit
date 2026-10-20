@@ -63,7 +63,6 @@
     "use-hosts": true,
     "use-system-hosts": false
   },
-  "enableSocial": true,
   "find-process-mode": "strict",
   "ipv6": false,
   "keep-alive-interval": 15,
@@ -570,6 +569,47 @@
         "🎮 游戏专线 01"
       ],
       "type": "select"
+    }
+  ],
+  "routing": [
+    {
+      "preset": "subscription"
+    },
+    {
+      "service": "ad-block"
+    },
+    {
+      "preset": "ai"
+    },
+    {
+      "preset": "streaming"
+    },
+    {
+      "preset": "social"
+    },
+    {
+      "preset": "game"
+    },
+    {
+      "preset": "dev"
+    },
+    {
+      "service": "telegram"
+    },
+    {
+      "preset": "system"
+    },
+    {
+      "preset": "process"
+    },
+    {
+      "preset": "download"
+    },
+    {
+      "preset": "domestic"
+    },
+    {
+      "preset": "final"
     }
   ],
   "rule-providers": {

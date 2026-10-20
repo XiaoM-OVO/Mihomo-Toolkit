@@ -2,15 +2,10 @@
   "enablePipeline": true,
   "logLevel": "info",
   "osType": "windows",
-  "proxyFirst": true,
   "defaultProxyMode": "auto",
   "enableIPv6": false,
   "enableAirportTag": false,
   "airportTag": "",
-  "airportTagReg": {
-    "__regex": "^\\[([^\\]]{1,8})\\]",
-    "__flags": "i"
-  },
   "showFeatureIcon": true,
   "enableDedupe": false,
   "assetClosure": "standard",
@@ -57,56 +52,9 @@
   "iconRepoOrz": "https://fastly.jsdelivr.net/gh/Orz-3/mini@master/Color/",
   "iconRepoKoolson": "https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/",
   "iconRepoLige47": "https://fastly.jsdelivr.net/gh/lige47/lige_icon@main/icon/",
-  "enableAdBlock": true,
-  "enableAI": true,
-  "enableTelegram": true,
-  "enableStreaming": true,
-  "enableGame": true,
-  "enableSystemServices": true,
-  "enableDomesticGroup": false,
   "include": [],
   "servicesConfigFile": "",
   "customServices": {},
-  "aiServices": [
-    "chatgpt",
-    "gemini",
-    "claude",
-    "copilot"
-  ],
-  "streamingServices": [
-    "youtube",
-    "netflix",
-    "bilibili",
-    "disney",
-    "spotify",
-    "tiktok",
-    "bahamut",
-    "pixiv",
-    "twitch"
-  ],
-  "socialServices": [
-    "twitter",
-    "facebook",
-    "instagram",
-    "discord"
-  ],
-  "gameServices": [
-    "steam",
-    "epic",
-    "riot",
-    "blizzard",
-    "nintendo",
-    "playstation",
-    "xbox",
-    "ubisoft",
-    "origin",
-    "ea"
-  ],
-  "systemServices": [
-    "microsoft",
-    "apple",
-    "google"
-  ],
   "aiPreferredRegions": [
     "us",
     "jp",
@@ -115,14 +63,7 @@
     "kr",
     "eu"
   ],
-  "enableAntiAD": false,
-  "enableGitHub": true,
-  "enableScholar": true,
-  "enableSocial": false,
-  "enableCrypto": false,
-  "enablePayPal": false,
   "enableResidential": false,
-  "enableWebRTC": false,
   "residentialNodeGroups": {},
   "testInterval": 300,
   "testTolerance": 50,
@@ -151,12 +92,9 @@
     "223.5.5.5",
     "119.29.29.29"
   ],
-  "enableProcessDirect": true,
   "enableTrafficAudit": true,
-  "enableQUICReject": false,
   "overwriteTun": true,
   "overwriteDns": true,
-  "dnsMergeMode": "secure",
   "overwriteSniffer": true,
   "enableCoreOptimize": true
 }

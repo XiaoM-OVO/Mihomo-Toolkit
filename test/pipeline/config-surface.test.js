@@ -74,7 +74,8 @@ it('🔍 反空承诺 — config.example.yaml 里的每个键都是已登记字�
   const declared = new Set(FIELDS.map(f => f.key));
   const unknown = Object.keys(parsed).filter(k => !declared.has(k));
   assert.deepStrictEqual(unknown, [], `示例配置出现未登记字段：${unknown.join(', ')}`);
-  assert.ok(Object.keys(parsed).length > 20, '示例配置解析结果异常（键太少）');
+  // 示例配置是「拿来就能跑」的最小包，只列常用项；下限只防「解析异常导致整份丢失」。
+  assert.ok(Object.keys(parsed).length > 10, '示例配置解析结果异常（键太少）');
 });
 
 it('🔍 反空承诺 — index.d.ts 配置接口里的每个字段都是已登记字段', () => {
@@ -126,12 +127,12 @@ it('📁 挂载回归 — 相对路径以配置文件所在目录为基准，而
   assert.equal(resolveMountPath('', base), null);
   assert.equal(resolveMountPath(undefined, base), null);
 
-  const cfg = absolutizeMountPaths({ servicesConfigFile: './svc.yaml', enableAI: true }, base);
+  const cfg = absolutizeMountPaths({ servicesConfigFile: './svc.yaml', enableRegionHashLB: true }, base);
   assert.equal(cfg.servicesConfigFile, path.join(base, 'svc.yaml'));
-  assert.equal(cfg.enableAI, true, '绝对化不应损坏其它字段');
+  assert.equal(cfg.enableRegionHashLB, true, '绝对化不应损坏其它字段');
   // 无变化时返回原对象（不制造无意义的副本）
-  const same = absolutizeMountPaths({ enableAI: true }, base);
-  assert.equal(same.enableAI, true);
+  const same = absolutizeMountPaths({ enableRegionHashLB: true }, base);
+  assert.equal(same.enableRegionHashLB, true);
 });
 
 it('📁 挂载回归 — 文件缺失或格式不支持时报错，而不是静默返回空配置', () => {
@@ -164,7 +165,7 @@ it('📁 挂载回归 — 改动挂载文件内容会改变构建缓存键', () 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mihomo-digest-'));
   const pack = path.join(dir, 'services.yaml');
   fs.writeFileSync(pack, 'ai:\n  deepseek:\n    name: DeepSeek\n');
-  const userConfig = { servicesConfigFile: pack, enableAI: true };
+  const userConfig = { servicesConfigFile: pack, enableRegionHashLB: true };
 
   const key1 = buildProfileCacheKey(userConfig, {});
   const digest1 = computeMountDigest(userConfig);
@@ -177,10 +178,10 @@ it('📁 挂载回归 — 改动挂载文件内容会改变构建缓存键', () 
   assert.notEqual(key2, key1, '缓存键未跟随挂载文件内容变化（会在 TTL 内返回旧产物）');
 
   // 无挂载源时摘要为空串，且不影响键的确定性
-  assert.equal(computeMountDigest({ enableAI: true }), '');
+  assert.equal(computeMountDigest({ enableRegionHashLB: true }), '');
   assert.equal(
-    buildProfileCacheKey({ enableAI: true }, {}),
-    buildProfileCacheKey({ enableAI: true }, {})
+    buildProfileCacheKey({ enableRegionHashLB: true }, {}),
+    buildProfileCacheKey({ enableRegionHashLB: true }, {})
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -286,7 +287,7 @@ it('📁 挂载回归 — 被嵌套的 include 片段内容变化同样刷新构
   fs.writeFileSync(outer, 'include: ["./inner.yaml"]\n');
   fs.writeFileSync(inner, 'customServices:\n  deepseek:\n    name: v1\n');
 
-  const cfg = { include: [outer], enableAI: true };
+  const cfg = { include: [outer], enableRegionHashLB: true };
   const digest1 = computeMountDigest(cfg, dir);
   const key1 = buildProfileCacheKey(cfg, {});
   assert.ok(digest1 && key1);
@@ -300,7 +301,7 @@ it('📁 挂载回归 — 被嵌套的 include 片段内容变化同样刷新构
 
 it('🛡️ 远程配置 — include 属本地资源，?config= 无法借它读取本机文件', () => {
   assert.ok(REMOTE_DENIED_FIELDS.includes('include'), 'include 必须是远程剥夺字段');
-  const hardened = hardenRemoteConfig({ include: ['./x.yaml'], enableAI: true });
+  const hardened = hardenRemoteConfig({ include: ['./x.yaml'], enableRegionHashLB: true });
   assert.equal(hardened.ok, true);
   assert.equal(hardened.config.include, undefined, 'include 未被远程剥离');
   assert.ok(hardened.strippedKeys.includes('include'));
@@ -310,19 +311,19 @@ it('🛡️ 出厂默认不可被污染 — resolveConfig 结果与 DEFAULT_CONF
   // 浅拷贝（Object.assign）会让返回结果与出厂默认共享同一份数组/对象引用，
   // 下游任何原地突变都会污染全局 DEFAULT_CONFIG，并在后续调用间泄漏。
   const a = resolveConfig({});
-  assert.notStrictEqual(a.aiServices, DEFAULT_CONFIG.aiServices, '数组字段仍与出厂默认共享引用');
-  assert.deepStrictEqual(a.aiServices, DEFAULT_CONFIG.aiServices, '断链不应改变取值');
+  assert.notStrictEqual(a.coreRegions, DEFAULT_CONFIG.coreRegions, '数组字段仍与出厂默认共享引用');
+  assert.deepStrictEqual(a.coreRegions, DEFAULT_CONFIG.coreRegions, '断链不应改变取值');
   assert.notStrictEqual(a.indexPrefixMap, DEFAULT_CONFIG.indexPrefixMap, '对象字段仍与出厂默认共享引用');
 
   // 故意污染本次结果
-  a.aiServices.push('__polluted__');
+  a.coreRegions.push('__polluted__');
   a.indexPrefixMap.__polluted__ = true;
 
   // 出厂默认与下一次调用都必须干净
-  assert.ok(!DEFAULT_CONFIG.aiServices.includes('__polluted__'), '出厂默认被下游突变污染');
+  assert.ok(!DEFAULT_CONFIG.coreRegions.includes('__polluted__'), '出厂默认被下游突变污染');
   assert.ok(!('__polluted__' in DEFAULT_CONFIG.indexPrefixMap), '出厂默认对象被下游突变污染');
   const b = resolveConfig({});
-  assert.ok(!b.aiServices.includes('__polluted__'), '污染跨调用泄漏到后续结果');
+  assert.ok(!b.coreRegions.includes('__polluted__'), '污染跨调用泄漏到后续结果');
   assert.ok(!('__polluted__' in b.indexPrefixMap), '污染跨调用泄漏到后续结果');
 });
 

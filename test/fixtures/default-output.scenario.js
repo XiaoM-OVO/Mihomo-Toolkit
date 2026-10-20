@@ -31,8 +31,24 @@ const NODES = Object.freeze([
 /**
  * 基线场景清单。
  * - `default`：出厂默认配置（不带任何用户覆盖），守卫「默认输出零漂移」；
- * - `social-enabled`：额外打开社交分流，守卫合并组 / 独立组这一类分叉路径。
+ * - `social-enabled`：在默认表上插入社交整段，守卫「一服务一组」这条分叉路径。
  */
+const SOCIAL_ROUTING = Object.freeze([
+  { preset: 'subscription' },
+  { service: 'ad-block' },
+  { preset: 'ai' },
+  { preset: 'streaming' },
+  { preset: 'social' },
+  { preset: 'game' },
+  { preset: 'dev' },
+  { service: 'telegram' },
+  { preset: 'system' },
+  { preset: 'process' },
+  { preset: 'download' },
+  { preset: 'domestic' },
+  { preset: 'final' }
+]);
+
 const SCENARIOS = Object.freeze([
   {
     name: 'default',
@@ -42,7 +58,7 @@ const SCENARIOS = Object.freeze([
   {
     name: 'social-enabled',
     fixture: 'default-output.social-enabled.golden.json',
-    overrides: { enableSocial: true }
+    overrides: { routing: SOCIAL_ROUTING }
   }
 ]);
 

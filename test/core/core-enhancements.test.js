@@ -94,38 +94,29 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
   });
 
   it('cleaner - getFeatureRules 显式依赖注入与缺失防御', () => {
-    // 1. 缺少 catalog 且尝试启用 AI 时抛出明确 TypeError
+    // 1. 缺少 catalog 时抛明确 TypeError（动态服务不再由开关门控，一律需要注册表）
     assert.throws(
-      () => getFeatureRules({ enableAI: true }),
+      () => getFeatureRules({}),
       /userConfig\.catalog.*is required/
     );
 
-    // 2. 缺少 catalog 且尝试启用 Streaming 时抛出明确 TypeError
+    // 2. 显式关闭开关也不能绕过依赖（开关已退役，不再是「关掉就不需要 catalog」）
     assert.throws(
-      () => getFeatureRules({ enableStreaming: true }),
+      () => getFeatureRules({ enableAI: false, enableStreaming: false }),
       /userConfig\.catalog.*is required/
     );
 
-    // 3. 显式关闭全部动态服务时，零依赖返回纯净静态特征基线
-    const staticOnly = getFeatureRules({ enableAI: false, enableStreaming: false });
-    assert.ok(Array.isArray(staticOnly));
-    assert.ok(staticOnly.length > 0);
-    // 不包含动态 AI 服务的 tag（如 chatgpt）
-    assert.ok(!staticOnly.some(r => r.tag === 'chatgpt'));
-
-    // 4. 正确注入 catalog 时，动态 AI 与流媒体规则成功注入
+    // 3. 正确注入 catalog 时，动态 AI 与流媒体规则成功注入
     const catalog = buildServiceCatalog();
-    const dynamicRules = getFeatureRules({ catalog, enableAI: true, enableStreaming: true });
+    const dynamicRules = getFeatureRules({ catalog });
     assert.ok(dynamicRules.some(r => r.tag === 'chatgpt'));
     assert.ok(dynamicRules.some(r => r.tag === 'netflix' || r.tag === 'nf'));
 
-    // 5. classifyNode 独立调用时，若显式开启 AI 但缺少 catalog 应抛出明确 TypeError
-    assert.throws(
-      () => classifyNode({ name: '香港节点', server: '1.2.3.4', port: 443 }, { enableAI: true }),
-      /userConfig\.catalog.*is required/
-    );
+    // 4. classifyNode 独立调用（无注册表）时退回静态基线，不抛错、也不伪造服务标签
+    const standalone = classifyNode({ name: '香港节点', server: '1.2.3.4', port: 443 }, {});
+    assert.ok(!standalone.tags.includes('chatgpt'));
 
-    // 6. classifyNode 注入 options.featureRules 时直接生效
+    // 5. classifyNode 注入 options.featureRules 时直接生效
     const customRules = [{ reg: /SpecialNode/i, tag: 'my-special-tag' }];
     const res = classifyNode(
       { name: 'SpecialNode 01', server: '1.2.3.4', port: 443 },

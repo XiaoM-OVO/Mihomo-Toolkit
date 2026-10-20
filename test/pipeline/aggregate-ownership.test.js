@@ -53,17 +53,19 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
     assert.equal(hints.meta, undefined, 'meta 条目已删除');
   });
 
-  it('BT / 下载规则由数据表驱动：进程直连开关只切换目标，不增删代码分支', () => {
+  it('BT / 下载规则由数据表驱动：删掉 process 预设整段消失，download 预设独立生效', () => {
     const isDownload = rule => /^RULE-SET,(download-games|download-android),.*下载策略$/.test(rule);
+    const { DEFAULT_ROUTING } = require('../../src/data/default-routing');
+    const withoutProcess = DEFAULT_ROUTING.filter(entry => entry.preset !== 'process');
 
-    const on = strategyMain(withNodes({}), { enableProcessDirect: true }).rules;
-    assert.ok(on.includes('RULE-SET,bt-trackers-pt,DIRECT'), '开启时应直连追踪器');
-    assert.ok(on.includes('DOMAIN-KEYWORD,tracker,DIRECT'), '开启时应注入 tracker 关键字兜底');
+    const on = strategyMain(withNodes({}), {}).rules;
+    assert.ok(on.includes('RULE-SET,bt-trackers-pt,DIRECT'), 'BT 追踪器应直连');
+    assert.ok(on.includes('DOMAIN-KEYWORD,tracker,DIRECT'), 'tracker 关键字兜底应注入');
     assert.ok(on.some(isDownload));
 
-    const off = strategyMain(withNodes({}), { enableProcessDirect: false }).rules;
-    assert.ok(off.some(rule => /^RULE-SET,bt-trackers-pt,.*下载策略$/.test(rule)), '关闭时应交给下载策略组');
-    assert.ok(!off.some(rule => /^DOMAIN-KEYWORD,(tracker|announce),/.test(rule)), '关闭时不得注入关键字兜底');
-    assert.ok(off.some(isDownload));
+    const off = strategyMain(withNodes({}), { routing: withoutProcess }).rules;
+    assert.ok(!off.some(rule => /^RULE-SET,bt-trackers-pt,/.test(rule)), '删掉 process 预设后 BT 规则应整段消失');
+    assert.ok(!off.some(rule => /^DOMAIN-KEYWORD,(tracker|announce),/.test(rule)), '删掉 process 预设后关键字兜底也应消失');
+    assert.ok(off.some(isDownload), 'download 预设不受 process 影响');
   });
 });

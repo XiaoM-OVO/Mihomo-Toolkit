@@ -62,12 +62,9 @@ const LEGACY_REMOTE_DENIED = [
 describe('【Security】数据层基线与字段注册表防漂移 (data-baseline)', () => {
   describe('field-registry - 字段注册表与默认配置自洽', () => {
     it('registry - 默认值 golden 基线与注册表一一对应', () => {
-      const REMOVED_BY_DESIGN = ['dnsMergeMode', 'airportTagReg', 'enableDomesticGroup', 'proxyFirst'];
+      // 基线已不含退役字段：批次 3 起分流开关与分类清单全部移除（迁移对照表见 ROADMAP 10.7）。
+      // 若 golden 重新混入旧字段，下面的逐字段比对会直接失败。
       for (const [key, expected] of Object.entries(GOLDEN)) {
-        if (REMOVED_BY_DESIGN.includes(key)) {
-          assert.ok(!(key in DEFAULT_CONFIG), `${key} 应已被移除（无效字段撤回）`);
-          continue;
-        }
         assert.deepStrictEqual(DEFAULT_CONFIG[key], expected, `默认值 ${key} 与 golden 基线不一致`);
       }
 
@@ -78,7 +75,7 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
         [
           'exemptGroups', 'protectedDomains',
           'coreRegions',
-          'devServices', 'geoipRepo', 'geositeRepo',
+          'geoipRepo', 'geositeRepo',
           'enableFission', 'fissionStack', 'fissionMaxNodes', 'fissionExcludeKeywords',
           'enableNodeSort',
           'processDirectLin', 'processDirectMac', 'processDirectWin',
@@ -175,12 +172,12 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
     it('hardenRemoteConfig - 白名单收敛拦截未知字段与本地资源 [Fail-Closed]', () => {
       const r = hardenRemoteConfig({
         subscriptions: [{ url: 'https://example.com/sub.yaml' }],
-        enableAI: true,
+        enableRegionHashLB: true,
         output: '/etc/cron.d/evil',
         unknownAttackerField: 'danger-payload'
       });
       assert.equal(r.ok, true);
-      assert.equal(r.config.enableAI, true);
+      assert.equal(r.config.enableRegionHashLB, true);
       assert.equal(r.config.output, undefined);
       assert.equal(r.config.unknownAttackerField, undefined);
       assert.ok(r.strippedKeys.includes('output'));
@@ -190,7 +187,7 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
     it('hardenRemoteConfig - 严格纯函数，不得原地修改入参对象', () => {
       const raw = {
         subscriptions: [{ url: 'https://example.com/sub.yaml' }],
-        enableAI: true,
+        enableRegionHashLB: true,
         output: '/etc/cron.d/evil',
         unknownKey: 123
       };
