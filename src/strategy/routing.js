@@ -19,8 +19,9 @@
 
 const { FIELDS_BY_KEY } = require('../data');
 const { PRESET_DEFINITIONS, DEFAULT_ROUTING } = require('../data/default-routing');
-const { ADS_GROUPS, SPECIAL_SERVICES } = require('../config/catalog');
+const { ADS_GROUPS, SPECIAL_SERVICES, buildServiceCatalog } = require('../config/catalog');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
+const { stripGroupDecoration } = require('./presentation');
 const { normalizeSubDomains, isIPv4, isIPv6 } = require('../infra/ip');
 const {
   BASE_PROVIDER_ROUTES,
@@ -75,9 +76,26 @@ function retarget(rule, target) {
 function createContext(userConfig, registries, options) {
   const config = userConfig || {};
   const os = String(config.osType || 'windows').toLowerCase();
+
+  // 与旧实现同源的回退口径：未显式传入 registries 时，从 catalog / 配置投影现场构建
+  let effective = (registries && Object.keys(registries).length > 0) ? registries : null;
+  if (!effective && config.catalog && typeof config.catalog.toRegistries === 'function') {
+    effective = config.catalog.toRegistries();
+  }
+  if (!effective && config.registries && Object.keys(config.registries).length > 0) {
+    effective = config.registries;
+  }
+  if (!effective) {
+    try {
+      effective = buildServiceCatalog(config).toRegistries();
+    } catch {
+      effective = {};
+    }
+  }
+
   return {
     config,
-    registries: registries || {},
+    registries: effective,
     options: options || {},
     providerBase: { ...BASE_PROVIDER_ROUTES },
     rules: [],
@@ -118,15 +136,23 @@ function expandSubscription(ctx) {
       rules.push(`DOMAIN,${item},DIRECT`);
     }
   }
-  // QUIC 拦截：默认关闭；旧实现把它放在自定义组之后、广告之前，默认配置下与此处等价
-  if (config.enableQUICReject) {
-    if (ctx.isReturn) {
-      rules.push('AND,((NETWORK,UDP),(DST-PORT,443),(GEOSITE,cn)),REJECT-DROP');
-      rules.push('AND,((NETWORK,UDP),(DST-PORT,443),(GEOIP,CN)),REJECT-DROP');
-    } else {
-      rules.push('AND,((NETWORK,UDP),(DST-PORT,443),(GEOSITE,geolocation-!cn)),REJECT-DROP');
-      rules.push('AND,((NETWORK,UDP),(DST-PORT,443),(GEOIP,!CN)),REJECT-DROP');
-    }
+  // QUIC 拦截由独立的 `quic` 预设展开（顺序见 `DEFAULT_ROUTING`），
+  // 这样 `customRules` 仍排在它前面，与旧实现的优先级一致。
+}
+
+/**
+ * 展开 QUIC 拦截段（`enableQUICReject` 关闭时为空）
+ * @param {object} ctx 上下文
+ * @param {string} [to] 统一目标覆写（默认 REJECT-DROP）
+ */
+function expandQuic(ctx, to) {
+  if (!ctx.config.enableQUICReject) return;
+  const target = to === undefined ? 'REJECT-DROP' : resolveTo(to, ctx);
+  const cnSuffix = ctx.isReturn
+    ? ['(GEOSITE,cn)', '(GEOIP,CN)']
+    : ['(GEOSITE,geolocation-!cn)', '(GEOIP,!CN)'];
+  for (const suffix of cnSuffix) {
+    ctx.rules.push(`AND,((NETWORK,UDP),(DST-PORT,443),${suffix}),${target}`);
   }
 }
 
@@ -377,6 +403,7 @@ function expandPreset(ctx, preset, entry) {
   const to = entry.to;
   switch (preset.kind) {
     case 'subscription': return expandSubscription(ctx);
+    case 'quic': return expandQuic(ctx, to);
     case 'ads': return expandAds(ctx, to);
     case 'category': return expandCategory(ctx, preset, to);
     case 'dev': return expandDev(ctx, preset, to);
@@ -391,6 +418,71 @@ function expandPreset(ctx, preset, entry) {
 }
 
 /**
+ * 注入用户自定义私域规则（`customRules`）
+ *
+ * 位置由 `routing` 决定：`subscription` 预设展开后立即注入，保证「基础网络 → 私域规则 →
+ * 业务分流」的旧优先级不变。批次 3 会把 `customRules` 也收进 `routing` 表（`{ rule }` 条目），
+ * 届时本函数删除。
+ * @param {object} ctx 展开上下文
+ */
+function pushCustomRules(ctx) {
+  const { config, rules } = ctx;
+  if (Array.isArray(config.customRules) && config.customRules.length) {
+    rules.push(...config.customRules);
+  }
+}
+
+/**
+ * 旧语义兼容（批次 3 待删）：`customGroups` / `groups` 声明随组交付规则
+ *
+ * 现状：声明一个组就会顺带注入它的规则集 / 进程名单规则。两表模型里组不产出规则
+ * （规则只由 `routing` 引用产生），本函数随批次 3 一起删除。
+ * @param {object} ctx 展开上下文
+ */
+function expandLegacyCustomGroups(ctx) {
+  const { config, rules, providerBase, osInfo } = ctx;
+  if (!Array.isArray(config.customGroups) || !config.customGroups.length) return;
+  for (const g of config.customGroups) {
+    if (!g || typeof g !== 'object') continue;
+    if (g.providers && typeof g.providers === 'object' && !Array.isArray(g.providers)) {
+      for (const [name, path] of Object.entries(g.providers)) {
+        if (typeof name === 'string' && name.trim() && typeof path === 'string' && path.trim()) {
+          providerBase[name.trim()] = path.trim();
+        }
+      }
+    }
+    if (!g.name) continue;
+    const targetName = stripGroupDecoration(g.name);
+
+    if (g.process && typeof g.process === 'object' && !Array.isArray(g.process)) {
+      rules.push(...expandProcessRules(g.process, targetName, osInfo));
+    }
+
+    if (!g.rules) continue;
+    const rulesList = Array.isArray(g.rules) ? g.rules : [g.rules];
+    for (const r of rulesList) {
+      if (!r || typeof r !== 'string') continue;
+      const trimmed = r.trim();
+      if (trimmed.includes(',')) {
+        const parts = trimmed.split(',');
+        if (parts.length === 2) {
+          rules.push(`${parts[0].trim()},${parts[1].trim()},${targetName}`);
+        } else if (parts.length === 3 && parts[2].trim().toLowerCase() === 'no-resolve') {
+          rules.push(`${parts[0].trim()},${parts[1].trim()},${targetName},no-resolve`);
+        } else {
+          rules.push(trimmed);
+        }
+      } else {
+        const ruleSetName = trimmed.replace(/^(geosite|geoip):/i, '');
+        const providerPath = trimmed.includes(':') ? trimmed.replace(':', '/') : `geosite/${trimmed}`;
+        providerBase[ruleSetName] = providerPath;
+        rules.push(`RULE-SET,${ruleSetName},${targetName}`);
+      }
+    }
+  }
+}
+
+/**
  * 展开 routing 表，产出规则与 Rule-Provider
  * @param {object} userConfig 合并后的用户配置
  * @param {object} registries `ServiceCatalog#toRegistries()` 的结果
@@ -401,17 +493,31 @@ function expandPreset(ctx, preset, entry) {
  */
 function expandRouting(userConfig = {}, registries = {}, options = {}) {
   const ctx = createContext(userConfig, registries, options);
-  const routing = Array.isArray(options.routing) ? options.routing : DEFAULT_ROUTING;
+  const routing = Array.isArray(options.routing)
+    ? options.routing
+    : (Array.isArray(userConfig.routing) ? userConfig.routing : DEFAULT_ROUTING);
+  if (routing.length === 0) {
+    throw new Error('routing: 配置为空，至少需要一条 `{ preset: final }`（否则产物没有 MATCH 兜底）');
+  }
 
   const cdnBase = userConfig.ruleProviderCDN || FIELDS_BY_KEY.ruleProviderCDN.default;
   const repo = `${cdnBase}/MetaCubeX/meta-rules-dat@meta`;
   const ruleFormat = userConfig.useMRS ? 'mrs' : 'yaml';
 
-  for (const entry of routing) expandEntry(ctx, entry);
-
-  if (Array.isArray(userConfig.customRules) && userConfig.customRules.length) {
-    ctx.rules.push(...userConfig.customRules);
+  // 私域规则（customRules / customGroups）的注入位置锚定在 subscription 预设之后；
+  // 表里没有 subscription 时退化为全部条目展开完再注入（保持旧行为的最低优先级）。
+  let injected = false;
+  const injectLegacy = () => {
+    if (injected) return;
+    injected = true;
+    pushCustomRules(ctx);
+    expandLegacyCustomGroups(ctx);
+  };
+  for (const entry of routing) {
+    expandEntry(ctx, entry);
+    if (entry && entry.disabled !== true && entry.preset === 'subscription') injectLegacy();
   }
+  injectLegacy();
 
   const rules = dedupe(ctx.rules);
   const providers = Object.fromEntries(

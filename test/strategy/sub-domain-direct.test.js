@@ -13,7 +13,7 @@ const {
   isValidDomain,
   isLoopbackOrUnspecified
 } = require('../../src/infra/ip');
-const { buildRoutingRules } = require('../../src/strategy/rules');
+const { expandRouting } = require('../../src/strategy/routing');
 const { applyDnsOverlay } = require('../../src/strategy/dns');
 const { createServiceRegistries } = require('../../src/strategy/registries');
 const { DEFAULT_CONFIG } = require('../../src/config');
@@ -82,7 +82,7 @@ describe('【Strategy】订阅服务域名与 IP 直连注入 (subDomain)', () =
     it('buildRoutingRules - 域名注入 DOMAIN,xxx,DIRECT 并置于前列', () => {
       const userConfig = { ...DEFAULT_CONFIG, subDomain: 'sub.example.com' };
       const registries = createServiceRegistries(userConfig);
-      const { rules } = buildRoutingRules(userConfig, registries);
+      const { rules } = expandRouting(userConfig, registries);
 
       const subRuleIdx = rules.indexOf('DOMAIN,sub.example.com,DIRECT');
       const lanRuleIdx = rules.indexOf('RULE-SET,lan-ip,DIRECT,no-resolve');
@@ -103,7 +103,7 @@ describe('【Strategy】订阅服务域名与 IP 直连注入 (subDomain)', () =
         ]
       };
       const registries = createServiceRegistries(userConfig);
-      const { rules } = buildRoutingRules(userConfig, registries);
+      const { rules } = expandRouting(userConfig, registries);
 
       assert.ok(rules.includes('IP-CIDR,198.51.100.1/32,DIRECT,no-resolve'));
       assert.ok(rules.includes('IP-CIDR6,2001:db8::1/128,DIRECT,no-resolve'));

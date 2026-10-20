@@ -118,6 +118,24 @@ export type GroupDeclarationEntry = (
   | CustomGroupConfig
 ) & { disabled?: boolean };
 
+/**
+ * 分流表条目：数组顺序即优先级（前者先匹配）。
+ * - `preset`：展开一整个预设段（订阅直连 / 广告 / AI / 流媒体 / 社交 / 游戏 / 开发 / 专项 / 系统 / 进程 / 下载 / 国内外 / 兜底）
+ * - `service`：展开单个服务（内置目录键或 `customServices` 键）
+ * - `rule`：一条原生规则（两段式自动补目标、三段式替换目标）
+ * 三者都可带 `to` 覆写目标；`disabled: true` 跳过该条目。
+ */
+export interface RoutingEntry {
+  preset?: string;
+  service?: string;
+  rule?: string;
+  /** 目标：内置目标 (DIRECT/REJECT/…) / 内置组目录键 / 自定义组名 */
+  to?: string;
+  /** 关闭该条目（默认顺序表里用于表达「默认不启用」） */
+  disabled?: boolean;
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 节点清洗模块配置 (pure-nodes)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -368,6 +386,12 @@ export interface ToolkitConfig {
    * 目录之外的组直接完整声明。声明即激活，注释即关闭。
    */
   groups?: GroupDeclarationEntry[];
+  /**
+   * 分流表：数组顺序即优先级，是规则生成的唯一来源。
+   * 条目支持 `{ preset }` / `{ service }` / `{ rule }` 三种形态，均可带 `to` 覆写目标，
+   * `disabled: true` 关闭条目；未写时取内置默认顺序表。
+   */
+  routing?: RoutingEntry[];
   /**
    * 订阅服务域名或 IP（自动注入为最前列直连规则与 fake-ip-filter，防止客户端拉取订阅走代理循环或延迟叠加）。
    * 支持单个域名/IP 字符串，或域名/IP 数组。常驻服务端亦会自动自适应提取请求 Host。

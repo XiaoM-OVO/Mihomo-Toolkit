@@ -23,7 +23,8 @@
  * 预设展开方式
  *
  * kind 取值（由 `src/strategy/routing.js` 解释）：
- *   - `subscription` 订阅直连段（局域网 + 订阅域名 + 可选 IPv6 / QUIC）
+ *   - `subscription` 订阅直连段（局域网 + 订阅域名 + 可选 IPv6）
+ *   - `quic`         QUIC 拦截（`enableQUICReject` 关闭时为空）
  *   - `ads`          广告拦截（`ADS_GROUPS` 逐条按开关）
  *   - `category`     分类注册表（AI / 流媒体 / 社交 / 游戏 / 系统）
  *   - `dev`          开发者与学术（逐服务开关）
@@ -35,6 +36,7 @@
  */
 const PRESET_DEFINITIONS = Object.freeze({
   subscription: Object.freeze({ kind: 'subscription', label: '订阅直连' }),
+  quic: Object.freeze({ kind: 'quic', label: 'QUIC 拦截' }),
   ads: Object.freeze({ kind: 'ads', label: '广告拦截' }),
   ai: Object.freeze({
     kind: 'category', label: 'AI 助手',
@@ -72,11 +74,12 @@ const PRESET_DEFINITIONS = Object.freeze({
  * 默认顺序：数组顺序即优先级。
  *
  * 与旧实现的对应关系（`buildRoutingRules` 的段序）：
- *   订阅段 → 广告 → AI → 流媒体 → 社交 → 游戏 → 开发/学术 → 专项 → 系统
+ *   订阅段 → QUIC 拦截 → 广告 → AI → 流媒体 → 社交 → 游戏 → 开发/学术 → 专项 → 系统
  *   → 进程/BT/下载软件 → 下载规则集 → 国内海外 → IPv6/审计/MATCH
  */
 const DEFAULT_ROUTING = Object.freeze([
   Object.freeze({ preset: 'subscription' }),
+  Object.freeze({ preset: 'quic' }),
   Object.freeze({ preset: 'ads' }),
   Object.freeze({ preset: 'ai' }),
   Object.freeze({ preset: 'streaming' }),

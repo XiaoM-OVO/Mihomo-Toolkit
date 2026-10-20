@@ -84,7 +84,8 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
           'processDirectLin', 'processDirectMac', 'processDirectWin',
           'processProxyLin', 'processProxyMac', 'processProxyWin',
           'blockKeywords', 'blockServers',
-          'nodeIpVersion'
+          'nodeIpVersion',
+          'routing'
         ].sort(),
         '出现了未登记的默认字段：新增字段必须先在 field-registry.js 声明'
       );

@@ -26,6 +26,7 @@ const {
   PROTECTED_DOMAINS,
   SKELETON_EXEMPT_GROUPS
 } = require('./security-baselines');
+const { DEFAULT_ROUTING } = require('./default-routing');
 
 /**
  * 字段声明表。
@@ -324,6 +325,9 @@ const FIELDS = [
     group: '自定义规则入口', doc: '声明式自定义策略组 DSL 清单（支持 match/exclude 配方、宏引用与原生字段透传）' },
   { key: 'groups', type: 'object[]', merge: 'override', trust: 'local',
     group: '自定义规则入口', doc: '统一策略组声明清单（`{ ref: <键> }` 引用内置组目录并允许条目内覆写字段，`disabled: true` 显式关闭；声明即激活，注释即关闭）' },
+  { key: 'routing', type: 'object[]', merge: 'override', trust: 'local', default: DEFAULT_ROUTING,
+    group: '自定义规则入口',
+    doc: '分流表：数组顺序即优先级，条目支持 `preset` / `service` / `rule` + `to` / `disabled`；是规则生成的唯一来源（默认值即 `src/data/default-routing.js` 的默认顺序表）' },
   { key: 'subDomain', type: 'string[]', merge: 'override', trust: 'any',
     group: '自定义规则入口', doc: '订阅服务域名或 IP（自动注入为直连分流规则与 fake-ip-filter，防止客户端拉取订阅走代理循环与高延迟）' },
 
@@ -367,7 +371,9 @@ function buildDefaultConfig() {
     const value = field.merge === 'additive' && field.baseline
       ? []                       // 基线不落到 defaults：它由 data 层持有，合并时注入
       : field.default;
-    config[field.key] = Array.isArray(value) ? [...value] : value;
+    config[field.key] = Array.isArray(value)
+      ? value.map(item => (item && typeof item === 'object' ? { ...item } : item))
+      : value;
   }
   return config;
 }

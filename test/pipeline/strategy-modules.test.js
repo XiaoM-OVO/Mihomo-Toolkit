@@ -6,12 +6,11 @@ const { applyDnsOverlay } = require('../../src/strategy/dns');
 const { applyTunOverlay, applySnifferOverlay, applyCoreOptimize } = require('../../src/strategy/kernel');
 const { createServiceRegistries } = require('../../src/strategy/registries');
 const {
-  buildRoutingRules,
   createHttpRuleProvider,
-  BASE_PROVIDER_ROUTES,
-  SPECIAL_SERVICES,
-  assembleServiceCategory
+  BASE_PROVIDER_ROUTES
 } = require('../../src/strategy/rules');
+const { expandRouting } = require('../../src/strategy/routing');
+const { SPECIAL_SERVICES } = require('../../src/config/catalog');
 const { runStrategyPipeline } = require('../../src/pipeline/strategy');
 
 describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
@@ -76,9 +75,9 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.equal(frozenTrojan['client-fingerprint'], undefined, '不得篡改原冻结对象属性');
   });
 
-  it('rules - 路由分流与规则集组装 (buildRoutingRules)', () => {
+  it('rules - 路由分流与规则集组装 (routing 表)', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
-    const { rules, providers } = buildRoutingRules(DEFAULT_CONFIG, registries);
+    const { rules, providers } = expandRouting(DEFAULT_CONFIG, registries);
     assert.ok(rules.length > 10);
     assert.ok(rules.includes('RULE-SET,ads,广告拦截'));
     assert.ok(rules.includes('MATCH,漏网之鱼'));
@@ -96,7 +95,7 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
         'DOMAIN-SUFFIX,custom-proxy.com,节点选择'
       ]
     };
-    const { rules } = buildRoutingRules(testConfig, registries);
+    const { rules } = expandRouting(testConfig, registries);
 
     const lanIndex = rules.indexOf('RULE-SET,lan-domain,DIRECT');
     const subDomainIndex = rules.indexOf('DOMAIN,sub.example.com,DIRECT');
@@ -146,25 +145,25 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
   it('strategy - devServices 与 enableGitHub / enableScholar 动态开关联动', () => {
     // 1. 默认状态：同时启用 GitHub 与 学术
     const defaultCfg = resolveConfig({});
-    const defaultRes = buildRoutingRules(defaultCfg, defaultCfg.registries);
+    const defaultRes = expandRouting(defaultCfg, defaultCfg.registries);
     assert.ok(defaultRes.rules.includes('RULE-SET,github,GitHub'));
     assert.ok(defaultRes.rules.includes('RULE-SET,scholar,学术网站'));
 
     // 2. 仅启用 github
     const ghOnlyCfg = resolveConfig({ devServices: ['github'] });
-    const ghOnlyRes = buildRoutingRules(ghOnlyCfg, ghOnlyCfg.registries);
+    const ghOnlyRes = expandRouting(ghOnlyCfg, ghOnlyCfg.registries);
     assert.ok(ghOnlyRes.rules.includes('RULE-SET,github,GitHub'));
     assert.ok(!ghOnlyRes.rules.includes('RULE-SET,scholar,学术网站'));
 
     // 3. 清空 devServices
     const noneCfg = resolveConfig({ devServices: [] });
-    const noneRes = buildRoutingRules(noneCfg, noneCfg.registries);
+    const noneRes = expandRouting(noneCfg, noneCfg.registries);
     assert.ok(!noneRes.rules.includes('RULE-SET,github,GitHub'));
     assert.ok(!noneRes.rules.includes('RULE-SET,scholar,学术网站'));
 
     // 4. legacy 开关显式为 false 时即使 devServices 声明也生效关闭
     const offGhCfg = resolveConfig({ enableGitHub: false, devServices: ['github', 'scholar'] });
-    const offGhRes = buildRoutingRules(offGhCfg, offGhCfg.registries);
+    const offGhRes = expandRouting(offGhCfg, offGhCfg.registries);
     assert.ok(!offGhRes.rules.includes('RULE-SET,github,GitHub'));
     assert.ok(offGhRes.rules.includes('RULE-SET,scholar,学术网站'));
 
@@ -180,7 +179,7 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
         }
       }
     });
-    const customRes = buildRoutingRules(customDevCfg, customDevCfg.registries);
+    const customRes = expandRouting(customDevCfg, customDevCfg.registries);
     assert.ok(customRes.rules.includes('RULE-SET,github,GitHub'));
     assert.ok(customRes.rules.includes('RULE-SET,huggingface,HuggingFace'));
     assert.equal(customRes.providers['huggingface'].behavior, 'domain');
@@ -241,29 +240,6 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.equal(p3.path, './ruleset/anti-ad.yaml');
   });
 
-  it('rules - assembleServiceCategory 声明式分类装配与回调', () => {
-    const registry = {
-      testApp: {
-        name: 'TestApp',
-        ruleSet: 'testapp-rules',
-        provider: 'geosite/testapp',
-        rules: ['RULE-SET,testapp-rules,TestApp']
-      }
-    };
-    const providerBase = {};
-    const routingRules = [];
-
-    assembleServiceCategory({
-      registry,
-      activeKeys: ['testApp'],
-      providerBase,
-      routingRules
-    });
-
-    assert.equal(providerBase['testapp-rules'], 'geosite/testapp');
-    assert.deepEqual(routingRules, ['RULE-SET,testapp-rules,TestApp']);
-  });
-
   it('rules - 声明式专项独立服务装配 (Crypto, PayPal, WebRTC, Telegram)', () => {
     const testConfig = {
       ...DEFAULT_CONFIG,
@@ -277,7 +253,7 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.ok(BASE_PROVIDER_ROUTES['lan-domain'], 'BASE_PROVIDER_ROUTES 应包含 lan-domain');
     assert.ok(SPECIAL_SERVICES.crypto && SPECIAL_SERVICES.telegram, 'SPECIAL_SERVICES 应包含 crypto 与 telegram');
 
-    const { rules, providers } = buildRoutingRules(testConfig);
+    const { rules, providers } = expandRouting(testConfig);
 
     // 专项服务规则验证
     assert.ok(rules.includes('RULE-SET,crypto,加密货币'));
@@ -296,7 +272,7 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
   });
 
   it('rules - 无 registries 参数传入时自动回退 ServiceCatalog 构建', () => {
-    const { rules, providers } = buildRoutingRules({
+    const { rules, providers } = expandRouting({
       enableAI: true,
       aiServices: ['chatgpt']
     });
@@ -371,7 +347,7 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
       enableGame: true,
       gameServices: ['steam', 'epic']
     });
-    const { rules: selRules, providers: selProviders } = buildRoutingRules(selectiveConfig);
+    const { rules: selRules, providers: selProviders } = expandRouting(selectiveConfig);
 
     // 激活项存在
     assert.ok(selRules.includes('RULE-SET,steam,游戏服务'));
@@ -406,7 +382,7 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
         }
       }
     });
-    const { rules: customRules, providers: customProviders } = buildRoutingRules(customGameConfig);
+    const { rules: customRules, providers: customProviders } = expandRouting(customGameConfig);
 
     // 自动激活且 target 默认为 '游戏服务'
     assert.ok(customRules.includes('RULE-SET,lol,游戏服务'), '字符串 rules 默认定向至游戏服务');

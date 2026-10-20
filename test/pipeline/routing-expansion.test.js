@@ -1,7 +1,8 @@
 /**
  * `routing` 表展开引擎的等价性与语义测试
  *
- * 第一组（等价）：默认 routing 表展开后，必须与旧实现 `buildRoutingRules`
+ * 第一组（等价）：默认 routing 表展开后，必须与**冻结基线**
+ * `test/fixtures/routing-baseline.json`（批次 3 之前由旧实现产出的逐条快照）
  * 在多种配置下产出**逐条相等**的规则与 Provider —— 这是「机制迁移不改变产物」
  * 的可执行证明，也是 `DEFAULTS.md` 第三节 59 条顺序的守护。
  *
@@ -12,8 +13,8 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const { resolveConfig } = require('../../src/config');
 const { createServiceRegistries } = require('../../src/strategy/registries');
-const { buildRoutingRules } = require('../../src/strategy/rules');
 const { expandRouting } = require('../../src/strategy/routing');
+const BASELINE = require('../fixtures/routing-baseline.json');
 
 /**
  * 构造与流水线同源的 (config, registries) 组合
@@ -25,40 +26,13 @@ function pair(overrides = {}) {
   return { config, registries: createServiceRegistries(config) };
 }
 
-/**
- * 比较新旧两条装配路径的产物
- * @param {object} overrides 配置覆盖
- */
-function assertEquivalent(overrides = {}) {
-  const { config, registries } = pair(overrides);
-  const legacy = buildRoutingRules(config, registries);
-  const next = expandRouting(config, registries);
-  assert.deepStrictEqual(next.rules, legacy.rules, `规则不一致（overrides=${JSON.stringify(overrides)}）`);
-  assert.deepStrictEqual(next.providers, legacy.providers, `Provider 不一致（overrides=${JSON.stringify(overrides)}）`);
-}
-
-describe('routing 展开引擎：默认表等价于旧实现', () => {
-  const variants = [
-    ['出厂默认', {}],
-    ['社交开启', { enableSocial: true }],
-    ['国内分流开启', { enableDomesticGroup: true }],
-    ['国内分流 + 代理优先', { enableDomesticGroup: true, proxyFirst: true }],
-    ['代理优先', { proxyFirst: true }],
-    ['IPv6 开启', { enableIPv6: true }],
-    ['QUIC 拦截开启', { enableQUICReject: true }],
-    ['QUIC + 国内分流', { enableQUICReject: true, enableDomesticGroup: true }],
-    ['广告只开 AntiAD', { enableAdBlock: false, enableAntiAD: true }],
-    ['广告全关', { enableAdBlock: false, enableAntiAD: false }],
-    ['进程直连关闭', { enableProcessDirect: false }],
-    ['流媒体关闭', { enableStreaming: false }],
-    ['规则集用 MRS', { useMRS: true }],
-    ['流量审计关闭', { enableTrafficAudit: false }],
-    ['全平台进程规则', { osType: 'all' }]
-  ];
-
-  for (const [name, overrides] of variants) {
+describe('routing 展开引擎：默认表等价于冻结基线', () => {
+  for (const { name, overrides, rules, providers } of BASELINE.cases) {
     it(`${name}：规则与 Provider 逐条相等`, () => {
-      assertEquivalent(overrides);
+      const { config, registries } = pair(overrides);
+      const next = expandRouting(config, registries);
+      assert.deepStrictEqual(next.rules, rules, `规则不一致（overrides=${JSON.stringify(overrides)}）`);
+      assert.deepStrictEqual(next.providers, providers, `Provider 不一致（overrides=${JSON.stringify(overrides)}）`);
     });
   }
 
@@ -121,6 +95,20 @@ describe('routing 展开引擎：条目语义', () => {
       routing: [{ service: 'twitter', to: 'chatgpt' }]
     });
     assert.ok(rules.includes('RULE-SET,twitter,ChatGPT'));
+  });
+
+  it('customRules 仍排在 QUIC 拦截之前（旧优先级不变）', () => {
+    const { config, registries } = pair({
+      enableQUICReject: true,
+      customRules: ['DOMAIN-SUFFIX,corp.example,DIRECT']
+    });
+    const { rules } = expandRouting(config, registries, {
+      routing: [{ preset: 'subscription' }, { preset: 'quic' }, { preset: 'final' }]
+    });
+    const customAt = rules.indexOf('DOMAIN-SUFFIX,corp.example,DIRECT');
+    const quicAt = rules.findIndex(r => r.startsWith('AND,((NETWORK,UDP)'));
+    assert.ok(customAt >= 0, '自定义规则必须展开');
+    assert.ok(quicAt > customAt, 'QUIC 拦截必须排在 customRules 之后');
   });
 
   it('未知预设 / 未知服务 / 缺目标都是 fail-closed', () => {

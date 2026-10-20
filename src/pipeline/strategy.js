@@ -8,7 +8,7 @@ const { resolveConfig } = require('../config');
 const { cleanAndClassifyNodesSync } = require('./nodes');
 const { createServiceRegistries } = require('../strategy/registries');
 const { buildProxyTopology } = require('../strategy/topology');
-const { buildRoutingRules } = require('../strategy/rules');
+const { expandRouting } = require('../strategy/routing');
 const { pruneEmptyGroups } = require('../strategy/prune');
 const { applyPresentation } = require('../strategy/presentation');
 const { applyDnsOverlay } = require('../strategy/dns');
@@ -48,7 +48,7 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
   sourceSkeleton['proxy-groups'] = proxyGroups;
 
   // 5. 组装路由规则与 Rule-Providers
-  const { rules, providers } = buildRoutingRules(userConfig, registries);
+  const { rules, providers } = expandRouting(userConfig, registries);
   sourceSkeleton['rules'] = rules;
   sourceSkeleton['rule-providers'] = providers;
 
