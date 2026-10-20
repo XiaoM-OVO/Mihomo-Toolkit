@@ -416,8 +416,17 @@ groups:
 - **规则层面**：顺序与目标全部由 `routing` 表表达。`domestic` 预设展开三条规则（`cn-domain`、`cn-ip`、`non-cn`），先后由表顺序决定、目标由条目 `to` 决定；`proxyFirst` 与 `enableDomesticGroup` 不再是规则生成的输入。
 - **组层面**：`中国分流` 组的存在由引用激活（10.3）——只有某条生效规则以它为 `to` 时才生成；成员顺序写在 `groups` 声明里（顺序 = 默认选中项）。
 - **方向层面**：只保留一个显式字段 `trafficDirection: 'split' | 'return'`（默认 `split`），仅影响三处与规则无关的行为：DNS 上游、QUIC 拦截目标、WebRTC 规则分支。不再由组合推断。
-- **迁移**：`enableDomesticGroup === true && proxyFirst === false` → `trafficDirection: 'return'`，其余组合 → `'split'`。两个旧字段保留为 deprecated 别名一版（映射到新写法并给一次性提示），随后移除。
+- **迁移**：`enableDomesticGroup` 与 `proxyFirst` **直接删除，不留兼容别名**。旧配置在校验期报错，并在错误信息里指向 10.7 对照表（「方向」一项写明 `trafficDirection: return`）。
 - **验收**：`trafficDirection` 两种取值各一条产物回归；`proxyFirst` 不再出现在任何规则顺序判定中；`DEFAULTS.md` 默认值表同步删除 `proxyFirst` 行、加入 `trafficDirection` 行。
+
+**10.11 单一路径与默认值即配置**
+
+不为「旧配置还能跑」保留分支，也不为「行为没变」在代码里写双路：
+
+- `routing` 是规则生成的**唯一来源**，`buildRoutingRules` 那套按开关串联的段序直接删除，不存在「没写 routing 就走旧引擎」的分支。配置未写 `routing` 时取自默认数据表（`DEFAULT_ROUTING`），默认值本身就是配置数据，不是代码里的隐式行为。
+- 分流开关（`enableAI` / `enableStreaming` / `enableSocial` / `enableGame` / `enableSystemServices` / `enableGitHub` / `enableScholar` / `enableAdBlock` / `enableAntiAD` / `enableTelegram` / `enableCrypto` / `enablePayPal` / `enableWebRTC` / `enableProcessDirect` / `enableDomesticGroup` / `proxyFirst`）随批次 3 退役：批量开关由 `routing` 的 `preset` / `disabled` 表达，单项由 `service` 表达。
+- 默认值有问题**直接改默认配置数据**（`src/data/default-routing.js`、`src/data/field-registry.js` 的默认值、`src/config/catalog.js` 的目录条目），改完按 10.8 第 1 条更新基线并在提交信息里说明变化即可；不需要为「保持旧行为」加任何补丁层。
+- 验收：代码里不再出现按开关拼接规则/组的段序；`grep` 不到 `enableAdBlock` 一类字段的生产读取（仅允许出现在迁移文档与校验器的「已删除字段」清单里）。
 
 **附：选型过程（历史，已归档为结论）**
 
