@@ -201,6 +201,9 @@ const BUILTIN_SERVICES = {
   },
 
   // ② 流媒体平台
+  // 注：与 AI 大类同构——每条均自带「成员配方」(match + proxies)，因此可被 `groups: [{ ref: <键> }]`
+  // 直接引用；未声明 match 者其成员完全由 proxies 列清（如 bahamut / bilibili 的地区组清单）。
+  // 内置配方分支不再自行拼装 `buckets[pool]`，只做「按开关挑条目 → 原样透传」，两条路径共用同一份定义。
   streaming: {
     youtube: {
       name: 'YouTube',
@@ -209,6 +212,9 @@ const BUILTIN_SERVICES = {
       pool: 'youtube',
       reg: /\b(?:YouTube|YT|油管)\b/i,
       rules: 'youtube',
+      type: 'select',
+      match: { pool: 'youtube' },
+      proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'YouTube.png' }
     },
     netflix: {
@@ -218,6 +224,9 @@ const BUILTIN_SERVICES = {
       pool: 'netflix',
       reg: /\b(?:Netflix|NF|奈飞|网飞|耐飞)\b/i,
       rules: 'netflix',
+      type: 'select',
+      match: { pool: 'netflix' },
+      proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Netflix.png' }
     },
     disney: {
@@ -227,6 +236,9 @@ const BUILTIN_SERVICES = {
       pool: 'disney',
       reg: /\b(?:Disney\+|Disney|迪士尼|D\+)\b/i,
       rules: 'disney',
+      type: 'select',
+      match: { pool: 'disney' },
+      proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Disney.png' }
     },
     tiktok: {
@@ -236,6 +248,8 @@ const BUILTIN_SERVICES = {
       pool: 'tiktok',
       reg: /\b(?:TikTok|抖音海外|TT)\b/i,
       rules: 'tiktok',
+      type: 'select',
+      match: { pool: 'tiktok' },
       proxies: ['@matchedNodes', '@nonCnRegions', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'koolson', file: 'TikTok.png' }
     },
@@ -246,6 +260,9 @@ const BUILTIN_SERVICES = {
       pool: 'spotify',
       reg: /\b(?:Spotify|声田|声破天)\b/i,
       rules: 'spotify',
+      type: 'select',
+      match: { pool: 'spotify' },
+      proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Spotify.png' }
     },
     bahamut: {
@@ -254,6 +271,7 @@ const BUILTIN_SERVICES = {
       pool: 'bahamut',
       preferredRegions: ['tw', 'hk'],
       rules: 'bahamut',
+      type: 'select',
       proxies: ['台湾节点', '香港节点', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Bahamut.png' }
     },
@@ -262,6 +280,9 @@ const BUILTIN_SERVICES = {
       emoji: '🅿️',
       pool: 'pixiv',
       rules: 'pixiv',
+      type: 'select',
+      match: { pool: 'pixiv' },
+      proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'lige47', file: '04ProxySoft/pixiv.png' }
     },
     twitch: {
@@ -269,6 +290,9 @@ const BUILTIN_SERVICES = {
       emoji: '🎮',
       pool: 'twitch',
       rules: 'twitch',
+      type: 'select',
+      match: { pool: 'twitch' },
+      proxies: ['@matchedNodes', '@preferredRegions', '@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Twitch.png' }
     },
     bilibili: {
@@ -278,6 +302,7 @@ const BUILTIN_SERVICES = {
       pool: 'bilibili',
       preferredRegions: ['cn', 'tw', 'mo', 'hk'],
       rules: 'bilibili',
+      type: 'select',
       proxies: ['@domesticGroup', '台湾节点', '澳门节点', '香港节点', 'DIRECT'],
       icon: { repo: 'orz', file: 'Bili.png' }
     }
@@ -377,11 +402,13 @@ const BUILTIN_SERVICES = {
   },
 
   // ⑤ 开发者与学术
+  // 注：github / scholar 均自带完整成员配方，可作为 `groups: [{ ref: <键> }]` 的引用目标。
   dev: {
     github: {
       name: 'GitHub',
       emoji: '🐱',
       rules: 'github',
+      type: 'select',
       proxies: ['@standardOptions', 'DIRECT'],
       icon: { repo: 'koolson', file: 'GitHub.png' }
     },
@@ -393,6 +420,8 @@ const BUILTIN_SERVICES = {
         { type: 'DOMAIN-KEYWORD', value: 'sci-hub', target: '@self' },
         { type: 'RULE-SET', value: 'scholar', path: 'category-scholar-!cn', target: '@self' }
       ],
+      type: 'select',
+      proxies: ['@preferredRegions', '@defaultProxy', 'DIRECT'],
       icon: { repo: 'koolson', file: 'Scholar.png' }
     }
   },
@@ -403,6 +432,7 @@ const BUILTIN_SERVICES = {
       name: 'Google',
       emoji: '🔍',
       rules: 'google',
+      type: 'select',
       proxies: ['@standardOptions', 'DIRECT'],
       icon: { repo: 'orz', file: 'Google.png' }
     },
@@ -410,6 +440,7 @@ const BUILTIN_SERVICES = {
       name: 'Apple',
       emoji: '🍎',
       rules: 'apple',
+      type: 'select',
       proxies: ['DIRECT', '@standardOptions'],
       icon: { repo: 'orz', file: 'Apple.png' }
     },
@@ -417,6 +448,7 @@ const BUILTIN_SERVICES = {
       name: 'Microsoft',
       emoji: '🪟',
       rules: 'microsoft',
+      type: 'select',
       proxies: ['DIRECT', '@standardOptions'],
       icon: { repo: 'orz', file: 'Microsoft.png' }
     }
@@ -571,7 +603,9 @@ class ServiceCatalog {
   }
 
   /**
-   * 判定某个键是否为「可引用的完整组声明」（必须有 match + proxies，否则引用只会得到空壳）
+   * 判定某个键是否为「可引用的内置组」
+   * 判据 = 条目自带**非空 `proxies`**：成员由条目自身列清（`match` 可选，仅用于说明
+   * `@matchedNodes` 从哪个特征池取节点），因此引用它绝不会得到空壳组。
    * @param {string} key
    * @param {string} [category] 限定分类；省略则在全部分类中查找
    * @returns {boolean}
@@ -580,7 +614,7 @@ class ServiceCatalog {
     const cats = category ? [category] : Object.keys(this.services);
     return cats.some(cat => {
       const s = this.services[cat]?.[key];
-      return Boolean(s && s.match && Array.isArray(s.proxies) && s.proxies.length > 0);
+      return Boolean(s && Array.isArray(s.proxies) && s.proxies.length > 0);
     });
   }
 
@@ -849,31 +883,38 @@ class ServiceCatalog {
     registries.specialized = specialized;
 
     // 内置策略组目录 (供 `groups: [{ ref: <键> }]` 引用)：
-    // 条目必须自身就是一条「完整组声明」(match + proxies 齐备) 才可被引用，
+    // 条目必须自身就是一条「可独立成立的组声明」(自带非空 `proxies`) 才可被引用，
     // 否则引用它只会得到空壳组——那是「配了不生效」，必须 fail-closed 而非静默降级。
     // 该目录不是第二份真相源：它只是同一批 catalog 条目的另一种投影形态。
     const groupDirectory = {};
     for (const [cat, catReg] of Object.entries(registries)) {
-      if (cat === 'aggregates' || cat === 'specialized') continue;
+      if (cat === 'aggregates') continue;
       for (const [key, item] of Object.entries(catReg)) {
-        if (!item || !item.match || !Array.isArray(item.proxies) || item.proxies.length === 0) continue;
+        if (!item || !Array.isArray(item.proxies) || item.proxies.length === 0) continue;
         // AI 大类偏好地区允许用户用 aiPreferredRegions 全局覆写（与内置配方口径一致）
         const prefOverride = cat === 'ai' && Array.isArray(this.userConfig.aiPreferredRegions)
           ? this.userConfig.aiPreferredRegions
           : null;
+        const prefList = prefOverride || item.preferredRegions || [];
+        // 专项条目的 Provider 是显式映射表；服务类条目的 Provider 由其 RULE-SET 规则派生
+        const providers = cat === 'specialized'
+          ? (item.providers && Object.keys(item.providers).length > 0 ? { ...item.providers } : undefined)
+          : ((item.rules && item.rules.length > 0 && item.provider) ? { [item.ruleSet]: item.provider } : undefined);
         groupDirectory[key] = {
           name: item.cleanName,
           type: item.type || 'select',
           match: item.match,
           exclude: item.exclude,
           proxies: [...item.proxies],
-          preferredRegions: prefOverride || [...(item.preferredRegions || [])],
+          preferredRegions: prefList.length > 0 ? [...prefList] : undefined,
           rules: [...(item.rules || [])],
-          providers: (item.rules && item.rules.length > 0 && item.provider)
-            ? { [item.ruleSet]: item.provider }
-            : undefined,
+          providers,
           hidden: item.hidden
         };
+        // 进程名单类规则随组交付（仅在条目确有声明时附挂，避免凭空多出 undefined 键）
+        if (item.process) {
+          groupDirectory[key].process = { ...item.process };
+        }
       }
     }
     registries.groups = groupDirectory;

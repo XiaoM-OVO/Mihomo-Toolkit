@@ -476,5 +476,117 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
       'ref 声明与内置开关配方必须产出完全一致的分流规则集合'
     );
   });
+
+  test('resolveConfig - 可引用判据 = 条目自带非空 proxies（成员配方未备齐者仍 fail-closed）', () => {
+    // 已备齐成员配方的条目：可作为 ref 目标
+    const ok = resolveConfig({ groups: [{ ref: 'youtube' }, { ref: 'telegram' }, { ref: 'google' }] });
+    assert.ok(ok.customGroups.find(g => g.name === 'YouTube'), '流媒体条目应可被引用');
+    assert.ok(ok.customGroups.find(g => g.name === 'Google'), '系统条目应可被引用');
+
+    // 专项条目的 process 名单必须随组交付（否则 ref 后 PROCESS-NAME 规则会静默丢失）
+    const tg = ok.customGroups.find(g => g.name === 'Telegram');
+    assert.deepEqual(tg.process, { win: ['Telegram'], mac: ['Telegram'], lin: ['Telegram'] });
+    assert.deepEqual(tg.rules, ['RULE-SET,telegram,Telegram', 'RULE-SET,telegram-ip,Telegram,no-resolve']);
+    assert.deepEqual(tg.providers, { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' });
+
+    // 成员配方未备齐（无 proxies）的条目不得进入目录：引用它必须配置期 fail-closed
+    for (const key of ['facebook', 'steam']) {
+      assert.throws(
+        () => resolveConfig({ groups: [{ ref: key }] }),
+        /groups\[0\]\.ref: 未知内置组引用键/,
+        `未备齐成员配方的「${key}」不得可作为 ref 目标（禁止空壳组）`
+      );
+    }
+  });
+
+  test('validateCustomGroups - process 进程名单结构非法时配置期 fail-closed', () => {
+    assert.throws(
+      () => validateCustomGroups([{ name: '进程组', process: { win64: ['Telegram'] } }]),
+      /process: 未知平台键/,
+      '未知平台键必须 fail-closed'
+    );
+    assert.throws(
+      () => validateCustomGroups([{ name: '进程组', process: { win: 'Telegram' } }]),
+      /process\.win: 期望非空 string\[\]/,
+      '进程名单必须是 string[]'
+    );
+    validateCustomGroups([{ name: '进程组', process: { win: ['Telegram'] } }]);
+  });
+
+  test('strategyMain - groups 的 ref 与内置开关配方等价（流媒体 / 专项 / 开发学术 / 系统服务）', () => {
+    const buildRawConfig = () => ({
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
+        { name: '🇯🇵 日本 01', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p2' },
+        { name: '🇹🇼 台湾 YouTube 专线', type: 'ss', server: 'tw1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p3' },
+        { name: '🇺🇸 美国 Netflix 专线', type: 'ss', server: 'us1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p4' }
+      ]
+    });
+
+    const scenarios = [
+      {
+        title: '流媒体（含 @matchedNodes 特征池成员）',
+        base: { enableStreaming: true, streamingServices: ['youtube', 'netflix', 'tiktok', 'bahamut', 'bilibili'] },
+        refs: ['youtube', 'netflix', 'tiktok', 'bahamut', 'bilibili']
+      },
+      {
+        title: '专项服务（含 telegram 进程名单）',
+        base: { enableTelegram: true, enableCrypto: true, enablePayPal: true, enableWebRTC: true },
+        refs: ['telegram', 'crypto', 'paypal', 'webrtc']
+      },
+      {
+        title: '开发与学术',
+        base: {},
+        refs: ['github', 'scholar']
+      },
+      {
+        title: '系统服务',
+        base: { enableSystemServices: true },
+        refs: ['google', 'apple', 'microsoft']
+      }
+    ];
+
+    for (const sc of scenarios) {
+      const base = { minorNodeThreshold: 1, ...sc.base };
+      const byBuiltinSwitch = strategyMain(buildRawConfig(), base);
+      const byRefDeclaration = strategyMain(buildRawConfig(), { ...base, groups: sc.refs.map(ref => ({ ref })) });
+
+      assert.deepEqual(
+        byRefDeclaration['proxy-groups'],
+        byBuiltinSwitch['proxy-groups'],
+        `${sc.title}: ref 声明与内置开关配方必须产出完全一致的策略组清单`
+      );
+      // 规则集合等价（注入位置差异见批次 3 收敛项），Provider 亦须一一对应
+      assert.deepEqual(
+        [...byRefDeclaration.rules].sort(),
+        [...byBuiltinSwitch.rules].sort(),
+        `${sc.title}: ref 声明与内置开关配方必须产出完全一致的分流规则集合`
+      );
+      assert.deepEqual(
+        Object.keys(byRefDeclaration['rule-providers']).sort(),
+        Object.keys(byBuiltinSwitch['rule-providers']).sort(),
+        `${sc.title}: ref 声明与内置开关配方必须登记一致的 Rule-Provider`
+      );
+    }
+  });
+
+  test('strategyMain - ref 引用专项组时随组交付 PROCESS-NAME 进程规则', () => {
+    const rawConfig = {
+      proxies: [
+        { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
+      ]
+    };
+    const result = strategyMain(rawConfig, {
+      minorNodeThreshold: 1,
+      enableTelegram: false,
+      groups: [{ ref: 'telegram' }]
+    });
+
+    assert.ok(result['proxy-groups'].some(g => g.name === '✈️ Telegram'), '专项总开关关闭时 ref 仍应建组');
+    assert.ok(
+      result.rules.some(r => /^PROCESS-NAME,Telegram(\.exe)?,✈️ Telegram$/.test(r)),
+      'ref 引用 telegram 必须随组交付进程名单规则，不得静默丢失'
+    );
+  });
 });
 

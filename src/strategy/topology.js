@@ -101,21 +101,26 @@ function buildBuiltinAppRecipes({
     });
   }
 
-  // 2. 流媒体分组
+  // 2. 流媒体分组：与 AI 同构，配方直接取自 catalog 条目（match + proxies + preferredRegions），
+  //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
   if (userConfig.enableStreaming && effectiveRegistries.streaming) {
     const streamingServices = userConfig.streamingServices || Object.keys(effectiveRegistries.streaming);
     streamingServices.forEach(key => {
       const st = effectiveRegistries.streaming[key];
       if (!st) return;
 
+      // 用户自建条目 (customServices) 多半只给了 reg，回落「特征桶 + 偏好地区」内置模板，保持既有行为
       const matched = buckets[st.pool] || buckets[st.tag] || [];
       const pref = (st.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
       const defaultProxies = [...matched, ...pref, '@standardOptions', 'DIRECT'];
 
       recipes.push({
         name: st.name,
-        type: 'select',
-        proxies: st.proxies || defaultProxies
+        type: st.type || 'select',
+        match: st.match,
+        exclude: st.exclude,
+        proxies: st.proxies || defaultProxies,
+        preferredRegions: st.preferredRegions
       });
     });
   }
@@ -169,7 +174,7 @@ function buildBuiltinAppRecipes({
     });
   }
 
-  // 5. 开发者与学术服务
+  // 5. 开发者与学术服务：配方直接取自 catalog 条目（含 match / proxies / preferredRegions）
   if (effectiveRegistries.dev) {
     const devActive = Array.isArray(userConfig.devServices)
       ? userConfig.devServices
@@ -182,6 +187,7 @@ function buildBuiltinAppRecipes({
       const conf = effectiveRegistries.dev[key];
       if (!conf) return;
 
+      // 用户自建条目回落模板，保持既有行为
       const pref = (conf.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
       const defaultProxies = pref.length > 0
         ? [...pref, '@defaultProxy', 'DIRECT']
@@ -189,13 +195,17 @@ function buildBuiltinAppRecipes({
 
       recipes.push({
         name: conf.name,
-        type: 'select',
-        proxies: conf.proxies || defaultProxies
+        type: conf.type || 'select',
+        match: conf.match,
+        exclude: conf.exclude,
+        proxies: conf.proxies || defaultProxies,
+        preferredRegions: conf.preferredRegions
       });
     });
   }
 
   // 6. 专项应用分组 (由 effectiveRegistries.specialized 驱动)
+  //    成员的 `@preferredRegions` 由拓扑引擎按条目 preferredRegions 展开（不再在此处手工预展开）
   const specializedMap = effectiveRegistries.specialized || {};
   for (const spec of Object.values(specializedMap)) {
     if (!userConfig[spec.configKey]) continue;
@@ -206,20 +216,18 @@ function buildBuiltinAppRecipes({
     if (spec.key === 'webrtc' && userConfig.enableDomesticGroup && !userConfig.proxyFirst) {
       proxies = ['DIRECT', '@defaultProxy', '手动选择', '自动选择', '@activeRegions'];
     }
-    // 处理偏好大区展开 (如 Crypto 的 preferredRegions)
-    if (spec.preferredRegions && proxies.includes('@preferredRegions')) {
-      const pref = spec.preferredRegions.map(id => regionNames[id]).filter(Boolean);
-      proxies = proxies.flatMap(p => (p === '@preferredRegions' ? pref : p));
-    }
 
     recipes.push({
       name: spec.name,
-      type: 'select',
-      proxies
+      type: spec.type || 'select',
+      match: spec.match,
+      exclude: spec.exclude,
+      proxies,
+      preferredRegions: spec.preferredRegions
     });
   }
 
-  // 6. 系统服务
+  // 7. 系统服务：配方直接取自 catalog 条目（含 match / proxies）
   if (userConfig.enableSystemServices && effectiveRegistries.system) {
     const systemServices = userConfig.systemServices || Object.keys(effectiveRegistries.system);
     systemServices.forEach(key => {
@@ -227,14 +235,16 @@ function buildBuiltinAppRecipes({
       if (sys) {
         recipes.push({
           name: sys.name,
-          type: 'select',
+          type: sys.type || 'select',
+          match: sys.match,
+          exclude: sys.exclude,
           proxies: sys.proxies || ['DIRECT', '@standardOptions']
         });
       }
     });
   }
 
-  // 7. 广告拦截
+  // 8. 广告拦截
   if (userConfig.enableAdBlock || userConfig.enableAntiAD) {
     recipes.push({
       name: '广告拦截',

@@ -18,7 +18,7 @@ const SUPPORTED_GROUP_TYPES = new Set(['select', 'url-test', 'fallback', 'load-b
 const ALLOWED_GROUP_KEYS = new Set([
   'name', 'type', 'url', 'interval', 'tolerance', 'lazy', 'strategy',
   'icon', 'emoji', 'hidden', 'filter', 'exclude-filter',
-  'match', 'exclude', 'proxies', 'rules', 'providers', 'preferredRegions'
+  'match', 'exclude', 'proxies', 'rules', 'providers', 'preferredRegions', 'process'
 ]);
 
 /**
@@ -650,6 +650,32 @@ function validateCustomGroups(customGroups) {
           throw new TypeError(`[customGroups] 策略组 ${groupName}.preferredRegions[${pIdx}]: 期望非空 string`);
         }
       });
+    }
+
+    // 3.3 process 必须为 { win?: string[], mac?: string[], lin?: string[] } 进程名单（供组随规则交付）
+    if (group.process !== undefined && group.process !== null) {
+      const proc = group.process;
+      if (typeof proc !== 'object' || Array.isArray(proc)) {
+        throw new TypeError(`[customGroups] 策略组 ${groupName}.process: 期望对象映射 { win/mac/lin }`);
+      }
+      const osKeys = Object.keys(proc);
+      if (osKeys.length === 0) {
+        throw new Error(`[customGroups] 策略组 ${groupName}.process: 不能为空对象，至少需声明一个平台`);
+      }
+      for (const osKey of osKeys) {
+        if (!['win', 'mac', 'lin'].includes(osKey)) {
+          throw new Error(`[customGroups] 策略组 ${groupName}.process: 未知平台键「${osKey}」，支持: win | mac | lin`);
+        }
+        const list = proc[osKey];
+        if (!Array.isArray(list) || list.length === 0) {
+          throw new TypeError(`[customGroups] 策略组 ${groupName}.process.${osKey}: 期望非空 string[] 进程名单`);
+        }
+        list.forEach((item, pIdx) => {
+          if (typeof item !== 'string' || !item.trim()) {
+            throw new TypeError(`[customGroups] 策略组 ${groupName}.process.${osKey}[${pIdx}]: 期望非空 string`);
+          }
+        });
+      }
     }
 
     // 4. rules 必须为 string 或 string[]

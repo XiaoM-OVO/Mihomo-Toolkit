@@ -204,9 +204,17 @@ function buildRoutingRules(userConfig = {}, registries = {}, options = {}) {
           }
         }
       }
-      if (!g.name || !g.rules) continue;
+      if (!g.name) continue;
       const targetName = stripGroupDecoration(g.name);
+
+      // 组声明随组交付的进程名单规则（如 Telegram 的 PROCESS-NAME 名单：不随组交付就会丢）
+      if (g.process && typeof g.process === 'object' && !Array.isArray(g.process)) {
+        routingRules.push(...expandProcessRules(g.process, targetName, osInfo));
+      }
+
+      if (!g.rules) continue;
       const rulesList = Array.isArray(g.rules) ? g.rules : [g.rules];
+
       for (const r of rulesList) {
         if (!r || typeof r !== 'string') continue;
         const trimmed = r.trim();

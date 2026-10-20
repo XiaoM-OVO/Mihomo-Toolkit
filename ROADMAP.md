@@ -227,7 +227,8 @@ groups:
 **八、实施顺序（分批，每批独立可验收）**
 
 1. ✅ **批次 1（试点 · AI 类别）已完成**：`groups` + `{ ref }` + `rules` 全链路贯通，不变量 2 / 3 / 6 均已有测试守卫（详见下方「批次 1 落地记录」）。
-2. 批次 2：其余服务类别按同构方式迁移，逐个补齐 catalog 条目的 `match` / `proxies` / `type` / `rules`；`specialized` 条目（telegram 等）需一并解决 `process` 进程名单随组交付的问题。
+2. ✅ **批次 2 已完成**（流媒体 / 开发学术 / 系统服务 / 专项服务）：按同构方式迁移，逐个补齐 catalog 条目的 `match` / `proxies` / `type`；`specialized` 条目（telegram 等）一并解决 `process` 进程名单随组交付（详见下方「批次 2 落地记录」）。
+   2b. 批次 2b（待推进）：聚合语义与广告拦截组迁移 —— `game` 两个聚合组、`social` 合并为「社交平台」、`ads` 双开关共享组名的拆分。
 3. 批次 3：删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，同步 [rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L196-L198) 的读取处；同时把 `groups` 归一化结果直接落在 `groups` 字段（拆掉当下并入 `customGroups` 的过渡合流），并把分类打标门禁从「开关或 ref」简化为「有 ref 即打标」。
 4. 批次 4：文档与类型声明对齐 + 迁移对照表随发版说明给出。
 
@@ -244,6 +245,21 @@ groups:
 | 默认输出影响 | **零改动**：`groups` 不设默认值，A 类开关与内置配方仍驱动默认输出；因此今日默认产物可作为批次 3 的回归基线快照 |
 | 已知残差 1 | 规则注入位置：`groups` 路径走 customGroups 段（早于广告拦截 / AI 段），开关路径在其后 → 现以「规则集合等价」而非顺序敏感比较守卫，批次 3 收敛后收紧 |
 | 已知残差 2 | 成员的 `match: { pool }` 与旧 `buckets[tag]` 在「节点级 `customGroups` 标注节点」这一边界上存在理论差异（此类节点不再被排除）；默认配置与现有测试未见实际分歧 |
+
+**八之三、批次 2 落地记录（含自主决策与残差）**
+
+| 项 | 结论 |
+| :--- | :--- |
+| 可引用判据修正 | 由批次 1 的「`match` **且** `proxies` 齐备」修正为「条目自带**非空 `proxies`**」。`match` 降为可选字段——它只负责说明 `@matchedNodes` 从哪个特征池取节点，并非「组能否独立成立」的判据。成员完全由 `proxies` 列清（如 bahamut / bilibili / google / apple / microsoft / github 的地区组清单）的条目同样是一条完整、可独立成立的声明，无需为过闸而硬塞一个用不上的 `match`（那才是「配了不生效」）。判据落在 [catalog.js](file:///e:/CODE/mihomo-toolkit-next/src/config/catalog.js) 的 `ServiceCatalog#isRefableGroup` 与 `toRegistries()` 的目录投影条件，两处共用同一条件。 |
+| 迁移范围 | 流媒体 9 条（`youtube`/`netflix`/`disney`/`tiktok`/`spotify`/`bahamut`/`pixiv`/`twitch`/`bilibili`）、开发学术 2 条（`github`/`scholar`）、系统 3 条（`google`/`apple`/`microsoft`）、专项 4 条（`crypto`/`paypal`/`webrtc`/`telegram`）。专项条目此前被目录投影整体排除（`cat === 'specialized'` 直接跳过），本次纳入目录。 |
+| 成员配方承接方式 | 原内置配方里的 `buckets[pool]` 桶注入改为条目自带 `match: { pool: <键> }` + `proxies` 中的 `@matchedNodes` 承接；地区/标准选项仍由 `@preferredRegions` / `@standardOptions` 等宏承接。`buildBuiltinAppRecipes` 各分支随之退化为「按开关挑条目 → 原样透传 `match`/`exclude`/`proxies`/`preferredRegions`」，两条路径共用同一份定义（不再是「目录一份、内置一份」）。 |
+| `process` 随组交付 | 专项的进程名单此前只在内置分支展开，`ref` 后 `PROCESS-NAME` 规则会静默丢失。本次在 [rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js) 的 `customGroups` 段新增 `process` 展开（复用 `expandProcessRules`），目录投影随组携带 `process`，校验器 [matcher.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/matcher.js) 白名单扩容 `process` 并做结构 fail-closed（未知平台键 / 非 string[] 一律报字段路径）。 |
+| 专项 `@preferredRegions` 展开 | 删掉内置分支里手工预展开（`spec.preferredRegions` + `flatMap`），改由拓扑引擎按条目 `preferredRegions` 统一展开 —— 与 `ref` 路径共用同一实现，杜绝两条展开口径漂移。 |
+| 默认输出影响 | **非零漂移（属修正）**：`tiktok` 的声明里本就写着 `@matchedNodes`，但内置分支此前未把 `match` 传给引擎，该宏恒展开为空 → 只有 `@nonCnRegions` 起作用；`match` 补齐后声明按其字面意图生效。同理，流媒体未显式声明 `proxies` 的条目（`youtube`/`netflix`/`disney`/`spotify`/`pixiv`/`twitch`）现由 `@matchedNodes` 承接特征池成员（此前由内置分支用 `buckets[pool]` 注入，等价）。仅节点名命中服务正则时才会实际多出成员，现有 590 条测试全绿。批次 3 的回归基线快照须在批次 2 之后重新采集。 |
+| 验证 | `npm test` 590 pass / 0 fail（新增 4 条测试：可引用判据、`process` 结构 fail-closed、四类「ref ≡ 内置开关」逐字段等价、`process` 随组交付）；`npm run lint` 零警告；`npm run verify:arch` 零环路零违规；`npm run verify:docs` 通过。 |
+| 残差 2a | `webrtc` 的回国模式成员编排（`enableDomesticGroup && !proxyFirst` 时改写为 `DIRECT` 优先）仍只在内置分支生效、未随目录交付 → 该组合下 `ref: webrtc` 与内置配方不等价（等价性测试亦避开了该组合）。批次 3 随 `enableDomesticGroup` 一并收敛。 |
+| 残差 2b | **聚合语义未迁移**：`game` 的「游戏服务 / 游戏下载」是「成员服务各带规则、目标指向聚合组」的结构，`social` 的「社交平台」是「非独立服务合并为一组」的合并语义，`ads` 则是两个规则级开关共享同一组名。三者都要求「成员清单 / 合并策略」下沉到目录条目，属批次 2b（列在实施顺序第 2b 项）。 |
+| 残差 2c | 因此 `facebook` / `steam` 等聚合成员条目暂无 `proxies`，当下不可 `ref`（引用即 fail-closed 并报出可用键清单）——这是刻意的（禁止空壳组），随批次 2b 一并备齐。 |
 
 **九、已定稿的决策（如无异议即按此实施，无需再讨论）**
 
