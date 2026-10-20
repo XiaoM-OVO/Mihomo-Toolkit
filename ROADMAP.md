@@ -357,6 +357,7 @@ groups:
 - `DEFAULT_CONFIG.routing`：默认条目由 `src/data/default-routing.js` 的**显式顺序表**给出（该表是「默认分流顺序」的单一真相源）；条目只写 `preset` / `service` / `rule` 与目标引用，规则文本与 Provider 由 catalog 数据补齐。
 - 默认顺序与今日一致：`pre: subscription` → `ads` → `ai` → `streaming` → `social`（默认关）→ `game` → `dev` → `specialized`（telegram 默认开；crypto / paypal / webrtc 默认关）→ `system` → `process` → `download` → `domestic` → `final`（`MATCH`）。
 - 每个 `preset` 的默认开关沿用今日 A 类开关的默认值（见 10.7）。
+- 例外：`preset: ads` 展开为**两条独立规则来源**——`ad-block`（默认开，Provider `geosite/category-ads-all`）与 `anti-ad`（默认关，Provider `https://anti-ad.net/clash.yaml`），二者共享目标组「🚫 广告拦截」。两条目各自可被 `service` 单点引用或 `disabled` 关闭；不合并为一条，以避免把默认关闭的 `anti-ad` 规则强推生效。因此 `ads` 的默认输出仍只有 `RULE-SET,ads` 一条。
 
 **10.6 include 与合并**
 
