@@ -229,8 +229,8 @@ groups:
 1. ✅ **批次 1（试点 · AI 类别）已完成**：`groups` + `{ ref }` + `rules` 全链路贯通，不变量 2 / 3 / 6 均已有测试守卫（详见下方「批次 1 落地记录」）。
 2. ✅ **批次 2 已完成**（流媒体 / 开发学术 / 系统服务 / 专项服务）：按同构方式迁移，逐个补齐 catalog 条目的 `match` / `proxies` / `type`；`specialized` 条目（telegram 等）一并解决 `process` 进程名单随组交付（详见下方「批次 2 落地记录」）。
    2b. ✅ **批次 2b 已完成**（聚合语义与广告拦截组迁移）：`game` 两个聚合组、`social` 合并组、`ads` 双开关共享组名三类一并下沉到目录条目（详见下方「批次 2b 落地记录」）。
-3. ⏸ **批次 3（待决 · 不得启动）**：删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，同步 [rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L196-L198) 的读取处；同时把 `groups` 归一化结果直接落在 `groups` 字段（拆掉当下并入 `customGroups` 的过渡合流），并把分类打标门禁从「开关或 ref」简化为「有 ref 即打标」。**本批会改写用户配置，属于用户面不可逆迁移**——启动前置条件是「十、待决」中的模型选定并落地，未选定前不实施。
-4. ⏸ 批次 4（随批次 3 待决）：文档与类型声明对齐 + 迁移对照表随发版说明给出。
+3. ⏳ **批次 3（规格已定，待实施）**：按第十节「两表模型规格」实施——删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，新增 `routing` 表与 `src/data/default-routing.js` 默认顺序表；`groups` 归一化结果直接落在 `groups` 字段（拆掉当下并入 `customGroups` 的过渡合流）。**本批会改写用户配置，属于用户面不可逆迁移**；实施规格见第十节（已定稿），迁移对照表见 10.7。
+4. ⏳ 批次 4（随批次 3 实施）：文档与类型声明对齐 + 迁移对照表随发版说明给出。
 
 **八之二、批次 1 落地记录（含自主决策与残差）**
 
@@ -294,48 +294,103 @@ groups:
 > - 原「激活粒度 = 批次」→ 否决，采用逐组引用。
 > - **原「是否需要 `enabled: false`」→ 判断更正：需要，以 `disabled: true` 回归**（原因见第二节 include 并集语义）。
 
-**十、待决：组声明与分流的边界（批次 3 的前置阻塞）**
+**十、已定：两表模型 `groups` + `routing`（批次 3 规格）**
 
-> **状态：未拍板，不得据此实施批次 3。** 本节只记录「已验证的事实」「已确认的缺陷」与「尚待回答的产品问题」；结论出来后再并入第九节。
+> **状态：已定稿（2026-10-20）。** 批次 3 按本节实施，实施前不改动用户面字段。选型过程、缺陷与已答问题压缩保留在文末附录，便于追溯。
 
-**背景（为什么会走到这一步）**：六维分类诞生于硬编码时期——当时「一次关掉一整批」只能靠分类开关实现，因此分类同时承担了「用户组织方式」与「批量激活能力」两个角色。目录解耦之后，分类作为**用户面必填结构**应当消失（这一步是对的），但「批量关闭」是真实需求，必须在新模型里有位置，不能随分类一起删掉。判据不是「字段多不多」，而是：**新增一个服务/类别，是只加数据，还是又得加一段特判。**
+**10.1 职责边界**
 
-**两个候选模型**：
-
-| 维度 | 甲：单表 `groups`（现路线） | 乙：`groups` + `routing` 两表 |
+| 表 | 只回答 | 不回答 |
 | :--- | :--- | :--- |
-| 声明内容 | 组结构 + 该组的规则（引用即带出规则） | `groups` 只回答「有哪些组」；`routing` 只回答「哪条规则指向哪个组」 |
-| 顺序语义 | 清单顺序隐式决定规则优先级（实测：声明规则注入在分类规则之前，先到先得；调换清单顺序会改变命中目标） | `routing` 顺序即优先级，显式且可测 |
-| 覆写 `name` | 规则里写死的目标名失配（见缺陷 P1） | 目标按引用解析，改名安全 |
-| 批量关闭 | 逐条 `disabled`，或依赖目录条目 | `routing` 用 `preset` 表达「整批」，能力保留 |
-| 聚合语义 | 归属已改为「规则目标驱动」（无成员清单/仲裁）；但规则仍须在目录内**派生**并随组交付 | 成员规则就是若干条 `routing` 记录，目录无需派生任何规则 |
-| 主要代价 | 用户要理解「引用一个组会连带出规则」；改名/顺序是隐式陷阱 | 多一个顶层字段；默认值需内置到两处 |
+| `groups` | 有哪些组？每个组怎么选节点（`type` / `proxies` / `match` / `exclude` / 健康检查参数）？ | 什么流量进这个组（规则归 `routing`） |
+| `routing` | 哪条匹配式走哪个组？优先级顺序如何？ | 组怎么选节点 |
 
-**无论选哪个模型都必须满足的验收标准**：
+目录（catalog）退为纯数据源：服务规则集、Provider 路径、默认组配方。六维分类不再是用户面概念，也不再参与任何仲裁。
 
-1. **默认产物全量基线**：`test/pipeline/default-output-golden.test.js`（固定节点样本 → `proxies` / `proxy-groups` / `rules` / `rule-providers` / `dns` / `tun` / `sniffer` 逐字段比对，规则数组顺序参与比较）。基线更新只能通过 `node scripts/gen-default-output-golden.js` 显式进行，并在提交信息中说明「默认产物为什么变」。
-2. **顺序语义显式且可测**：要么由 `routing` 顺序承载，要么在文档中钉死「清单顺序即优先级」并加回归测试。
-3. **改名不断链**：`{ ref: X, name: Y }` 之后规则目标必须随动，或在配置期 fail-closed 拒绝。
-4. **批量关闭能力保留**：一行关闭一整批。
-5. **组合场景回归**：默认 / 停用单项 / 覆盖同名组 / include 片段 / 空节点池。
-6. **结构性配置逐项核对**：`coreRegions` / `minorNodeThreshold` / `regionGroupType` / `enableRegionHashLB` 是否只影响分池与折叠——需逐项确认它们是否还影响组生成、路由目标或宏展开，不能统称「只影响分池」。
+**10.2 `groups` 规格**
 
-**已确认的缺陷（与模型选型无关，先修）**：
+- 条目两型，同构：`{ ref: <目录键> }`（引用内置配方，可覆写任意字段）或完整声明；`disabled: true` 关闭一条（跨 include 片段唯一关闭手段）。
+- 可引用判据沿用「条目自带非空 `proxies`」；未知 `ref` fail-closed（含聚合成员键的改引指引）。
+- **组条目不再含 `rules` / `providers`**：写了即 fail-closed，错误消息指向 `routing`（「规则属于 `routing`，组只声明结构与配方」）。
+- 组名唯一，同名后者胜（沿用）。
 
-| 编号 | 问题 | 证据 | 建议修法 |
-| :--- | :--- | :--- | :--- |
-| P1 | `ref` 覆写 `name` 后规则目标不随动 | 文档示例 `{ ref: copilot, name: 我的 Copilot 线路 }` 产出两个组、规则仍指向旧名；开关关闭时规则指向不存在的组。根因：[rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L227-L228) 对三段式规则原样透传，仅两段式会重写目标 | 目录条目 `rules` 一律不写死目标（两段式），或声明期重写目标并 fail-closed 校验 |
-| P2 | 成员键报错指引对 `meta` 错误 | ~~`ref: meta` 提示改引 `social-platform`，但该聚合组只含 facebook / instagram / discord，不含 meta 规则~~ | ✅ 已修复：指引改由**规则目标**派生（`buildMemberHints`），meta 的目标是自身组名 Meta，不再被错误指引 |
-| P3 | 广告开关仍为硬编码 | [topology.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/topology.js#L246) 写死 `enableAdBlock \|\| enableAntiAD`，而 [rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L254) 已按 `ADS_GROUPS` 数据驱动 | 新增第三条规则源时只需加数据，不再改代码 |
-| P4 | 成员提示表二次投影 | ~~`getGroupMemberHints()` 内部重跑 `toRegistries()`~~ | ✅ 已修复：改为 `buildMemberHints(merged.registries)`，复用已构建的注册表 |
+**10.3 激活语义（`ref` 组按引用生成）**
 
-**待拍板的产品问题（按顺序回答，前一个决定后一个）**：
+- 由 `ref` 派生的服务组，只有被至少一条生效的 `routing` 条目（显式 `rule` / `service`，或启用的 `preset`）作为目标引用时，才实际生成；无引用 = 不生成 → 与今日「开关关闭」等价，默认产物因此零漂移。
+- 用户完整自写的组（无 `ref`）始终生成，即使暂无路由引用（允许占位组 / 手选组）。
+- 因此批量开启 / 关闭是**一行**：`routing: [{ preset: social }]` 或 `{ preset: social, disabled: true }`，不必逐条增删 `groups`。
 
-1. 用户是否愿意为升级重写配置（`enableX` → `ref` 清单）？
-2. 「一行关掉一整批」是保留为一等公民（`preset`），还是接受逐条 `disabled`？
-3. `customServices` 随六维一起删除，还是改为扁平的服务定义区？
-4. 游戏 / 社交的聚合语义，是继续由目录仲裁，还是交给 `routing` 表达？
-5. include 并集语义下，「移除一个片段里启用的 ref」用什么表达（`disabled: true` 是否足够）？
+**10.4 `routing` 规格**
+
+| 形态 | 写法 | 说明 |
+| :--- | :--- | :--- |
+| 单条 | `{ rule: 'DOMAIN-SUFFIX,gitlab.example.com', to: 我的工作线 }` | `rule` 只写匹配式（不含目标，目标归 `to`） |
+| 批量 | `{ preset: subscription \| ads \| ai \| streaming \| social \| game \| dev \| specialized \| system \| process \| download \| domestic }` | 展开为目录数据里该批全部规则与各自默认目标 |
+| 单服务 | `{ service: facebook, to?: <target> }` | 默认目标 = 该服务自身组；`to` 可改指——这是「合并进一个组」的正式表达，取代已删除的聚合机制 |
+| 关闭 | `{ rule: '<与默认条目完全相同的匹配式>', disabled: true }`，或 `{ preset / service: X, disabled: true }` | 只删除**默认表**条目；匹配不到 = fail-closed（拼错却静默无效属 fail-open） |
+
+`to` 解析顺序（全部 fail-closed）：
+
+1. 内置特殊目标：`DIRECT` / `REJECT` / `REJECT-DROP` / `PASS`；
+2. `groups` 中的 `ref` 键 → 解析为该组最终 `name`（**含用户覆写，改名不断链**）；
+3. `groups` 中的自定义组名 → 必须存在于最终组清单；
+4. 其余一律报错；若该名字对应被 `disabled` 或被剪枝的组，错误消息须显式提示（「目标组未声明 / 已关闭」）。
+
+`to` 不接受数组：一组一目标，要多目标就写多条规则（顺序本就由 `routing` 承载）。
+
+**顺序语义**
+
+- `routing` 数组顺序 = 产物 `rules` 顺序 = 匹配优先级，全程不排序。
+- 默认表分三段：`pre`（订阅直连等不可挪动段）→ `用户段` → `core`（广告 / AI / 流媒体 / … / 国内海外）→ `MATCH`。
+- 用户条目默认落在**用户段**（保持今日 `customRules` 的最高业务优先级），可用 `before` / `after` 指定锚点移到任意默认条目旁。
+- 锚点 = 条目稳定键：`preset:<名>`、`service:<键>`、或默认条目的匹配式原文。锚点不存在、或移动越过 `pre` 之前 / `MATCH` 之后 → fail-closed。
+- `MATCH` 由系统固定为最后一条，用户不得新增或移动。
+
+**冲突与去重（fail-closed）**
+
+- 同一匹配式在最终清单出现两次 → 报错（歧义不可判）。想改既有权重的目标：先 `disabled` 默认条目，再重写一条；不做隐式覆盖。
+- include 展开后的处理顺序固定：按条目键并集去重 → 应用 `disabled` → 按锚点定序 → 冲突检查。结果与书写顺序无关。
+
+**10.5 默认值**
+
+- `DEFAULT_CONFIG.groups`：全部服务 `ref`（含默认关闭的社交 / 专项）。是否生成由 10.3 决定，故「列出来」不影响默认产物。
+- `DEFAULT_CONFIG.routing`：默认条目由 `src/data/default-routing.js` 的**显式顺序表**给出（该表是「默认分流顺序」的单一真相源）；条目只写 `preset` / `service` / `rule` 与目标引用，规则文本与 Provider 由 catalog 数据补齐。
+- 默认顺序与今日一致：`pre: subscription` → `ads` → `ai` → `streaming` → `social`（默认关）→ `game` → `dev` → `specialized`（telegram 默认开；crypto / paypal / webrtc 默认关）→ `system` → `process` → `download` → `domestic` → `final`（`MATCH`）。
+- 每个 `preset` 的默认开关沿用今日 A 类开关的默认值（见 10.7）。
+
+**10.6 include 与合并**
+
+沿用 include 数组并集语义：`routing` 按条目键（匹配式原文或 `preset` / `service` 键）去重，冲突交给 10.4 的冲突检查；`disabled` 是跨片段唯一移除手段（与 `groups` 一致）。
+
+**10.7 用户面迁移（旧 → 新）**
+
+| 旧写法 | 新写法 |
+| :--- | :--- |
+| `enableAI` + `aiServices` | 默认全开；关单项 `{ service: chatgpt, disabled: true }`，关整批 `{ preset: ai, disabled: true }` |
+| `enableSocial` / `socialServices` / `independentSocial` | 开启 `{ preset: social }` 一行；四服务各成一组，合并用 `{ service: facebook, to: 我的社交组 }` |
+| `enableGame` + `gameServices` | `{ preset: game }`；`game-service` / `game-download` 随引用生成 |
+| `enableTelegram` / `enableCrypto` / `enablePayPal` / `enableWebRTC` | `{ service: telegram }` 等，或整批 `{ preset: specialized }` |
+| `enableStreaming` / `streamingServices`、`enableSystemServices`、`enableGitHub` / `enableScholar`、`enableAdBlock` / `enableAntiAD`、`enableProcessDirect`、`enableDomesticGroup` | 同上：整批 `preset` 或单项 `service`；广告两条规则源变为 `preset: ads` 的两个默认条目 |
+| `customRules` | `routing: [{ rule, to }]`（用户段位置不变） |
+| `customGroups` | `groups: [...]`（字段更名，结构一致） |
+| `customServices` | 保留字段名，改为**扁平**服务字典（不再按六维嵌套），新增服务用 `{ service: <键> }` 路由引用 |
+
+**10.8 验收标准（批次 3 完成判据）**
+
+1. **默认产物逐字节基线**：`test/pipeline/default-output-golden.test.js` 仍比对 `proxies` / `proxy-groups` / `rules` / `rule-providers` / `dns` / `tun` / `sniffer`，规则顺序参与比较；批次 3 后默认 golden **零漂移**，任何漂移须在提交信息说明原因。
+2. **顺序可测**：新增「调换两条 `routing` 条目 → 命中目标随之改变」的回归测试。
+3. **改名不断链**：`{ ref: X, name: Y }` 后 `routing` 目标随动；目标指向不存在组 → 配置期 fail-closed。
+4. **批量一行**：`{ preset: X }` 与 `{ preset: X, disabled: true }` 各一条集成测试。
+5. **组合场景回归**：默认 / 停用单项 / 停用整批 / 覆盖同名组 / include 片段 / 悬空目标 / 重复匹配式 / 空节点池。
+6. **结构性字段核对**：`coreRegions` / `minorNodeThreshold` / `regionGroupType` / `enableRegionHashLB` 逐项确认只影响分池与折叠。
+7. **合并表达**：`{ service: facebook, to: <自定义组> }` 产出的规则目标与组清单一致（取代聚合机制的回归守卫）。
+
+**附：选型过程（历史，已归档为结论）**
+
+- **背景**：六维分类诞生于硬编码时期，「一次关掉一整批」只能靠分类开关实现，故分类同时承担「用户组织方式」与「批量激活」。目录解耦后分类作为用户面必填结构应当消失，但批量关闭是真实需求，必须在新模型里有位置。判据：**新增一个服务 / 类别，是只加数据，还是又得加一段特判。**
+- **否决单表**：单表把「组」与「分流」压进一张表，导致顺序语义隐式（实测：调换清单顺序会改变命中目标）、`ref` 覆写 `name` 后规则断链、聚合仲裁 326 行特判、冲突不可判。两表把顺序、目标、批量关闭三件事各归其位。
+- **已确认缺陷**：P1 改名断链（`rules.js:227-228` 三段式规则原样透传）→ 由 10.4 的 `to` 解析在根上消除；P2 `meta` 指引错误与 P4 提示表二次投影 → 已修复；P3 广告开关硬编码 → 批次 3 随 `preset: ads` 数据化消除。
+- **原待拍板问题的答案**：① 愿意重写配置（发版给 10.7 对照表）；② 批量关闭保留为一等公民（`preset`）；③ `customServices` 保留但扁平化；④ 聚合语义交给 `routing` 的 `service` + `to`；⑤ include 移除用 `disabled: true`。
 
 ---
 
