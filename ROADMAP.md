@@ -228,9 +228,9 @@ groups:
 
 1. ✅ **批次 1（试点 · AI 类别）已完成**：`groups` + `{ ref }` + `rules` 全链路贯通，不变量 2 / 3 / 6 均已有测试守卫（详见下方「批次 1 落地记录」）。
 2. ✅ **批次 2 已完成**（流媒体 / 开发学术 / 系统服务 / 专项服务）：按同构方式迁移，逐个补齐 catalog 条目的 `match` / `proxies` / `type`；`specialized` 条目（telegram 等）一并解决 `process` 进程名单随组交付（详见下方「批次 2 落地记录」）。
-   2b. 批次 2b（待推进）：聚合语义与广告拦截组迁移 —— `game` 两个聚合组、`social` 合并为「社交平台」、`ads` 双开关共享组名的拆分。
-3. 批次 3：删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，同步 [rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L196-L198) 的读取处；同时把 `groups` 归一化结果直接落在 `groups` 字段（拆掉当下并入 `customGroups` 的过渡合流），并把分类打标门禁从「开关或 ref」简化为「有 ref 即打标」。
-4. 批次 4：文档与类型声明对齐 + 迁移对照表随发版说明给出。
+   2b. ✅ **批次 2b 已完成**（聚合语义与广告拦截组迁移）：`game` 两个聚合组、`social` 合并组、`ads` 双开关共享组名三类一并下沉到目录条目（详见下方「批次 2b 落地记录」）。
+3. ⏸ **批次 3（待决 · 不得启动）**：删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，同步 [rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L196-L198) 的读取处；同时把 `groups` 归一化结果直接落在 `groups` 字段（拆掉当下并入 `customGroups` 的过渡合流），并把分类打标门禁从「开关或 ref」简化为「有 ref 即打标」。**本批会改写用户配置，属于用户面不可逆迁移**——启动前置条件是「十、待决」中的模型选定并落地，未选定前不实施。
+4. ⏸ 批次 4（随批次 3 待决）：文档与类型声明对齐 + 迁移对照表随发版说明给出。
 
 **八之二、批次 1 落地记录（含自主决策与残差）**
 
@@ -259,13 +259,30 @@ groups:
 | 验证 | `npm test` 590 pass / 0 fail（新增 4 条测试：可引用判据、`process` 结构 fail-closed、四类「ref ≡ 内置开关」逐字段等价、`process` 随组交付）；`npm run lint` 零警告；`npm run verify:arch` 零环路零违规；`npm run verify:docs` 通过。 |
 | 残差 2a | `webrtc` 的回国模式成员编排（`enableDomesticGroup && !proxyFirst` 时改写为 `DIRECT` 优先）仍只在内置分支生效、未随目录交付 → 该组合下 `ref: webrtc` 与内置配方不等价（等价性测试亦避开了该组合）。批次 3 随 `enableDomesticGroup` 一并收敛。 |
 | 残差 2b | **聚合语义未迁移**：`game` 的「游戏服务 / 游戏下载」是「成员服务各带规则、目标指向聚合组」的结构，`social` 的「社交平台」是「非独立服务合并为一组」的合并语义，`ads` 则是两个规则级开关共享同一组名。三者都要求「成员清单 / 合并策略」下沉到目录条目，属批次 2b（列在实施顺序第 2b 项）。 |
-| 残差 2c | 因此 `facebook` / `steam` 等聚合成员条目暂无 `proxies`，当下不可 `ref`（引用即 fail-closed 并报出可用键清单）——这是刻意的（禁止空壳组），随批次 2b 一并备齐。 |
+| 残差 2c | 因此 `facebook` / `steam` 等聚合成员条目暂无 `proxies`，当下不可 `ref`。**批次 2b 决策：成员不为其备 `proxies`（保持不可独立引用）**，改为由所属聚合条目统一承载成员规则与 Provider，并将成员键的报错升级为「应改引哪个聚合组」的指引（详见「批次 2b 落地记录」）。 |
 
-**九、已定稿的决策（如无异议即按此实施，无需再讨论）**
+**八之四、批次 2b 落地记录（含自主决策与残差）**
+
+| 项 | 结论 |
+| :--- | :--- |
+| 聚合条目入目录 | `registries.groups` 新增 `game-service` / `game-download` / `social-platform` 三个聚合键。聚合条目与分类条目**完全同构**——都是「自带非空 `proxies` 的组声明」，区别只在它的 `rules`/`providers` 是**成员规则的合并结果**；`rules` 经既有 `rules → RULE-SET + 规则集 Provider` 通道生成（**不引入「产物束」这类新概念**，保持不变量 2），从而杜绝「ref 聚合组只给组不给成员规则」的断裂规则。 |
+| 成员清单 / 合并策略下沉 | 聚合条目在**定义层**声明成员：`game` 未显式声明（默认 = 该分类全量服务，不自建第二份清单，避免与 `BUILTIN_SERVICES` 漂移）；`social.combined` 显式声明 `members: ['facebook','instagram','discord']`（`twitter` 独立成组、`meta` 是 facebook 规则集的别名条目不随合并组默认激活，故均不在其中）。规则归属算法：成员规则按「已解析目标组名」归属；**自路由规则**（目标 = 成员自身组名，如 social 条目的 `rules: 'facebook'`）在聚合语义下改指聚合组名；成员被多个聚合组声明时归属**分类默认聚合组**（game 的 `@service` → `游戏服务`），避免同一条规则被改写成多个目标。`providers` 由成员规则里出现的 `RULE-SET` 名经「分类级 Provider 名 → 路径」映射解析，与内置开关路径同一口径。 |
+| 伪宏退役 | `@buckets.game`（未登记宏、仅由内置分支手工替换）退役：game 两个聚合组改为 `match: { pool: 'game' }` + `proxies` 中的 `@matchedNodes`，与其它类别同构；[topology.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/topology.js) 的游戏分支退化为「按分类挑聚合条目 → 原样透传」。 |
+| 广告拦截模型 | **拆为两条目**：`ad-block`（← `enableAdBlock`，默认开）与 `anti-ad`（← `enableAntiAD`，默认关），二者声明**同一个组名**「广告拦截」（同名后者胜语义合并为一个组），但规则来源与默认开关各自独立、可逐项等价。**未采用「单条目多 Provider/Rule」**：单条目会把 `anti-ad` 规则一并强推为默认生效，破坏「默认输出逐字节等价」验收标准。内置拓扑分支与规则段改为读目录条目，不再各写一份字面量。 |
+| 成员不可单独引用（决策） | 聚合成员（`steam`/`epic`/`facebook`…）**不为其备 `proxies`**、不单独成组。理由：成员的规则目标指向聚合组，单独成组只会得到「无人路由的空转组」；若改成自路由规则，则会与聚合组规则就同一流量互相遮蔽（命中取决于声明顺序），两种结果都不直观。引用成员键仍 **fail-closed**，但报错升级为**指引**：`「steam」是聚合组「游戏服务」的成员条目，不单独成组，请改为 { ref: game-service }`（映射由 `ServiceCatalog#getGroupMemberHints()` 给出，判据与目录一致：不在目录里的同分类条目即为成员）。这正是 ROADMAP 早先并列的「引用期一致性校验 fail-closed」分支。 |
+| 社交合并语义 | 合并组的组名与成员配方改由聚合条目单一给出。此前内置分支按「非独立成员数量」动态决定组名（1 个时用该成员名、多个时用「社交平台」），规则段的目标名同步解耦为聚合组名 —— 两条路径在任何成员数下都一致；唯一漂移是「恰好 1 个非独立成员」的旧动态命名，而该组合只能通过批次 3 将删除的 `socialServices` / `independentSocial` 触达。 |
+| 展示层 | [presentation.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/presentation.js) 的分类遍历新增跳过 `groups`：目录条目与分类/聚合/专项投影同源，展示信息已由各自投影给出；「广告拦截」的 🚫 与图标仍由骨架组基线 `SKELETON_GROUPS` 提供，行为不变。 |
+| 默认输出影响 | **零漂移**：`groups` 仍不设默认值，A 类开关继续驱动默认输出。2b 落地当时以「HEAD 与工作区逐字节对比」人工抽查确认（14 组配置组合，11 组完全一致，3 组为已披露的单成员社交命名变化）；**全量产物基线守卫于 2b 之后补入**（`test/pipeline/default-output-golden.test.js`，见第十节验收标准）。 |
+| 验证 | `npm test` 591 pass / 0 fail（新增「游戏聚合 / 社交合并 / 广告拦截」三场景的 `ref` ≡ 内置开关等价性：策略组清单逐字段、规则集合、`rule-providers` 对象三者皆等价；并扩展目录投影断言与成员键 fail-closed 指引断言）；`npm run lint` 零警告；`npm run verify:arch` 零环路零违规；`npm run verify:docs` 通过。 |
+| 残差 2b-1 | 规则注入位置差异（批次 1 残差 1）依旧存在，等价性仍以「集合等价」而非顺序敏感比较守卫，批次 3 收敛后收紧。 |
+| 残差 2b-2 | 内置聚合条目的规则派生自**内置成员**；用户经 `customServices` 新增的游戏/社交服务仍走内置 `assembleServiceCategory`（含 `onService` 伴生 Provider 注入），故 `ref` 路径不含用户新增成员。该字段随批次 3 删除，无需迁移。 |
+| 残差 2b-3 | 成员条目（`steam`/`facebook`…）在批次 3 将成为「无 `ref` 可达」的条目——它们只作为聚合条目的成员清单被引用，用户无法把它们拆成独立组（同上决策）。若后续确有此需求，须先给出「自路由 vs 聚合」的规则遮蔽语义，再谈放开。 |
+
+**九、已定稿的决策（仅覆盖批次 1 / 2 / 2b 已落地部分；批次 3 的模型选择尚未定稿，见第十节）**
 
 1. **目录位置**：不新建 `src/data/baseline-groups.js`，改为**升级现有 `src/data/catalog` 条目**为完整组声明（补齐 `rules` 等缺失字段），避免平行目录。
 2. **引用书写形态**：统一为对象 `{ ref: chatgpt }`。不接受裸字符串简写（否则 `groups` 出现两种元素类型，校验与报错分支翻倍）。
-3. **默认清单策略**：`DEFAULT_CONFIG.groups` 将在**批次 3** 给出全量引用（等价于今日全部 `enableX` 默认为 `true` 的效果）；批次 1-2 期间 `groups` 不设默认值，以保证默认输出零漂移、可作批次 3 的回归基线。
+3. **默认清单策略**：`DEFAULT_CONFIG.groups` 将在**批次 3** 给出全量引用（等价于今日全部 `enableX` 默认为 `true` 的效果）；批次 1-2 期间 `groups` 不设默认值，以保证默认输出零漂移、可作批次 3 的回归基线。（该策略随批次 3 一并未定稿：若改为两表模型，默认值由 `groups` 与 `routing` 共同给出。）
 4. **同名覆盖**：同一内置组既被 `ref` 引用又被完整声明覆盖时，沿用现有「同名后者胜」语义。
 5. **迁移披露**：允许破坏性变更；发版说明需给出「旧开关 → 新写法」完整对照。
 
@@ -275,6 +292,48 @@ groups:
 > - 原「激活粒度 = 批次」→ 否决，采用逐组引用。
 > - **原「是否需要 `enabled: false`」→ 判断更正：需要，以 `disabled: true` 回归**（原因见第二节 include 并集语义）。
 
+**十、待决：组声明与分流的边界（批次 3 的前置阻塞）**
+
+> **状态：未拍板，不得据此实施批次 3。** 本节只记录「已验证的事实」「已确认的缺陷」与「尚待回答的产品问题」；结论出来后再并入第九节。
+
+**背景（为什么会走到这一步）**：六维分类诞生于硬编码时期——当时「一次关掉一整批」只能靠分类开关实现，因此分类同时承担了「用户组织方式」与「批量激活能力」两个角色。目录解耦之后，分类作为**用户面必填结构**应当消失（这一步是对的），但「批量关闭」是真实需求，必须在新模型里有位置，不能随分类一起删掉。判据不是「字段多不多」，而是：**新增一个服务/类别，是只加数据，还是又得加一段特判。**
+
+**两个候选模型**：
+
+| 维度 | 甲：单表 `groups`（现路线） | 乙：`groups` + `routing` 两表 |
+| :--- | :--- | :--- |
+| 声明内容 | 组结构 + 该组的规则（引用即带出规则） | `groups` 只回答「有哪些组」；`routing` 只回答「哪条规则指向哪个组」 |
+| 顺序语义 | 清单顺序隐式决定规则优先级（实测：声明规则注入在分类规则之前，先到先得；调换清单顺序会改变命中目标） | `routing` 顺序即优先级，显式且可测 |
+| 覆写 `name` | 规则里写死的目标名失配（见缺陷 P1） | 目标按引用解析，改名安全 |
+| 批量关闭 | 逐条 `disabled`，或依赖目录条目 | `routing` 用 `preset` 表达「整批」，能力保留 |
+| 聚合语义 | 需在目录内仲裁成员归属（`declareCount` / 默认聚合组 / `memberHints`） | 成员规则就是若干条 `routing` 记录，无需仲裁 |
+| 主要代价 | 用户要理解「引用一个组会连带出规则」；改名/顺序是隐式陷阱 | 多一个顶层字段；默认值需内置到两处 |
+
+**无论选哪个模型都必须满足的验收标准**：
+
+1. **默认产物全量基线**：`test/pipeline/default-output-golden.test.js`（固定节点样本 → `proxies` / `proxy-groups` / `rules` / `rule-providers` / `dns` / `tun` / `sniffer` 逐字段比对，规则数组顺序参与比较）。基线更新只能通过 `node scripts/gen-default-output-golden.js` 显式进行，并在提交信息中说明「默认产物为什么变」。
+2. **顺序语义显式且可测**：要么由 `routing` 顺序承载，要么在文档中钉死「清单顺序即优先级」并加回归测试。
+3. **改名不断链**：`{ ref: X, name: Y }` 之后规则目标必须随动，或在配置期 fail-closed 拒绝。
+4. **批量关闭能力保留**：一行关闭一整批。
+5. **组合场景回归**：默认 / 停用单项 / 覆盖同名组 / include 片段 / 空节点池。
+6. **结构性配置逐项核对**：`coreRegions` / `minorNodeThreshold` / `regionGroupType` / `enableRegionHashLB` 是否只影响分池与折叠——需逐项确认它们是否还影响组生成、路由目标或宏展开，不能统称「只影响分池」。
+
+**已确认的缺陷（与模型选型无关，先修）**：
+
+| 编号 | 问题 | 证据 | 建议修法 |
+| :--- | :--- | :--- | :--- |
+| P1 | `ref` 覆写 `name` 后规则目标不随动 | 文档示例 `{ ref: copilot, name: 我的 Copilot 线路 }` 产出两个组、规则仍指向旧名；开关关闭时规则指向不存在的组。根因：[rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L227-L228) 对三段式规则原样透传，仅两段式会重写目标 | 目录条目 `rules` 一律不写死目标（两段式），或声明期重写目标并 fail-closed 校验 |
+| P2 | 成员键报错指引对 `meta` 错误 | `ref: meta` 提示改引 `social-platform`，但该聚合组只含 facebook / instagram / discord，不含 meta 规则 | 成员提示表排除「自有规则目标」的条目，或单独给出说明 |
+| P3 | 广告开关仍为硬编码 | [topology.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/topology.js#L246) 写死 `enableAdBlock \|\| enableAntiAD`，而 [rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L254) 已按 `ADS_GROUPS` 数据驱动 | 新增第三条规则源时只需加数据，不再改代码 |
+| P4 | 成员提示表二次投影 | `getGroupMemberHints()` 内部重跑 `toRegistries()` | 直接复用 `merged.registries.groups` 计算 |
+
+**待拍板的产品问题（按顺序回答，前一个决定后一个）**：
+
+1. 用户是否愿意为升级重写配置（`enableX` → `ref` 清单）？
+2. 「一行关掉一整批」是保留为一等公民（`preset`），还是接受逐条 `disabled`？
+3. `customServices` 随六维一起删除，还是改为扁平的服务定义区？
+4. 游戏 / 社交的聚合语义，是继续由目录仲裁，还是交给 `routing` 表达？
+5. include 并集语义下，「移除一个片段里启用的 ref」用什么表达（`disabled: true` 是否足够）？
 
 ---
 
