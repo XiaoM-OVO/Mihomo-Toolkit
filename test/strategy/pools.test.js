@@ -27,11 +27,13 @@ describe('【Strategy】节点池 (pools) 定义与物化', () => {
     const on = buildDefaultPools({ enableIsolation: true });
     assert.deepEqual(on.map(def => def.name), [
       POOL_NAMES.residential,
+      POOL_NAMES.lowMulti,
       POOL_NAMES.highMulti,
-      POOL_NAMES.experimental,
-      POOL_NAMES.lowMulti
-    ]);
-    assert.ok(on.slice(0, 3).every(def => def.isolate === true && def.group === 'always'));
+      POOL_NAMES.experimental
+    ], '声明顺序即建组顺序');
+    assert.ok(
+      on.filter(def => def.name !== POOL_NAMES.lowMulti).every(def => def.isolate === true && def.group === 'always')
+    );
   });
 
   it('自定义池：默认按需物化、select、不隔离，且可以用 match 圈节点', () => {

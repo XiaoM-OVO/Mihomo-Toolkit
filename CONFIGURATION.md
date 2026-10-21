@@ -353,7 +353,7 @@ groupIcons:
 | `家宽优选` | 带 `residential` 标签 | `enableIsolation: true` 时启用，成员从地区池剔除 |
 | `高倍率优选` | 倍率 > `highMultiThreshold`（默认 2.5） | 同上 |
 | `实验节点` | 带 `experimental` 标签（测试/实验/备用/测速等字样） | 同上 |
-| `低倍率节点` | 带 `lowMulti` 标签 | 恒在，`hidden: true`；「`⏬ 下载策略`」与「`🔄 负载均衡-轮询`」从它取成员 |
+| `低倍率节点` | 带 `lowMulti` 标签 | 恒在，`hidden: true`；「`⏬ 下载策略`」与「`🔄 负载均衡-轮询`」通过 `@pool:低倍率节点` 展开它 |
 
 `enableIsolation` 是**隔离总开关**：打开后三个隔离池启用，成员从主力地区池与全量标准池中剔除（防止自动测速跑分或看 4K 时榨干高倍率流量配额）；关闭时三类节点照常留在地区池。
 
@@ -376,6 +376,15 @@ routing:
   - { rule: 'DOMAIN-SUFFIX,example.com', to: 低延迟节点 }
   - { service: youtube, to: '@pool:低延迟节点' }
 ```
+
+`groups[].proxies` 里也可以用 `@pool:<池名>`：`select` 组把池成员逐个展开，`load-balance` 组同样展开（下载出口就是这么写的）。出厂的两个下载相关组是**声明组**，定义在 `src/config/catalog.js`：
+
+| 组名 | 类型 | 成员 |
+| :--- | :--- | :--- |
+| `⏬ 下载策略` | `select` | `DIRECT` / `🔄 负载均衡-轮询` / `🚀 自动选择` / `低倍率节点` |
+| `🔄 负载均衡-轮询` | `load-balance`（`round-robin`） | `@pool:低倍率节点` |
+
+低倍率池非空时它们才装配（避免空壳）；池为空则整组与指向它们的下载规则一起跳过。
 
 > [!IMPORTANT]
 > **池名始终是合法路由目标，建不建组由「是否启用 / 是否有成员」决定：**

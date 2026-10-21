@@ -250,7 +250,7 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
       '家宽组内该节点数量必须为 1，严禁因 featurePools + buckets.residential 路径产生重复'
     );
 
-    // 2. 低倍率池唯一性 + 下载策略按组引用
+    // 2. 低倍率池唯一性 + 下载策略按 @pool 声明展开低倍率成员
     assert.ok(lowMultiGroup, '应存在低倍率节点池组');
     assert.ok(lowMultiGroup.proxies.includes(nodeName), '低倍率节点组应包含该节点');
     assert.equal(
@@ -259,7 +259,7 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
       '低倍率组内该节点数量必须为 1，严禁因 featurePools + 低倍率桶两条路径重复入组'
     );
     assert.ok(downloadGroup, '应存在下载策略组');
-    assert.ok(downloadGroup.proxies.includes('低倍率节点'), '下载策略组按组引用低倍率池');
+    assert.ok(downloadGroup.proxies.includes(nodeName), '下载策略按声明展开低倍率成员');
 
     // 3. 实验节点组唯一性
     assert.ok(expGroup, '应存在实验节点组');

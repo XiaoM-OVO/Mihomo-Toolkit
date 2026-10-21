@@ -13,7 +13,6 @@ const { isNoticeNode } = require('./notice');
 const { extractNodeAttributes } = require('./metadata');
 const ipaddr = require('ipaddr.js');
 const {
-  REGEX_FORBID_DL,
   REGEX_CLEANUP,
   REGEX_FAKE_IPV4,
   REGEX_FAKE_IPV6,
@@ -35,7 +34,7 @@ function toArray(val) {
 }
 
 /**
- * 基础节点名称清洗（去除零宽字符、非国旗 Emoji、空白折叠与广告/禁止下载词）
+ * 基础节点名称清洗（去除零宽字符、非国旗 Emoji、空白折叠与广告/BT噪音词）
  * @param {string} rawName
  * @returns {string}
  */
@@ -299,7 +298,6 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 
   // 5. 字符清洗与属性提取
   const sanitized = sanitizeNodeName(rawName);
-  const isForbidDownload = REGEX_FORBID_DL.test(rawName);
   const { attrs, cleanName } = extractNodeAttributes(sanitized, userConfig);
 
   // 6. 地区与城市匹配
@@ -342,17 +340,12 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     }
   }
 
-  // 低倍率池：仅表达倍率身份，不掺入「能否下载」的判断
+  // 低倍率池：纯粹按倍率圈定
   if (attrs.isLowMulti) {
     tags.add('lowMulti');
     if (!featurePools.includes('lowMulti')) {
       featurePools.push('lowMulti');
     }
-  }
-
-  // 禁止下载：独立资格标记，由使用侧（下载组）按需排除，不污染低倍率集合
-  if (isForbidDownload) {
-    tags.add('forbidDownload');
   }
 
   const protocol = String(proxy.type || '').toLowerCase();

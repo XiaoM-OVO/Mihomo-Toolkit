@@ -22,7 +22,7 @@ const POOL_NAMES = Object.freeze({
 const POOL_SORT_ORDER = Object.freeze([
   { bucket: 'residential', tag: 'residential', label: '🏠 家宽优选', reason: '家宽隔离' },
   { bucket: 'highMulti', multi: true, label: '🛑 高倍率节点', reason: '高倍率隔离' },
-  { bucket: 'lowMulti', tag: 'lowMulti', label: '⏬ 下载策略', reason: '低倍率隔离' },
+  { bucket: 'lowMulti', tag: 'lowMulti', label: '⏬ 低倍率节点', reason: '低倍率隔离' },
   { bucket: 'experimental', tag: 'experimental', label: '🧪 实验节点', reason: '实验节点隔离' }
 ]);
 
@@ -31,8 +31,9 @@ const POOL_SORT_ORDER = Object.freeze([
  *
  * - `enableIsolation: true` 时启用三个隔离池（家宽 / 高倍率 / 实验），
  *   其成员会从地区池与全量标准池中剔除；
- * - `低倍率节点` 池恒在（不隔离、默认隐藏，成员已排除「禁止下载」节点），
- *   供下载策略、负载均衡-轮询与用户自定义规则引用。
+ * - `低倍率节点` 池恒在（不隔离、默认隐藏），纯粹按倍率圈定合格节点；
+ *
+ * **声明顺序即产物建组顺序**：家宽 → 低倍率 → 高倍率 → 实验。
  *
  * @param {object} [userConfig={}] 用户配置
  * @returns {Array<object>} 池定义列表
@@ -51,7 +52,23 @@ function buildDefaultPools(userConfig = {}) {
         type: 'fallback',
         bucket: 'residential',
         builtin: true
-      },
+      }
+    );
+  }
+
+  pools.push({
+    name: POOL_NAMES.lowMulti,
+    match: { tags: ['lowMulti'] },
+    isolate: false,
+    group: 'always',
+    type: 'select',
+    hidden: true,
+    bucket: 'lowMulti',
+    builtin: true
+  });
+
+  if (userConfig.enableIsolation === true) {
+    pools.push(
       {
         name: POOL_NAMES.highMulti,
         match: { multi: `> ${threshold}` },
@@ -72,20 +89,6 @@ function buildDefaultPools(userConfig = {}) {
       }
     );
   }
-
-  pools.push({
-    name: POOL_NAMES.lowMulti,
-    match: { tags: ['lowMulti'] },
-    // 「禁止下载」是池的口径，不是使用侧的临时过滤：池定义里直接排除，
-    // 下载策略 / 负载均衡-轮询 引用它即可，不再各自扫描节点标签。
-    exclude: { tags: ['forbidDownload'] },
-    isolate: false,
-    group: 'always',
-    type: 'select',
-    hidden: true,
-    bucket: 'lowMulti',
-    builtin: true
-  });
 
   return pools;
 }

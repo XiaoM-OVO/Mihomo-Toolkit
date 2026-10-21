@@ -5,7 +5,7 @@
  * 本模块维护节点深度清洗、安全拦截、线路特征与属性识别的静态基线数据：
  *   - 入口城市、落地大区与单字缩写字典 (ENTRY_CITIES, EXIT_REGIONS, TAG_MAP)
  *   - 线路类型、复合运营商与质量权重表 (LINE_MAP, CARRIER_SHORT_MAP, LINE_QUALITY_TIERS)
- *   - 拦截与阻断正则基线 (假IP、弱密码、公告说明、广告词、禁止下载词)
+ *   - 拦截与阻断正则基线 (假IP、弱密码、公告说明、广告与BT噪音词)
  *   - 静态业务特征规则 (家宽住宅 ISP、游戏、免费、实验、IPv6 等)
  *   - 隔离分类排序优先级 (ISOLATION_SORT_ORDER)
  *
@@ -45,9 +45,8 @@ const REGEX_AD_TYPO = /防[失私]联|永不失联|官[网罔]|官方?[网罔][�
 const REGEX_AD_PROMO = /(?:特惠|促销|优惠|大促|套餐|限时优惠|购买套餐)/i;
 const REGEX_AD_PRICE = /(?:\d+(?:\.\d+)?\s*(?:元|块|刀)|(?:¥|\$)\s*\d+(?:\.\d+)?|(?<!\w)\d(?:\.\d)?\s*折(?![返扣\d])|售\s*\d+(?:\.\d+)?|价\s*\d+(?:\.\d+)?)/i;
 
-// 禁止下载 / BT 相关规则与清洗正则
+// 禁止下载 / BT 噪音词与广告清洗正则
 const REGEX_FORBID_DL_STR = '(?:禁止|禁|严禁|请勿|勿|不要|不能|拒绝|屏蔽|防)(?:BT|PT|P2P|下载|测速|迅雷)|(?:仅限|仅供)(?:网页|日常|聊天)|\\b(?:No|Block|Ban)[\\s\\-_]*(?:BT|PT|Torrent|Download)\\b';
-const REGEX_FORBID_DL = new RegExp(REGEX_FORBID_DL_STR, 'i');
 const REGEX_CLEANUP = new RegExp(
   `${REGEX_FORBID_DL_STR}|(?:https?:\\/\\/|www\\.)[a-zA-Z0-9][-a-zA-Z0-9]*(?:\\.[a-zA-Z0-9][-a-zA-Z0-9]*)+(?:\\/[^\\s\\u4e00-\\u9fa5]*)?|\\b[a-zA-Z0-9][-a-zA-Z0-9]{0,62}\\.(?:com|net|org|cc|me|vip|pro|top|xyz|club|site|icu|info|io|link|shop)(?:\\/[^\\s\\u4e00-\\u9fa5]*)?`,
   'ig'
@@ -273,7 +272,6 @@ module.exports = {
   REGEX_AD_TYPO,
   REGEX_AD_PROMO,
   REGEX_AD_PRICE,
-  REGEX_FORBID_DL,
   REGEX_CLEANUP,
   // 入口与落地
   ENTRY_CITIES,

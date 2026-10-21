@@ -151,6 +151,34 @@ const ADS_GROUPS = Object.freeze({
 });
 
 // ─────────────────────────────────────────────────────────────
+// 2.0.6 下载类出厂策略组 (DOWNLOAD_GROUPS)
+// ─────────────────────────────────────────────────────────────
+/**
+ * 下载类策略组：
+ *   - `负载均衡-轮询` 是纯出口（轮询低倍率节点），隐藏；
+ *   - `下载策略` 是用户可见入口，按「直连 → 轮询出口 → 自动选择 → 低倍率节点」排序。
+ *
+ * 成员直接由 `@pool:低倍率节点` 动态展开，低倍率节点纯粹按倍率圈定，无需做多余过滤。
+ */
+const DOWNLOAD_GROUPS = Object.freeze([
+  {
+    name: '下载策略',
+    type: 'select',
+    hidden: false,
+    proxies: ['DIRECT', '负载均衡-轮询', '自动选择', '@pool:低倍率节点']
+  },
+  {
+    name: '负载均衡-轮询',
+    type: 'load-balance',
+    strategy: 'round-robin',
+    interval: 300,
+    lazy: true,
+    hidden: true,
+    proxies: ['@pool:低倍率节点']
+  }
+]);
+
+// ─────────────────────────────────────────────────────────────
 // 2.1 六维分类默认策略 (CATEGORY_DEFAULTS)
 // ─────────────────────────────────────────────────────────────
 const CATEGORY_DEFAULTS = {
@@ -1139,6 +1167,7 @@ module.exports = {
   DEFAULT_AGGREGATES,
   SPECIAL_SERVICES,
   ADS_GROUPS,
+  DOWNLOAD_GROUPS,
   BUILTIN_SERVICES,
   ServiceCatalog,
   buildServiceCatalog

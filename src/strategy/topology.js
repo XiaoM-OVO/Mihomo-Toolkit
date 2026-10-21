@@ -7,17 +7,17 @@
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
 const { getTrustedProxyMetadata } = require('../core/node-trust');
 const { FIELDS_BY_KEY } = require('../data');
-const { ADS_GROUPS } = require('../config/catalog');
+const { ADS_GROUPS, DOWNLOAD_GROUPS } = require('../config/catalog');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
 const { validateGroups } = require('./matcher');
 const { resolvePoolDefinitions, createPoolMatchers } = require('./pools');
 const { POOL_NAMES } = require('../data/default-pools');
-const { DOWNLOAD_GROUPS } = require('../data/default-groups');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
 const { stripGroupDecoration, NON_CN_EXCLUDED_GROUPS, CN_CORE_PROXY_GROUPS } = require('./presentation');
 
-const HIGH_MULTI_GROUP = '高倍率优选';
-const EXPERIMENTAL_GROUP = '实验节点';
+// 组名唯一来源是池定义，避免同一名字在两处各写一遍
+const HIGH_MULTI_GROUP = POOL_NAMES.highMulti;
+const EXPERIMENTAL_GROUP = POOL_NAMES.experimental;
 
 // 由专用分支/策略独立维护的桶，通用 featurePools 遍历不重复入桶
 const DEDICATED_FEATURE_POOLS = new Set(['residential', 'lowMulti', 'experimental']);
@@ -462,7 +462,7 @@ function buildProxyTopology({
   const highMultiPool = activePool(POOL_NAMES.highMulti);
   const experimentalPool = activePool(POOL_NAMES.experimental);
 
-  const resiPrefix = residentialPool ? ['家宽优选'] : [];
+  const resiPrefix = residentialPool ? [POOL_NAMES.residential] : [];
   const proxyTarget = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
 
   const highMultiRef = highMultiPool ? [HIGH_MULTI_GROUP] : [];
@@ -525,22 +525,39 @@ function buildProxyTopology({
     { name: '故障转移', type: 'fallback', url: testURL, interval: testInterval, proxies: activeRegionGroups }
   );
 
-  // 隔离池建组：池成员非空才建组（不产生只有 DIRECT 的空壳，与 10.13 同一口径）。
-  // 建组顺序沿用历史骨架：家宽 → 下载 → 高倍率 → 实验，避免无关产物漂移。
-  if (residentialPool) {
-    finalGroups.push({ name: '家宽优选', type: 'fallback', url: testURL, interval: testInterval, proxies: poolMembers(residentialPool) });
-  }
+  // 池 → 组：规格（type / hidden）一律取自池声明，装配层只决定建组顺序与「空池不建组」。
+  // 内置池、自定义池共用这一条物化路径，避免同一种组在代码里出现第二份配方。
+  const materializePool = (def) => {
+    if (!def) return null;
+    const members = poolMembers(def);
+    if (members.length === 0) return null;
+    if (def.type === 'fallback') {
+      return {
+        name: def.name,
+        type: 'fallback',
+        url: testURL,
+        interval: testInterval,
+        proxies: members,
+        ...(def.hidden === true ? { hidden: true } : {})
+      };
+    }
+    return buildSelect(def.name, members, def.hidden === true);
+  };
 
-  // 低倍率节点：恒在的隐藏池（成员已在池定义里排除「禁止下载」）。
-  // 与其他特征池同构：池有成员才建组，避免空壳组（10.13 口径）。
   const lowMultiPool = activePool(POOL_NAMES.lowMulti);
-  const lowMultiMembers = lowMultiPool ? poolMembers(lowMultiPool) : [];
-  if (lowMultiPool) {
-    finalGroups.push(buildSelect(lowMultiPool.name, lowMultiMembers, lowMultiPool.hidden === true));
-  }
 
-  // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 data/default-groups.js，
-  // 拓扑只负责「低倍率池非空时装配」；成员由 `@pool:低倍率节点` 展开，不在代码里二次过滤。
+  // 内置池按声明顺序物化，装配层不再手工决定先后
+  poolDefs
+    .filter(def => def.builtin && def.group === 'always')
+    .forEach(def => {
+      const group = materializePool(def);
+      if (group) finalGroups.push(group);
+    });
+
+  const lowMultiMembers = lowMultiPool ? poolMembers(lowMultiPool) : [];
+
+  // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 config/catalog.js，
+  // 拓扑只负责「低倍率池非空时装配」；成员由 `@pool:低倍率节点` 展开。
   if (lowMultiPool) {
     const { evaluatedGroups } = evaluateCustomTopology({
       groups: DOWNLOAD_GROUPS,
@@ -560,25 +577,12 @@ function buildProxyTopology({
     finalGroups.push(...evaluatedGroups);
   }
 
-  if (highMultiPool) {
-    finalGroups.push(buildSelect(HIGH_MULTI_GROUP, poolMembers(highMultiPool)));
-  }
-
-  if (experimentalPool) {
-    finalGroups.push(buildSelect(EXPERIMENTAL_GROUP, poolMembers(experimentalPool)));
-  }
-
-  // 自定义池：按声明顺序物化（组类型 / 隐藏 / 引用即激活都由池定义决定）
+  // 自定义池：与内置池同一条物化路径，按声明顺序追加
   poolDefs
     .filter(def => !def.builtin && isPoolMaterialized(def))
     .forEach(def => {
-      const members = poolMembers(def);
-      if (members.length === 0) return;
-      if (def.type === 'fallback') {
-        finalGroups.push({ name: def.name, type: 'fallback', url: testURL, interval: testInterval, proxies: members, hidden: def.hidden === true });
-      } else {
-        finalGroups.push(buildSelect(def.name, members, def.hidden === true));
-      }
+      const group = materializePool(def);
+      if (group) finalGroups.push(group);
     });
 
   // 中国分流组：只有某条生效规则把它当目标时才生成（引用即激活）
