@@ -273,6 +273,8 @@ function evaluateGroupDefinition(groupDef, context = {}) {
     defaultProxy,
     standardOptions: context.standardOptions || [],
     domesticGroup,
+    cnCoreGroups: context.cnCoreGroups || [],
+    downloadGroup: context.downloadGroup || [],
     nonCnRegions,
     preferredRegions,
     pools: context.poolMembers || {}

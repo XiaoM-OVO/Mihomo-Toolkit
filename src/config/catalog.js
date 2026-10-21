@@ -179,6 +179,50 @@ const DOWNLOAD_GROUPS = Object.freeze([
 ]);
 
 // ─────────────────────────────────────────────────────────────
+// 2.0.7 方向语义骨架组 (SKELETON_GROUP_DEFS)
+// ─────────────────────────────────────────────────────────────
+/**
+ * 「中国分流」与「漏网之鱼」的成员顺序本身就是方向语义的一部分。
+ *
+ * 此前顺序由拓扑层按 `trafficDirection` 现场推导（先 DIRECT 还是先默认代理、兜底里 DIRECT 排首位还是末位），
+ * 用户看配置推不出结果。现在两个方向各有一份显式声明，拓扑层只按方向取对应变体，不再推导顺序。
+ *
+ * 动态成员由宏承接：
+ *   - `@cnCoreGroups`：当前活跃的中国大中华核心地区组（大陆 / 香港 / 澳门 / 台湾）
+ *   - `@downloadGroup`：低倍率池有成员时展开为 `['下载策略']`，否则为空
+ */
+const SKELETON_GROUP_DEFS = Object.freeze({
+  domestic: Object.freeze({
+    split: Object.freeze({
+      name: '中国分流',
+      type: 'select',
+      hidden: false,
+      proxies: Object.freeze(['DIRECT', '@cnCoreGroups', '@defaultProxy'])
+    }),
+    return: Object.freeze({
+      name: '中国分流',
+      type: 'select',
+      hidden: false,
+      proxies: Object.freeze(['@defaultProxy', '@cnCoreGroups', 'DIRECT'])
+    })
+  }),
+  final: Object.freeze({
+    split: Object.freeze({
+      name: '漏网之鱼',
+      type: 'select',
+      hidden: false,
+      proxies: Object.freeze(['@defaultProxy', '自动选择', '手动选择', '故障转移', '@downloadGroup', 'DIRECT'])
+    }),
+    return: Object.freeze({
+      name: '漏网之鱼',
+      type: 'select',
+      hidden: false,
+      proxies: Object.freeze(['DIRECT', '@defaultProxy', '自动选择', '手动选择', '故障转移', '@downloadGroup'])
+    })
+  })
+});
+
+// ─────────────────────────────────────────────────────────────
 // 2.1 六维分类默认策略 (CATEGORY_DEFAULTS)
 // ─────────────────────────────────────────────────────────────
 const CATEGORY_DEFAULTS = {
@@ -1117,6 +1161,7 @@ module.exports = {
   SPECIAL_SERVICES,
   ADS_GROUPS,
   DOWNLOAD_GROUPS,
+  SKELETON_GROUP_DEFS,
   BUILTIN_SERVICES,
   ServiceCatalog,
   buildServiceCatalog

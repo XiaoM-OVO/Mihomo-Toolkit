@@ -100,4 +100,26 @@ function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {},
   return resolved;
 }
 
-module.exports = { resolveGroupDeclarations };
+/**
+ * 按流量方向筛选组声明
+ *
+ * 方向只是「声明生效条件」，不是第二个真相源：同名组可以各写一个方向，
+ * 过滤后只会剩下当前方向的那一条，不引入同名仲裁语义。
+ * 缺省 `direction` 的声明双向生效；非法取值原样放行，交给 `validateGroups` fail-closed。
+ *
+ * @param {Array<object>} groups 归一化后的组声明
+ * @param {string} direction 当前方向（split / return）
+ * @returns {Array<object>} 当前方向生效的声明
+ */
+function filterGroupsByDirection(groups, direction) {
+  if (!Array.isArray(groups)) return [];
+  const active = direction === 'return' ? 'return' : 'split';
+  return groups.filter(group => {
+    if (!group || typeof group !== 'object') return true;
+    if (group.direction === undefined) return true;
+    if (group.direction !== 'split' && group.direction !== 'return') return true;
+    return group.direction === active;
+  });
+}
+
+module.exports = { resolveGroupDeclarations, filterGroupsByDirection };

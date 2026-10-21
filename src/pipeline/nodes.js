@@ -19,6 +19,7 @@ const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 const { getIsolationBucket } = require('../core/isolation');
 const { POOL_SORT_ORDER } = require('../data/default-pools');
+const { decorateGroupName } = require('../strategy/presentation');
 // Name rendering and feature variables are owned by core/rename.
 const { FEATURE_TEXT_MAP } = require('../core/shared/icons');
 const { resolveProxiesDomains } = require('../io/dns-resolver');
@@ -161,13 +162,13 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
 
   const buildDestinationLine = (item) => {
     let groupName = '';
-    let isolateReason = '';
+    let isolationNote = '';
 
     const isolateBucket = getIsolationBucket(item, config);
     if (isolateBucket) {
       const def = POOL_SORT_ORDER.find(entry => entry.bucket === isolateBucket);
-      groupName = def ? def.label : isolateBucket;
-      isolateReason = def ? def.reason : '隔离';
+      groupName = def ? decorateGroupName(def.name) : isolateBucket;
+      isolationNote = def ? def.isolationNote : '隔离';
     } else if (item.regionInfo) {
       const icon = item.regionInfo.icon ? `${item.regionInfo.icon} ` : '';
       groupName = `${icon}${item.regionInfo.groupName || `${item.regionInfo.name}节点`}`;
@@ -175,7 +176,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       groupName = '🌐 其他节点';
     }
 
-    const parts = [`[归组]: ${groupName}${isolateReason ? ` (${isolateReason})` : ''}`];
+    const parts = [`[归组]: ${groupName}${isolationNote ? ` (${isolationNote})` : ''}`];
 
     // 仅展示命中并影响策略分流的业务池 (如 AI, 流媒体, 游戏, 家宽)，绝不重复已在节点名中呈现的协议与线路
     const activePools = (item.featurePools || []).filter(p => p !== 'unknown');

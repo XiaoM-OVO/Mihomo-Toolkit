@@ -47,6 +47,58 @@ describe('routing 展开引擎：默认表等价于冻结基线', () => {
 });
 
 describe('routing 展开引擎：条目语义', () => {
+  it('direction 条目只在对应方向生成，缺省方向双向生效', () => {
+    const routing = [
+      { preset: 'subscription' },
+      { rule: 'DOMAIN-SUFFIX,same.com', to: 'DIRECT', direction: 'split' },
+      { rule: 'DOMAIN-SUFFIX,same.com', to: 'REJECT', direction: 'return' },
+      { rule: 'DOMAIN-SUFFIX,both.com', to: 'DIRECT' },
+      { preset: 'final' }
+    ];
+
+    const split = pair();
+    const splitRules = expandRouting(split.config, split.registries, { routing }).rules;
+    assert.ok(splitRules.includes('DOMAIN-SUFFIX,same.com,DIRECT'), 'split 方向只生成 split 条目');
+    assert.equal(splitRules.some(r => r.startsWith('DOMAIN-SUFFIX,same.com,REJECT')), false);
+    assert.ok(splitRules.includes('DOMAIN-SUFFIX,both.com,DIRECT'), '缺省方向条目双向生效');
+
+    const ret = pair({ trafficDirection: 'return' });
+    const returnRules = expandRouting(ret.config, ret.registries, { routing }).rules;
+    assert.ok(returnRules.includes('DOMAIN-SUFFIX,same.com,REJECT'), 'return 方向只生成 return 条目');
+    assert.equal(returnRules.some(r => r.startsWith('DOMAIN-SUFFIX,same.com,DIRECT')), false);
+    assert.ok(returnRules.includes('DOMAIN-SUFFIX,both.com,DIRECT'), '缺省方向条目双向生效');
+  });
+
+  it('direction 组：指向未生效方向的组时 fail-closed', () => {
+    const groups = [{ name: '回国专线', type: 'select', proxies: ['DIRECT'], direction: 'return' }];
+
+    const split = pair();
+    split.config.groups = groups;
+    assert.throws(
+      () => expandRouting(split.config, split.registries, {
+        routing: [{ rule: 'DOMAIN-SUFFIX,x.com', to: '回国专线' }]
+      }),
+      /未声明或不存在/
+    );
+
+    const ret = pair({ trafficDirection: 'return' });
+    ret.config.groups = groups;
+    const rules = expandRouting(ret.config, ret.registries, {
+      routing: [{ rule: 'DOMAIN-SUFFIX,x.com', to: '回国专线' }]
+    }).rules;
+    assert.ok(rules.includes('DOMAIN-SUFFIX,x.com,回国专线'));
+  });
+
+  it('direction 取值非法时 fail-closed', () => {
+    const { config, registries } = pair();
+    assert.throws(
+      () => expandRouting(config, registries, {
+        routing: [{ rule: 'DOMAIN-SUFFIX,x.com', to: 'DIRECT', direction: 'retrun' }]
+      }),
+      /direction 仅支持 split \/ return/
+    );
+  });
+
   it('service 条目 + to 覆写目标，且仍注册 Provider', () => {
     const { config, registries } = pair();
     const { rules, providers } = expandRouting(config, registries, {

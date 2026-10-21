@@ -20,6 +20,7 @@
 const { FIELDS_BY_KEY } = require('../data');
 const { PRESET_DEFINITIONS, DEFAULT_ROUTING } = require('../data/default-routing');
 const { ADS_GROUPS, SPECIAL_SERVICES, buildServiceCatalog } = require('../config/catalog');
+const { filterGroupsByDirection } = require('../config/groups');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
 const { stripGroupDecoration } = require('./presentation');
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
@@ -90,8 +91,9 @@ function isValidTargetName(value, ctx) {
     if (c.name && (c.name === value || stripGroupDecoration(c.name) === clean)) return true;
   }
 
-  // 用户配置的策略组声明 (groups)
-  const userGroups = Array.isArray(ctx.config.groups) ? ctx.config.groups : [];
+  // 用户配置的策略组声明 (groups)：只看当前方向生效的声明，
+  // 避免规则指向一条本方向不会生成的组（这类引用应在配置期就报错）
+  const userGroups = filterGroupsByDirection(ctx.config.groups, ctx.direction);
   for (const g of userGroups) {
     if (!g || !g.name) continue;
     if (g.name === value || stripGroupDecoration(g.name) === clean) {
@@ -526,6 +528,13 @@ function expandEntry(ctx, entry) {
     throw new Error('routing: 条目必须是对象');
   }
   if (entry.disabled === true) return;
+  if (entry.direction !== undefined) {
+    if (entry.direction !== 'split' && entry.direction !== 'return') {
+      throw new Error(`routing: 条目 direction 仅支持 split / return，收到 ${JSON.stringify(entry.direction)}`);
+    }
+    // 方向不符的条目直接不生成：每条只保留一个目标，不引入「同一条目两套目标」的分支状态
+    if (entry.direction !== ctx.direction) return;
+  }
   if (entry.preset) {
     const preset = PRESET_DEFINITIONS[entry.preset];
     if (!preset) throw new Error(`routing: 未知预设 "${entry.preset}"`);

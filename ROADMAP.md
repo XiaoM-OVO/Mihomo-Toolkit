@@ -410,7 +410,7 @@ groups:
 - **迁移**：`enableDomesticGroup` 与 `proxyFirst` 已直接删除，不留兼容别名（`test/security/data-baseline.test.js` 的 `REMOVED_BY_DESIGN` 记录在案）；10.7 对照表写明替代写法。
 - **验收**：`test/pipeline/routing-expansion.test.js` 的「流量方向与国内侧目标」4 条用例覆盖 `split` / `return` / `to: 中国分流` / `return + to`；基线用例中 3 个旧组合已改写为显式方向语义（`_doc` 说明）。
 
-**残留（批次 3 组目录化时收敛）**：`trafficDirection` 目前仍推导两处「展示性默认」——「中国分流」组成员顺序与「漏网之鱼」兜底顺序。10.3 要求成员顺序写在 `groups` 声明里，但这两组由引擎生成，尚无声明载体；等组目录化（10.6）后改为声明驱动。
+**残留（已由 10.18 收敛）**：`trafficDirection` 曾推导两处「展示性默认」——「中国分流」组成员顺序与「漏网之鱼」兜底顺序。现已改为 `SKELETON_GROUP_DEFS` 的方向变体声明，拓扑层只取变体、不推导顺序。
 
 **10.11 单一路径与默认值即配置（已实施）**
 
@@ -457,8 +457,9 @@ groups:
 - **默认产物变更（按 10.8 第 1 条，已重采 golden）**：`IDMan.exe` / `fdm.exe` 目标由 `⏬ 下载策略` 改为 `DIRECT`；追踪器规则从 `process` 段移到 `bt` 段（文本与相对位置不变）。默认样本无低倍率节点，故默认产物不含 `⏬ 下载策略` / `🔄 负载均衡-轮询`，`download-games` / `download-android` 两条规则与同名 Provider 一并被剪：**默认产物从 32 组 / 59 规则 / 42 Provider 变为 31 组 / 57 规则 / 40 Provider**。`social-enabled` 场景相应为 35 组 / 61 规则。
 - **池依赖组的缺席不算悬空引用**：`prune` 阶段 4 把 `下载策略` / `负载均衡-轮询` 列为「池依赖目标」，池空时其规则按设计跳过，只记 debug 日志，不触发 `⚠️ 规则目标不存在` 告警（否则每次默认运行都会刷一条噪音）。
 - **禁止下载标记可展示**：`FEATURE_ICONS` / `FEATURE_TEXT_MAP` 的 `no_download` 键随标签改名同步为 `forbidDownload`，节点名上重新能看到 `🚫` 与「禁止下载」。
+- **后续变更（10.17 已整体移除）**：上面 453 / 454 / 456 / 459 四条随之失效——`forbidDownload` 打标、使用侧排除、`isolate` 剔除口径、`🚫` 展示均已删除。原因是实际机场样本与长期观察中从未出现该标记，资格判断属过度设计；现状为低倍率池与下载组都只按倍率圈定，不再区分「是否允许下载」。
 - 验证：638 条测试全绿（新增「禁止下载只在使用侧排除」「空池不建组且规则剪除」2 例）；`lint` / `verify:arch` / `verify:docs` 通过。
-- **残留**：10.10 末尾所述 `trafficDirection` 推导「中国分流」成员顺序与「漏网之鱼」兜底顺序的问题，本批次未动，仍待骨架组声明化。
+- **残留（已由 10.18 收敛）**：10.10 末尾所述 `trafficDirection` 推导「中国分流」成员顺序与「漏网之鱼」兜底顺序的问题，本批次未动，已随方向变体声明落地。
 
 **10.15 语义识别收敛：一套正则库 + 一个识别器（已实施，2026-10-21）**
 
@@ -483,7 +484,7 @@ groups:
 - **剪枝口径**：`prune` 阶段 4 的「池依赖目标」集合 = `下载策略` / `负载均衡-轮询` + 全部内置池名 + 自定义池名；池空或未激活时只记 `🪣` debug，不刷悬空引用告警。
 - **默认产物零漂移**：四个旧开关默认全关，默认样本无隔离 / 低倍率节点，两个 golden 文件字节无变化；`default-config.golden.json` 按 10.8 第 1 条显式删 4 个退役键、加 `enableIsolation` / `pools` 两键（59 → 55 键）。
 - 验证：656 条测试全绿（新增 `test/strategy/pools.test.js` 6 例、重写 `isolation-groups` 5 例）；`lint` / `verify:arch` / `verify:docs` 通过。
-- **残留**：`POOL_SORT_ORDER` 里的展示文案（如 `⏬ 下载策略`）仍是硬编码，池定义与展示标签尚未合一；地区组不改成池（避免与 `activeRegions` 折叠逻辑冲突）。
+- **残留（已由 10.18 收敛）**：`POOL_SORT_ORDER` 的展示文案曾与池定义分家，现已由 `BUILTIN_POOL_DEFS` 单表派生；地区组仍不改成池（避免与 `activeRegions` 折叠逻辑冲突）。
 
 **10.17 下载组声明化：`下载策略` / `负载均衡-轮询` 改为数据表（已实施，2026-10-21）**
 
@@ -492,10 +493,34 @@ groups:
 - **池定义纯净**：`低倍率节点` 为 `match: { tags: ['lowMulti'] }`、`group: 'always'`、`hidden: true`——纯粹按倍率圈定，不再做多余业务过滤；池恒物化（有成员时）。
 - **组定义下沉配置编目**：收录于 `src/config/catalog.js` 的 `DOWNLOAD_GROUPS`：`下载策略`（`select`，成员 `DIRECT` / `负载均衡-轮询` / `自动选择` / `@pool:低倍率节点`）与 `负载均衡-轮询`（`load-balance` + `round-robin`，成员 `@pool:低倍率节点`，`hidden: true`）。
 - **`groups[].proxies` 支持 `@pool:<池名>`**：`topology-engine` 的 `resolveGroupProxies` 在宏解析之前处理 `@pool:`，把池成员展开到成员列表；池为空或不存在时告警跳过（`⚠️ [TopologyEngine] 节点池「X」不存在或为空，引用已跳过`）。
-- **装配条件留在拓扑**：低倍率池非空才把 `DOWNLOAD_GROUPS` 交给 `evaluateCustomTopology` 装配（池空即整组缺席，指向它们的下载规则由 `prune` 按池依赖跳过）；`fallbackProxies` 的 `下载策略` 项同步改为「池存在才追加」。
+- **装配条件留在拓扑**：低倍率池非空才把 `DOWNLOAD_GROUPS` 交给 `evaluateCustomTopology` 装配（池空即整组缺席，指向它们的下载规则由 `prune` 按池依赖跳过）；`fallbackProxies` 的 `下载策略` 项同步改为「池存在才追加」（10.18 起该段推导已删除，改由 `@downloadGroup` 宏承接）。
 - **默认产物零漂移**：默认样本无低倍率节点，`下载策略` / `负载均衡-轮询` 本就不出现，两套 golden 字节无变化；有低倍率节点的场景里，`下载策略` / 轮询出口的成员从「铺开节点」改为「引用 `低倍率节点` 组」，语义等价。
 - 验证：656 条测试全绿（`aggregate-ownership` 与 `feature-policy-decouple` 的相关用例按新语义重写）。
 - **意义**：这是 10.6「骨架组声明化」的第一刀——`下载策略` 与 `负载均衡-轮询` 不再由 `topology.js` 手写，而是数据层声明 + 拓扑装配。
+
+**10.18 收口残差：方向骨架组声明化 + 池标签同源（已实施，2026-10-21）**
+
+> 背景：10.10 / 10.14 / 10.16 留下的两条「引擎里还有手写/硬编码」的尾巴。只收敛表达方式，不改变默认产物。
+
+- **方向骨架组声明化**：`src/config/catalog.js` 新增 `SKELETON_GROUP_DEFS`，「中国分流」与「漏网之鱼」在 `split` / `return` 两个方向下各有一份完整的成员顺序声明；`topology.js` 只按 `trafficDirection` 取变体并交给统一求值器，删掉 `cnProxies` / `fallbackProxies` 两段现场推导。用户看声明即可预测顺序。
+- **两个宏承接动态成员**：`@cnCoreGroups`（`@cnCore`）= 当前活跃的大中华核心地区组，顺带消除了原实现把「澳门节点」等未建组写进成员列表的悬空；`@downloadGroup` = 低倍率池有成员时 `['下载策略']`，否则为空（与 `@residentialGroup` 同一模式）。
+- **池定义与归组说明同源**：`src/data/default-pools.js` 收敛为单张 `BUILTIN_POOL_DEFS`（池身份 / 圈选条件 / 物化规格 / 归组说明同表），`buildDefaultPools` 与 `POOL_SORT_ORDER` 都由它派生；归组判定优先级保留为独立的桶序表（家宽 > 高倍率 > 低倍率 > 实验）。
+- **emoji 留在展示层**：池定义只写纯组名，调试输出的展示名统一经 `presentation.decorateGroupName()` 附加 emoji，不再在数据层复制一份带图标的文案（原 `高倍率节点` / `⏬ 低倍率节点` 这类与真实组名不一致的硬编码标签随之消失）。
+- **默认产物零漂移**：两套 golden 字节无变化；660 条测试全绿（新增方向变体顺序 1 例、引用激活 1 例）；`lint` / `verify:arch` / `verify:docs` 通过。
+- **仍未做**：10.15 的「回国专线」方向词属命名语法特性（会改变冲突判定口径），不属于本次表达收敛，保留为待决策项。
+
+**10.19 方向限定条目（已实施，2026-10-21）**
+
+> 背景：方向此前只由全局 `trafficDirection` + 默认值表达。同一匹配式要在两个方向落到不同名字的组时，没有单份配置内的表达方式。
+
+- **实施**：`routing` 条目新增 `direction: split | return`。方向不符时整条不生成，缺省 = 双向生效；对 `preset` / `service` / `rule` 三类条目统一生效。同一规则需要两个方向各自落地时写两条，每条只保留一个目标。
+- **否决「条目双方案」（`to` + `returnTo`）**：`preset` / `service` 的批量语义未定义；未生效侧的目标无法 fail-closed，违背「配了就得有效」；与 `disabled` / include 并集叠加后容易出现「配了等于没配」的静默分支。
+- **`groups` 同样支持 `direction`**：同名组各写一条方向声明，过滤后只生成当前方向那一条，**不引入同名仲裁**（过滤发生在装配之前）。自定义组的「一个名字、两套成员」因此不需要双方案字段。
+- **校验与副作用**：
+  - `validateGroups` 对**全量声明**（含未生效方向）执行，非法 `direction`、未知字段、未知宏不会等到切方向才报错；
+  - `disabled: true` 仍是全局关闭，不做方向限定（跨 include 的关闭语义保持单一）；
+  - 规则指向「本方向不生效」的组时，在配置期 fail-closed 报「未声明或不存在」——想让规则也分方向，同一条规则写两条各带 `direction`；
+  - 默认表不含 `direction`，默认产物零漂移；新增方向测试 5 例，全量 665 条全绿。
 
 **附：选型过程（历史，已归档为结论）**
 

@@ -267,10 +267,10 @@ const FIELDS = [
   { key: 'customRuleProviders', type: 'object', merge: 'override', trust: 'local',
     group: '自定义规则入口', doc: '自定义 Rule-Provider 定义（name → {type, behavior, url…}，防出网探测仅可信来源可写）' },
   { key: 'groups', type: 'object[]', merge: 'override', trust: 'local',
-    group: '自定义规则入口', doc: '统一策略组声明清单（`{ ref: <键> }` 引用内置组目录并允许条目内覆写字段，`disabled: true` 显式关闭）；只声明组的成员与呈现，不产出分流规则——规则一律写进 `routing`' },
+    group: '自定义规则入口', doc: '统一策略组声明清单（`{ ref: <键> }` 引用内置组目录并允许条目内覆写字段，`disabled: true` 显式关闭，`direction: split|return` 限定生效方向）；只声明组的成员与呈现，不产出分流规则——规则一律写进 `routing`' },
   { key: 'routing', type: 'object[]', merge: 'override', trust: 'local', default: DEFAULT_ROUTING,
     group: '自定义规则入口',
-    doc: '分流表：数组顺序即优先级，条目支持 `preset` / `service` / `rule` + `to` / `disabled`；是规则生成的唯一来源（默认值即 `src/data/default-routing.js` 的默认顺序表）' },
+    doc: '分流表：数组顺序即优先级，条目支持 `preset` / `service` / `rule` + `to` / `disabled` / `direction`；是规则生成的唯一来源（默认值即 `src/data/default-routing.js` 的默认顺序表）' },
   { key: 'subDomain', type: 'string[]', merge: 'override', trust: 'any',
     group: '自定义规则入口', doc: '订阅服务域名或 IP（自动注入为直连分流规则与 fake-ip-filter，防止客户端拉取订阅走代理循环与高延迟）' },
 

@@ -18,7 +18,7 @@ const SUPPORTED_GROUP_TYPES = new Set(['select', 'url-test', 'fallback', 'load-b
 const ALLOWED_GROUP_KEYS = new Set([
   'name', 'type', 'url', 'interval', 'tolerance', 'lazy', 'strategy',
   'icon', 'emoji', 'hidden', 'filter', 'exclude-filter',
-  'match', 'exclude', 'proxies', 'preferredRegions'
+  'match', 'exclude', 'proxies', 'preferredRegions', 'direction'
 ]);
 
 /**
@@ -599,7 +599,12 @@ function validateGroups(groups) {
       }
     }
 
-    // 2. 组类型白名单：禁止非法类型静默降级为 select
+    // 2. 方向限定值：非法取值在此 fail-closed（未生效方向的声明同样会被校验）
+    if (group.direction !== undefined && group.direction !== 'split' && group.direction !== 'return') {
+      throw new Error(`[groups] 策略组 ${groupName}.direction: 仅支持 split / return，收到 ${JSON.stringify(group.direction)}`);
+    }
+
+    // 3. 组类型白名单：禁止非法类型静默降级为 select
     if (group.type !== undefined && group.type !== null) {
       const type = String(group.type).toLowerCase().trim();
       if (!SUPPORTED_GROUP_TYPES.has(type)) {
@@ -607,7 +612,7 @@ function validateGroups(groups) {
       }
     }
 
-    // 3. proxies 必须为 string[]，且其中出现的 `@` 宏必须是已登记宏（配置期 fail-closed）
+    // 4. proxies 必须为 string[]，且其中出现的 `@` 宏必须是已登记宏（配置期 fail-closed）
     if (group.proxies !== undefined && group.proxies !== null) {
       if (!Array.isArray(group.proxies)) {
         throw new TypeError(`[groups] 策略组 ${groupName}.proxies: 期望 string[] 数组`);

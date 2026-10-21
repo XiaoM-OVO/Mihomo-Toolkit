@@ -29,7 +29,6 @@ function stripGroupDecoration(rawName) {
   return stripped || String(rawName || '').trim();
 }
 
-
 const SKELETON_GROUPS = {
   '手动选择':       { emoji: '📍', icon: 'Static.png', repo: 'orz' },
   '自动选择':       { emoji: '🚀', icon: 'Urltest.png', repo: 'orz' },
@@ -47,6 +46,17 @@ const SKELETON_GROUPS = {
   '其他节点':       { emoji: '🌐', icon: 'Global.png', repo: 'koolson' },
   '未知识别':       { emoji: '🗑️', icon: 'Cydia.png', repo: 'koolson' }
 };
+
+/**
+ * 纯组名 → 展示名（emoji 前缀只由展示层提供）
+ *
+ * 数据层与调试输出只持有纯组名，不得各自再维护一份带 emoji 的文案，
+ * 否则改图标时会漏改、或出现「调试里叫高倍率节点、实际组叫高倍率优选」这类漂移。
+ */
+function decorateGroupName(cleanName) {
+  const def = SKELETON_GROUPS[cleanName];
+  return def ? `${def.emoji} ${cleanName}` : String(cleanName || '');
+}
 
 /** 图标仓库前缀默认值取自字段注册表（单一真相源，避免与配置默认值漂移） */
 function resolveIconUrl(iconFile, repo, userConfig = {}) {
@@ -400,6 +410,7 @@ module.exports = {
   NON_CN_EXCLUDED_GROUPS,
   CN_CORE_PROXY_GROUPS,
   stripGroupDecoration,
+  decorateGroupName,
   buildPresentationMaps,
   applyPresentation
 };

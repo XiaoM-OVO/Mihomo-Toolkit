@@ -468,6 +468,16 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
       assert.doesNotThrow(() => validateGroups([{ name: '测试组', type: 'URL-TEST' }]));
     });
 
+    it('direction 白名单：仅 split / return，缺省双向生效', () => {
+      assert.doesNotThrow(() => validateGroups([{ name: '测试组', type: 'select', direction: 'split' }]));
+      assert.doesNotThrow(() => validateGroups([{ name: '测试组', type: 'select', direction: 'return' }]));
+      assert.doesNotThrow(() => validateGroups([{ name: '测试组', type: 'select' }]));
+      assert.throws(
+        () => validateGroups([{ name: '测试组', type: 'select', direction: 'retrun' }]),
+        /direction: 仅支持 split \/ return/
+      );
+    });
+
     it('proxies 类型约束 + 规则字段不再属于组', () => {
       assert.throws(
         () => validateGroups([{ name: '测试组', proxies: 'DIRECT' }]),

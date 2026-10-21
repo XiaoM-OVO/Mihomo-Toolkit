@@ -121,6 +121,7 @@ include:
 | `icon` | string / object | 否 | 图标 URL 或仓库对象 `{ repo: 'koolson', file: 'YouTube.png' }` |
 | `emoji` | string | 否 | Emoji 徽标（如 `🎬`） |
 | `hidden` | boolean | 否 | 是否在前端界面隐藏该策略组（默认 `false`） |
+| `direction` | string | 否 | 仅在指定方向生效：`split`（去程）\| `return`（回国）；缺省 = 双向生效。同名组可各写一条，方向过滤后只会剩当前方向那一条（不做同名仲裁）。`disabled: true` 仍是全局关闭 |
 | `filter` | string | 否 | Mihomo 原生成员过滤正则（在 `match` 之外追加的二次过滤） |
 | `exclude-filter` | string | 否 | Mihomo 原生成员排除正则 |
 | `match` | Recipe / Recipe[] | 否 | **节点匹配配方（正向命中条件）**，可写对象或数组 |
@@ -192,6 +193,8 @@ match:
 | `@latam` | `@拉美` | 当前活跃地区组中归属于**拉丁美洲**的所有策略组 |
 | `@ea` | `@东亚` | 当前活跃地区组中归属于**东亚**的所有策略组 |
 | `@domesticGroup` | `@domestic` | 若开启中国分流则展开为 `['中国分流']`，否则展开为 `['DIRECT']` |
+| `@cnCoreGroups` | `@cnCore` | 当前活跃的中国大中华核心地区策略组（大陆 / 香港 / 澳门 / 台湾，按此顺序） |
+| `@downloadGroup` | - | 低倍率池有成员时展开为 `['下载策略']`，否则为空 |
 | `@preferredRegions` | `@preferred` | 将当前策略组 `preferredRegions`（地区 id 列表，如 `['us','jp']`）展开为对应地区策略组名（如 `['美国节点','日本节点']`） |
 | `@nonCnRegions` | `@noncn` | 当前活跃地区组中剔除中国大中华核心区（大陆/香港/中国/未知识别）后的纯海外地区组 |
 | `@defaultProxy` | `@proxy` | 根据 `defaultProxyMode` 计算出的默认代理组（`自动选择` / `手动选择` / `DIRECT`） |
@@ -577,7 +580,7 @@ include:
 
 | 参数名 | 类型 | 默认值 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| `routing` | `object[]` | 出厂默认表（13 条） | `local` | `override` | **分流表**：数组顺序即优先级；条目三选一（`preset` / `service` / `rule`），均可带 `to` 覆写目标、`disabled: true` 跳过。远程配置不可修改（见 1.2 信任边界）。 |
+| `routing` | `object[]` | 出厂默认表（13 条） | `local` | `override` | **分流表**：数组顺序即优先级；条目三选一（`preset` / `service` / `rule`），均可带 `to` 覆写目标、`disabled: true` 跳过、`direction: split\|return` 限定生效方向。远程配置不可修改（见 1.2 信任边界）。 |
 
 条目形态：
 
@@ -588,6 +591,7 @@ include:
 | `{ rule: '<规则>' }` | 一条原生规则，两段式自动补目标、三段式替换目标；另支持 `geosite:<名>` / `geoip:<名>` 简写（自动登记同名 Provider） | `{ rule: 'DOMAIN-SUFFIX,example.com', to: 'DIRECT' }`、`{ rule: 'geosite:netflix', to: '奈飞专线' }` |
 | `to` | 目标覆写：内置目标（`DIRECT` / `REJECT` / `REJECT-DROP`）或组引用键 | `{ service: 'twitter', to: 'chatgpt' }` |
 | `disabled: true` | 跳过该条目（用于「默认表里保留、按需打开」） | 见 `quic` / `social` 示例 |
+| `direction` | 只在指定方向生效：`split`（去程）/ `return`（回国）。方向不符时整条不生成；缺省 = 双向生效。同一规则需要两个方向各自落地时，写两条同名规则各带一个 `direction`，而不是在一条里塞两个目标 | `{ rule: 'DOMAIN-SUFFIX,x.com', to: '回国专线', direction: 'return' }` |
 
 预设清单（`PRESET_DEFINITIONS`）：`subscription`（订阅直连与基础网络）、`quic`、`ads`、`ai`、`streaming`、`social`、`game`、`dev`、`specialized`、`system`、`process`（进程直连）、`bt`（BT 追踪器 + 下载软件，默认直连）、`download`（游戏 / 安卓下载规则集）、`domestic`、`final`。分类预设 = **该分类下全部服务 + `customServices` 里新增的服务**；只要一部分就改用逐条 `{ service }`。
 

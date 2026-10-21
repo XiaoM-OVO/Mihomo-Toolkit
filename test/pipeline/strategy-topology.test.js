@@ -42,6 +42,80 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.equal(buckets.us.length, 1);
   });
 
+  it('buildProxyTopology - 方向骨架组成员顺序由声明给出（split / return 各一份）', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const classifiedNodes = [
+      {
+        proxy: { name: '🇭🇰 香港 01' },
+        rawName: '🇭🇰 香港 01',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: [],
+        groupKey: 'hk'
+      }
+    ];
+    const build = (userConfig) => buildProxyTopology({
+      classifiedNodes,
+      userConfig: { ...DEFAULT_CONFIG, ...userConfig },
+      registries,
+      ruleTargets: ['中国分流']
+    }).proxyGroups;
+
+    const splitGroups = build({});
+    assert.deepEqual(
+      splitGroups.find(g => g.name === '中国分流').proxies,
+      ['DIRECT', '香港节点', '自动选择'],
+      'split：国内侧先直连，再把活跃的大中华核心地区组与默认代理排在后面'
+    );
+    assert.deepEqual(
+      splitGroups.find(g => g.name === '漏网之鱼').proxies,
+      ['自动选择', '手动选择', '故障转移', 'DIRECT'],
+      'split：兜底以默认代理起头，DIRECT 收尾'
+    );
+
+    const returnGroups = build({ trafficDirection: 'return' });
+    assert.deepEqual(
+      returnGroups.find(g => g.name === '中国分流').proxies,
+      ['自动选择', '香港节点', 'DIRECT'],
+      'return：国内侧先走代理，DIRECT 收尾'
+    );
+    assert.deepEqual(
+      returnGroups.find(g => g.name === '漏网之鱼').proxies,
+      ['DIRECT', '自动选择', '手动选择', '故障转移'],
+      'return：兜底以 DIRECT 起头'
+    );
+  });
+
+  it('buildProxyTopology - groups direction：同名组按方向择一生成', () => {
+    const groups = [
+      { name: '双面组', type: 'select', proxies: ['DIRECT'], direction: 'split' },
+      { name: '双面组', type: 'select', proxies: ['自动选择'], direction: 'return' }
+    ];
+    const build = (userConfig) => buildProxyTopology({
+      classifiedNodes: [],
+      userConfig: { ...DEFAULT_CONFIG, groups, ...userConfig },
+      registries: createServiceRegistries(DEFAULT_CONFIG)
+    }).proxyGroups;
+
+    const split = build({}).filter(g => g.name === '双面组');
+    assert.equal(split.length, 1, '同一时刻只会生成当前方向的那一条');
+    assert.deepEqual(split[0].proxies, ['DIRECT']);
+
+    const ret = build({ trafficDirection: 'return' }).filter(g => g.name === '双面组');
+    assert.equal(ret.length, 1);
+    assert.deepEqual(ret[0].proxies, ['自动选择']);
+  });
+
+  it('buildProxyTopology - 中国分流仅在被规则引用时生成', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const { proxyGroups } = buildProxyTopology({
+      classifiedNodes: [],
+      userConfig: DEFAULT_CONFIG,
+      registries,
+      ruleTargets: []
+    });
+    assert.equal(proxyGroups.some(g => g.name === '中国分流'), false);
+  });
+
   it('buildProxyTopology - 独立看板策略组 (enableDashboard)', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
     const classifiedNodes = [

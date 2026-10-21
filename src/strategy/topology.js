@@ -7,9 +7,10 @@
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
 const { getTrustedProxyMetadata } = require('../core/node-trust');
 const { FIELDS_BY_KEY } = require('../data');
-const { ADS_GROUPS, DOWNLOAD_GROUPS } = require('../config/catalog');
+const { ADS_GROUPS, DOWNLOAD_GROUPS, SKELETON_GROUP_DEFS } = require('../config/catalog');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
 const { validateGroups } = require('./matcher');
+const { filterGroupsByDirection } = require('../config/groups');
 const { resolvePoolDefinitions, createPoolMatchers } = require('./pools');
 const { POOL_NAMES } = require('../data/default-pools');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
@@ -262,7 +263,11 @@ function buildProxyTopology({
   logger = null
 }) {
   // 0. 校验声明式策略组 (groups) match/exclude 配方合规性
+  //    校验针对全量声明（含未生效方向），保证「换个方向才报错」的幽灵配置不存在
   validateGroups(userConfig.groups);
+
+  // 方向只筛选声明，不做同名仲裁：同名组各写一个方向，激活哪个由 trafficDirection 决定
+  const direction = userConfig.trafficDirection === 'return' ? 'return' : 'split';
 
   // 确保 registries 优先从 catalog 获取单一事实来源
 
@@ -560,6 +565,26 @@ function buildProxyTopology({
     allPoolMembers[def.name] = poolMembers(def);
   });
 
+  // 方向语义骨架组：成员顺序写在各方向的数据声明里（config/catalog.js），
+  // 此处只按 trafficDirection 取对应变体并交给统一求值器，不再现场推导顺序。
+  const assembleSkeleton = (def) => evaluateGroupDefinition(def, {
+    classifiedNodes,
+    buckets,
+    userConfig,
+    existingGroups: finalGroups,
+    groups: [],
+    activeRegionGroups,
+    regionNames,
+    standardOptions,
+    residentialGroup: resiPrefix,
+    domesticGroup: engineContext.domesticGroup,
+    nonCnRegions: engineContext.nonCnRegions,
+    poolMembers: allPoolMembers,
+    cnCoreGroups: CN_CORE_PROXY_GROUPS.filter(name => activeRegionGroups.includes(name)),
+    downloadGroup: lowMultiPool ? ['下载策略'] : [],
+    logger
+  });
+
   // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 config/catalog.js，
   // 拓扑只负责「低倍率池非空时装配」；成员由 `@pool:低倍率节点` 展开。
   if (lowMultiPool) {
@@ -591,10 +616,8 @@ function buildProxyTopology({
 
   // 中国分流组：只有某条生效规则把它当目标时才生成（引用即激活）
   if (referencedTargets.has('中国分流')) {
-    const cnProxies = userConfig.trafficDirection === 'return'
-      ? [proxyTarget, ...CN_CORE_PROXY_GROUPS, 'DIRECT']
-      : ['DIRECT', ...CN_CORE_PROXY_GROUPS, proxyTarget];
-    finalGroups.push(buildSelect('中国分流', cnProxies));
+    const domesticGroup = assembleSkeleton(SKELETON_GROUP_DEFS.domestic[direction]);
+    if (domesticGroup) finalGroups.push(domesticGroup);
   }
 
   finalGroups.push(...appGroups);
@@ -603,15 +626,9 @@ function buildProxyTopology({
     finalGroups.push(buildSelect('IPv6控制台', ['REJECT', '手动选择', 'DIRECT']));
   }
 
-  const fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', ...(lowMultiPool ? ['下载策略'] : [])];
-  if (proxyTarget !== 'DIRECT') {
-    if (userConfig.trafficDirection === 'return') {
-      fallbackProxies.unshift('DIRECT');
-    } else {
-      fallbackProxies.push('DIRECT');
-    }
-  }
-  finalGroups.push(buildSelect('漏网之鱼', dedupe(fallbackProxies)));
+  // 兜底组：成员顺序同样由方向声明给出（split 以默认代理起头，return 以 DIRECT 起头）
+  const finalGroup = assembleSkeleton(SKELETON_GROUP_DEFS.final[direction]);
+  if (finalGroup) finalGroups.push(finalGroup);
 
   // 地区组与哈希负载均衡
   Object.entries(regionNames).forEach(([id, name]) => {
@@ -647,7 +664,7 @@ function buildProxyTopology({
   // 声明式自定义策略组装配 (groups DSL 引擎)
   if (Array.isArray(userConfig.groups) && userConfig.groups.length > 0) {
     const { evaluatedGroups } = evaluateCustomTopology({
-      groups: userConfig.groups,
+      groups: filterGroupsByDirection(userConfig.groups, direction),
       existingGroups: finalGroups,
       classifiedNodes,
       buckets,
