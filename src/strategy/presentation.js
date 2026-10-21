@@ -239,9 +239,9 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     }
   }
 
-  // 5. 自定义策略组 DSL (customGroups) 图标与 Emoji 注册 (防双重 Emoji 拼接)
-  if (Array.isArray(userConfig.customGroups)) {
-    for (const g of userConfig.customGroups) {
+  // 5. 声明式策略组 (groups) 图标与 Emoji 注册 (防双重 Emoji 拼接)
+  if (Array.isArray(userConfig.groups)) {
+    for (const g of userConfig.groups) {
       if (!g || !g.name) continue;
       const cleanName = stripGroupDecoration(g.name);
       const extractedEmoji = g.name.match(GROUP_DECORATION_PREFIX)?.[0]?.trim() || '';

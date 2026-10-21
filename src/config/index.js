@@ -139,19 +139,34 @@ function resolveConfig(userConfig = {}, options = {}) {
   merged.registries = merged.catalog.toRegistries();
 
   // 5. 归一化声明式策略组清单：`groups` → 引擎可直接消费的完整组声明。
-  //    `{ ref: <键> }` 从内置组目录取出完整声明（含 rules → 自动生成 RULE-SET 与规则集 Provider），
-  //    并允许条目内覆写任意字段；`disabled: true` 显式关闭；未知 ref 键 fail-closed。
-  //    归一化结果并入 customGroups，作为引擎/规则/展示层当下唯一的内部入口
-  //    （批次 3 落地后将由 groups 直接取代 customGroups，届时此处合流即拆除）。
+  //    `{ ref: <键> }` 从内置组目录取出完整声明并允许条目内覆写任意字段；
+  //    `disabled: true` 显式关闭；未知 ref 键 fail-closed。
+  //    归一化结果原地写回 `groups`，作为引擎/展示层唯一的组声明入口——组只声明成员与呈现，
+  //    分流规则一律来自 `routing` 表（`{ rule }` 条目或 `preset` / `service` 的 `to`）。
   const declaredGroups = resolveGroupDeclarations(merged.groups, {
     directory: merged.registries.groups,
     memberHints: buildMemberHints(merged.registries),
     fieldPath: 'groups'
   });
-  if (declaredGroups.length > 0) {
-    const baseGroups = Array.isArray(merged.customGroups) ? merged.customGroups : [];
-    merged.customGroups = [...baseGroups, ...declaredGroups];
+
+  // 改名不断链：用户覆写的组名实时同步至 registries，使 routing 展开与目标解析自动随动
+  for (const decl of declaredGroups) {
+    if (!decl._ref) continue;
+    const refKey = decl._ref;
+    if (decl.name) {
+      if (merged.registries.groups?.[refKey]) {
+        merged.registries.groups[refKey].name = decl.name;
+      }
+      for (const cat of ['ai', 'streaming', 'social', 'game', 'dev', 'system', 'specialized', 'aggregates']) {
+        if (merged.registries[cat]?.[refKey]) {
+          merged.registries[cat][refKey].name = decl.name;
+          merged.registries[cat][refKey].cleanName = decl.name;
+        }
+      }
+    }
   }
+
+  merged.groups = declaredGroups;
 
   return merged;
 }

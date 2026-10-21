@@ -455,7 +455,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     isolateBucket,
     isUnknownRegion,
     keepName,
-    customGroups: options.customGroups || meta.customGroups || [],
+    groupTags: options.groupTags || meta.groupTags || [],
     airportTag: options.airportTag || meta.subTag || userConfig.airportTag || '',
     indexPrefix: options.indexPrefix || meta.indexPrefix || ''
   };

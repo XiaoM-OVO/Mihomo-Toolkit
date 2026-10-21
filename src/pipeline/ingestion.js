@@ -591,7 +591,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
         // 记录内部属性到元数据存储（不污染 proxy 节点对象）
         const shouldKeepName = resolveShouldKeepName(sub);
-        const effectiveCustomGroups = (Array.isArray(sub.groups) && sub.groups.length > 0) ? [...sub.groups] : [];
+        const effectiveGroupTags = (Array.isArray(sub.groups) && sub.groups.length > 0) ? [...sub.groups] : [];
 
         let effectiveTag = sub.tag;
         const effectiveIndexPrefix = sub.indexPrefix;
@@ -632,7 +632,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           subTag: sub.tag || effectiveTag,
           indexPrefix: effectiveIndexPrefix || '',
           keepName: shouldKeepName,
-          customGroups: effectiveCustomGroups,
+          groupTags: effectiveGroupTags,
           rawName: p.name || ''
         }));
 

@@ -300,29 +300,20 @@ aiPreferredRegions:
 #   "hk": ["ChatGPT"]
 
 # ─────────────────────────────────────────────────────────────────────
-# ⑩-B 声明式自定义策略组 DSL (customGroups)
+# ⑩-B 规则与组的分工
 # ─────────────────────────────────────────────────────────────────────
-# 支持声明全新策略组或覆写现有策略组；Mihomo 原生字段完全透传，支持动态配方 match / exclude 与宏引用
-# 推荐书写规范纯净中文名（徽标由 groupIconMode 统一根据 emoji / icon 自适应渲染）
-# customGroups:
-#   - name: "专属流媒体"
-#     emoji: "🎬"
-#     type: url-test               # select | url-test | fallback | load-balance
-#     url: "https://www.youtube.com/generate_204"
-#     interval: 300
-#     tolerance: 50
-#     match:
-#       region: ["hk", "tw", "jp"] # 支持大区代码或名称，支持 !cn 排除
-#       tags: ["streaming"]        # 标签要求
-#       multi: "<= 1.5"            # 倍率要求 (<=, <, >=, >, ==, [0, 1.5])
-#       pattern: "专线"             # 正则或名称子串
-#     exclude:
-#       tags: ["download"]         # 黑名单排除
-#     proxies:
-#       - "@matchedNodes"          # 宏变量：上述 match/exclude 筛选出的节点
-#       - "@residential"           # 宏变量：家宽优选节点
-#       - "自动选择"                # 策略组引用（规范纯净名）
-#       - "DIRECT"                 # 原生保留字
+# groups 只声明「组长什么样、成员是谁」；规则一律写进 routing 表，用 to 指向目标组。
+# 想给自建组喂规则，就在 routing 里加 { rule: ..., to: 组名 } 或 { service: ..., to: 组名 }。
+# 顺序即优先级：条目在表里越靠前越先匹配。
+# routing:
+#   - preset: subscription
+#   - rule: "DOMAIN-SUFFIX,company.internal"   # 两段式：目标由 to 提供
+#     to: "DIRECT"
+#   - service: youtube
+#     to: 我的专属线路                          # 覆写服务默认目标组
+#   - rule: "geosite:google"                   # 规则集简写：自动登记 geosite/google Provider
+#     to: 🚀 自动选择
+#   - preset: final
 
 # ─────────────────────────────────────────────────────────────────────
 # ⑩-C 统一策略组声明清单 (groups)
@@ -330,9 +321,10 @@ aiPreferredRegions:
 # 策略组的单一声明入口：列了即激活，注释即关闭。
 # - { ref: <键> } 引用内置组目录（定义内置于程序，无需外部文件），可覆写任意字段
 # - 目录之外的组直接写完整声明，字段与目录条目完全同构
+# - 组不产出规则：给组喂规则请写在 routing 表里（见 ⑩-B）
 # - 跨 include 片段关闭某组时，必须显式书写 disabled: true（片段数组是并集去重）
 # groups:
-#   - { ref: chatgpt }               # 引用内置 ChatGPT 组（含其规则与规则集 Provider）
+#   - { ref: chatgpt }               # 引用内置 ChatGPT 组
 #   - { ref: gemini }
 #   - { ref: claude, disabled: true } # 显式关闭
 #   - ref: copilot                   # 引用条目亦可覆写字段
@@ -363,11 +355,14 @@ aiPreferredRegions:
 # processProxyMac: []              # macOS 强制走下载策略的工具 (默认: fdm)
 # processProxyLin: []              # Linux 强制走下载策略的工具 (默认: 空)
 
-# 🎯 自定义路由规则与 Rule-Providers (注入到 MATCH 之前，优先级最高)
-# customRules:
-#   - "DOMAIN-SUFFIX,company.internal,DIRECT"
-#   - "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve"
-#   - "RULE-SET,my-custom-rules,📍 手动选择"
+# 🎯 自定义路由规则与 Rule-Providers
+# 私域规则写在 routing 表里（见 ⑩-B）：两段式规则由 to 提供目标，三段式规则自带目标。
+# 位置决定优先级——想「最高优先级」，就把条目放在 subscription 预设与业务预设之前。
+# routing:
+#   - rule: "DOMAIN-SUFFIX,company.internal"
+#     to: "DIRECT"
+#   - rule: "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve"
+#   - rule: "RULE-SET,my-custom-rules,📍 手动选择"
 # customRuleProviders:
 #   my-custom-rules:
 #     type: http

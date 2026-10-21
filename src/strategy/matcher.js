@@ -14,11 +14,11 @@ const { isKnownMacro } = require('./macros');
 /** 声明式策略组允许的 Mihomo 原生组类型（单一真相源，供拓扑引擎与校验器共用） */
 const SUPPORTED_GROUP_TYPES = new Set(['select', 'url-test', 'fallback', 'load-balance']);
 
-/** customGroups 顶层允许字段白名单（未列出的键一律 fail-closed 抛错） */
+/** groups 顶层允许字段白名单（未列出的键一律 fail-closed 抛错） */
 const ALLOWED_GROUP_KEYS = new Set([
   'name', 'type', 'url', 'interval', 'tolerance', 'lazy', 'strategy',
   'icon', 'emoji', 'hidden', 'filter', 'exclude-filter',
-  'match', 'exclude', 'proxies', 'rules', 'providers', 'preferredRegions', 'process'
+  'match', 'exclude', 'proxies', 'preferredRegions'
 ]);
 
 /**
@@ -358,22 +358,22 @@ function compileFeaturePoolMatcher(spec) {
 function assertNonEmptyStringOrArray(val, path, label = '字符串') {
   if (typeof val === 'string') {
     if (!val.trim()) {
-      throw new Error(`[customGroups] ${path}: ${label}值不能为空`);
+      throw new Error(`[groups] ${path}: ${label}值不能为空`);
     }
     return;
   }
   if (Array.isArray(val)) {
     if (val.length === 0) {
-      throw new Error(`[customGroups] ${path}: 数组不能为空`);
+      throw new Error(`[groups] ${path}: 数组不能为空`);
     }
     for (let i = 0; i < val.length; i++) {
       if (typeof val[i] !== 'string' || !val[i].trim()) {
-        throw new TypeError(`[customGroups] ${path}[${i}]: 期望非空 string 类型`);
+        throw new TypeError(`[groups] ${path}[${i}]: 期望非空 string 类型`);
       }
     }
     return;
   }
-  throw new TypeError(`[customGroups] ${path}: 期望 string 或 string[] 类型`);
+  throw new TypeError(`[groups] ${path}: 期望 string 或 string[] 类型`);
 }
 
 /**
@@ -382,23 +382,23 @@ function assertNonEmptyStringOrArray(val, path, label = '字符串') {
 function assertPattern(val, path) {
   if (typeof val === 'string') {
     if (!val.trim()) {
-      throw new Error(`[customGroups] ${path}: 正则/名称关键词不能为空`);
+      throw new Error(`[groups] ${path}: 正则/名称关键词不能为空`);
     }
   } else if (val instanceof RegExp) {
     // 正则实例合法
   } else if (Array.isArray(val)) {
     if (val.length === 0) {
-      throw new Error(`[customGroups] ${path}: 数组不能为空`);
+      throw new Error(`[groups] ${path}: 数组不能为空`);
     }
     for (let i = 0; i < val.length; i++) {
       const item = val[i];
       const isPattern = (typeof item === 'string' && Boolean(item.trim())) || item instanceof RegExp;
       if (!isPattern) {
-        throw new TypeError(`[customGroups] ${path}[${i}]: 期望非空 string 或 RegExp 类型`);
+        throw new TypeError(`[groups] ${path}[${i}]: 期望非空 string 或 RegExp 类型`);
       }
     }
   } else {
-    throw new TypeError(`[customGroups] ${path}: 期望 string, RegExp 或由它们组成的非空数组`);
+    throw new TypeError(`[groups] ${path}: 期望 string, RegExp 或由它们组成的非空数组`);
   }
 }
 
@@ -408,24 +408,24 @@ function assertPattern(val, path) {
 function assertMulti(val, path) {
   if (typeof val === 'number') {
     if (Number.isNaN(val)) {
-      throw new TypeError(`[customGroups] ${path}: 倍率数值不能为 NaN`);
+      throw new TypeError(`[groups] ${path}: 倍率数值不能为 NaN`);
     }
   } else if (typeof val === 'string') {
     const s = val.trim();
     if (!s) {
-      throw new Error(`[customGroups] ${path}: 倍率字符串表达式不能为空`);
+      throw new Error(`[groups] ${path}: 倍率字符串表达式不能为空`);
     }
     const rangeMatch = s.match(/^([\[\(])\s*([0-9.]+)\s*,\s*([0-9.]+)\s*([\]\)])$/);
     const opMatch = s.match(/^(<=|>=|<|>|==|=)?\s*([0-9.]+)$/);
     if (!rangeMatch && !opMatch) {
-      throw new Error(`[customGroups] ${path}: 倍率格式不合法「${val}」，仅支持比较运算符（如 '<= 1.5'）或区间（如 '[1.0, 2.0]'）`);
+      throw new Error(`[groups] ${path}: 倍率格式不合法「${val}」，仅支持比较运算符（如 '<= 1.5'）或区间（如 '[1.0, 2.0]'）`);
     }
   } else if (Array.isArray(val)) {
     if (val.length !== 2 || typeof val[0] !== 'number' || typeof val[1] !== 'number' || Number.isNaN(val[0]) || Number.isNaN(val[1])) {
-      throw new TypeError(`[customGroups] ${path}: 数组范围必须为包含两个数字的元组 [min, max]`);
+      throw new TypeError(`[groups] ${path}: 数组范围必须为包含两个数字的元组 [min, max]`);
     }
   } else {
-    throw new TypeError(`[customGroups] ${path}: 期望 number, string (不等式/区间) 或 [min, max] 数字范围数组`);
+    throw new TypeError(`[groups] ${path}: 期望 number, string (不等式/区间) 或 [min, max] 数字范围数组`);
   }
 }
 
@@ -435,41 +435,41 @@ function assertMulti(val, path) {
 function assertTags(val, path) {
   if (typeof val === 'string') {
     if (!val.trim()) {
-      throw new Error(`[customGroups] ${path}: 标签名不能为空`);
+      throw new Error(`[groups] ${path}: 标签名不能为空`);
     }
   } else if (Array.isArray(val)) {
     if (val.length === 0) {
-      throw new Error(`[customGroups] ${path}: 标签数组不能为空`);
+      throw new Error(`[groups] ${path}: 标签数组不能为空`);
     }
     for (let i = 0; i < val.length; i++) {
       if (typeof val[i] !== 'string' || !val[i].trim()) {
-        throw new TypeError(`[customGroups] ${path}[${i}]: 期望非空 string 标签`);
+        throw new TypeError(`[groups] ${path}[${i}]: 期望非空 string 标签`);
       }
     }
   } else if (typeof val === 'object' && val !== null) {
     const tagKeys = Object.keys(val);
     for (const tk of tagKeys) {
       if (tk !== 'any' && tk !== 'all') {
-        throw new Error(`[customGroups] ${path}: 复合标签对象包含未知键「${tk}」，仅允许 'any' 或 'all'`);
+        throw new Error(`[groups] ${path}: 复合标签对象包含未知键「${tk}」，仅允许 'any' 或 'all'`);
       }
     }
     if (!tagKeys.includes('any') && !tagKeys.includes('all')) {
-      throw new Error(`[customGroups] ${path}: 复合标签对象必须至少包含 'any' 或 'all' 中的一个`);
+      throw new Error(`[groups] ${path}: 复合标签对象必须至少包含 'any' 或 'all' 中的一个`);
     }
     for (const tk of ['any', 'all']) {
       if (val[tk] !== undefined) {
         if (!Array.isArray(val[tk]) || val[tk].length === 0) {
-          throw new TypeError(`[customGroups] ${path}.${tk}: 期望非空 string[] 数组`);
+          throw new TypeError(`[groups] ${path}.${tk}: 期望非空 string[] 数组`);
         }
         for (let i = 0; i < val[tk].length; i++) {
           if (typeof val[tk][i] !== 'string' || !val[tk][i].trim()) {
-            throw new TypeError(`[customGroups] ${path}.${tk}[${i}]: 期望非空 string 标签`);
+            throw new TypeError(`[groups] ${path}.${tk}[${i}]: 期望非空 string 标签`);
           }
         }
       }
     }
   } else {
-    throw new TypeError(`[customGroups] ${path}: 期望 string, string[] 或包含 any/all 成员数组的复合对象`);
+    throw new TypeError(`[groups] ${path}: 期望 string, string[] 或包含 any/all 成员数组的复合对象`);
   }
 }
 
@@ -516,19 +516,19 @@ const RECIPE_DIMENSIONS = {
   },
   isSpecial: {
     validate: (val, path) => {
-      if (typeof val !== 'boolean') throw new TypeError(`[customGroups] ${path}: 期望 boolean 类型`);
+      if (typeof val !== 'boolean') throw new TypeError(`[groups] ${path}: 期望 boolean 类型`);
     },
     compile: (val) => ((item) => Boolean(item.isSpecial) === val)
   },
   isUnknownRegion: {
     validate: (val, path) => {
-      if (typeof val !== 'boolean') throw new TypeError(`[customGroups] ${path}: 期望 boolean 类型`);
+      if (typeof val !== 'boolean') throw new TypeError(`[groups] ${path}: 期望 boolean 类型`);
     },
     compile: (val) => ((item) => Boolean(item.isUnknownRegion) === val)
   },
   custom: {
     validate: (val, path) => {
-      if (typeof val !== 'function') throw new TypeError(`[customGroups] ${path}: 期望 function 谓词类型`);
+      if (typeof val !== 'function') throw new TypeError(`[groups] ${path}: 期望 function 谓词类型`);
     },
     compile: (fn) => fn
   }
@@ -545,30 +545,30 @@ function validateRecipe(recipe, path) {
   if (typeof recipe === 'function') return;
 
   if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) {
-    throw new TypeError(`[customGroups] ${path}: 配方必须为非空普通对象 (Plain Object) 或函数`);
+    throw new TypeError(`[groups] ${path}: 配方必须为非空普通对象 (Plain Object) 或函数`);
   }
 
   const keys = Object.keys(recipe);
   if (keys.length === 0) {
-    throw new Error(`[customGroups] ${path}: 配方对象不能为空，至少需包含一个有效匹配维度`);
+    throw new Error(`[groups] ${path}: 配方对象不能为空，至少需包含一个有效匹配维度`);
   }
 
   for (const key of keys) {
     if (key === 'mode') {
       if (recipe.mode !== 'all' && recipe.mode !== 'any') {
-        throw new Error(`[customGroups] ${path}.mode: 期望 'all' 或 'any'`);
+        throw new Error(`[groups] ${path}.mode: 期望 'all' 或 'any'`);
       }
       continue;
     }
 
     const dim = RECIPE_DIMENSIONS[key];
     if (!dim) {
-      throw new Error(`[customGroups] ${path}: 未知匹配维度「${key}」，支持字段: ${[...ALLOWED_RECIPE_KEYS].join(', ')}`);
+      throw new Error(`[groups] ${path}: 未知匹配维度「${key}」，支持字段: ${[...ALLOWED_RECIPE_KEYS].join(', ')}`);
     }
 
     const val = recipe[key];
     if (val === undefined || val === null) {
-      throw new TypeError(`[customGroups] ${path}.${key}: 匹配规则值不能为空或 undefined`);
+      throw new TypeError(`[groups] ${path}.${key}: 匹配规则值不能为空或 undefined`);
     }
 
     dim.validate(val, `${path}.${key}`);
@@ -576,18 +576,18 @@ function validateRecipe(recipe, path) {
 }
 
 /**
- * 校验 customGroups 列表中所有 match 与 exclude 配方
- * @param {Array<object>} customGroups 声明式自定义策略组定义列表
+ * 校验 groups 列表中所有 match 与 exclude 配方
+ * @param {Array<object>} groups 声明式自定义策略组定义列表
  */
-function validateCustomGroups(customGroups) {
-  if (!customGroups) return;
-  if (!Array.isArray(customGroups)) {
-    throw new TypeError(`[customGroups] customGroups 配置必须为策略组对象数组`);
+function validateGroups(groups) {
+  if (!groups) return;
+  if (!Array.isArray(groups)) {
+    throw new TypeError(`[groups] groups 配置必须为策略组对象数组`);
   }
 
-  customGroups.forEach((group, index) => {
+  groups.forEach((group, index) => {
     if (!group || typeof group !== 'object') {
-      throw new TypeError(`[customGroups] customGroups[${index}]: 策略组定义必须为有效对象`);
+      throw new TypeError(`[groups] groups[${index}]: 策略组定义必须为有效对象`);
     }
 
     const groupName = group.name ? `「${group.name}」` : `[${index}]`;
@@ -595,7 +595,7 @@ function validateCustomGroups(customGroups) {
     // 1. 顶层字段白名单 (Fail-Closed)：未知字段直接抛错，杜绝静默忽略的"幽灵配置"
     for (const key of Object.keys(group)) {
       if (!ALLOWED_GROUP_KEYS.has(key)) {
-        throw new Error(`[customGroups] 策略组 ${groupName}: 未知字段「${key}」，支持字段: ${[...ALLOWED_GROUP_KEYS].join(', ')}`);
+        throw new Error(`[groups] 策略组 ${groupName}: 未知字段「${key}」，支持字段: ${[...ALLOWED_GROUP_KEYS].join(', ')}`);
       }
     }
 
@@ -603,97 +603,40 @@ function validateCustomGroups(customGroups) {
     if (group.type !== undefined && group.type !== null) {
       const type = String(group.type).toLowerCase().trim();
       if (!SUPPORTED_GROUP_TYPES.has(type)) {
-        throw new Error(`[customGroups] 策略组 ${groupName}.type: 未知策略组类型「${group.type}」，支持: ${[...SUPPORTED_GROUP_TYPES].join(' | ')}`);
+        throw new Error(`[groups] 策略组 ${groupName}.type: 未知策略组类型「${group.type}」，支持: ${[...SUPPORTED_GROUP_TYPES].join(' | ')}`);
       }
     }
 
     // 3. proxies 必须为 string[]，且其中出现的 `@` 宏必须是已登记宏（配置期 fail-closed）
     if (group.proxies !== undefined && group.proxies !== null) {
       if (!Array.isArray(group.proxies)) {
-        throw new TypeError(`[customGroups] 策略组 ${groupName}.proxies: 期望 string[] 数组`);
+        throw new TypeError(`[groups] 策略组 ${groupName}.proxies: 期望 string[] 数组`);
       }
       group.proxies.forEach((item, pIdx) => {
         if (typeof item !== 'string' || !item.trim()) {
-          throw new TypeError(`[customGroups] 策略组 ${groupName}.proxies[${pIdx}]: 期望非空 string`);
+          throw new TypeError(`[groups] 策略组 ${groupName}.proxies[${pIdx}]: 期望非空 string`);
         }
         const token = item.trim();
         if (token.startsWith('@') && !isKnownMacro(token)) {
           throw new Error(
-            `[customGroups] 策略组 ${groupName}.proxies[${pIdx}]: 未知宏「${token}」，` +
+            `[groups] 策略组 ${groupName}.proxies[${pIdx}]: 未知宏「${token}」，` +
             '可用宏见 CONFIGURATION.md 动态拓扑宏变量清单'
           );
         }
       });
     }
 
-    // 3.1 providers 必须为「规则集名 → 路径/URL」字符串映射
-    if (group.providers !== undefined && group.providers !== null) {
-      const providers = group.providers;
-      if (typeof providers !== 'object' || Array.isArray(providers) || Object.keys(providers).length === 0) {
-        throw new TypeError(`[customGroups] 策略组 ${groupName}.providers: 期望非空对象映射`);
-      }
-      for (const [name, path] of Object.entries(providers)) {
-        if (!name.trim() || typeof path !== 'string' || !path.trim()) {
-          throw new TypeError(`[customGroups] 策略组 ${groupName}.providers.${name}: 期望非空 string 规则集路径`);
-        }
-      }
-    }
-
     // 3.2 preferredRegions 必须为非空字符串数组（供 `@preferredRegions` 宏展开）
     if (group.preferredRegions !== undefined && group.preferredRegions !== null) {
       const pref = group.preferredRegions;
       if (!Array.isArray(pref) || pref.length === 0) {
-        throw new TypeError(`[customGroups] 策略组 ${groupName}.preferredRegions: 期望非空 string[] 数组`);
+        throw new TypeError(`[groups] 策略组 ${groupName}.preferredRegions: 期望非空 string[] 数组`);
       }
       pref.forEach((item, pIdx) => {
         if (typeof item !== 'string' || !item.trim()) {
-          throw new TypeError(`[customGroups] 策略组 ${groupName}.preferredRegions[${pIdx}]: 期望非空 string`);
+          throw new TypeError(`[groups] 策略组 ${groupName}.preferredRegions[${pIdx}]: 期望非空 string`);
         }
       });
-    }
-
-    // 3.3 process 必须为 { win?: string[], mac?: string[], lin?: string[] } 进程名单（供组随规则交付）
-    if (group.process !== undefined && group.process !== null) {
-      const proc = group.process;
-      if (typeof proc !== 'object' || Array.isArray(proc)) {
-        throw new TypeError(`[customGroups] 策略组 ${groupName}.process: 期望对象映射 { win/mac/lin }`);
-      }
-      const osKeys = Object.keys(proc);
-      if (osKeys.length === 0) {
-        throw new Error(`[customGroups] 策略组 ${groupName}.process: 不能为空对象，至少需声明一个平台`);
-      }
-      for (const osKey of osKeys) {
-        if (!['win', 'mac', 'lin'].includes(osKey)) {
-          throw new Error(`[customGroups] 策略组 ${groupName}.process: 未知平台键「${osKey}」，支持: win | mac | lin`);
-        }
-        const list = proc[osKey];
-        if (!Array.isArray(list) || list.length === 0) {
-          throw new TypeError(`[customGroups] 策略组 ${groupName}.process.${osKey}: 期望非空 string[] 进程名单`);
-        }
-        list.forEach((item, pIdx) => {
-          if (typeof item !== 'string' || !item.trim()) {
-            throw new TypeError(`[customGroups] 策略组 ${groupName}.process.${osKey}[${pIdx}]: 期望非空 string`);
-          }
-        });
-      }
-    }
-
-    // 4. rules 必须为 string 或 string[]
-    if (group.rules !== undefined && group.rules !== null) {
-      const rules = group.rules;
-      if (typeof rules === 'string') {
-        if (!rules.trim()) {
-          throw new Error(`[customGroups] 策略组 ${groupName}.rules: 规则名不能为空`);
-        }
-      } else if (Array.isArray(rules)) {
-        rules.forEach((item, rIdx) => {
-          if (typeof item !== 'string' || !item.trim()) {
-            throw new TypeError(`[customGroups] 策略组 ${groupName}.rules[${rIdx}]: 期望非空 string`);
-          }
-        });
-      } else {
-        throw new TypeError(`[customGroups] 策略组 ${groupName}.rules: 期望 string 或 string[]`);
-      }
     }
 
     for (const field of ['match', 'exclude']) {
@@ -704,7 +647,7 @@ function validateCustomGroups(customGroups) {
 
       if (Array.isArray(val)) {
         if (val.length === 0) {
-          throw new Error(`[customGroups] ${pathPrefix}: 配方数组不能为空`);
+          throw new Error(`[groups] ${pathPrefix}: 配方数组不能为空`);
         }
         val.forEach((recipe, rIdx) => {
           validateRecipe(recipe, `${pathPrefix}[${rIdx}]`);
@@ -841,6 +784,6 @@ module.exports = {
   createNodePredicate,
   filterNodes,
   validateRecipe,
-  validateCustomGroups
+  validateGroups
 };
 

@@ -40,7 +40,13 @@ function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {},
     }
 
     // 显式关闭：连带落在其上的覆写一起忽略（声明即激活，关闭靠 disabled）
-    if (entry.disabled === true) return;
+    if (entry.disabled === true) {
+      if (entry.ref) {
+        const refKey = entry.ref.trim();
+        if (directory[refKey]) directory[refKey]._disabled = true;
+      }
+      return;
+    }
 
     const overrides = { ...entry };
     delete overrides.ref;
@@ -68,11 +74,25 @@ function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {},
       }
       // 浅合并：每个顶层字段整体被覆写值替换（match / proxies / rules 等按整字段替换，语义直观可预测）
       declaration = { ...base, ...overrides };
+      Object.defineProperty(declaration, '_ref', {
+        value: refKey,
+        enumerable: false,
+        writable: true,
+        configurable: true
+      });
     }
 
     if (typeof declaration.name !== 'string' || !declaration.name.trim()) {
       throw new Error(`${path}: 策略组声明缺少 name`);
     }
+
+    // 规则与组彻底分家：组只声明成员与呈现。
+    // 目录条目里的 rules / providers / process 是「该组对应的分流规则」的历史载体，
+    // 批次 3 起规则一律由 routing 表生成（见 README / CONFIGURATION 第 4 节），此处剥离，
+    // 保证 { ref } 展开结果与手写声明都不再夹带规则字段。
+    delete declaration.rules;
+    delete declaration.providers;
+    delete declaration.process;
 
     resolved.push(declaration);
   });

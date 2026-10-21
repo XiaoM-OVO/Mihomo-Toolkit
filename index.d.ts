@@ -42,7 +42,7 @@ export interface SubscriptionConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 自定义策略组 DSL 配置项 (customGroups)
+// 策略组声明 DSL 配置项 (groups)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface CustomGroupRecipe {
@@ -70,7 +70,7 @@ export interface CustomGroupRecipe {
   custom?: (node: any) => boolean;
 }
 
-export interface CustomGroupConfig {
+export interface GroupDeclaration {
   /** 策略组名称 */
   name: string;
   /** 策略组类型：select (默认) | url-test | fallback | load-balance */
@@ -101,10 +101,6 @@ export interface CustomGroupConfig {
   exclude?: CustomGroupRecipe | CustomGroupRecipe[];
   /** 显式声明的成员节点或策略组引用 (支持宏: @matchedNodes, @residential, @allStandard, @defaultProxy) */
   proxies?: string[];
-  /** 绑定的分流规则或规则集名称 (自动挂载至 rules 流水线) */
-  rules?: string | string[];
-  /** 组声明携带的规则集 Provider 映射 (规则集名 → geosite/x 或绝对 URL) */
-  providers?: Record<string, string>;
   /** `@preferredRegions` 宏展开用的地区 id 列表 (如 ['us', 'jp', 'tw']) */
   preferredRegions?: string[];
 }
@@ -115,14 +111,14 @@ export interface CustomGroupConfig {
  */
 export type GroupDeclarationEntry = (
   | { ref: string }
-  | CustomGroupConfig
+  | GroupDeclaration
 ) & { disabled?: boolean };
 
 /**
  * 分流表条目：数组顺序即优先级（前者先匹配）。
  * - `preset`：展开一整个预设段（订阅直连 / 广告 / AI / 流媒体 / 社交 / 游戏 / 开发 / 专项 / 系统 / 进程 / 下载 / 国内外 / 兜底）
  * - `service`：展开单个服务（内置目录键或 `customServices` 键）
- * - `rule`：一条原生规则（两段式自动补目标、三段式替换目标）
+ * - `rule`：一条原生规则（两段式自动补目标、三段式替换目标；`geosite:<名>` / `geoip:<名>` 简写自动登记同名 Provider）
  * 三者都可带 `to` 覆写目标；`disabled: true` 跳过该条目。
  */
 export interface RoutingEntry {
@@ -337,15 +333,11 @@ export interface ToolkitConfig {
   processProxyLin?: string[];
 
   // 自定义规则入口
-  /** 注入到 MATCH 之前的自定义分流规则（优先级最高） */
-  customRules?: string[];
   /** 自定义 Rule-Provider 定义（name → { type, behavior, url, path… }） */
   customRuleProviders?: Record<string, any>;
-  /** 声明式自定义策略组 DSL 清单（支持 match/exclude 配方、宏引用与原生字段透传） */
-  customGroups?: CustomGroupConfig[];
   /**
    * 统一策略组声明清单：`{ ref: <键> }` 引用内置组目录（列了即激活，可覆写字段 / `disabled: true` 关闭），
-   * 目录之外的组直接完整声明。声明即激活，注释即关闭。
+   * 目录之外的组直接完整声明。只声明组的成员与呈现，不产出分流规则——规则写进 `routing`。
    */
   groups?: GroupDeclarationEntry[];
   /**

@@ -19,7 +19,7 @@ const TRUSTABLE_PROXY_METADATA_FIELDS = new Set([
   'subTag',
   'indexPrefix',
   'keepName',
-  'customGroups'
+  'groupTags'
 ]);
 
 /**
@@ -33,7 +33,7 @@ const RESERVED_INTERNAL_FIELDS = Object.freeze([
   '_keepName',
   '_subTag',
   '_indexPrefix',
-  '_customGroups',
+  '_groupTags',
   '_cleaned'
 ]);
 

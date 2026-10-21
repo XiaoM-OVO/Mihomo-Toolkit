@@ -3,7 +3,7 @@
  * Mihomo-Toolkit: 声明式策略组拓扑装配引擎 (Topology Engine)
  * -----------------------------------------------------------------------------
  * 职责：
- * 1. 解析用户声明式策略组 DSL 配置 (customGroups)；
+ * 1. 解析用户声明式策略组 DSL 配置 (groups)；
  * 2. 严格透传 Mihomo 原生配置字段 (type, url, interval, tolerance, strategy 等)；
  * 3. 驱动 matcher 进行节点筛选与黑名单剔除，求值计算各策略组节点清单；
  * 4. 解析策略组引用宏符号 (@matchedNodes, @residential, @allStandard, @defaultProxy 等)；
@@ -212,7 +212,7 @@ function evaluateGroupDefinition(groupDef, context = {}) {
     userConfig = {},
     activeRegionGroups = [],
     existingGroups = [],
-    customGroups = []
+    groups = []
   } = context;
 
   // 1. 规范化组类型 (Mihomo 原生类型，支持继承已有骨架组类型)
@@ -280,8 +280,8 @@ function evaluateGroupDefinition(groupDef, context = {}) {
   if (Array.isArray(existingGroups)) {
     existingGroups.forEach(g => registerKnownGroup(g?.name));
   }
-  if (Array.isArray(customGroups)) {
-    customGroups.forEach(g => registerKnownGroup(g?.name));
+  if (Array.isArray(groups)) {
+    groups.forEach(g => registerKnownGroup(g?.name));
   }
   (activeRegionGroups || []).forEach(registerKnownGroup);
 
@@ -331,7 +331,7 @@ function evaluateGroupDefinition(groupDef, context = {}) {
 
   // 7. 其它原生布尔与扩展字段透传
   //    注：icon / emoji / rules 一律不透传——icon 与 emoji 由展示层 (presentation) 统一解析渲染，
-  //    rules 由分流流水线读取 userConfig.customGroups 原始声明；禁止在策略组对象上挂 _ 前缀隐式通道。
+  //    rules 由分流流水线读取 userConfig.groups 原始声明；禁止在策略组对象上挂 _ 前缀隐式通道。
   if (typeof groupDef.hidden === 'boolean') result.hidden = groupDef.hidden;
   if (groupDef.filter) result.filter = groupDef.filter;
   if (groupDef['exclude-filter']) result['exclude-filter'] = groupDef['exclude-filter'];
@@ -342,7 +342,7 @@ function evaluateGroupDefinition(groupDef, context = {}) {
 /**
  * 批量求解与装配自定义策略组
  * @param {object} params
- * @param {Array<object>} params.customGroups 用户声明式策略组配置列表
+ * @param {Array<object>} params.groups 用户声明式策略组配置列表
  * @param {Array<object>} [params.existingGroups=[]] 已存在的骨架策略组列表
  * @param {Array<object>} [params.classifiedNodes=[]] 已打标清洗的节点列表
  * @param {object} [params.buckets={}] 现有分发桶
@@ -351,7 +351,7 @@ function evaluateGroupDefinition(groupDef, context = {}) {
  * @returns {{ evaluatedGroups: Array<object>, cycles: Array<Array<string>> }}
  */
 function evaluateCustomTopology({
-  customGroups = [],
+  groups = [],
   existingGroups = [],
   classifiedNodes = [],
   buckets = {},
@@ -364,7 +364,7 @@ function evaluateCustomTopology({
   domesticGroup = [],
   logger = null
 } = {}) {
-  if (!Array.isArray(customGroups) || customGroups.length === 0) {
+  if (!Array.isArray(groups) || groups.length === 0) {
     return { evaluatedGroups: [], cycles: [] };
   }
 
@@ -387,13 +387,13 @@ function evaluateCustomTopology({
     nonCnRegions,
     existingGroups,
     existingGroupMap,
-    customGroups,
+    groups,
     logger
   };
 
   const evaluatedGroups = [];
 
-  for (const def of customGroups) {
+  for (const def of groups) {
     try {
       const group = evaluateGroupDefinition(def, context);
       if (group) {
@@ -414,7 +414,7 @@ function evaluateCustomTopology({
     if (logger && typeof logger.warn === 'function') {
       logger.warn(`⚠️ [TopologyEngine] 检测到策略组存在循环依赖: ${cycleDesc}`);
     }
-    throw new Error(`[customGroups] 检测到策略组存在循环依赖 (Cycle Dependency): ${cycleDesc}`);
+    throw new Error(`[groups] 检测到策略组存在循环依赖 (Cycle Dependency): ${cycleDesc}`);
   }
 
 

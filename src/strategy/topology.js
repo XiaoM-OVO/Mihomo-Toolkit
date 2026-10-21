@@ -9,7 +9,7 @@ const { getTrustedProxyMetadata } = require('../core/node-trust');
 const { FIELDS_BY_KEY } = require('../data');
 const { ADS_GROUPS } = require('../config/catalog');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
-const { validateCustomGroups } = require('./matcher');
+const { validateGroups } = require('./matcher');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
 const { stripGroupDecoration, NON_CN_EXCLUDED_GROUPS, CN_CORE_PROXY_GROUPS } = require('./presentation');
 
@@ -258,8 +258,8 @@ function buildProxyTopology({
   ruleTargets = [],
   logger = null
 }) {
-  // 0. 校验声明式策略组 (customGroups) match/exclude 配方合规性
-  validateCustomGroups(userConfig.customGroups);
+  // 0. 校验声明式策略组 (groups) match/exclude 配方合规性
+  validateGroups(userConfig.groups);
 
   // 确保 registries 优先从 catalog 获取单一事实来源
 
@@ -308,10 +308,10 @@ function buildProxyTopology({
       return;
     }
 
-    // 2.2 节点专属策略组声明 (保持现有语义：customGroups 专用于目标定制组，不随大流进入常规地区桶与主力标准池)
-    const customGroups = item.customGroups || getTrustedProxyMetadata(item.proxy, 'customGroups');
-    const hasCustomGroups = Array.isArray(customGroups) && customGroups.length > 0;
-    if (hasCustomGroups) {
+    // 2.2 节点专属策略组声明 (保持现有语义：groupTags 专用于目标定制组，不随大流进入常规地区桶与主力标准池)
+    const groupTags = item.groupTags || getTrustedProxyMetadata(item.proxy, 'groupTags');
+    const hasGroupTags = Array.isArray(groupTags) && groupTags.length > 0;
+    if (hasGroupTags) {
       return;
     }
 
@@ -598,10 +598,10 @@ function buildProxyTopology({
     buildSelect('未知识别', buckets.unknown, userConfig.hideUnknownGroup)
   );
 
-  // 声明式自定义策略组装配 (customGroups DSL 引擎)
-  if (Array.isArray(userConfig.customGroups) && userConfig.customGroups.length > 0) {
+  // 声明式自定义策略组装配 (groups DSL 引擎)
+  if (Array.isArray(userConfig.groups) && userConfig.groups.length > 0) {
     const { evaluatedGroups } = evaluateCustomTopology({
-      customGroups: userConfig.customGroups,
+      groups: userConfig.groups,
       existingGroups: finalGroups,
       classifiedNodes,
       buckets,
@@ -637,11 +637,11 @@ function buildProxyTopology({
   // 节点专属策略组注入 (来自 subscriptions 中的 groups 声明)
   classifiedNodes.forEach(item => {
     if (item.skip || item.isInfo) return;
-    const customGroups = item.customGroups || getTrustedProxyMetadata(item.proxy, 'customGroups');
-    if (!Array.isArray(customGroups) || customGroups.length === 0) return;
+    const groupTags = item.groupTags || getTrustedProxyMetadata(item.proxy, 'groupTags');
+    if (!Array.isArray(groupTags) || groupTags.length === 0) return;
     const nodeName = item.proxy?.name || item.rawName;
 
-    for (const rawTarget of customGroups) {
+    for (const rawTarget of groupTags) {
       if (!rawTarget || typeof rawTarget !== 'string') continue;
       const tName = rawTarget.trim();
       const group = resolveTargetGroup(finalGroups, tName);

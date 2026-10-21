@@ -22,6 +22,7 @@ const { PRESET_DEFINITIONS, DEFAULT_ROUTING } = require('../data/default-routing
 const { ADS_GROUPS, SPECIAL_SERVICES, buildServiceCatalog } = require('../config/catalog');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
 const { stripGroupDecoration } = require('./presentation');
+const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
 const { normalizeSubDomains, isIPv4, isIPv6 } = require('../infra/ip');
 const {
   BASE_PROVIDER_ROUTES,
@@ -34,8 +35,75 @@ const {
 
 const BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE', 'MUTE']);
 
+const CORE_SKELETON_GROUPS = new Set([
+  '自动选择',
+  '手动选择',
+  '故障转移',
+  '下载策略',
+  '负载均衡-轮询',
+  '漏网之鱼',
+  '家宽优选',
+  '中国分流',
+  'IPv6控制台',
+  '高倍率优选',
+  '实验节点',
+  '订阅与状态看板',
+  '其他节点',
+  '未知识别'
+]);
+
 function dedupe(list) {
   return [...new Set(list)];
+}
+
+/**
+ * 校验目标策略组名是否属于有效已知的策略组
+ * @param {string} value 目标组名
+ * @param {object} ctx 展开上下文
+ * @returns {boolean}
+ */
+function isValidTargetName(value, ctx) {
+  const clean = stripGroupDecoration(value);
+  if (CORE_SKELETON_GROUPS.has(value) || CORE_SKELETON_GROUPS.has(clean)) return true;
+  if (/^负载均衡-哈希 \(/.test(value) || /^负载均衡-哈希 \(/.test(clean)) return true;
+
+  // 地区组与大洲组
+  const regionDefs = getEnhancedRegionDefs();
+  for (const r of regionDefs) {
+    if (r.groupName && (r.groupName === value || stripGroupDecoration(r.groupName) === clean)) return true;
+    if (r.name && (r.name === value || stripGroupDecoration(r.name) === clean)) return true;
+  }
+  for (const c of CONTINENT_DEFS) {
+    if (c.name && (c.name === value || stripGroupDecoration(c.name) === clean)) return true;
+  }
+
+  // 用户配置的策略组声明 (groups)
+  const userGroups = Array.isArray(ctx.config.groups) ? ctx.config.groups : [];
+  for (const g of userGroups) {
+    if (!g || !g.name) continue;
+    if (g.name === value || stripGroupDecoration(g.name) === clean) {
+      if (g.disabled) {
+        throw new Error(`routing: 目标组「${value}」已在 groups 中被禁用 (disabled: true)`);
+      }
+      return true;
+    }
+  }
+
+  // 目录/注册表中的组（含改名后名称与 ref 键）
+  const dir = ctx.registries.groups || {};
+  for (const [key, g] of Object.entries(dir)) {
+    if (g && (key === value || g.name === value || stripGroupDecoration(g.name) === clean)) {
+      if (g._disabled) {
+        throw new Error(`routing: 目标组「${value}」已在 groups 中被禁用 (disabled: true)`);
+      }
+      return true;
+    }
+  }
+
+  // 注册表分类服务名
+  if (findService(ctx.registries, value)) return true;
+
+  return false;
 }
 
 /**
@@ -84,9 +152,20 @@ function resolveTo(to, ctx) {
   }
   const value = to.trim();
   if (BUILTIN_TARGETS.has(value.toUpperCase())) return value.toUpperCase();
-  const refName = ctx.registries.groups?.[value]?.name;
-  if (refName) return refName;
-  return value;
+
+  const refEntry = ctx.registries.groups?.[value];
+  if (refEntry) {
+    if (refEntry._disabled) {
+      throw new Error(`routing: 目标组「${value}」已在 groups 中被禁用 (disabled: true)`);
+    }
+    return refEntry.name;
+  }
+
+  if (isValidTargetName(value, ctx)) {
+    return value;
+  }
+
+  throw new Error(`routing: 目标组「${value}」未声明或不存在（可用内置目标: DIRECT / REJECT 等，或现有策略组/地区组名）`);
 }
 
 /**
@@ -204,7 +283,8 @@ function expandAds(ctx, to) {
       ctx.providerBase[name] = path;
     }
     const list = entry.rules || [];
-    ctx.rules.push(...(target ? list.map(r => retarget(r, target)) : list));
+    const effectiveTarget = target || entry.name || ads.name;
+    ctx.rules.push(...list.map(r => retarget(r, effectiveTarget)));
   }
 }
 
@@ -226,14 +306,15 @@ function expandService(ctx, key, item, to) {
   }
   if (item.provider) ctx.providerBase[providerKey] = item.provider;
   const target = to === undefined ? null : resolveTo(to, ctx);
+  const effectiveTarget = target || item.name || key;
   if (item.process && typeof item.process === 'object') {
-    ctx.rules.push(...expandProcessRules(item.process, target || item.name || key, ctx.osInfo));
+    ctx.rules.push(...expandProcessRules(item.process, effectiveTarget, ctx.osInfo));
   }
   if (Array.isArray(item.rules) && item.rules.length > 0) {
     ctx.rules.push(...(target ? item.rules.map(r => retarget(r, target)) : item.rules));
     return;
   }
-  ctx.rules.push(`RULE-SET,${providerKey},${target || item.name || key}`);
+  ctx.rules.push(`RULE-SET,${providerKey},${effectiveTarget}`);
 }
 
 /**
@@ -280,14 +361,15 @@ function expandDev(ctx, preset, to) {
  */
 function expandSpecialized(ctx, to) {
   const map = ctx.registries.specialized || SPECIAL_SERVICES;
+  const target = to === undefined ? null : resolveTo(to, ctx);
   for (const spec of Object.values(map)) {
+    const effectiveTarget = target || spec.name;
     if (spec.providers) Object.assign(ctx.providerBase, spec.providers);
     if (spec.process) {
-      ctx.rules.push(...expandProcessRules(spec.process, spec.name, ctx.osInfo));
+      ctx.rules.push(...expandProcessRules(spec.process, effectiveTarget, ctx.osInfo));
     }
     if (Array.isArray(spec.rules)) {
-      const target = to === undefined ? null : resolveTo(to, ctx);
-      ctx.rules.push(...(target ? spec.rules.map(r => retarget(r, target)) : spec.rules));
+      ctx.rules.push(...spec.rules.map(r => retarget(r, effectiveTarget)));
     }
   }
 }
@@ -369,7 +451,21 @@ function expandRule(ctx, entry) {
     throw new Error('routing: `rule` 条目缺少匹配表达式');
   }
   const base = entry.rule.trim();
-  if (entry.to) {
+
+  // 规则集简写：`geosite:google` / `geoip:cn`——自动登记默认 Provider 路径并生成 RULE-SET 规则
+  const shorthand = /^(geosite|geoip):([A-Za-z0-9_.!-]+)$/i.exec(base);
+  if (shorthand) {
+    if (entry.to === undefined) {
+      throw new Error(`routing: 规则集简写缺少目标 \`to\`：${base}`);
+    }
+    const kind = shorthand[1].toLowerCase();
+    const name = shorthand[2];
+    if (!ctx.providerBase[name]) ctx.providerBase[name] = `${kind}/${name}`;
+    ctx.rules.push(`RULE-SET,${name},${resolveTo(entry.to, ctx)}`);
+    return;
+  }
+
+  if (entry.to !== undefined) {
     ctx.rules.push(retarget(base, resolveTo(entry.to, ctx)));
     return;
   }
@@ -453,78 +549,13 @@ function expandPreset(ctx, preset, entry) {
 }
 
 /**
- * 注入用户自定义私域规则（`customRules`）
- *
- * 位置由 `routing` 决定：`subscription` 预设展开后立即注入，保证「基础网络 → 私域规则 →
- * 业务分流」的旧优先级不变。批次 3 会把 `customRules` 也收进 `routing` 表（`{ rule }` 条目），
- * 届时本函数删除。
- * @param {object} ctx 展开上下文
- */
-function pushCustomRules(ctx) {
-  const { config, rules } = ctx;
-  if (Array.isArray(config.customRules) && config.customRules.length) {
-    rules.push(...config.customRules);
-  }
-}
-
-/**
- * 旧语义兼容（批次 3 待删）：`customGroups` / `groups` 声明随组交付规则
- *
- * 现状：声明一个组就会顺带注入它的规则集 / 进程名单规则。两表模型里组不产出规则
- * （规则只由 `routing` 引用产生），本函数随批次 3 一起删除。
- * @param {object} ctx 展开上下文
- */
-function expandLegacyCustomGroups(ctx) {
-  const { config, rules, providerBase, osInfo } = ctx;
-  if (!Array.isArray(config.customGroups) || !config.customGroups.length) return;
-  for (const g of config.customGroups) {
-    if (!g || typeof g !== 'object') continue;
-    if (g.providers && typeof g.providers === 'object' && !Array.isArray(g.providers)) {
-      for (const [name, path] of Object.entries(g.providers)) {
-        if (typeof name === 'string' && name.trim() && typeof path === 'string' && path.trim()) {
-          providerBase[name.trim()] = path.trim();
-        }
-      }
-    }
-    if (!g.name) continue;
-    const targetName = stripGroupDecoration(g.name);
-
-    if (g.process && typeof g.process === 'object' && !Array.isArray(g.process)) {
-      rules.push(...expandProcessRules(g.process, targetName, osInfo));
-    }
-
-    if (!g.rules) continue;
-    const rulesList = Array.isArray(g.rules) ? g.rules : [g.rules];
-    for (const r of rulesList) {
-      if (!r || typeof r !== 'string') continue;
-      const trimmed = r.trim();
-      if (trimmed.includes(',')) {
-        const parts = trimmed.split(',');
-        if (parts.length === 2) {
-          rules.push(`${parts[0].trim()},${parts[1].trim()},${targetName}`);
-        } else if (parts.length === 3 && parts[2].trim().toLowerCase() === 'no-resolve') {
-          rules.push(`${parts[0].trim()},${parts[1].trim()},${targetName},no-resolve`);
-        } else {
-          rules.push(trimmed);
-        }
-      } else {
-        const ruleSetName = trimmed.replace(/^(geosite|geoip):/i, '');
-        const providerPath = trimmed.includes(':') ? trimmed.replace(':', '/') : `geosite/${trimmed}`;
-        providerBase[ruleSetName] = providerPath;
-        rules.push(`RULE-SET,${ruleSetName},${targetName}`);
-      }
-    }
-  }
-}
-
-/**
  * 展开 routing 表，产出规则与 Rule-Provider
  * @param {object} userConfig 合并后的用户配置
  * @param {object} registries `ServiceCatalog#toRegistries()` 的结果
  * @param {object} [options={}]
  * @param {Array<object>} [options.routing] 顺序化条目（默认 `DEFAULT_ROUTING`）
  * @param {string} [options.proxyTarget] 代理目标（默认按 `defaultProxyMode` 推导）
- * @returns {{ rules: string[], providers: object }}
+ * @returns {{ rules: string[], providers: object, targets: string[] }}
  */
 function expandRouting(userConfig = {}, registries = {}, options = {}) {
   const ctx = createContext(userConfig, registries, options);
@@ -539,20 +570,10 @@ function expandRouting(userConfig = {}, registries = {}, options = {}) {
   const repo = `${cdnBase}/MetaCubeX/meta-rules-dat@meta`;
   const ruleFormat = userConfig.useMRS ? 'mrs' : 'yaml';
 
-  // 私域规则（customRules / customGroups）的注入位置锚定在 subscription 预设之后；
-  // 表里没有 subscription 时退化为全部条目展开完再注入（保持旧行为的最低优先级）。
-  let injected = false;
-  const injectLegacy = () => {
-    if (injected) return;
-    injected = true;
-    pushCustomRules(ctx);
-    expandLegacyCustomGroups(ctx);
-  };
+  // 规则只有一个来源：`routing` 表按数组顺序展开。组声明（`groups`）不再顺带产出规则。
   for (const entry of routing) {
     expandEntry(ctx, entry);
-    if (entry && entry.disabled !== true && entry.preset === 'subscription') injectLegacy();
   }
-  injectLegacy();
 
   const rules = dedupe(ctx.rules);
   const providers = Object.fromEntries(
