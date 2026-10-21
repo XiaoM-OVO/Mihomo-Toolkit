@@ -171,7 +171,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     } else if (config.isolateHighMulti && multi > highMultiThreshold) {
       groupName = '🛑 高倍率节点';
       isolateReason = '高倍率隔离';
-    } else if (config.isolateDownload && tags.includes('download')) {
+    } else if (config.isolateDownload && tags.includes('lowMulti')) {
       groupName = '⏬ 下载策略';
       isolateReason = '低倍率隔离';
     } else if (config.isolateExperimental && tags.includes('experimental')) {

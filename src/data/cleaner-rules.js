@@ -260,7 +260,7 @@ const ISOLATION_SORT_ORDER = {
   '': 0,             // 标准大区主力节点
   std: 0,            // 标准大区主力节点别名
   residential: 1,    // 🏠 家宽优选
-  download: 2,       // ⏬ 下载池
+  lowMulti: 2,       // ⏬ 低倍率池
   experimental: 3,   // 🧪 实验节点
   highMulti: 4       // 🛑 高倍率节点沉底
 };

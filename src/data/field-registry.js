@@ -225,11 +225,11 @@ const FIELDS = [
     default: ['qbittorrent', 'aria2c', 'transmission-daemon'],
     merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Linux 强制直连进程名单' },
   { key: 'processProxyWin', type: 'string[]', default: ['IDMan', 'fdm'],
-    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Windows 强制走下载策略的进程名单' },
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Windows BT / 下载软件进程名单（默认直连，可用 `{ preset: bt, to }` 改道）' },
   { key: 'processProxyMac', type: 'string[]', default: ['fdm'],
-    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'macOS 强制走下载策略的进程名单' },
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'macOS BT / 下载软件进程名单（默认直连，可用 `{ preset: bt, to }` 改道）' },
   { key: 'processProxyLin', type: 'string[]', default: [],
-    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Linux 强制走下载策略的进程名单' },
+    merge: 'override', trust: 'any', group: '进程分流名单', doc: 'Linux BT / 下载软件进程名单（默认直连，可用 `{ preset: bt, to }` 改道）' },
 
   // ── 【12. 订阅源与拉取设置】（无出厂默认值：由代码内兜底，此处仅登记契约） ──
   // 说明：`default: undefined` 的字段不会进入 DEFAULT_CONFIG（保持出厂配置面不变），

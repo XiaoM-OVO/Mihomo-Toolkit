@@ -51,13 +51,15 @@ const DOWNLOAD_RULESETS = Object.freeze([
  * 按数据表注入下载类规则
  * @param {string[]} routingRules 目标规则数组（原地追加）
  * @param {ReadonlyArray<object>} table 规则数据表
+ * @param {string|null} [overrideTarget=null] 整段目标覆写（`to`），为空时沿用表内目标
  */
-function pushDownloadRules(routingRules, table) {
+function pushDownloadRules(routingRules, table, overrideTarget = null) {
   for (const item of table) {
+    const target = overrideTarget || item.target;
     routingRules.push(
       item.keyword
-        ? `DOMAIN-KEYWORD,${item.keyword},${item.target}`
-        : `RULE-SET,${item.provider},${item.target}`
+        ? `DOMAIN-KEYWORD,${item.keyword},${target}`
+        : `RULE-SET,${item.provider},${target}`
     );
   }
 }

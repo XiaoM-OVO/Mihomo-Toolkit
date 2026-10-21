@@ -425,12 +425,17 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     }
   }
 
-  // 低倍率 / 下载 (非禁止下载场景)
-  if (attrs.isLowMulti && !isForbidDownload) {
-    tags.add('download');
-    if (!featurePools.includes('download')) {
-      featurePools.push('download');
+  // 低倍率池：仅表达倍率身份，不掺入「能否下载」的判断
+  if (attrs.isLowMulti) {
+    tags.add('lowMulti');
+    if (!featurePools.includes('lowMulti')) {
+      featurePools.push('lowMulti');
     }
+  }
+
+  // 禁止下载：独立资格标记，由使用侧（下载组）按需排除，不污染低倍率集合
+  if (isForbidDownload) {
+    tags.add('forbidDownload');
   }
 
   const protocol = String(proxy.type || '').toLowerCase();

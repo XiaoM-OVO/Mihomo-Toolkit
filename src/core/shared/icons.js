@@ -31,7 +31,7 @@ const FEATURE_ICONS = {
   residential: "🏠",
   game: "🎮",
   streaming: "📺",
-  download: "⏬",
+  lowMulti: "⏬",
   free: "🆓",
   wap: "📱",
   cellular: "📱",
@@ -40,16 +40,16 @@ const FEATURE_ICONS = {
   AWS: "🛰️",
   aws: "🛰️",
   experimental: "🧪",
-  no_download: "🚫"
+  forbidDownload: "🚫"
 };
 
 const FEATURE_TEXT_MAP = {
   residential: "家宽",
   game: "游戏",
   streaming: "流媒体",
-  download: "下载",
+  lowMulti: "低倍率",
   free: "免费",
-  no_download: "禁止下载",
+  forbidDownload: "禁止下载",
   wap: "WAP",
   cellular: "蜂窝",
   CDN: "CDN",

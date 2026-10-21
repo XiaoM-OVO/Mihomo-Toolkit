@@ -17,7 +17,7 @@ const HIGH_MULTI_GROUP = '高倍率优选';
 const EXPERIMENTAL_GROUP = '实验节点';
 
 // 由专用分支/策略独立维护的桶，通用 featurePools 遍历不重复入桶
-const DEDICATED_FEATURE_POOLS = new Set(['residential', 'download', 'experimental']);
+const DEDICATED_FEATURE_POOLS = new Set(['residential', 'lowMulti', 'experimental']);
 
 function dedupe(arr) {
   return [...new Set(arr)];
@@ -276,7 +276,7 @@ function buildProxyTopology({
   // 1. 初始化分发桶
   const buckets = {
     unknown: [],
-    download: [],
+    lowMulti: [],
     highMulti: [],
     experimental: [],
     info: [],
@@ -335,9 +335,9 @@ function buildProxyTopology({
       addToBucket(buckets.resiRegionMap[resiKey], finalName);
     }
 
-    // 低倍率下载池
-    if (tags.includes('download')) {
-      addToBucket(buckets.download, finalName);
+    // 低倍率池（全量：是否允许下载由使用侧按 forbidDownload 排除）
+    if (tags.includes('lowMulti')) {
+      addToBucket(buckets.lowMulti, finalName);
     }
 
     // 高倍率专用池
@@ -357,7 +357,7 @@ function buildProxyTopology({
     }
 
     // 隔离门禁：命中隔离策略时从主力地区桶与全量标准池中剔除
-    if (userConfig.isolateDownload && tags.includes('download')) {
+    if (userConfig.isolateDownload && tags.includes('lowMulti')) {
       return;
     }
     if (userConfig.enableResidential && tags.includes('residential')) {
@@ -442,7 +442,7 @@ function buildProxyTopology({
         const iconPrefix = rDef?.icon ? `${rDef.icon} ` : '';
         const lowMultiCount = list.filter(name => {
           const item = classifiedNodes.find(n => (n.proxy?.name || n.rawName) === name);
-          return item?.tags?.includes('download') || item?.attrs?.isLowMulti;
+          return item?.attrs?.isLowMulti;
         }).length;
         const mainCount = list.length - lowMultiCount;
         const detailParts = [`主力: ${mainCount}`];
@@ -534,8 +534,18 @@ function buildProxyTopology({
     finalGroups.push({ name: '家宽优选', type: 'fallback', url: testURL, interval: testInterval, proxies: buckets.residential });
   }
 
-  finalGroups.push(buildSelect('下载策略', ['DIRECT', '负载均衡-轮询', '自动选择', ...buckets.download]));
-  finalGroups.push({ name: '负载均衡-轮询', type: 'load-balance', strategy: 'round-robin', url: testURL, interval: 300, lazy: true, proxies: buckets.download, hidden: true });
+  // 下载相关组：低倍率池是节点身份，「禁止下载」只在使用侧排除，不污染池本身。
+  // 池为空时不建组，避免产出只有 DIRECT 的空壳（与 10.13「不建空组」同一口径）。
+  const forbidDownloadNames = new Set(
+    classifiedNodes
+      .filter(n => (n.tags || []).includes('forbidDownload'))
+      .map(n => n.proxy?.name || n.rawName)
+  );
+  const downloadableNodes = buckets.lowMulti.filter(name => !forbidDownloadNames.has(name));
+  if (downloadableNodes.length > 0) {
+    finalGroups.push(buildSelect('下载策略', ['DIRECT', '负载均衡-轮询', '自动选择', ...downloadableNodes]));
+    finalGroups.push({ name: '负载均衡-轮询', type: 'load-balance', strategy: 'round-robin', url: testURL, interval: 300, lazy: true, proxies: downloadableNodes, hidden: true });
+  }
 
   if (userConfig.isolateHighMulti && buckets.highMulti.length > 0) {
     finalGroups.push(buildSelect(HIGH_MULTI_GROUP, buckets.highMulti));
@@ -559,7 +569,7 @@ function buildProxyTopology({
     finalGroups.push(buildSelect('IPv6控制台', ['REJECT', '手动选择', 'DIRECT']));
   }
 
-  const fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', '下载策略'];
+  const fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', ...(downloadableNodes.length > 0 ? ['下载策略'] : [])];
   if (proxyTarget !== 'DIRECT') {
     if (userConfig.trafficDirection === 'return') {
       fallbackProxies.unshift('DIRECT');

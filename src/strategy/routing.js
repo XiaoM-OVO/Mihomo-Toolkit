@@ -375,16 +375,15 @@ function expandSpecialized(ctx, to) {
 }
 
 /**
- * 展开进程直连 / BT / 下载软件段
+ * 展开进程直连段
  *
- * 这一段的语义是「BT 与下载软件的进程/规则集直连」，写进表里就是启用；
- * 不需要时整条删掉即可，不再有单独的开关。
+ * 只保留「强制直连进程」（BT 客户端、迅雷等）；BT 追踪器与下载软件进程
+ * 属于「BT 段」，可整段改道，见 `expandBt`。
  * @param {object} ctx 上下文
  */
 function expandProcess(ctx) {
   const {
-    processDirectWin, processDirectMac, processDirectLin,
-    processProxyWin, processProxyMac, processProxyLin
+    processDirectWin, processDirectMac, processDirectLin
   } = ctx.config;
 
   ctx.rules.push(...expandProcessRules({
@@ -392,20 +391,35 @@ function expandProcess(ctx) {
     mac: processDirectMac || FIELDS_BY_KEY.processDirectMac.default,
     lin: processDirectLin || FIELDS_BY_KEY.processDirectLin.default
   }, 'DIRECT', ctx.osInfo));
-  pushDownloadRules(ctx.rules, BT_TRACKER_RULES);
+}
+
+/**
+ * 展开 BT 段（追踪器 + BT 下载软件进程）
+ * @param {object} ctx 上下文
+ * @param {string} [to] 目标覆写（默认直连）
+ */
+function expandBt(ctx, to) {
+  const target = to === undefined ? 'DIRECT' : resolveTo(to, ctx);
+  const {
+    processProxyWin, processProxyMac, processProxyLin
+  } = ctx.config;
+
+  pushDownloadRules(ctx.rules, BT_TRACKER_RULES, target);
   ctx.rules.push(...expandProcessRules({
     win: processProxyWin || FIELDS_BY_KEY.processProxyWin.default,
     mac: processProxyMac || FIELDS_BY_KEY.processProxyMac.default,
     lin: processProxyLin || FIELDS_BY_KEY.processProxyLin.default
-  }, '下载策略', ctx.osInfo));
+  }, target, ctx.osInfo));
 }
 
 /**
  * 展开下载规则集段
  * @param {object} ctx 上下文
+ * @param {string} [to] 目标覆写（默认走「下载策略」）
  */
-function expandDownload(ctx) {
-  pushDownloadRules(ctx.rules, DOWNLOAD_RULESETS);
+function expandDownload(ctx, to) {
+  const target = to === undefined ? null : resolveTo(to, ctx);
+  pushDownloadRules(ctx.rules, DOWNLOAD_RULESETS, target);
 }
 
 /**
@@ -540,7 +554,8 @@ function expandPreset(ctx, preset, entry) {
     case 'dev': return expandDev(ctx, preset, to);
     case 'specialized': return expandSpecialized(ctx, to);
     case 'process': return expandProcess(ctx);
-    case 'download': return expandDownload(ctx);
+    case 'bt': return expandBt(ctx, to);
+    case 'download': return expandDownload(ctx, to);
     case 'domestic': return expandDomestic(ctx, to);
     case 'final': return expandFinal(ctx);
     default:

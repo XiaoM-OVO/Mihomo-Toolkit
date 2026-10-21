@@ -14,6 +14,8 @@ const DEFAULT_EXEMPT_GROUPS = [...SKELETON_EXEMPT_GROUPS];
 const VALID_BUILTIN_TARGETS = ['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS', 'GLOBAL'];
 // 能够证明策略组具备真实代理能力或安全拦截动作的终点（纯 DIRECT 无法证明具备代理能力）
 const PRODUCTIVE_BUILTIN_SINKS = new Set(['GLOBAL', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS']);
+// 池依赖组：低倍率池为空时不建组，指向它们的规则按设计跳过（不属于悬空引用告警）
+const POOL_DEPENDENT_TARGETS = new Set(['下载策略', '负载均衡-轮询']);
 const MAX_DFS_DEPTH = 1000;
 
 /**
@@ -332,19 +334,28 @@ function pruneEmptyGroups({
   if (currentRules.length > 0) {
     const knownTargets = new Set([...builtinTargets, ...physicalNodeNames, ...groupMap.keys()]);
     const orphanTargets = new Map();
-    const originalRuleCount = currentRules.length;
+    const expectedAbsent = new Map();
     currentRules = currentRules.filter(rule => {
       if (typeof rule !== 'string') return true;
       const target = ruleTargetOf(rule);
       if (!target) return true;
       if (knownTargets.has(target) || knownTargets.has(stripGroupDecoration(target))) return true;
+      // 池依赖组的缺席是设计内状态（低倍率池为空时不建下载组），按 debug 记录，不打扰用户
+      if (POOL_DEPENDENT_TARGETS.has(stripGroupDecoration(target))) {
+        expectedAbsent.set(target, (expectedAbsent.get(target) || 0) + 1);
+        return false;
+      }
       orphanTargets.set(target, (orphanTargets.get(target) || 0) + 1);
       return false;
     });
-    const droppedRulesCount = originalRuleCount - currentRules.length;
-    if (droppedRulesCount > 0 && logger && typeof logger.warn === 'function') {
+    if (expectedAbsent.size > 0 && logger && typeof logger.debug === 'function') {
+      const detail = [...expectedAbsent.entries()].map(([target, count]) => `「${target}」×${count}`).join('、');
+      logger.debug(`🪣 低倍率池为空，下载相关规则按设计跳过：${detail}`);
+    }
+    const orphanCount = [...orphanTargets.values()].reduce((sum, n) => sum + n, 0);
+    if (orphanCount > 0 && logger && typeof logger.warn === 'function') {
       const detail = [...orphanTargets.entries()].map(([target, count]) => `「${target}」×${count}`).join('、');
-      logger.warn(`⚠️ 规则目标不存在，已跳过 ${droppedRulesCount} 条分流规则：${detail}`);
+      logger.warn(`⚠️ 规则目标不存在，已跳过 ${orphanCount} 条分流规则：${detail}`);
     }
   }
 
