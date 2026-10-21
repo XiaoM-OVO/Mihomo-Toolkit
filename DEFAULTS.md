@@ -37,7 +37,8 @@
 | `{ preset: 'process' }` | 有 | 删 | −11 规则（5 进程直连 + 4 BT + 2 下载软件）；BT 不再有规则 |
 | `{ preset: 'download' }` | 有 | 删 | −3 规则（`download-games-cn` / `download-games` / `download-android`） |
 | `{ preset: 'domestic', to: '中国分流' }` | 无 | 加 | +1 组（🇨🇳 中国分流）、国内规则目标由 DIRECT 改为该组 |
-| `enableResidential` | 关 | 开 | +1 组（🏠 家宽优选），无规则 |
+| `enableResidential` | 关 | 开 | +1 组（🏠 家宽优选），无规则；样本里没有家宽节点时不建组 |
+| `isolateHighMulti` / `isolateExperimental` | 关 | 开 | 有合格节点时 +1 组（🚀 高倍率优选 / 🧪 实验节点）并把节点从主力池剔除；无合格节点则不建组 |
 | `enableTrafficAudit` | **开** | 关 | −2 规则（`DST-PORT,53/80/443` 与 `DST-PORT,1-65535`） |
 | `trafficDirection` | `'split'` | `'return'` | DNS 上游互换、QUIC 拦截的 CN / 非 CN 分支翻转、WebRTC 组成员顺序翻转；规则顺序与目标不变（走向由 `routing` 的 `to` 决定） |
 | `enableRegionHashLB` | 关 | 开 | +1 组（⚖️ 负载均衡-哈希），需要节点支持 |
