@@ -130,6 +130,7 @@ src/
 │   ├── isolation.js              # 业务分类隔离判定 (家宽/高倍率/下载等)
 │   ├── node-trust.js             # 节点进程内信任边界与内部 Synthetic 标记
 │   ├── metadata.js               # 节点元数据提取与特征归一化
+│   ├── recognizer.js             # 地区与出入口识别单一实现 (geo / metadata 共用)
 │   ├── dedupe.js                 # 物理网络指纹提取与去重
 │   ├── transport.js              # 统一传输层门面 (Host/SNI/Path 提取与注入)
 │   ├── geo.js                    # 地区智能正则匹配与落地城市精准提取
@@ -179,7 +180,8 @@ src/
 │   ├── index.js                  # 基础层统一导出
 │   ├── field-registry.js         # 字段注册表 SSOT (定义/默认值/信任级别)
 │   ├── security-baselines.js     # 安全基线 (受保护域名/豁免组/Fake-IP 保底)
-│   └── cleaner-rules.js          # 节点清洗规则库 (地区/线路/阻断正则/权重)
+│   ├── cleaner-rules.js          # 节点清洗规则库 (地区/线路/阻断正则/权重)
+│   └── name-grammar.js           # 名称语法正则库 (入口/落地/国旗/倍率唯一产地)
 │
 └── 8. infra/                     # 🧱 Layer 8: 基础设施层 (无状态纯计算基元)
     ├── ip.js                     # IP/CIDR/域名语法校验与分类工具 (纯函数)

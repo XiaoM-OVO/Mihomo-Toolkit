@@ -460,6 +460,18 @@ groups:
 - 验证：638 条测试全绿（新增「禁止下载只在使用侧排除」「空池不建组且规则剪除」2 例）；`lint` / `verify:arch` / `verify:docs` 通过。
 - **残留**：10.10 末尾所述 `trafficDirection` 推导「中国分流」成员顺序与「漏网之鱼」兜底顺序的问题，本批次未动，仍待骨架组声明化。
 
+**10.15 语义识别收敛：一套正则库 + 一个识别器（已实施，2026-10-21）**
+
+> 背景：节点语义提取集中到 `core/metadata` 之后仍留下两套并行判定——`core/geo.matchNodeRegion` 与 `core/metadata.detectRegion` 对同一名字给出不同结论（12 个样本 5 个分歧），正则也散落在 data / geo / metadata 三处。
+
+- **正则唯一产地**：新增 `src/data/name-grammar.js`，集中构造入口、连接符、国旗、倍率三类正则（`REGEX_ENTRY_CITY` / `REGEX_FLAGS` / `REGEX_UNKNOWN_FLAG` / `MULTIPLIER_PATTERNS`）与 `buildRegionRegex`；`cleaner-rules.js` 只保留词表，不再自行编译正则。
+- **识别器唯一实现**：新增 `src/core/recognizer.js` 的 `recognizeRegion()`，`core/geo.matchNodeRegion` 与 `core/metadata.detectRegion` 都退化为薄包装，`geo` 与 `metadata` 的落地结论从此一致。
+- **入口口径修正**：入口只认国内中转城市（`DOMESTIC_ENTRY_CITIES`），不再把香港 / 日本 / 美国 / 新加坡当入口。修复前 `香港 日本 专线` 的入口是「港」、`日本 香港` 的入口是「日」，纯属误判。
+- **落地取「最后出现」**：落地地区按名字中**最后出现**的地区判定（`深-港` → 香港、`香港 转 日本` → 日本、`新加坡 美国` → 美国），不再按「最长匹配」；`geo` 原最长优先在「长名字 + 后置短名字」时会把中转当落地。
+- **冲突只标记不丢落地**：多地区 / 国旗与文案不一致时，识别器返回 `hasConflict` + `conflictReason`（`multi-region` / `flag-text` / `multi-flag`）且仍给出落地；`metadata` 旁路契约保持保守——冲突时状态降 `partial`、不认领 `groupKey`，但 `regionDef` 可被需要方使用。
+- **无默认产物漂移**：样本节点名均为单地区，默认与 `social-enabled` 两套 golden 零变化；649 条测试全绿（新增 `test/core/recognizer.test.js` 6 例，含「geo 与 metadata 结论一致」对照）。
+- **残留**：`recognizeRegion` 目前以「最后出现」为落地启发式，`美->沪 回国专线` 这类「回国」命名会被标为多地区冲突（落地仍正确为中国）；后续若要做「回国专线」的显式语法，应在词表里加方向词而不是回到最长匹配。
+
 **附：选型过程（历史，已归档为结论）**
 
 - **背景**：六维分类诞生于硬编码时期，「一次关掉一整批」只能靠分类开关实现，故分类同时承担「用户组织方式」与「批量激活」。目录解耦后分类作为用户面必填结构应当消失，但批量关闭是真实需求，必须在新模型里有位置。判据：**新增一个服务 / 类别，是只加数据，还是又得加一段特判。**
