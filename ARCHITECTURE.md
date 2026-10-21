@@ -113,7 +113,7 @@ src/
 │   └── envelope.js               # 节点只读 Envelope 包装与旁路接入
 │
 ├── 3. strategy/                  # 🌐 Layer 3: 策略组拓扑与内核优化层
-│   ├── topology.js               # 六维大区折叠、动态测速与骨架策略组装配
+│   ├── topology.js               # 地区折叠、动态测速与骨架策略组装配
 │   ├── topology-engine.js        # 声明式策略组 DSL 评估与宏展开引擎
 │   ├── matcher.js                # groups / pools 节点匹配配方计算与黑名单校验
 │   ├── pools.js                  # 节点池定义合并、校验与谓词编译
@@ -123,7 +123,7 @@ src/
 │   ├── presentation.js           # 策略组展示层装饰器 (在线图标/徽标挂载)
 │   ├── prune.js                  # 有向无环图 (DAG) 空组淘汰、悬空目标剪枝
 │   ├── dashboard.js              # 看板状态合成 (流量/到期/信息节点网格化)
-│   ├── registries.js             # 六维服务注册表管理模块 (委托 catalog)
+│   ├── registries.js             # 服务注册表管理模块 (委托 catalog)
 │   ├── dns.js                    # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
 │   └── kernel.js                 # TUN 网卡、Sniffer 嗅探器及内核性能调优
 │
@@ -174,7 +174,7 @@ src/
 │
 ├── 6. config/                    # ⚙️ Layer 6: 配置策略层 (装载/合并/编目)
 │   ├── index.js                  # resolveConfig 合并器 (只增不减基线合并)
-│   ├── catalog.js                # 领域服务编目 (SSOT) 与六维服务基准
+│   ├── catalog.js                # 领域服务编目 (SSOT) 与服务基准
 │   ├── defaults.js               # 出厂默认配置 (由 field-registry 派生)
 │   ├── include.js                # 配置片段挂载 include (主文件优先/环路防护)
 │   └── mounts.js                 # 外挂文件载入与存在性校验
@@ -336,4 +336,4 @@ include:
    当前 `targets/` 仅提供了最基础的 CLI 与轻量 HTTP 服务端，对于更广泛的集成场景（如 Serverless / 边缘 Worker / 复杂进程守护）尚未形成标准化的适配接口。
 
 > [!NOTE]
-> 原“策略组拓扑与装配逻辑双硬编码耦合”已于 Milestone 3 阶段彻底攻坚闭环（引入 `groups` 声明式 DSL 引擎与 `catalog.js` SSOT 全量聚合/专项拓扑配方驱动）。
+> 原“策略组拓扑与装配逻辑双硬编码耦合”已在 Milestone 3 落地（引入 `groups` 声明式 DSL 引擎与 `catalog.js` SSOT 驱动）；M3 尚余安全进阶防御项，整体未闭环。
