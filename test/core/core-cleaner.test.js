@@ -3,10 +3,10 @@ const assert = require('node:assert/strict');
 
 const {
   sanitizeNodeName,
-  extractNodeAttributes,
   checkNodeBlockReason,
   classifyNode
 } = require('../../src/core/cleaner');
+const { extractNodeAttributes } = require('../../src/core/metadata');
 const {
   isNoticePlaceholderNode,
   hasOnlyPlaceholderNodes
@@ -238,7 +238,7 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     }
   });
 
-  it('compressLineArr - 运营商组合优先级（三网防吞噬）', () => {
+  it('extractNodeAttributes - 运营商组合优先级（三网防吞噬）', () => {
     // 包含电信、联通、移动三网时，优先压缩为「三网」，不降级为「电联」
     const res = extractNodeAttributes('香港 电信 联通 移动 01');
     assert.deepEqual(res.attrs.lineArr, ['三网']);

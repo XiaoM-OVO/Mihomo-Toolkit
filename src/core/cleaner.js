@@ -10,7 +10,7 @@ const { getTransportType } = require('./transport');
 const { isTrustedSynthetic, getTrustedProxyMetadata } = require('./node-trust');
 const { getIsolationBucket } = require('./isolation');
 const { isNoticeNode } = require('./notice');
-const { compressCarrierLines, extractNodeAttributes } = require('./metadata');
+const { extractNodeAttributes } = require('./metadata');
 const ipaddr = require('ipaddr.js');
 const {
   REGEX_FORBID_DL,
@@ -52,13 +52,6 @@ function sanitizeNodeName(rawName) {
   name = name.replace(/[\u2190-\u21FF\u2460-\u24FF\u2500-\u27BF\u2B00-\u2BFF]/g, ' ');
   return name.replace(REGEX_CLEANUP, '').trim();
 }
-
-/**
- * 三网/两网运营商压缩 (复用 metadata.js 纯函数实现，消除代码重复)
- * @param {Array<string>} arr
- * @returns {Array<string>}
- */
-const compressLineArr = compressCarrierLines;
 
 /**
  * 用户显式黑名单判定：节点名关键词 / 服务器字段命中即拦截。
@@ -392,8 +385,6 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 
 module.exports = {
   sanitizeNodeName,
-  compressLineArr,
-  extractNodeAttributes,
   checkNodeBlockReason,
   getFeatureRules,
   classifyNode,

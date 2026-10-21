@@ -121,8 +121,8 @@ const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:->|=>|~>|→|⇒
 // 3. 倍率识别与指令架构词避让
 // =============================================================================
 
-// 识别节点倍率 (如 x0.5, 1.5x, 倍率: 2.0)
-const REGEX_MULTI = /(?<![a-zA-Z0-9])(?:倍率\s*:?\s*(\d+(?:\.\d+)?)|[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍(?:率)?)?|(\d+(?:\.\d+)?)\s*(?:[xX×]|倍(?:率)?)(?!\s*\d))/i;
+// 倍率解析的唯一实现在 core/metadata.js 的 extractMultiplier（前缀 / x 前缀 / 后缀三类语法），
+// 数据层只保留「指令集架构词」这一份避让词表，避免两套正则各自解释倍率语法。
 
 // 排除系统架构与指令集关键词 (如 x64, x86, x32)
 const ARCH_AVOID_SET = new Set(['64', '86', '32']);
@@ -287,7 +287,6 @@ module.exports = {
   DOMESTIC_ENTRY_CITIES,
   REGEX_ENTRY_CITY,
   // 倍率
-  REGEX_MULTI,
   ARCH_AVOID_SET,
   // 线路与运营商
   REGEX_TECH_LINE,
