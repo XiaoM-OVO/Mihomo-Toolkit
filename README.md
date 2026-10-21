@@ -187,7 +187,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 ## ⚙️ 配置详解 (`config.yaml`)
 
 > 📖 **需要更深入地了解各个参数？**  
-> 请查阅全新编写的 **[📘 配置全景字典与参数指南 (CONFIGURATION.md)](CONFIGURATION.md)**，涵盖 15 大分类、70+ 个参数的逐项破译、声明式策略组 DSL (`customGroups`) 语法、DNS 依赖闭包 (`assetClosure`) 以及高可用容灾实战配方！
+> 请查阅全新编写的 **[📘 配置全景字典与参数指南 (CONFIGURATION.md)](CONFIGURATION.md)**，涵盖 15 大分类、70+ 个参数的逐项破译、声明式策略组 DSL (`groups`) 与分流表 (`routing`) 的分工、DNS 依赖闭包 (`assetClosure`) 以及高可用容灾实战配方！
 
 系统采用**完全扁平化设计**，无需理解复杂的嵌套结构，所有核心参数均在根级声明。完整配置模板请参阅 [`config.example.yaml`](config.example.yaml)：
 

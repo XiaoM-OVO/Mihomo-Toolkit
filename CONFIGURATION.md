@@ -13,7 +13,7 @@
   - [1.3 合并语义：覆盖 (Override) 与基线追加 (Additive)](#13-合并语义覆盖-override-与基线追加-additive)
   - [1.4 通用配置片段挂载 (include)](#14-通用配置片段挂载-include)
 - [二、焦点破译：消除“谜语人”参数](#二焦点破译消除谜语人参数)
-  - [2.1 声明式策略组 DSL (`customGroups`) 完全指南](#21-声明式策略组-dsl-customgroups-完全指南)
+  - [2.1 声明式策略组 DSL (`groups`) 完全指南](#21-声明式策略组-dsl-groups-完全指南)
     - [2.1.1 统一策略组声明清单 (`groups`)](#211-统一策略组声明清单-groups)
   - [2.2 节点专属 DNS 依赖闭包 (`assetClosure`)](#22-节点专属-dns-依赖闭包-assetclosure)
   - [2.3 地区识别策略：严格字典 vs 宽松捕获 (`strictRegionMatch`)](#23-地区识别策略严格字典-vs-宽松捕获-strictregionmatch)
@@ -65,7 +65,7 @@
 
 | 信任等级 | 标记 | 含义与安全约束 | 典型字段 |
 | :--- | :--- | :--- | :--- |
-| **可信本地** | `trust: 'local'` | **仅允许在本地配置文件声明**。远程 `?config=` 参数传入时会被强行剥夺（剥离并发出安全审计警告），防止外部攻击者越权操控服务器。 | `include`, `servicesConfigFile`, `output`, `customRules`, `customRuleProviders`, `customGroups`, `groups`, `routing`, `dnsListen`, `dnsAllowNonLoopback`, `hosts`, `nameserverPolicy`, `protectedDomains`, `security`, `fakeIpFilter` 等 |
+| **可信本地** | `trust: 'local'` | **仅允许在本地配置文件声明**。远程 `?config=` 参数传入时会被强行剥夺（剥离并发出安全审计警告），防止外部攻击者越权操控服务器。 | `include`, `servicesConfigFile`, `output`, `customRuleProviders`, `groups`, `routing`, `dnsListen`, `dnsAllowNonLoopback`, `hosts`, `nameserverPolicy`, `protectedDomains`, `security`, `fakeIpFilter` 等 |
 | **任意来源** | `trust: 'any'` | 本地配置与远程 `?config=` 均有权修改，属于纯粹的展示与节点清洗偏好。 | `logLevel`, `trafficDirection`, `renameTemplate`, `enableDedupe` 等 |
 
 > `routing` 属于**可信本地**：远程配置能改写分流表，等于让一条分享链接决定「哪些流量走代理、哪些直连」，属于出口劫持，必须由本机配置决定。同理，远程配置里的图标类字段（`groupIcons`、`iconRepo*`、`customServices.*.icon`）只接受 `https` 公网地址——图标由客户端加载配置时请求，指向内网就是客户端侧的内网探测通道。
@@ -98,9 +98,14 @@ include:
 
 ## 二、焦点破译：消除“谜语人”参数
 
-### 2.1 声明式策略组 DSL (`customGroups`) 完全指南
+### 2.1 声明式策略组 DSL (`groups`) 完全指南
 
-`customGroups` 是取代旧版命令式代码注入的**全声明式策略组建组 DSL**。通过它，你无需编写一行 JavaScript，即可根据节点的任意物理维度（地区、倍率、标签、正则、协议）像 SQL 查询一样动态组合出心仪的策略组。
+`groups` 是取代旧版命令式代码注入的**全声明式策略组建组 DSL**。通过它，你无需编写一行 JavaScript，即可根据节点的任意物理维度（地区、倍率、标签、正则、协议）像 SQL 查询一样动态组合出心仪的策略组。
+
+> [!IMPORTANT]
+> **组只声明「组」，不声明「规则」**：本节的字段只决定策略组存不存在、成员是谁、怎么展示。
+> 「哪些流量进哪个组」由**分流表 `routing`** 唯一决定（见第 4 节）。两个字段互不越界：
+> 一个组即使写在这里，只要没有 `routing` 条目指向它，它也不会接任何流量；反过来，`routing` 指向一个未声明的组会 fail-closed 报错。
 
 #### 核心属性表
 
@@ -121,8 +126,6 @@ include:
 | `match` | Recipe / Recipe[] | 否 | **节点匹配配方（正向命中条件）**，可写对象或数组 |
 | `exclude` | Recipe / Recipe[] | 否 | **黑名单配方（反向剔除条件）**，任一命中立即排除 |
 | `proxies` | string[] | 否 | **策略组成员声明**，支持纯节点名、下游策略组引用以及**宏变量** |
-| `rules` | string / string[] | 否 | 绑定的分流规则名称（会自动注入到 rules 规则链，如 `youtube`） |
-| `providers` | object | 否 | 该组随组交付的规则集 Provider 映射（规则集名 → `geosite/x` 或绝对 URL），`{ ref }` 引用内置组时会自动带上 |
 
 #### 配方 (Recipe) 支持的匹配维度
 
@@ -154,9 +157,9 @@ match:
 
 > [!IMPORTANT]
 > **配方合规校验与严格阻断 (Fail-Closed)**：
-> 在构建策略拓扑前，系统会对所有 `customGroups` 进行强类型校验：
-> - **顶层未知字段拦截**：策略组对象仅允许上表列出的字段，任何未声明的字段（如历史遗留的 `pool` / `tag` / `includeInfo`）都会直接抛出错误并中断流程，杜绝"幽灵配置"被静默忽略。
-> - **组类型白名单**：`type` 必须为 `select` / `url-test` / `fallback` / `load-balance` 之一，非法值直接抛错（不再静默降级为 `select`）；`proxies` 必须为 `string[]`，`rules` 必须为 `string` 或 `string[]`。
+> 在构建策略拓扑前，系统会对所有 `groups` 进行强类型校验：
+> - **顶层未知字段拦截**：策略组对象仅允许上表列出的字段，任何未声明的字段（如历史遗留的 `pool` / `tag` / `includeInfo`，以及已迁往 `routing` 的 `rules` / `providers` / `process`）都会直接抛出错误并中断流程，杜绝"幽灵配置"被静默忽略。
+> - **组类型白名单**：`type` 必须为 `select` / `url-test` / `fallback` / `load-balance` 之一，非法值直接抛错（不再静默降级为 `select`）；`proxies` 必须为 `string[]`。
 > - **未知键拦截**：`match` / `exclude` 配方对象仅允许支持的匹配维度键，未知键会直接抛出包含所属策略组与字段路径的错误并中断流程。
 > - **类型与空值约束**：各字段必须符合规定类型（如 `multi` 必须为数值、区间字符串或二元数组），禁止空对象 `{}` 或空配方数组 `[]`。
 > - **未知宏配置期 fail-closed**：`proxies` 中未登记的 `@` 宏变量会在**配置校验期直接抛出错误并报出字段路径**（如 `策略组 X.proxies[0]: 未知宏「@foo」`），杜绝带病配置流入内核；引擎内部配方（内置目录）仍保留运行期告警兜底。既非物理节点、亦非已知策略组与内置目标（`DIRECT`/`REJECT`/`REJECT-DROP`/`COMPATIBLE`/`PASS`/`GLOBAL`）的目标同样会输出告警，交由后续裁剪兜底。
@@ -197,7 +200,7 @@ match:
 #### 实用 DSL 示例
 
 ```yaml
-customGroups:
+groups:
   # 示例 1：纯新增一个「极速日韩」测速组（推荐使用规范纯净组名，徽标与图标交给系统自适应）
   - name: "极速日韩"
     emoji: "⚡"
@@ -222,6 +225,11 @@ customGroups:
       - "DIRECT"
 ```
 
+> [!NOTE]
+> 想让上面这些组真正接流量，还要在 `routing` 里写指向它们的条目，例如：
+> `{ rule: 'DOMAIN-SUFFIX,jp.example.com', to: '极速日韩' }`。
+> 组声明本身不产生任何规则（见本节开头的说明）。
+
 > [!TIP]
 > **最佳实践：为什么推荐在配置中书写纯净组名？**  
 > - **跨模式完美自适应**：系统支持 `groupIconMode: "emoji" | "icon" | "both" | "none"`。书写纯净名（如 `ChatGPT`、`美国节点`）配合可选的 `emoji: "🤖"`，能让配置在纯图标模式（`icon`）或无图纯文本模式（`none`）下获得真正纯净的展示体验，杜绝硬编码 Emoji 带来的视觉冲突。
@@ -232,7 +240,7 @@ customGroups:
 `groups` 是策略组的**单一声明入口**：它把「要哪些组」收敛成一张清单，取代过去散落的建组开关与服务清单字段（两者已在批次 3 删除，建组改为「规则引用驱动」，见第 4 节）。
 
 - **声明即激活，注释即关闭**：列在清单里的条目就生效，从清单里删掉（或注释掉）即关闭；不存在「某个开关决定某个组存不存在」的第二条路径。
-- **`{ ref: <键> }` 引用内置组目录**：内置组定义内置于程序（`src/config/catalog.js`），无需外部文件。引用即原样插入该组的完整声明（含其 `match` / `proxies` / `rules` / `providers`），并允许**条目内覆写任意字段**。
+- **`{ ref: <键> }` 引用内置组目录**：内置组定义内置于程序（`src/config/catalog.js`），无需外部文件。引用即原样插入该组的完整声明（`match` / `proxies` / `preferredRegions` 等**成员与呈现字段**），并允许**条目内覆写任意字段**。目录条目里历史遗留的规则字段（`rules` / `providers` / `process`）在展开时会被剥离——规则只由 `routing` 表生成。
 - **`{ ref }` 与手写声明同构**：引用进来的东西和用户自己写的一条完整声明结构完全一致，不需要额外学一套概念——`ref` 只是一个「不用手抄」的快捷方式。
 - **`disabled: true` 显式关闭**：`include` 片段的数组语义是**并集去重**（片段的条目会被并集加回），因此「注释掉即关闭」只在单文件内成立。要跨片段关闭，必须显式书写 `disabled: true`。
 
@@ -253,7 +261,7 @@ groups:
 ```
 
 > [!TIP]
-> 内置组目录已覆盖 AI、流媒体、社交、游戏、开发学术、系统服务与专项服务，并额外包含游戏 / 社交聚合组（`game-service` / `game-download` / `social-platform`）与广告拦截的两条规则来源（`ad-block` / `anti-ad`）。聚合组的成员条目（如 `steam` / `facebook`）不单独成组，引用会 fail-closed 并提示应改引哪个聚合组。不确定有哪些可用键？写一个不存在的键即可——错误信息会直接列出全部可用键。
+> 内置组目录已覆盖 AI、流媒体、社交（一服务一组）、游戏、开发学术、系统服务与专项服务，并额外包含游戏聚合组（`game-service` / `game-download`）与广告拦截的两条规则来源（`ad-block` / `anti-ad`）。聚合组成员条目（如 `steam`）不单独成组，引用会 fail-closed 并提示应改引哪个聚合组。不确定有哪些可用键？写一个不存在的键即可——错误信息会直接列出全部可用键。
 
 ---
 
@@ -537,7 +545,7 @@ include:
 | :--- | :--- | :--- |
 | `{ preset: '<名>' }` | 展开一整个预设段 | `{ preset: 'ai' }` |
 | `{ service: '<键>' }` | 只展开单个服务（内置目录键或 `customServices` 键） | `{ service: 'netflix' }` |
-| `{ rule: '<规则>' }` | 一条原生规则，两段式自动补目标、三段式替换目标 | `{ rule: 'DOMAIN-SUFFIX,example.com', to: 'DIRECT' }` |
+| `{ rule: '<规则>' }` | 一条原生规则，两段式自动补目标、三段式替换目标；另支持 `geosite:<名>` / `geoip:<名>` 简写（自动登记同名 Provider） | `{ rule: 'DOMAIN-SUFFIX,example.com', to: 'DIRECT' }`、`{ rule: 'geosite:netflix', to: '奈飞专线' }` |
 | `to` | 目标覆写：内置目标（`DIRECT` / `REJECT` / `REJECT-DROP`）或组引用键 | `{ service: 'twitter', to: 'chatgpt' }` |
 | `disabled: true` | 跳过该条目（用于「默认表里保留、按需打开」） | 见 `quic` / `social` 示例 |
 
@@ -705,10 +713,9 @@ subscriptions:
 
 | 参数名 | 类型 | 默认值 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| `customRules` | `string[]` | `[]` | `local` | `override` | **最先执行的自定义规则**：直接注入到 MATCH 之前，优先级最高（如 `DOMAIN-SUFFIX,company.com,DIRECT`）。 |
 | `customRuleProviders`| `object` | `{}` | `local` | `override` | 自定义 Mihomo `rule-providers` 字典（声明外部规则集地址、行为与更新周期）。 |
-| `customGroups` | `object[]` | `[]` | `local` | `override` | **声明式策略组 DSL 清单**：完整支持配方、宏展开与原生参数透传。 |
-| `groups` | `object[]` | - | `local` | `override` | **统一策略组声明清单**：`{ ref: <键> }` 引用内置组目录（列了即激活，可覆写任意字段 / `disabled: true` 关闭），目录之外的组直接完整声明。 |
+| `groups` | `object[]` | - | `local` | `override` | **统一策略组声明清单**：`{ ref: <键> }` 引用内置组目录（列了即激活，可覆写任意字段 / `disabled: true` 关闭），目录之外的组直接完整声明。**组不产出规则**。 |
+| `routing` | `object[]` | 出厂顺序表 | `local` | `override` | **分流表（规则唯一来源）**：数组顺序即优先级，条目为 `preset` / `service` / `rule` + `to`，`disabled: true` 跳过。详见第 4 节。 |
 | `subDomain` | `string \| string[]` | `[]` | `any` | `override` | **订阅服务域名或 IP**：自动注入为最前列直连规则与 fake-ip-filter，防刷新订阅陷入代理死锁。 |
 
 ---
@@ -797,8 +804,8 @@ routing:
   - preset: domestic
   - preset: final
 
-# 自定义流媒体策略组
-customGroups:
+# 自定义流媒体策略组（组只声明成员与呈现）
+groups:
   - name: "专属流媒体"
     emoji: "🎬"
     type: url-test
@@ -812,6 +819,8 @@ customGroups:
       - "@defaultProxy"
       - "DIRECT"
 ```
+
+> 让这个组接流量：在 `routing` 里加一条 `{ rule: 'geosite:netflix', to: '专属流媒体' }`（位置即优先级）。
 
 ---
 
@@ -860,7 +869,7 @@ groupIconMode: "emoji"
 
 **`configs/my-custom-groups.yaml`（策略组片段）**：
 ```yaml
-customGroups:
+groups:
   - name: "极速日韩"
     emoji: "⚡"
     type: url-test

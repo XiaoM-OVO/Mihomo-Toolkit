@@ -111,7 +111,7 @@
   - [x] 聚合组与专项组全量属性投影：注册表输出 `aggregates` 与 `specialized` 全生命周期属性（含外观、分流规则、Providers、进程列表与拓扑配方），不再绕路读取底层常量；
   - [x] 游戏子规则集声明驱动按需激活与防幽灵组：`gameServices` 精准激活所需 Provider，未声明平台不下载不注入，自定义游戏安全归并聚合组，杜绝未定义策略组污染；
   - [x] 彻底清理向后兼容过渡垫片与遗留别名，全仓贯彻零历史包袱原则。
-- [ ] **策略组双范式分层收敛（Phase B · 批次 1 已完成，批次 2-4 待推进）**：
+- [x] **策略组双范式分层收敛（Phase B · 批次 1-4 全部闭环完成）**：
   - 以统一 `groups` 声明清单（内置组逐条 `ref` 引用 + 自定义声明同列一表）替代全部 `enableX` 建组开关与 6 个服务清单字段；声明即激活、注释即关闭（开关只管分池与折叠，DSL 只管组）；
   - 彻底取消用户面「六维」组织概念（降级为引擎内部特征池标签与目录条目属性）；详见下方 **M3.B** 设计。
 - [ ] **安全进阶防御**：
@@ -229,7 +229,7 @@ groups:
 1. ✅ **批次 1（试点 · AI 类别）已完成**：`groups` + `{ ref }` + `rules` 全链路贯通，不变量 2 / 3 / 6 均已有测试守卫（详见下方「批次 1 落地记录」）。
 2. ✅ **批次 2 已完成**（流媒体 / 开发学术 / 系统服务 / 专项服务）：按同构方式迁移，逐个补齐 catalog 条目的 `match` / `proxies` / `type`；`specialized` 条目（telegram 等）一并解决 `process` 进程名单随组交付（详见下方「批次 2 落地记录」）。
    2b. ✅ **批次 2b 已完成**（聚合语义与广告拦截组迁移）：`game` 两个聚合组、`social` 合并组、`ads` 双开关共享组名三类一并下沉到目录条目（详见下方「批次 2b 落地记录」）。
-3. ✅ **批次 3（已实施，2026-10-20）**：按第十节「两表模型规格」实施——删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，新增 `routing` 表与 `src/data/default-routing.js` 默认顺序表；`groups` 归一化结果直接落在 `groups` 字段（拆掉当下并入 `customGroups` 的过渡合流）。**本批会改写用户配置，属于用户面不可逆迁移**；实施规格见第十节（已定稿），迁移对照表见 10.7。
+3. ✅ **批次 3（已实施，2026-10-20 / 收口 2026-10-21）**：按第十节「两表模型规格」实施——删除全部 A 类开关与 6 个清单字段，`customGroups` 更名为 `groups`，新增 `routing` 表与 `src/data/default-routing.js` 默认顺序表；随后**四字段收口为两字段**（`customRules` / `customGroups` 删除，组不再携带规则，见 10.12）。**本批会改写用户配置，属于用户面不可逆迁移**；实施规格见第十节（已定稿），迁移对照表见 10.7。
 4. ✅ 批次 4（随批次 3 完成）：文档与类型声明已对齐（CONFIGURATION / DEFAULTS / README / index.d.ts）；迁移对照表见 10.7，随发版说明给出。
 
 **八之二、批次 1 落地记录（含自主决策与残差）**
@@ -373,8 +373,8 @@ groups:
 | `enableTelegram` / `enableCrypto` / `enablePayPal` / `enableWebRTC` | `{ service: telegram }` 等，或整批 `{ preset: specialized }` |
 | `enableStreaming` / `streamingServices`、`enableSystemServices`、`enableGitHub` / `enableScholar`、`enableAdBlock` / `enableAntiAD`、`enableProcessDirect` | 同上：整批 `preset` 或单项 `service`；广告两条规则源变为 `preset: ads` 的两个默认条目 |
 | `enableDomesticGroup` + `proxyFirst`（旧组合出回国模式） | 国内侧走向写 `{ preset: domestic, to: '中国分流' }`；方向写 `trafficDirection: return`（不再由两个开关推断，10.10 已实施） |
-| `customRules` | `routing: [{ rule, to }]`（用户段位置不变） |
-| `customGroups` | `groups: [...]`（字段更名，结构一致） |
+| `customRules` | `routing: [{ rule, to }]`（位置即优先级，写在哪条预设前后就排在它前后）；**字段已删除**，旧配置在解析期报「已删除字段」并指向新写法 |
+| `customGroups` | `groups: [...]`（字段更名，但**不再接受 `rules` / `providers` / `process`**：规则一律写 `routing`）；字段已删除，同上 fail-closed |
 | `customServices` | 保留字段名，改为**扁平**服务字典（不再按六维嵌套），新增服务用 `{ service: <键> }` 路由引用 |
 
 **10.8 验收标准（批次 3 完成判据）**
@@ -421,6 +421,17 @@ groups:
 - 建组改为「规则引用驱动」：`buildBuiltinAppRecipes` 只按「规则目标名集合」决定建哪些组，开关不再参与建组；`registries.groups` 与 `{ ref }` 声明继续作为显式建组入口。
 - 默认值改动**直接改数据**（`src/data/default-routing.js`、`src/data/field-registry.js`、`src/config/catalog.js` 条目），按 10.8 第 1 条更新基线并说明。
 - 验收：`grep` 生产代码已无 `enableAdBlock` 一类字段读取（仅存在于迁移文档与「已删除字段」清单）；625 条测试全绿，默认产物零漂移。
+
+**10.12 DSL 收口：四字段 → 两字段（已实施，2026-10-21）**
+
+> 目标：把用户面的「组」与「规则」彻底分成两个字段，不留第二条注入路径。
+
+- **最终形态**：`groups` 只声明组的成员与呈现（`name` / `type` / `match` / `exclude` / `proxies` / `preferredRegions` / 图标 / `ref` / `disabled`）；`routing` 是规则唯一来源（`preset` / `service` / `rule` + `to` / `disabled`）。
+- **删除的字段**：`customRules`（并入 `routing` 的 `{ rule, to }`）与 `customGroups`（并入 `groups`），二者进入 `REMOVED_FIELDS`，解析期 fail-closed 并给出新写法。
+- **组声明不再携带规则**：目录条目历史遗留的 `rules` / `providers` / `process` 在 `{ ref }` 展开时剥离，`matcher.js` 的组字段白名单同步收窄——组里再写这些字段会被顶层白名单拒绝。
+- **规则集简写换代**：原「组里写 `geosite:x` 字符串」的能力改为 `routing` 条目 `{ rule: 'geosite:x', to: <组> }`（自动登记同名 Provider），能力不减、位置唯一。
+- **节点级标注改名**：订阅/清洗阶段的节点级 `customGroups` 元数据改名 `groupTags`（`node-trust` 可信键同步），与用户面字段彻底解耦。
+- 验证：630 条测试全绿；`lint` / `verify:arch` / `verify:docs` 通过；默认产物两个 golden 零漂移。
 
 **附：选型过程（历史，已归档为结论）**
 

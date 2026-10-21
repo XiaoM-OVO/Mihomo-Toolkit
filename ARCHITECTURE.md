@@ -115,7 +115,7 @@ src/
 ├── 3. strategy/                  # 🌐 Layer 3: 策略组拓扑与内核优化层
 │   ├── topology.js               # 六维大区折叠、动态测速与骨架策略组装配
 │   ├── topology-engine.js        # 声明式策略组 DSL 评估与宏展开引擎
-│   ├── matcher.js                # customGroups 节点匹配配方计算与黑名单校验
+│   ├── matcher.js                # groups 节点匹配配方计算与黑名单校验
 │   ├── rules.js                  # 规则集 (Rule-Providers) 与分流路由组装
 │   ├── presentation.js           # 策略组展示层装饰器 (在线图标/徽标挂载)
 │   ├── prune.js                  # 有向无环图 (DAG) 递归空组级联淘汰与级联剪枝
@@ -280,8 +280,6 @@ src/
 已知边界（不是缺陷，但需要知道）：
 - **节点字段不做地理/私网校验**：`proxies[].server` 可以是 `127.0.0.1` 或内网地址（局域网代理是合法用法）。本工具只**生成**配置，不主动连接节点；真正发起连接的是内核，因此这属于「订阅使用者自己的选择」，不是服务端 SSRF。
 - **`res.type === 'opaqueredirect'` 在 Node 下不出现**：重定向判定只看状态码（浏览器 no-cors 才产生 opaqueredirect）。
-- **DNS 安全配置沙箱 (`dns-sanitizer.js`)**：
-  强制引导 DNS 采用纯 IP 地址以避免解析死锁；剥离 DoH 中的危险修饰符；默认强制 DNS 监听本地回环地址（`127.0.0.1`）。
 
 ### 5. 内存 SWR 缓存与请求合并 (`src/pipeline/engine.js` & `src/io/cache.js`)
 为了减轻高频请求对订阅上游的压力：
@@ -330,4 +328,4 @@ include:
    当前 `targets/` 仅提供了最基础的 CLI 与轻量 HTTP 服务端，对于更广泛的集成场景（如 Serverless / 边缘 Worker / 复杂进程守护）尚未形成标准化的适配接口。
 
 > [!NOTE]
-> 原“策略组拓扑与装配逻辑双硬编码耦合”已于 Milestone 3 阶段彻底攻坚闭环（引入 `customGroups` 声明式 DSL 引擎与 `catalog.js` SSOT 全量聚合/专项拓扑配方驱动）。
+> 原“策略组拓扑与装配逻辑双硬编码耦合”已于 Milestone 3 阶段彻底攻坚闭环（引入 `groups` 声明式 DSL 引擎与 `catalog.js` SSOT 全量聚合/专项拓扑配方驱动）。
