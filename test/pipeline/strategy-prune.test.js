@@ -110,6 +110,34 @@ describe('【Pipeline】DAG 级联空组剪枝与级联清理 (strategy-prune)',
     assertIsDAG(result.proxyGroups, proxies);
   });
 
+  it('pruneEmptyGroups - 规则目标必须真实存在：悬空目标整条跳过并汇总告警', () => {
+    const warnings = [];
+    const proxyGroups = [{ name: '🚀 基础代理', proxies: ['Node1'] }];
+    const proxies = [{ name: 'Node1', server: '1.2.3.4', port: 443 }];
+    const rules = [
+      'DOMAIN-SUFFIX,keep.example,🚀 基础代理',
+      'DOMAIN-SUFFIX,ghost.example,🧪 实验节点', // 隔离组开关关闭 -> 组不存在
+      'DOMAIN-SUFFIX,node.example,Node1', // 直接指向物理节点，合法
+      'MATCH,DIRECT'
+    ];
+
+    const result = pruneEmptyGroups({
+      proxyGroups,
+      proxies,
+      rules,
+      logger: { warn: msg => warnings.push(msg), debug: () => {} }
+    });
+
+    assert.deepEqual(result.rules, [
+      'DOMAIN-SUFFIX,keep.example,🚀 基础代理',
+      'DOMAIN-SUFFIX,node.example,Node1',
+      'MATCH,DIRECT'
+    ]);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /已跳过 1 条分流规则/);
+    assert.match(warnings[0], /🧪 实验节点/);
+  });
+
   it('pruneEmptyGroups - 内置目标 GLOBAL 作为有效代理目标不被剪枝', () => {
     const proxyGroups = [
       { name: 'MyGlobalProxy', proxies: ['GLOBAL'] }

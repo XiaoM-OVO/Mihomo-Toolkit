@@ -8,6 +8,7 @@
 
 const { SKELETON_EXEMPT_GROUPS, effectiveExemptGroups } = require('../data');
 const { stripGroupDecoration } = require('./presentation');
+const { ruleTargetOf } = require('./routing');
 
 const DEFAULT_EXEMPT_GROUPS = [...SKELETON_EXEMPT_GROUPS];
 const VALID_BUILTIN_TARGETS = ['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS', 'GLOBAL'];
@@ -320,22 +321,30 @@ function pruneEmptyGroups({
   }
 
   // 阶段 4：规则与 Rule-Providers 级联注销
+  //
+  // 口径是「规则目标必须真实存在」，而不只是「目标组刚刚被淘汰」：
+  // 隔离组（家宽 / 高倍率 / 实验）由开关决定是否生成，开关关闭、桶为空或被剪枝时，
+  // 指向它们的规则会变成悬空引用（内核侧 proxy not found）。统一在这里拦截并汇总告警，
+  // 这样用户把条目留在分流表里、只翻开关即可，不必逐条注释。
   let currentRules = Array.isArray(rules) ? [...rules] : [];
   const providers = { ...ruleProviders };
 
-  if (removedGroups.size > 0 && currentRules.length > 0) {
+  if (currentRules.length > 0) {
+    const knownTargets = new Set([...builtinTargets, ...physicalNodeNames, ...groupMap.keys()]);
+    const orphanTargets = new Map();
     const originalRuleCount = currentRules.length;
     currentRules = currentRules.filter(rule => {
       if (typeof rule !== 'string') return true;
-      const parts = rule.split(',').map(s => s.trim());
-      const last = parts[parts.length - 1] ? parts[parts.length - 1].toLowerCase() : '';
-      const rawTarget = last === 'no-resolve' ? parts[parts.length - 2] : parts[parts.length - 1];
-      const cleanTarget = stripGroupDecoration(rawTarget);
-      return !removedGroups.has(rawTarget) && !removedGroups.has(cleanTarget);
+      const target = ruleTargetOf(rule);
+      if (!target) return true;
+      if (knownTargets.has(target) || knownTargets.has(stripGroupDecoration(target))) return true;
+      orphanTargets.set(target, (orphanTargets.get(target) || 0) + 1);
+      return false;
     });
     const droppedRulesCount = originalRuleCount - currentRules.length;
-    if (droppedRulesCount > 0 && logger && typeof logger.debug === 'function') {
-      logger.debug(`🧹 规则清理: 目标策略组已淘汰，注销 ${droppedRulesCount} 条分流规则`);
+    if (droppedRulesCount > 0 && logger && typeof logger.warn === 'function') {
+      const detail = [...orphanTargets.entries()].map(([target, count]) => `「${target}」×${count}`).join('、');
+      logger.warn(`⚠️ 规则目标不存在，已跳过 ${droppedRulesCount} 条分流规则：${detail}`);
     }
   }
 

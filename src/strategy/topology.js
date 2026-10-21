@@ -528,7 +528,9 @@ function buildProxyTopology({
     { name: '故障转移', type: 'fallback', url: testURL, interval: testInterval, proxies: activeRegionGroups }
   );
 
-  if (userConfig.enableResidential) {
+  // 家宽优选：开关是特性门——只有开关打开且确有家宽节点时才建组；
+  // 空组会被引用它的规则继承成悬空引用，由剪枝阶段的「目标必须存在」兜底并告警。
+  if (userConfig.enableResidential && buckets.residential.length > 0) {
     finalGroups.push({ name: '家宽优选', type: 'fallback', url: testURL, interval: testInterval, proxies: buckets.residential });
   }
 
