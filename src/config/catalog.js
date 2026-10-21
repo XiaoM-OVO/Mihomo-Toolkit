@@ -717,69 +717,17 @@ class ServiceCatalog {
   }
 
   /**
-   * 收集配置中通过 `groups: [{ ref: <键> }]` 显式引用的内置组键（未禁用者）
-   * @param {object} [runtimeConfig]
-   * @returns {string[]}
-   */
-  getDeclaredRefKeys(runtimeConfig) {
-    const cfg = runtimeConfig || this.userConfig;
-    if (!cfg || !Array.isArray(cfg.groups)) return [];
-    return cfg.groups
-      .filter(g => g && typeof g === 'object' && g.disabled !== true && typeof g.ref === 'string' && g.ref.trim())
-      .map(g => g.ref.trim());
-  }
-
-  /**
-   * 判定某分类是否被 `groups` 引用激活（用于「开关关闭但 ref 声明在」时仍开启打标/建组）
-   * @param {string} category
-   * @param {object} [runtimeConfig]
-   * @returns {boolean}
-   */
-  hasRefActivation(category, runtimeConfig) {
-    const cfg = runtimeConfig || this.userConfig;
-    return this.getDeclaredRefKeys(cfg).some(key => this.isRefableGroup(key, category));
-  }
-
-  /**
-   * 判定某个键是否为「可引用的内置组」
-   * 判据 = 条目自带**非空 `proxies`**：成员由条目自身列清（`match` 可选，仅用于说明
-   * `@matchedNodes` 从哪个特征池取节点），因此引用它绝不会得到空壳组。
-   * @param {string} key
-   * @param {string} [category] 限定分类；省略则在全部分类中查找
-   * @returns {boolean}
-   */
-  isRefableGroup(key, category) {
-    const cats = category ? [category] : Object.keys(this.services);
-    return cats.some(cat => {
-      const s = this.services[cat]?.[key];
-      return Boolean(s && Array.isArray(s.proxies) && s.proxies.length > 0);
-    });
-  }
-
-  /**
-   * 获取某分类下所有有效/激活的服务列表
-   * 激活口径 = 「分类总开关打开」或「该分类被 groups 引用激活」；两者取并集后再叠加自定义服务键。
-   * @param {string} category
-   * @param {object} [runtimeConfig] 可选运行时配置覆写
+   * 获取某分类下所有服务列表（全量内置服务 + 用户自定义服务）
+   * @param {string} category 分类名称
    * @returns {Array<{ key: string, category: string, service: object }>}
    */
-  getActiveServices(category, runtimeConfig) {
-    const cfg = runtimeConfig || this.userConfig;
+  getActiveServices(category) {
     const catServices = this.services[category] || {};
-
-    const customKeys = Object.keys(cfg.customServices?.[category] || {});
-    const refKeys = this.getDeclaredRefKeys(cfg).filter(k => this.isRefableGroup(k, category));
-    const allowedKeys = [...new Set([...Object.keys(catServices), ...customKeys, ...refKeys])];
-    const result = [];
-
-    allowedKeys.forEach(key => {
-      const s = catServices[key];
-      if (s) {
-        result.push({ key, category, service: s });
-      }
-    });
-
-    return result;
+    return Object.keys(catServices).map(key => ({
+      key,
+      category,
+      service: catServices[key]
+    }));
   }
 
   /**
@@ -897,6 +845,7 @@ class ServiceCatalog {
 
         registries[cat][key] = {
           tag: s.tag || key,
+          category: cat,
           name: cleanName,
           cleanName,
           fullName,

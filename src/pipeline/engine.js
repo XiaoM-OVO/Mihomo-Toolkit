@@ -102,6 +102,26 @@ function getCacheKey(userConfig = {}, options = {}) {
 
     const mounts = computeMountDigest(configRest);
 
+    // 对 customServices 中可能出现的原生 RegExp 实例做字符串化归一，防止 fast-json-stable-stringify 序列化为 {} 产生碰撞
+    if (configRest.customServices && typeof configRest.customServices === 'object') {
+      const safeCustomServices = {};
+      for (const [cat, sMap] of Object.entries(configRest.customServices)) {
+        if (!sMap || typeof sMap !== 'object') continue;
+        safeCustomServices[cat] = {};
+        for (const [k, v] of Object.entries(sMap)) {
+          if (v && typeof v === 'object') {
+            safeCustomServices[cat][k] = {
+              ...v,
+              ...(v.reg instanceof RegExp ? { reg: v.reg.toString() } : {})
+            };
+          } else {
+            safeCustomServices[cat][k] = v;
+          }
+        }
+      }
+      configRest.customServices = safeCustomServices;
+    }
+
     const canonical = stableStringify({
       v: CACHE_KEY_VERSION,
       outputMode,

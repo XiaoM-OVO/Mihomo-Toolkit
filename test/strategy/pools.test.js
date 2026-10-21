@@ -104,4 +104,19 @@ describe('【Strategy】节点池 (pools) 定义与物化', () => {
       .filter(name => jpNodes.includes(name));
     assert.deepEqual(leaked, [], '日本节点应被隔离出地区池');
   });
+
+  it('用户在 groups[].proxies 声明 @pool:<池名> 可正常通过校验并展开成员', () => {
+    const pools = [{ name: '专用线路', match: { region: ['jp'] } }];
+    const out = buildDefaultOutput({
+      pools,
+      groups: [
+        { name: '我的专用线', type: 'select', proxies: ['DIRECT', '@pool:专用线路'] }
+      ],
+      routing: [...BASE, { rule: 'DOMAIN-SUFFIX,test.com', to: '我的专用线' }, { preset: 'final' }]
+    });
+    const myGroup = out['proxy-groups'].find(g => g.name.includes('我的专用线'));
+    assert.ok(myGroup, '用户声明的策略组必须正常生成');
+    assert.ok(myGroup.proxies.includes('DIRECT'), '普通代理应保留');
+    assert.ok(myGroup.proxies.some(p => p.includes('日本')), '@pool 宏应正确展开池成员');
+  });
 });

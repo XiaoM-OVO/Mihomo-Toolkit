@@ -30,6 +30,18 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.ok(registries.system.google);
     assert.equal(registries.ai.chatgpt.name, 'ChatGPT');
     assert.equal(registries.ai.chatgpt.fullName, '🤖 ChatGPT');
+    assert.equal(registries.ai.chatgpt.category, 'ai', '注册表条目必须挂载 category 字段');
+  });
+
+  it('config - 用户声明改名后同步刷新 fullName 并清除内部 _ref 属性', () => {
+    const resolved = resolveConfig({
+      groups: [{ ref: 'chatgpt', name: '我的AI' }]
+    });
+    const item = resolved.registries.ai.chatgpt;
+    assert.equal(item.name, '我的AI');
+    assert.equal(item.cleanName, '我的AI');
+    assert.equal(item.fullName, '🤖 我的AI', '改名后必须同步更新带图标的前缀 fullName');
+    assert.equal(resolved.groups[0]._ref, undefined, '内部 _ref 标记必须彻底清理避免泄漏');
   });
 
   it('dns - DNS 覆写注入与 fake-ip 配置', () => {

@@ -153,7 +153,7 @@ function resolveConfig(userConfig = {}, options = {}) {
   }
 
   // 3. 只读基线 + 用户追加：安全基线只能加强，不能被配置削减
-  const logger = options?.logger || userConfig?.logger;
+  const logger = options?.logger || merged.logger || userConfig?.logger;
   applyAdditiveFields(merged, logger);
 
   // 4. 构建单一事实来源 ServiceCatalog 实例
@@ -176,16 +176,22 @@ function resolveConfig(userConfig = {}, options = {}) {
     if (!decl._ref) continue;
     const refKey = decl._ref;
     if (decl.name) {
-      if (merged.registries.groups?.[refKey]) {
-        merged.registries.groups[refKey].name = decl.name;
+      const groupEntry = merged.registries.groups?.[refKey];
+      if (groupEntry) {
+        groupEntry.name = decl.name;
+        if (groupEntry.cleanName !== undefined) groupEntry.cleanName = decl.name;
+        if (groupEntry.uiIcon) groupEntry.fullName = `${groupEntry.uiIcon} ${decl.name}`;
       }
       for (const cat of ['ai', 'streaming', 'social', 'game', 'dev', 'system', 'specialized', 'aggregates']) {
-        if (merged.registries[cat]?.[refKey]) {
-          merged.registries[cat][refKey].name = decl.name;
-          merged.registries[cat][refKey].cleanName = decl.name;
+        const item = merged.registries[cat]?.[refKey];
+        if (item) {
+          item.name = decl.name;
+          item.cleanName = decl.name;
+          item.fullName = item.uiIcon ? `${item.uiIcon} ${decl.name}` : decl.name;
         }
       }
     }
+    delete decl._ref;
   }
 
   merged.groups = declaredGroups;

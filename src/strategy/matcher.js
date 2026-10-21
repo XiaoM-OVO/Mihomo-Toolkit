@@ -617,6 +617,8 @@ function validateGroups(groups) {
           throw new TypeError(`[groups] 策略组 ${groupName}.proxies[${pIdx}]: 期望非空 string`);
         }
         const token = item.trim();
+        // @pool:<池名> 动态宏在运行期按池成员展开，此处直接放行（池存在性由拓扑引擎求值时校验）
+        if (token.toLowerCase().startsWith('@pool:')) return;
         if (token.startsWith('@') && !isKnownMacro(token)) {
           throw new Error(
             `[groups] 策略组 ${groupName}.proxies[${pIdx}]: 未知宏「${token}」，` +

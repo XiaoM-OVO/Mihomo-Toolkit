@@ -554,7 +554,11 @@ function buildProxyTopology({
       if (group) finalGroups.push(group);
     });
 
-  const lowMultiMembers = lowMultiPool ? poolMembers(lowMultiPool) : [];
+  // 汇集全量节点池成员字典，供 DSL 中的 @pool:<池名> 统一展开
+  const allPoolMembers = {};
+  poolDefs.forEach(def => {
+    allPoolMembers[def.name] = poolMembers(def);
+  });
 
   // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 config/catalog.js，
   // 拓扑只负责「低倍率池非空时装配」；成员由 `@pool:低倍率节点` 展开。
@@ -571,7 +575,7 @@ function buildProxyTopology({
       regionNames,
       nonCnRegions: engineContext.nonCnRegions,
       domesticGroup: engineContext.domesticGroup,
-      poolMembers: { [POOL_NAMES.lowMulti]: lowMultiMembers },
+      poolMembers: allPoolMembers,
       logger
     });
     finalGroups.push(...evaluatedGroups);
@@ -654,6 +658,7 @@ function buildProxyTopology({
       regionNames,
       nonCnRegions: engineContext.nonCnRegions,
       domesticGroup: engineContext.domesticGroup,
+      poolMembers: allPoolMembers,
       logger
     });
     for (const eg of evaluatedGroups) {
