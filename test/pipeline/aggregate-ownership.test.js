@@ -87,7 +87,7 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
     assert.ok(rerouted.includes('RULE-SET,download-games,🐱 GitHub'), 'download 预设的 to 必须生效');
   });
 
-  it('低倍率池是全部低倍率节点，「禁止下载」只在使用侧排除', () => {
+  it('低倍率池自带「禁止下载」排除，下载策略/轮询出口都引用该池', () => {
     const node = (name, server) => ({ name, type: 'ss', server, port: 443, cipher: 'aes-128-gcm', password: 'p' });
     const out = strategyMain({
       proxies: [
@@ -98,12 +98,18 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
     }, {});
 
     const groups = out['proxy-groups'];
+    const pool = groups.find(g => g.name === '低倍率节点');
     const policy = groups.find(g => g.name === '⏬ 下载策略');
     const exit = groups.find(g => g.name === '🔄 负载均衡-轮询');
+    assert.ok(pool, '低倍率池非空时必须物化成隐藏组');
+    assert.equal(pool.hidden, true, '低倍率节点组默认隐藏');
+    assert.ok(pool.proxies.some(n => n.includes('香港 01')), '正常低倍率节点进入低倍率池');
+    assert.ok(!pool.proxies.some(n => n.includes('严禁BT')), '「禁止下载」在池定义里就排除');
     assert.ok(policy, '低倍率池非空时必须生成下载策略');
     assert.ok(exit, '低倍率池非空时必须生成轮询出口');
-    assert.ok(policy.proxies.some(n => n.includes('香港 01')), '正常低倍率节点应进入下载策略');
-    assert.ok(!policy.proxies.some(n => n.includes('严禁BT')), '禁止下载节点不得进入下载策略');
+    assert.ok(policy.proxies.includes('低倍率节点'), '下载策略引用低倍率节点组');
+    assert.ok(policy.proxies.some(p => p.includes('负载均衡-轮询')), '下载策略引用轮询出口');
+    assert.ok(exit.proxies.some(n => n.includes('香港 01')), '轮询出口展开池成员');
     assert.ok(!exit.proxies.some(n => n.includes('严禁BT')), '禁止下载节点不得进入轮询出口');
   });
 

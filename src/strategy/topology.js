@@ -12,6 +12,7 @@ const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = re
 const { validateGroups } = require('./matcher');
 const { resolvePoolDefinitions, createPoolMatchers } = require('./pools');
 const { POOL_NAMES } = require('../data/default-pools');
+const { DOWNLOAD_GROUPS } = require('../data/default-groups');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
 const { stripGroupDecoration, NON_CN_EXCLUDED_GROUPS, CN_CORE_PROXY_GROUPS } = require('./presentation');
 
@@ -460,8 +461,6 @@ function buildProxyTopology({
   const residentialPool = activePool(POOL_NAMES.residential);
   const highMultiPool = activePool(POOL_NAMES.highMulti);
   const experimentalPool = activePool(POOL_NAMES.experimental);
-  const lowMultiPool = poolDefs.find(def => def.name === POOL_NAMES.lowMulti) || null;
-  const lowMultiMembers = lowMultiPool ? poolMembers(lowMultiPool) : [];
 
   const resiPrefix = residentialPool ? ['家宽优选'] : [];
   const proxyTarget = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
@@ -532,17 +531,33 @@ function buildProxyTopology({
     finalGroups.push({ name: '家宽优选', type: 'fallback', url: testURL, interval: testInterval, proxies: poolMembers(residentialPool) });
   }
 
-  // 下载相关组：低倍率池是节点身份，「禁止下载」只在使用侧排除，不污染池本身。
-  // 池为空时不建组，避免产出只有 DIRECT 的空壳（与 10.13「不建空组」同一口径）。
-  const forbidDownloadNames = new Set(
-    classifiedNodes
-      .filter(n => (n.tags || []).includes('forbidDownload'))
-      .map(n => n.proxy?.name || n.rawName)
-  );
-  const downloadableNodes = lowMultiMembers.filter(name => !forbidDownloadNames.has(name));
-  if (downloadableNodes.length > 0) {
-    finalGroups.push(buildSelect('下载策略', ['DIRECT', '负载均衡-轮询', '自动选择', ...downloadableNodes]));
-    finalGroups.push({ name: '负载均衡-轮询', type: 'load-balance', strategy: 'round-robin', url: testURL, interval: 300, lazy: true, proxies: downloadableNodes, hidden: true });
+  // 低倍率节点：恒在的隐藏池（成员已在池定义里排除「禁止下载」）。
+  // 与其他特征池同构：池有成员才建组，避免空壳组（10.13 口径）。
+  const lowMultiPool = activePool(POOL_NAMES.lowMulti);
+  const lowMultiMembers = lowMultiPool ? poolMembers(lowMultiPool) : [];
+  if (lowMultiPool) {
+    finalGroups.push(buildSelect(lowMultiPool.name, lowMultiMembers, lowMultiPool.hidden === true));
+  }
+
+  // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 data/default-groups.js，
+  // 拓扑只负责「低倍率池非空时装配」；成员由 `@pool:低倍率节点` 展开，不在代码里二次过滤。
+  if (lowMultiPool) {
+    const { evaluatedGroups } = evaluateCustomTopology({
+      groups: DOWNLOAD_GROUPS,
+      existingGroups: finalGroups,
+      classifiedNodes,
+      buckets,
+      userConfig,
+      standardOptions,
+      residentialGroup: resiPrefix,
+      activeRegionGroups,
+      regionNames,
+      nonCnRegions: engineContext.nonCnRegions,
+      domesticGroup: engineContext.domesticGroup,
+      poolMembers: { [POOL_NAMES.lowMulti]: lowMultiMembers },
+      logger
+    });
+    finalGroups.push(...evaluatedGroups);
   }
 
   if (highMultiPool) {
@@ -580,7 +595,7 @@ function buildProxyTopology({
     finalGroups.push(buildSelect('IPv6控制台', ['REJECT', '手动选择', 'DIRECT']));
   }
 
-  const fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', ...(downloadableNodes.length > 0 ? ['下载策略'] : [])];
+  const fallbackProxies = [proxyTarget, '自动选择', '手动选择', '故障转移', ...(lowMultiPool ? ['下载策略'] : [])];
   if (proxyTarget !== 'DIRECT') {
     if (userConfig.trafficDirection === 'return') {
       fallbackProxies.unshift('DIRECT');

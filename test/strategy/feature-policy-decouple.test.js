@@ -235,6 +235,7 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
     const groups = result['proxy-groups'];
 
     const resiGroup = groups.find(g => g.name.includes('家宽'));
+    const lowMultiGroup = groups.find(g => g.name === '低倍率节点');
     const downloadGroup = groups.find(g => g.name.includes('下载策略'));
     const expGroup = groups.find(g => g.name.includes('实验'));
 
@@ -249,14 +250,16 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
       '家宽组内该节点数量必须为 1，严禁因 featurePools + buckets.residential 路径产生重复'
     );
 
-    // 2. 下载策略组唯一性
-    assert.ok(downloadGroup, '应存在下载策略组');
-    assert.ok(downloadGroup.proxies.includes(nodeName), '下载策略组应包含该节点');
+    // 2. 低倍率池唯一性 + 下载策略按组引用
+    assert.ok(lowMultiGroup, '应存在低倍率节点池组');
+    assert.ok(lowMultiGroup.proxies.includes(nodeName), '低倍率节点组应包含该节点');
     assert.equal(
-      downloadGroup.proxies.filter(p => p === nodeName).length,
+      lowMultiGroup.proxies.filter(p => p === nodeName).length,
       1,
-      '下载策略组内该节点数量必须为 1，严禁因 featurePools + 低倍率桶两条路径重复入组'
+      '低倍率组内该节点数量必须为 1，严禁因 featurePools + 低倍率桶两条路径重复入组'
     );
+    assert.ok(downloadGroup, '应存在下载策略组');
+    assert.ok(downloadGroup.proxies.includes('低倍率节点'), '下载策略组按组引用低倍率池');
 
     // 3. 实验节点组唯一性
     assert.ok(expGroup, '应存在实验节点组');
