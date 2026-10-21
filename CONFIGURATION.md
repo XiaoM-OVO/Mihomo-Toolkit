@@ -19,7 +19,7 @@
   - [2.3 地区识别策略：严格字典 vs 宽松捕获 (`strictRegionMatch`)](#23-地区识别策略严格字典-vs-宽松捕获-strictregionmatch)
   - [2.4 DAG 级联空组剪枝与豁免机制 (`exemptGroups`)](#24-dag-级联空组剪枝与豁免机制-exemptgroups)
   - [2.5 策略组视觉呈现矩阵 (`groupIconMode` 与 `groupIcons`)](#25-策略组视觉呈现矩阵-groupiconmode-与-groupicons)
-  - [2.6 节点分桶与倍率隔离门控 (`isolateHighMulti` / `isolateDownload` / `isolateExperimental`)](#26-节点分桶与倍率隔离门控-isolatehighmulti--isolatedownload--isolateexperimental)
+  - [2.6 节点池与隔离机制 (`pools` / `enableIsolation`)](#26-节点池与隔离机制-pools--enableisolation)
   - [2.7 网络抓取策略与容灾重试 (`fetchProxyStrategy` / `fetchProxyPort`)](#27-网络抓取策略与容灾重试-fetchproxystrategy--fetchproxyport)
   - [2.8 动态扩展服务编目 (`customServices` 与 `servicesConfigFile`)](#28-动态扩展服务编目-customservices-与-servicesconfigfile)
   - [2.9 域名多 IP 节点裂变增殖 (`enableFission`)](#29-域名多-ip-节点裂变增殖-enablefission)
@@ -342,25 +342,48 @@ groupIcons:
 
 ---
 
-### 2.6 节点分桶与倍率隔离门控 (`isolateHighMulti` / `isolateDownload` / `isolateExperimental`)
+### 2.6 节点池与隔离机制 (`pools` / `enableIsolation`)
 
-在节点清洗阶段，系统会对节点打标并装入专属“分桶（Bucket）”：
+节点池（`pools`）用 `match` 条件从节点集合里圈出一批节点。**池本身不是策略组**，被 `routing` 的 `to`（或 `@pool:<池名>`）引用时才物化成同名策略组——「引用即激活」，不需要的池不会在产物里留下空组。
 
-1. **`isolateHighMulti: true`（高倍率隔离）**：
-   - 当节点倍率 >= `highMultiThreshold`（默认 2.5 倍）时，该节点会被**强行移出**普通的地区测速池（防止自动测速跑分或看 4K 视频时瞬间榨干机场月度流量配额！），统一收拢至独立的「`🚀 高倍率优选`」策略组中，由用户按需手动调用。
-2. **`isolateDownload: true`（下载低倍率隔离）**：
-   - 当节点倍率 <= `lowMultiThreshold`（默认 0.99 倍，例如 0.1x 节点）时，该节点被从主力大区池剔除，只留在低倍率池中；「`⏬ 下载策略`」与「`🔄 负载均衡-轮询`」按需从这个池取成员。
-   - 低倍率池包含**全部**低倍率节点；节点名标记「禁止下载」只会让它被下载组排除，不影响它属于低倍率池这一事实。
-3. **`isolateExperimental: true`（测试/实验节点隔离）**：
-   - 过滤名称中带有“测试 / 实验 / 试用 / 测速 / 流量”等关键词的节点，将其移出主力路由，归纳到「`🧪 实验节点`」组，避免不稳定的实验节点拉低自动测速组的整体可用率。
+内置池共四个：
+
+| 池名 | 圈选条件 | 默认状态 |
+| :--- | :--- | :--- |
+| `家宽优选` | 带 `residential` 标签 | `enableIsolation: true` 时启用，成员从地区池剔除 |
+| `高倍率优选` | 倍率 > `highMultiThreshold`（默认 2.5） | 同上 |
+| `实验节点` | 带 `experimental` 标签（测试/实验/备用/测速等字样） | 同上 |
+| `低倍率节点` | 带 `lowMulti` 标签 | 恒在，`hidden: true`；「`⏬ 下载策略`」与「`🔄 负载均衡-轮询`」从它取成员 |
+
+`enableIsolation` 是**隔离总开关**：打开后三个隔离池启用，成员从主力地区池与全量标准池中剔除（防止自动测速跑分或看 4K 时榨干高倍率流量配额）；关闭时三类节点照常留在地区池。
+
+自定义池（与内置池共用一个命名空间，重名直接报错）：
+
+```yaml
+pools:
+  - name: 低延迟节点
+    match: { region: [hk, jp], multi: "<= 1" }   # 与 groups.match 同一套配方语法
+    isolate: false        # true=成员从地区池剔除
+    hidden: false         # true=物化后的组在界面隐藏
+    group: onDemand       # always=总是建组 / onDemand=被引用才建（默认）
+    type: select          # select（默认） / fallback
+```
+
+然后在分流表里直接引用池名或 `@pool:` 宏：
+
+```yaml
+routing:
+  - { rule: 'DOMAIN-SUFFIX,example.com', to: 低延迟节点 }
+  - { service: youtube, to: '@pool:低延迟节点' }
+```
 
 > [!IMPORTANT]
-> **这三个开关（以及 `enableResidential`）是「特性门」，不是隐藏的规则开关：**
+> **池名始终是合法路由目标，建不建组由「是否启用 / 是否有成员」决定：**
 >
-> - **开**：建组 + 把匹配到的节点从主力池剔除，`routing` 里指向该组的条目正常生效。
-> - **关**：不建组、不剔除；`routing` 里指向该组的条目**自动跳过**（构建日志给出一行汇总警告，如 `⚠️ 规则目标不存在，已跳过 2 条分流规则：「🧪 实验节点」×2`），不会留下指向不存在组的坏配置。所以你可以把条目一直留在分流表里，只用开关控制开合，不必逐条注释。
-> - **开但没有合格节点**：同样不建空组（空成员组内核不接受），指向它的条目一并跳过。
-> - **名字拼错**（如 `实验组`）：仍然在解析期直接报错——「条件合法」只针对这几个真实存在的隔离组名。
+> - **隔离关闭**：三个隔离池不建组、不剔除，`routing` 里指向它们的条目**自动跳过**（只记一行 debug，不刷悬空引用告警），所以不必逐条注释。
+> - **隔离打开但没有合格节点**：同样不建空组（空成员组内核不接受），指向它的条目一并跳过。
+> - **`@pool:<池名>` 是显式索要**：池未启用就直接 fail-closed 报错（`routing: 节点池「实验节点」不存在`）。
+> - **名字拼错**（如 `实验组`）：解析期直接报错——「条件合法」只针对真实存在的池名或组名。
 
 ---
 
@@ -513,11 +536,10 @@ include:
 | `enableNodeRename` | `boolean` | `true` | `any` | `override` | **重命名开关**：设为 `false` 可完全原样保留订阅原有节点名称，但底层地区识别照常生效。 |
 | `strictRegionMatch`| `boolean` | `false` | `any` | `override` | **地区识别严格度**：`true` 为严格官方标准字典，`false` 允许国旗 Emoji 与启发式捕获。 |
 | `adTextThreshold` | `number` | `6` | `any` | `override` | **纯文本广告拦截阈值**：节点名无数字且无任何网络线路特征时，字符长度超过此值判定为广告丢弃。 |
-| `lowMultiThreshold`| `number` | `0.99` | `any` | `override` | **低倍率判定阈值**：倍率 <= 此值时归入低倍率分桶（设为 `0` 关闭）。 |
-| `isolateDownload` | `boolean` | `false` | `any` | `override` | **低倍率隔离**：`true` 将低倍率节点从常规大区池中移出（下载组会自动排除标记「禁止下载」的节点）。 |
-| `highMultiThreshold`| `number` | `2.5` | `any` | `override` | **高倍率判定阈值**：倍率 >= 此值判定为高倍率节点。 |
-| `isolateHighMulti` | `boolean` | `false` | `any` | `override` | **高倍率隔离**：`true` 将高倍率节点从常规大区池移出，收拢至「`🚀 高倍率优选`」组。 |
-| `isolateExperimental`| `boolean`| `false` | `any` | `override` | **实验节点隔离**：`true` 将含测试/备用等字样的节点移出常规池，收拢至「`🧪 实验节点`」组。 |
+| `lowMultiThreshold`| `number` | `0.99` | `any` | `override` | **低倍率判定阈值**：倍率 <= 此值时打上 `lowMulti` 标签（进入「`⏬ 低倍率节点`」池，设为 `0` 关闭）。 |
+| `enableIsolation` | `boolean` | `false` | `any` | `override` | **隔离总开关**：`true` 启用「家宽优选 / 高倍率优选 / 实验节点」三个内置隔离池，成员从地区池剔除；池本身由 `pools` 描述。 |
+| `pools` | `object[]` | `[]` | `local` | `override` | **节点池声明**：`[{ name, match, exclude?, isolate?, hidden?, group?, type? }]`，被 `routing` 引用时物化成同名策略组。 |
+| `highMultiThreshold`| `number` | `2.5` | `any` | `override` | **高倍率判定阈值**：倍率 >= 此值判定为高倍率节点（`enableIsolation` 打开时进入「`🚀 高倍率优选`」池）。 |
 | `nodeIpVersion` | `string` | `''` | `any` | `override` | **节点连接 IP 栈策略**：`""` (原样) \| `dual` (双栈竞速，推荐) \| `ipv6-prefer` \| `ipv4-prefer` \| `ipv6` \| `ipv4`。 |
 
 ---
@@ -592,8 +614,7 @@ routing:
 | :--- | :--- | :--- | :---: | :---: | :--- |
 | `customServices` | `object` | `{}` | `any` | `override` | **行内自定义服务定义字典**：新增或覆写具体服务的名称、正则、图标及规则集。新增服务在预设展开时自动并入对应分类，也可用 `{ service: '<键>' }` 单独点名。 |
 | `aiPreferredRegions`| `string[]`| `['us', 'jp', 'tw', 'sg', 'kr', 'eu']` | `any` | `override` | AI 服务策略组默认保底优选的大区排序（无专属节点时依序排布）。 |
-| `enableResidential`| `boolean`| `false` | `any` | `override` | 启用家宽/住宅 IP 节点独立成组（「🏠 家宽优选」）。 |
-| `residentialNodeGroups`| `object`| `{}` | `any` | `override` | 将家宽节点注入到指定业务策略组的映射表（如 `{ all: ['🤖 ChatGPT'] }`）。 |
+| `residentialNodeGroups`| `object`| `{}` | `any` | `override` | 将家宽节点注入到指定业务策略组的映射表（如 `{ all: ['🤖 ChatGPT'] }），需 `enableIsolation: true`（家宽池启用）。 |
 
 专项服务（加密货币 / PayPal / WebRTC / QUIC / Telegram）不再有独立开关：要就在表里写 `{ service: 'crypto' }`、`{ preset: 'quic' }` 之类，不要就删掉。
 
@@ -792,10 +813,9 @@ subscriptions:
   - url: "https://airport-b.com/sub"
     tag: "备用机场"
 
-# 高级分桶门控
-isolateHighMulti: true
+# 节点池与隔离（高倍率防偷跑）
+enableIsolation: true
 highMultiThreshold: 2.5
-isolateDownload: true
 
 # 分流表：按需增删（顺序即优先级）
 routing:

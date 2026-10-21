@@ -115,10 +115,13 @@ src/
 ├── 3. strategy/                  # 🌐 Layer 3: 策略组拓扑与内核优化层
 │   ├── topology.js               # 六维大区折叠、动态测速与骨架策略组装配
 │   ├── topology-engine.js        # 声明式策略组 DSL 评估与宏展开引擎
-│   ├── matcher.js                # groups 节点匹配配方计算与黑名单校验
-│   ├── rules.js                  # 规则集 (Rule-Providers) 与分流路由组装
+│   ├── matcher.js                # groups / pools 节点匹配配方计算与黑名单校验
+│   ├── pools.js                  # 节点池定义合并、校验与谓词编译
+│   ├── routing.js                # 分流表 (routing) 展开引擎：规则唯一来源
+│   ├── rules.js                  # 规则集 (Rule-Providers) 数据表与进程规则工具
+│   ├── macros.js                 # 策略组引用宏符号注册与求值
 │   ├── presentation.js           # 策略组展示层装饰器 (在线图标/徽标挂载)
-│   ├── prune.js                  # 有向无环图 (DAG) 递归空组级联淘汰与级联剪枝
+│   ├── prune.js                  # 有向无环图 (DAG) 空组淘汰、悬空目标剪枝
 │   ├── dashboard.js              # 看板状态合成 (流量/到期/信息节点网格化)
 │   ├── registries.js             # 六维服务注册表管理模块 (委托 catalog)
 │   ├── dns.js                    # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
@@ -181,6 +184,8 @@ src/
 │   ├── field-registry.js         # 字段注册表 SSOT (定义/默认值/信任级别)
 │   ├── security-baselines.js     # 安全基线 (受保护域名/豁免组/Fake-IP 保底)
 │   ├── cleaner-rules.js          # 节点清洗规则库 (地区/线路/阻断正则/权重)
+│   ├── default-routing.js        # 出厂分流表与预设定义 (规则顺序唯一基线)
+│   ├── default-pools.js          # 内置节点池定义与展示顺序 (隔离/低倍率)
 │   └── name-grammar.js           # 名称语法正则库 (入口/落地/国旗/倍率唯一产地)
 │
 └── 8. infra/                     # 🧱 Layer 8: 基础设施层 (无状态纯计算基元)

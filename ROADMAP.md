@@ -472,6 +472,19 @@ groups:
 - **无默认产物漂移**：样本节点名均为单地区，默认与 `social-enabled` 两套 golden 零变化；649 条测试全绿（新增 `test/core/recognizer.test.js` 6 例，含「geo 与 metadata 结论一致」对照）。
 - **残留**：`recognizeRegion` 目前以「最后出现」为落地启发式，`美->沪 回国专线` 这类「回国」命名会被标为多地区冲突（落地仍正确为中国）；后续若要做「回国专线」的显式语法，应在词表里加方向词而不是回到最长匹配。
 
+**10.16 节点池与隔离机制：`pools` + `enableIsolation`（已实施，2026-10-21）**
+
+> 背景：10.13 的四个「池特性门」仍是四个开关，池的圈选条件写死在 `topology.js` 的节点循环里；`下载策略` 要引用「低倍率节点集合」时只能靠同名桶。把「节点集合」抽成数据后，隔离组与下载组共用一套机制。
+
+- **池是数据，不是组**：新增 `src/data/default-pools.js`（内置池：家宽优选 / 高倍率优选 / 实验节点 / 低倍率节点）与 `src/strategy/pools.js`（自定义池校验、定义合并、谓词编译）。`pools` 条目 = `{ name, match, exclude?, isolate?, hidden?, group?, type? }`，`match` 复用 `groups` 的配方语法（`region / multi / tags / pattern / protocol / airport / custom` 等维度）。
+- **引用即激活**：池只有在 `routing` 的 `to`（含 `@pool:<池名>`）指向它、或自身 `group: always` 时才物化成同名策略组；按需池没被引用就不建组。`@pool:` 是显式索要：池未启用时 fail-closed 报错，与直接把池名当目标（未启用则跳过）区分开。
+- **隔离 = 池的 `isolate` 标记**：`isolate: true` 的池成员从地区池 / 全量标准池剔除。`enableIsolation` 只门控三个内置隔离池（家宽 / 高倍率 / 实验），自定义池的 `isolate` 自行生效；`低倍率节点` 恒存在但 `hidden: true`，供 `下载策略` / `负载均衡-轮询` 取成员。
+- **开关退役**：删除 `enableResidential` / `isolateHighMulti` / `isolateExperimental` / `isolateDownload`，进 `REMOVED_FIELDS`（共 31 项）并在解析期给出各自落点提示；`topology-engine` 的宏上下文兜底从 `enableResidential` 改 `enableIsolation`。
+- **剪枝口径**：`prune` 阶段 4 的「池依赖目标」集合 = `下载策略` / `负载均衡-轮询` + 全部内置池名 + 自定义池名；池空或未激活时只记 `🪣` debug，不刷悬空引用告警。
+- **默认产物零漂移**：四个旧开关默认全关，默认样本无隔离 / 低倍率节点，两个 golden 文件字节无变化；`default-config.golden.json` 按 10.8 第 1 条显式删 4 个退役键、加 `enableIsolation` / `pools` 两键（59 → 55 键）。
+- 验证：656 条测试全绿（新增 `test/strategy/pools.test.js` 6 例、重写 `isolation-groups` 5 例）；`lint` / `verify:arch` / `verify:docs` 通过。
+- **残留**：`POOL_SORT_ORDER` 里的展示文案（如 `⏬ 下载策略`）仍是硬编码，池定义与展示标签尚未合一；地区组不改成池（避免与 `activeRegions` 折叠逻辑冲突）。
+
 **附：选型过程（历史，已归档为结论）**
 
 - **背景**：六维分类诞生于硬编码时期，「一次关掉一整批」只能靠分类开关实现，故分类同时承担「用户组织方式」与「批量激活」。目录解耦后分类作为用户面必填结构应当消失，但批量关闭是真实需求，必须在新模型里有位置。判据：**新增一个服务 / 类别，是只加数据，还是又得加一段特判。**
