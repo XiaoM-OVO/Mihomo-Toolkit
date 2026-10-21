@@ -91,6 +91,10 @@ const REMOVED_FIELD_SET = new Set(REMOVED_FIELDS);
 const REMOVED_FIELD_HINTS = {
   customRules: '规则请改写为 `routing` 里的 `{ rule: \'DOMAIN-SUFFIX,a.com\', to: <组名> }\` 条目（表内位置即优先级）',
   customGroups: '组请改写为 `groups` 声明（组只声明成员与呈现，不再携带 rules / providers / process）',
+  enableResidential: '隔离组改由节点池表达：开 `enableIsolation: true` 启用内置「家宽优选」池，自定义用 `pools` 声明',
+  isolateHighMulti: '隔离组改由节点池表达：开 `enableIsolation: true` 启用内置「高倍率优选」池，阈值仍是 `highMultiThreshold`',
+  isolateExperimental: '隔离组改由节点池表达：开 `enableIsolation: true` 启用内置「实验节点」池',
+  isolateDownload: '隔离组改由节点池表达：「低倍率节点」是内置池（默认隐藏），用 `@pool:低倍率节点` 或 `pools` 引用',
 };
 
 function assertNoRemovedFields(config) {

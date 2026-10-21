@@ -89,9 +89,8 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
       classifiedNodes,
       userConfig: {
         ...DEFAULT_CONFIG,
-        isolateHighMulti: true,
-        highMultiThreshold: 2.0,
-        isolateExperimental: true
+        enableIsolation: true,
+        highMultiThreshold: 2.0
       },
       registries
     });
@@ -325,7 +324,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
       classifiedNodes,
       userConfig: {
         ...DEFAULT_CONFIG,
-        enableResidential: true,
+        enableIsolation: true,
         groups: [
           {
             name: '🎬 我的专属流媒体',

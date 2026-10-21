@@ -196,7 +196,7 @@ describe('【Core】节点多维智能排序 (sort)', () => {
 
     const config = {
       enableNodeSort: true,
-      enableResidential: true,
+      enableIsolation: true,
       showFeatureIcon: true,
       renameTemplate: '{icon} {region} {index} {features}'
     };

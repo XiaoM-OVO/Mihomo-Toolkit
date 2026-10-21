@@ -248,12 +248,19 @@ aiPreferredRegions:
   - eu
 # ⚠️ biliPreferredRegions 已移除：该字段从未被实现（历史文档遗留的空承诺）
 
-# 高级节点隔离
-# lowMultiThreshold: 0.99          # 倍率 <= 此值的节点自动标记为下载节点 (0 关闭)
-# isolateDownload: false           # true=将下载节点从普通大区池中剔除，聚合入「⏬ 下载策略」组
-# isolateHighMulti: false          # true=将高倍率节点从普通大区池中剔除，聚合入「🚀 高倍率优选」组
+# 节点池与隔离机制
+# 池 = 用 match 条件圈出的一组节点；本身不是策略组，被 `@pool:<池名>` 或分流规则引用时才物化成组。
+# 内置池：家宽优选 / 高倍率优选 / 实验节点（隔离池，需 enableIsolation: true）、低倍率节点（默认隐藏，供下载引用）
+# enableIsolation: true            # 打开隔离机制：三个隔离池的成员从地区池中剔除（默认 false）
+# lowMultiThreshold: 0.99          # 倍率 <= 此值的节点自动标记为低倍率 (0 关闭)
 # highMultiThreshold: 2.5          # 高倍率判定阈值
-# isolateExperimental: false       # true=将含测试/实验/备用字样的节点剔除聚合入「🧪 实验节点」组
+# pools:                           # 自定义池（可选）
+#   - name: 低延迟节点
+#     match: { region: [hk, jp], multi: "<= 1" }
+#     isolate: false               # true=成员从地区池剔除（默认 false）
+#     hidden: false                # true=物化后的组在界面隐藏
+#     group: onDemand              # always=总是建组 / onDemand=被引用才建（默认）
+#     type: select                 # select（默认） / fallback
 
 
 # 🧩 通用配置片段挂载（include）：把配置拆成多个片段，片段与主文件共用同一份 schema
@@ -293,8 +300,7 @@ aiPreferredRegions:
 # ─────────────────────────────────────────────────────────────────────
 # ⑩ 家宽节点注入
 # ─────────────────────────────────────────────────────────────────────
-# 🏠 家宽节点注入 (需开启 enableResidential: true)
-# enableResidential: false         # 家宽节点独立成组「🏠 家宽优选」，不混入普通池
+# 🏠 家宽节点注入 (需开启 enableIsolation: true，内置池「家宽优选」随之启用)
 # residentialNodeGroups:           # 将家宽节点注入到应用策略组：键=地区("all"或"hk"/"us")，值=策略组列表
 #   "all": ["ChatGPT", "Gemini"]
 #   "hk": ["ChatGPT"]

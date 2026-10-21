@@ -17,6 +17,8 @@ const {
 } = require('../core/node-trust');
 const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
+const { getIsolationBucket } = require('../core/isolation');
+const { POOL_SORT_ORDER } = require('../data/default-pools');
 // Name rendering and feature variables are owned by core/rename.
 const { FEATURE_TEXT_MAP } = require('../core/shared/icons');
 const { resolveProxiesDomains } = require('../io/dns-resolver');
@@ -158,25 +160,14 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   const effectiveFeatureTexts = { ...FEATURE_TEXT_MAP, ...catalogTexts };
 
   const buildDestinationLine = (item) => {
-    const tags = item.tags || [];
-    const multi = item.attrs?.multiNum ?? 1;
-    const highMultiThreshold = config.highMultiThreshold ?? 2.5;
-
     let groupName = '';
     let isolateReason = '';
 
-    if (config.enableResidential && tags.includes('residential')) {
-      groupName = '🏠 家宽优选';
-      isolateReason = '家宽隔离';
-    } else if (config.isolateHighMulti && multi > highMultiThreshold) {
-      groupName = '🛑 高倍率节点';
-      isolateReason = '高倍率隔离';
-    } else if (config.isolateDownload && tags.includes('lowMulti')) {
-      groupName = '⏬ 下载策略';
-      isolateReason = '低倍率隔离';
-    } else if (config.isolateExperimental && tags.includes('experimental')) {
-      groupName = '🧪 实验节点';
-      isolateReason = '实验节点隔离';
+    const isolateBucket = getIsolationBucket(item, config);
+    if (isolateBucket) {
+      const def = POOL_SORT_ORDER.find(entry => entry.bucket === isolateBucket);
+      groupName = def ? def.label : isolateBucket;
+      isolateReason = def ? def.reason : '隔离';
     } else if (item.regionInfo) {
       const icon = item.regionInfo.icon ? `${item.regionInfo.icon} ` : '';
       groupName = `${icon}${item.regionInfo.groupName || `${item.regionInfo.name}节点`}`;

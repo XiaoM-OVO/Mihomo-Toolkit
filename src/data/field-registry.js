@@ -99,14 +99,8 @@ const FIELDS = [
     group: '节点清洗与处理', doc: '纯文本广告判定长度阈值' },
   { key: 'lowMultiThreshold', type: 'number', default: 0.99, merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '低倍率分流阈值（0 关闭）' },
-  { key: 'isolateDownload', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '节点清洗与处理', doc: '低倍率节点是否从普通大区池剔除' },
   { key: 'highMultiThreshold', type: 'number', default: 2.5, merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '高倍率阈值：超过此值排序自动下沉' },
-  { key: 'isolateHighMulti', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '节点清洗与处理', doc: '高倍率节点是否独立成组' },
-  { key: 'isolateExperimental', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '节点清洗与处理', doc: '实验节点是否独立成组' },
   { key: 'nodeIpVersion', type: 'string', default: '', merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '节点连接 IP 栈策略: "" (保持原样) | dual (双栈并发竞速) | ipv6-prefer | ipv4-prefer | ipv6 | ipv4' },
 
@@ -144,9 +138,11 @@ const FIELDS = [
   { key: 'aiPreferredRegions', type: 'string[]', default: ['us', 'jp', 'tw', 'sg', 'kr', 'eu'],
     merge: 'override', trust: 'any', group: '扩展分流服务', doc: 'AI 策略组地区保底优先列表' },
   { key: 'residentialNodeGroups', type: 'object', default: {}, merge: 'override', trust: 'any',
-    group: '扩展分流服务', doc: '家宽节点注入映射' },
-  { key: 'enableResidential', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '扩展分流服务', doc: '家宽节点分流' },
+    group: '扩展分流服务', doc: '家宽节点注入映射（需 `enableIsolation` 打开家宽池）' },
+  { key: 'enableIsolation', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '扩展分流服务', doc: '隔离机制总开关：打开后启用家宽 / 高倍率 / 实验三个内置隔离池（成员从地区池剔除）' },
+  { key: 'pools', type: 'object[]', default: [], merge: 'override', trust: 'local',
+    group: '扩展分流服务', doc: '自定义节点池：match/exclude 圈定节点集合；isolate 池成员从地区池剔除；被 `@pool:<池名>` 或分流规则引用时才建组' },
 
   // ── 【6. 网络测速与规则集】 ───────────────────────────────────────────────
   { key: 'testInterval', type: 'number', default: 300, merge: 'override', trust: 'any',
@@ -324,7 +320,9 @@ const REMOVED_FIELDS = Object.freeze([
   'aiServices', 'streamingServices', 'socialServices', 'gameServices',
   'systemServices', 'devServices',
   // DSL 收口：规则与组彻底分家
-  'customRules', 'customGroups'
+  'customRules', 'customGroups',
+  // 节点池收口：隔离开关并入 enableIsolation + pools
+  'enableResidential', 'isolateHighMulti', 'isolateExperimental', 'isolateDownload'
 ]);
 
 /**

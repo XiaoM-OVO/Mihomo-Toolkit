@@ -253,14 +253,14 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
   it('classifyNode - 严禁BT节点仍属低倍率池，但带独立的禁止下载标记', () => {
     // 低倍率是节点身份；能否下载是独立标记，由下载组在使用侧排除
     const forbidNode = { name: '🇭🇰 香港 01 x0.2 严禁BT', server: '1.2.3.4', port: 443 };
-    const forbidRes = classifyNode(forbidNode, { lowMultiThreshold: 0.5, isolateDownload: true });
+    const forbidRes = classifyNode(forbidNode, { lowMultiThreshold: 0.5, enableIsolation: true });
     assert.ok(forbidRes.tags.includes('lowMulti'), '低倍率身份不受禁止下载影响');
     assert.ok(forbidRes.tags.includes('forbidDownload'), '禁止下载必须独立打标');
     assert.equal(forbidRes.isolateBucket, 'lowMulti', '严禁BT节点仍进入低倍率隔离桶');
 
     // 正常低倍率节点：进入低倍率池，且不带禁止下载标记
     const normalNode = { name: '🇭🇰 香港 01 x0.2 高速', server: '1.2.3.4', port: 443 };
-    const normalRes = classifyNode(normalNode, { lowMultiThreshold: 0.5, isolateDownload: true });
+    const normalRes = classifyNode(normalNode, { lowMultiThreshold: 0.5, enableIsolation: true });
     assert.ok(normalRes.tags.includes('lowMulti'));
     assert.ok(!normalRes.tags.includes('forbidDownload'));
     assert.equal(normalRes.isolateBucket, 'lowMulti');

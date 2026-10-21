@@ -39,10 +39,7 @@
   "strictRegionMatch": false,
   "adTextThreshold": 6,
   "lowMultiThreshold": 0.99,
-  "isolateDownload": false,
   "highMultiThreshold": 2.5,
-  "isolateHighMulti": false,
-  "isolateExperimental": false,
   "minorNodeThreshold": 3,
   "regionGroupType": "url-test",
   "enableRegionHashLB": false,
@@ -63,7 +60,6 @@
     "kr",
     "eu"
   ],
-  "enableResidential": false,
   "residentialNodeGroups": {},
   "testInterval": 300,
   "testTolerance": 50,

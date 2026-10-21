@@ -21,8 +21,7 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
     };
 
     const userConfig = {
-      enableResidential: true,
-      isolateHighMulti: true,
+      enableIsolation: true,
       highMultiThreshold: 2.5,
       enableNodeRename: false
     };
@@ -84,7 +83,7 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
     };
 
     const userConfig = {
-      isolateHighMulti: true,
+      enableIsolation: true,
       highMultiThreshold: 2.5,
       enableNodeRename: false,
       minorNodeThreshold: 1
@@ -123,7 +122,7 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
     };
 
     const userConfig = {
-      isolateHighMulti: false, // 关闭隔离
+      enableIsolation: false, // 关闭隔离
       highMultiThreshold: 2.5,
       enableNodeRename: false,
       minorNodeThreshold: 1
@@ -227,9 +226,7 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
     };
 
     const userConfig = {
-      enableResidential: true,
-      isolateExperimental: true,
-      isolateDownload: true,
+      enableIsolation: true,
       enableNodeRename: false,
       minorNodeThreshold: 1
     };

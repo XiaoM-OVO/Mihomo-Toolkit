@@ -38,7 +38,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(groupNames.includes('🇸🇬 新加坡节点'));
   });
 
-  test('strategyMain - 高倍率隔离分组逻辑 (isolateHighMulti)', () => {
+  test('strategyMain - 高倍率隔离分组逻辑 (enableIsolation)', () => {
     const rawConfig = {
       proxies: [
         { name: '🇯🇵 日本 01 🚀 x3.0', type: 'ss', server: 'jp1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword1' },
@@ -47,7 +47,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     };
 
     const userConfig = {
-      isolateHighMulti: true,
+      enableIsolation: true,
       highMultiThreshold: 1.5,
       minorNodeThreshold: 1
     };
@@ -61,7 +61,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(highMultiGroup.proxies.length > 0, '高倍率组应包含节点');
   });
 
-  test('strategyMain - 实验节点隔离分组逻辑 (isolateExperimental)', () => {
+  test('strategyMain - 实验节点隔离分组逻辑 (enableIsolation)', () => {
     const rawConfig = {
       proxies: [
         { name: '🇭🇰 香港 01 测试节点', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'secretpassword1' },
@@ -70,7 +70,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
       ]
     };
 
-    const userConfig = { isolateExperimental: true, minorNodeThreshold: 1 };
+    const userConfig = { enableIsolation: true, minorNodeThreshold: 1 };
 
     const result = strategyMain(rawConfig, userConfig);
     const groups = result['proxy-groups'];
@@ -84,7 +84,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(!hkGroup.proxies.some(p => p.includes('🧪')), '普通香港组不应包含实验节点');
   });
 
-  test('strategyMain - 家宽节点注入测试 (residentialNodeGroups)', () => {
+  test('strategyMain - 家宽节点注入测试 (enableIsolation + residentialNodeGroups)', () => {
     const rawConfig = {
       proxies: [
         { name: '🇭🇰 香港 01 家宽', type: 'ss', server: 'hk-resi.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
@@ -94,7 +94,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     };
 
     const userConfig = {
-      enableResidential: true,
+      enableIsolation: true,
       residentialNodeGroups: {
         'hk': ['🤖 ChatGPT'],
         'all': ['🐱 GitHub']

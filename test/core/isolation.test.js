@@ -20,56 +20,27 @@ describe('【Core】节点隔离策略 (isolation)', () => {
     assert.equal(getIsolationBucket({ tags: [] }), '');
   });
 
-  it('getIsolationBucket - 单一分类识别', () => {
-    // 1. 家宽
+  it('getIsolationBucket - 单一分类识别（enableIsolation 打开后四类都参与）', () => {
+    const isolationOn = { enableIsolation: true };
+    assert.equal(getIsolationBucket({ tags: ['residential'] }, isolationOn), 'residential');
     assert.equal(
-      getIsolationBucket({ tags: ['residential'] }, { enableResidential: true }),
-      'residential'
-    );
-    // 2. 高倍率
-    assert.equal(
-      getIsolationBucket({ attrs: { multiNum: 3.0 } }, { isolateHighMulti: true, highMultiThreshold: 2.5 }),
+      getIsolationBucket({ attrs: { multiNum: 3.0 } }, { enableIsolation: true, highMultiThreshold: 2.5 }),
       'highMulti'
     );
-    // 3. 低倍率
-    assert.equal(
-      getIsolationBucket({ tags: ['lowMulti'] }, { isolateDownload: true }),
-      'lowMulti'
-    );
-    // 4. 实验性
-    assert.equal(
-      getIsolationBucket({ tags: ['experimental'] }, { isolateExperimental: true }),
-      'experimental'
-    );
+    assert.equal(getIsolationBucket({ tags: ['lowMulti'] }, isolationOn), 'lowMulti');
+    assert.equal(getIsolationBucket({ tags: ['experimental'] }, isolationOn), 'experimental');
   });
 
-  it('getIsolationBucket - 开关关闭时忽略对应分类', () => {
-    assert.equal(
-      getIsolationBucket({ tags: ['residential'] }, { enableResidential: false }),
-      ''
-    );
-    assert.equal(
-      getIsolationBucket({ attrs: { multiNum: 5.0 } }, { isolateHighMulti: false }),
-      ''
-    );
-    assert.equal(
-      getIsolationBucket({ tags: ['lowMulti'] }, { isolateDownload: false }),
-      ''
-    );
-    assert.equal(
-      getIsolationBucket({ tags: ['experimental'] }, { isolateExperimental: false }),
-      ''
-    );
+  it('getIsolationBucket - 隔离总开关关闭时一律不分类', () => {
+    assert.equal(getIsolationBucket({ tags: ['residential'] }, {}), '');
+    assert.equal(getIsolationBucket({ tags: ['residential'] }, { enableIsolation: false }), '');
+    assert.equal(getIsolationBucket({ attrs: { multiNum: 5.0 } }, {}), '');
+    assert.equal(getIsolationBucket({ tags: ['lowMulti'] }, { enableIsolation: false }), '');
+    assert.equal(getIsolationBucket({ tags: ['experimental'] }, {}), '');
   });
 
   it('getIsolationBucket - 优先级顺序严格判定: residential > highMulti > lowMulti > experimental', () => {
-    const allEnabled = {
-      enableResidential: true,
-      isolateHighMulti: true,
-      highMultiThreshold: 2.0,
-      isolateDownload: true,
-      isolateExperimental: true
-    };
+    const allEnabled = { enableIsolation: true, highMultiThreshold: 2.0 };
 
     // 家宽 + 高倍率 -> residential 优先
     assert.equal(
@@ -97,33 +68,23 @@ describe('【Core】节点隔离策略 (isolation)', () => {
   });
 
   it('getIsolationBucket - 高倍率阈值边界判定 (严格大于 highMultiThreshold)', () => {
-    const cfg = { isolateHighMulti: true, highMultiThreshold: 2.5 };
+    const cfg = { enableIsolation: true, highMultiThreshold: 2.5 };
 
-    // 等于阈值 2.5 -> 不算高倍率
     assert.equal(getIsolationBucket({ attrs: { multiNum: 2.5 } }, cfg), '');
-
-    // 略小于阈值 2.49 -> 不算高倍率
     assert.equal(getIsolationBucket({ attrs: { multiNum: 2.49 } }, cfg), '');
-
-    // 略大于阈值 2.51 -> 触发高倍率
     assert.equal(getIsolationBucket({ attrs: { multiNum: 2.51 } }, cfg), 'highMulti');
 
     // 默认阈值 (未传 highMultiThreshold 时默认为 2.5)
-    assert.equal(getIsolationBucket({ attrs: { multiNum: 2.5 } }, { isolateHighMulti: true }), '');
-    assert.equal(getIsolationBucket({ attrs: { multiNum: 2.6 } }, { isolateHighMulti: true }), 'highMulti');
+    assert.equal(getIsolationBucket({ attrs: { multiNum: 2.5 } }, { enableIsolation: true }), '');
+    assert.equal(getIsolationBucket({ attrs: { multiNum: 2.6 } }, { enableIsolation: true }), 'highMulti');
 
-    // 自定义自定义阈值 1.5
-    assert.equal(getIsolationBucket({ attrs: { multiNum: 1.6 } }, { isolateHighMulti: true, highMultiThreshold: 1.5 }), 'highMulti');
-    assert.equal(getIsolationBucket({ attrs: { multiNum: 1.5 } }, { isolateHighMulti: true, highMultiThreshold: 1.5 }), '');
+    // 自定义阈值 1.5
+    assert.equal(getIsolationBucket({ attrs: { multiNum: 1.6 } }, { enableIsolation: true, highMultiThreshold: 1.5 }), 'highMulti');
+    assert.equal(getIsolationBucket({ attrs: { multiNum: 1.5 } }, { enableIsolation: true, highMultiThreshold: 1.5 }), '');
   });
 
   it('sort.js 集成验证 - 隔离分类通过 isolation.js 参与排序且优先级正确', () => {
-    const cfg = {
-      isolateHighMulti: true,
-      highMultiThreshold: 2.0,
-      enableResidential: true,
-      isolateDownload: true
-    };
+    const cfg = { enableIsolation: true, highMultiThreshold: 2.0 };
 
     const nodeNormal = { rawName: '普通节点', tags: [], attrs: { multiNum: 1.0 } };
     const nodeHighMulti = { rawName: '高倍率节点', tags: [], attrs: { multiNum: 3.0 } };
@@ -145,9 +106,7 @@ describe('【Core】节点隔离策略 (isolation)', () => {
       { rawName: 'Normal Node 1', regionInfo: { id: 'hk', name: '香港' }, tags: [], attrs: { multiNum: 1.0 } },
       { rawName: 'Normal Node 2', regionInfo: { id: 'hk', name: '香港' }, tags: [], attrs: { multiNum: 1.0 } }
     ];
-    const indexMap = computeNodeIndices(items, {
-      enableResidential: true
-    });
+    const indexMap = computeNodeIndices(items, { enableIsolation: true });
     // 普通节点与家宽节点分属不同 isoBucket 独立轨道，各自从 01 开始计数
     assert.equal(indexMap.get(items[0]), '01');
     assert.equal(indexMap.get(items[1]), '02');

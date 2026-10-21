@@ -161,7 +161,7 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     };
     const result = await runNodesPipeline(proxies, {
       logger,
-      enableResidential: true
+      enableIsolation: true
     });
     assert.equal(result.length, 1);
     assert.ok(logs.length > 0);

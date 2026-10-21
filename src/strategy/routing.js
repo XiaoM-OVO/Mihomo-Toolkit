@@ -23,6 +23,8 @@ const { ADS_GROUPS, SPECIAL_SERVICES, buildServiceCatalog } = require('../config
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
 const { stripGroupDecoration } = require('./presentation');
 const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
+const { resolvePoolDefinitions } = require('./pools');
+const { POOL_NAMES } = require('../data/default-pools');
 const { normalizeSubDomains, isIPv4, isIPv6 } = require('../infra/ip');
 const {
   BASE_PROVIDER_ROUTES,
@@ -34,6 +36,8 @@ const {
 } = require('./rules');
 
 const BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE', 'MUTE']);
+
+const POOL_PREFIX = '@pool:';
 
 const CORE_SKELETON_GROUPS = new Set([
   '自动选择',
@@ -65,6 +69,15 @@ function dedupe(list) {
 function isValidTargetName(value, ctx) {
   const clean = stripGroupDecoration(value);
   if (CORE_SKELETON_GROUPS.has(value) || CORE_SKELETON_GROUPS.has(clean)) return true;
+
+  // 节点池：池被引用时才物化成同名策略组。
+  // 内置池名始终是合法目标（隔离关闭时只是不物化，规则由剪枝层按设计跳过），
+  // 这样关掉隔离不需要去 routing 表里逐条注释。
+  const poolNames = resolvePoolDefinitions(ctx.config).map(def => def.name);
+  const builtinPoolNames = Object.values(POOL_NAMES);
+  if (poolNames.includes(value) || poolNames.includes(clean)) return true;
+  if (builtinPoolNames.includes(value) || builtinPoolNames.includes(clean)) return true;
+
   if (/^负载均衡-哈希 \(/.test(value) || /^负载均衡-哈希 \(/.test(clean)) return true;
 
   // 地区组与大洲组
@@ -152,6 +165,20 @@ function resolveTo(to, ctx) {
   }
   const value = to.trim();
   if (BUILTIN_TARGETS.has(value.toUpperCase())) return value.toUpperCase();
+
+  // `@pool:<池名>`：求值为该池物化后的策略组名（不是节点列表）
+  if (value.startsWith(POOL_PREFIX)) {
+    const poolName = value.slice(POOL_PREFIX.length).trim();
+    if (!poolName) {
+      throw new Error('routing: `@pool:` 后缺少池名');
+    }
+    const def = resolvePoolDefinitions(ctx.config).find(item => item.name === poolName);
+    if (!def) {
+      const builtin = resolvePoolDefinitions(ctx.config).filter(item => item.builtin).map(item => item.name);
+      throw new Error(`routing: 节点池「${poolName}」不存在（当前可用内置池: ${builtin.join(' / ') || '无'}；自定义池见 pools）`);
+    }
+    return def.name;
+  }
 
   const refEntry = ctx.registries.groups?.[value];
   if (refEntry) {

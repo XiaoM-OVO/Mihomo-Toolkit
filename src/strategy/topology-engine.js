@@ -236,7 +236,7 @@ function evaluateGroupDefinition(groupDef, context = {}) {
 
   // 3. 构建宏上下文 (地区/家宽/中国分流等口径一律由调用方显式传入，禁止在此启发式推断)
   const defaultProxy = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
-  const resiGroup = context.residentialGroup || ((userConfig.enableResidential && buckets.residential?.length) ? ['家宽优选'] : []);
+  const resiGroup = context.residentialGroup || ((userConfig.enableIsolation && buckets.residential?.length) ? ['家宽优选'] : []);
   const domesticGroup = context.domesticGroup || [];
   const nonCnRegions = context.nonCnRegions || [];
 

@@ -10,6 +10,8 @@ const { FIELDS_BY_KEY } = require('../data');
 const { ADS_GROUPS } = require('../config/catalog');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
 const { validateGroups } = require('./matcher');
+const { resolvePoolDefinitions, createPoolMatchers } = require('./pools');
+const { POOL_NAMES } = require('../data/default-pools');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
 const { stripGroupDecoration, NON_CN_EXCLUDED_GROUPS, CN_CORE_PROXY_GROUPS } = require('./presentation');
 
@@ -274,18 +276,22 @@ function buildProxyTopology({
   const mixedRegionIds = [...CONTINENT_DEFS.map(c => c.id), 'other'];
 
   // 1. 初始化分发桶
+  // 节点池由数据表 + 用户 `pools` 声明决定：低倍率池恒在，三个隔离池由 `enableIsolation` 打开。
+  const poolDefs = resolvePoolDefinitions(userConfig);
+  const poolMatchers = createPoolMatchers(poolDefs);
+
   const buckets = {
     unknown: [],
-    lowMulti: [],
-    highMulti: [],
-    experimental: [],
     info: [],
     allStandard: [],
     special: [],
     other: [],
-    residential: [],
     resiRegionMap: {}
   };
+
+  poolDefs.forEach(def => {
+    buckets[def.bucket] = [];
+  });
 
   regionDefs.forEach(r => {
     const key = r.id || r.name;
@@ -315,10 +321,6 @@ function buildProxyTopology({
       return;
     }
 
-    const tags = item.tags || [];
-    const multi = item.attrs?.multiNum ?? 1;
-    const isHighMulti = multi > (userConfig.highMultiThreshold ?? 2.5);
-
     // 2.3 业务特征池与专用池并行分发 (多维事实保留，不互相截断)
     // 🌟 将节点加入其命中的通用业务特征池 (AI, 流媒体, 游戏等)；跳过由专用分支独立维护的桶，避免重复入桶
     (item.featurePools || []).forEach(p => {
@@ -327,27 +329,18 @@ function buildProxyTopology({
       addToBucket(buckets[p], finalName);
     });
 
-    // 家宽池 (由 enableResidential 策略控制是否入桶)
-    if (userConfig.enableResidential && tags.includes('residential')) {
-      addToBucket(buckets.residential, finalName);
+    // 2.3.1 节点池分发：一份节点可以同时属于多个池（池只描述身份，不互相截断）
+    const matchedPools = poolMatchers.filter(matcher => matcher.test(item));
+    matchedPools.forEach(({ def }) => {
+      if (!buckets[def.bucket]) buckets[def.bucket] = [];
+      addToBucket(buckets[def.bucket], finalName);
+    });
+
+    // 家宽池按地区记录，供 residentialNodeGroups 注入使用
+    if (matchedPools.some(({ def }) => def.name === POOL_NAMES.residential)) {
       const resiKey = item.regionInfo?.id || 'other';
       if (!buckets.resiRegionMap[resiKey]) buckets.resiRegionMap[resiKey] = [];
       addToBucket(buckets.resiRegionMap[resiKey], finalName);
-    }
-
-    // 低倍率池（全量：是否允许下载由使用侧按 forbidDownload 排除）
-    if (tags.includes('lowMulti')) {
-      addToBucket(buckets.lowMulti, finalName);
-    }
-
-    // 高倍率专用池
-    if (userConfig.isolateHighMulti && isHighMulti) {
-      addToBucket(buckets.highMulti, finalName);
-    }
-
-    // 实验专用池 (由 isolateExperimental 策略控制是否入桶)
-    if (userConfig.isolateExperimental && tags.includes('experimental')) {
-      addToBucket(buckets.experimental, finalName);
     }
 
     // 2.4 主力地区组与全量标准池门禁判定 (Main Region & AllStandard Gating)
@@ -356,17 +349,8 @@ function buildProxyTopology({
       return;
     }
 
-    // 隔离门禁：命中隔离策略时从主力地区桶与全量标准池中剔除
-    if (userConfig.isolateDownload && tags.includes('lowMulti')) {
-      return;
-    }
-    if (userConfig.enableResidential && tags.includes('residential')) {
-      return;
-    }
-    if (userConfig.isolateHighMulti && isHighMulti) {
-      return;
-    }
-    if (userConfig.isolateExperimental && tags.includes('experimental')) {
+    // 隔离门禁：命中隔离池的成员从主力地区桶与全量标准池中剔除（池桶里仍然保留）
+    if (matchedPools.some(({ def }) => def.isolate)) {
       return;
     }
 
@@ -457,19 +441,33 @@ function buildProxyTopology({
     if (buckets.special?.length > 0) {
       logger.debug(`📦 [📌 特殊节点] 汇入 ${buckets.special.length} 个节点`);
     }
-    if (userConfig.enableResidential && buckets.residential?.length > 0) {
-      logger.debug(`📦 [🏠 家宽优选] 汇入 ${buckets.residential.length} 个节点`);
-    }
-    if (userConfig.isolateHighMulti && buckets.highMulti?.length > 0) {
-      logger.debug(`📦 [🛑 高倍率节点] 汇入 ${buckets.highMulti.length} 个节点`);
-    }
+    poolDefs.forEach(def => {
+      const members = buckets[def.bucket] || [];
+      if (members.length > 0) {
+        logger.debug(`📦 [节点池 ${def.name}] 汇入 ${members.length} 个节点`);
+      }
+    });
   }
 
-  const resiPrefix = (userConfig.enableResidential && buckets.residential.length) ? ['家宽优选'] : [];
+  // 池的建组条件：`always` 池直接物化；`onDemand` 池要等某条分流规则把它当目标（引用即激活）
+  const isPoolMaterialized = def => def.group === 'always' || referencedTargets.has(def.name);
+  const poolMembers = def => buckets[def.bucket] || [];
+  const activePool = name => {
+    const def = poolDefs.find(d => d.name === name);
+    return (def && isPoolMaterialized(def) && poolMembers(def).length > 0) ? def : null;
+  };
+
+  const residentialPool = activePool(POOL_NAMES.residential);
+  const highMultiPool = activePool(POOL_NAMES.highMulti);
+  const experimentalPool = activePool(POOL_NAMES.experimental);
+  const lowMultiPool = poolDefs.find(def => def.name === POOL_NAMES.lowMulti) || null;
+  const lowMultiMembers = lowMultiPool ? poolMembers(lowMultiPool) : [];
+
+  const resiPrefix = residentialPool ? ['家宽优选'] : [];
   const proxyTarget = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
 
-  const highMultiRef = (userConfig.isolateHighMulti && buckets.highMulti.length > 0) ? [HIGH_MULTI_GROUP] : [];
-  const experimentalRef = (userConfig.isolateExperimental && buckets.experimental.length > 0) ? [EXPERIMENTAL_GROUP] : [];
+  const highMultiRef = highMultiPool ? [HIGH_MULTI_GROUP] : [];
+  const experimentalRef = experimentalPool ? [EXPERIMENTAL_GROUP] : [];
 
   const baseOptions = ['手动选择', '自动选择', '故障转移', ...highMultiRef, ...experimentalRef, ...resiPrefix, ...activeRegionGroups];
   const standardOptions = dedupe([proxyTarget, ...baseOptions]);
@@ -528,10 +526,10 @@ function buildProxyTopology({
     { name: '故障转移', type: 'fallback', url: testURL, interval: testInterval, proxies: activeRegionGroups }
   );
 
-  // 家宽优选：开关是特性门——只有开关打开且确有家宽节点时才建组；
-  // 空组会被引用它的规则继承成悬空引用，由剪枝阶段的「目标必须存在」兜底并告警。
-  if (userConfig.enableResidential && buckets.residential.length > 0) {
-    finalGroups.push({ name: '家宽优选', type: 'fallback', url: testURL, interval: testInterval, proxies: buckets.residential });
+  // 隔离池建组：池成员非空才建组（不产生只有 DIRECT 的空壳，与 10.13 同一口径）。
+  // 建组顺序沿用历史骨架：家宽 → 下载 → 高倍率 → 实验，避免无关产物漂移。
+  if (residentialPool) {
+    finalGroups.push({ name: '家宽优选', type: 'fallback', url: testURL, interval: testInterval, proxies: poolMembers(residentialPool) });
   }
 
   // 下载相关组：低倍率池是节点身份，「禁止下载」只在使用侧排除，不污染池本身。
@@ -541,19 +539,32 @@ function buildProxyTopology({
       .filter(n => (n.tags || []).includes('forbidDownload'))
       .map(n => n.proxy?.name || n.rawName)
   );
-  const downloadableNodes = buckets.lowMulti.filter(name => !forbidDownloadNames.has(name));
+  const downloadableNodes = lowMultiMembers.filter(name => !forbidDownloadNames.has(name));
   if (downloadableNodes.length > 0) {
     finalGroups.push(buildSelect('下载策略', ['DIRECT', '负载均衡-轮询', '自动选择', ...downloadableNodes]));
     finalGroups.push({ name: '负载均衡-轮询', type: 'load-balance', strategy: 'round-robin', url: testURL, interval: 300, lazy: true, proxies: downloadableNodes, hidden: true });
   }
 
-  if (userConfig.isolateHighMulti && buckets.highMulti.length > 0) {
-    finalGroups.push(buildSelect(HIGH_MULTI_GROUP, buckets.highMulti));
+  if (highMultiPool) {
+    finalGroups.push(buildSelect(HIGH_MULTI_GROUP, poolMembers(highMultiPool)));
   }
 
-  if (userConfig.isolateExperimental && buckets.experimental.length > 0) {
-    finalGroups.push(buildSelect(EXPERIMENTAL_GROUP, buckets.experimental));
+  if (experimentalPool) {
+    finalGroups.push(buildSelect(EXPERIMENTAL_GROUP, poolMembers(experimentalPool)));
   }
+
+  // 自定义池：按声明顺序物化（组类型 / 隐藏 / 引用即激活都由池定义决定）
+  poolDefs
+    .filter(def => !def.builtin && isPoolMaterialized(def))
+    .forEach(def => {
+      const members = poolMembers(def);
+      if (members.length === 0) return;
+      if (def.type === 'fallback') {
+        finalGroups.push({ name: def.name, type: 'fallback', url: testURL, interval: testInterval, proxies: members, hidden: def.hidden === true });
+      } else {
+        finalGroups.push(buildSelect(def.name, members, def.hidden === true));
+      }
+    });
 
   // 中国分流组：只有某条生效规则把它当目标时才生成（引用即激活）
   if (referencedTargets.has('中国分流')) {
@@ -668,10 +679,10 @@ function buildProxyTopology({
     }
   });
 
-  // 🏠 家宽节点注入：将指定地区的家宽节点追加到目标应用组
-  if (userConfig.enableResidential && userConfig.residentialNodeGroups && buckets.residential.length > 0) {
+  // 🏠 家宽节点注入：将指定地区的家宽节点追加到目标应用组（家宽池已打开时才生效）
+  if (residentialPool && userConfig.residentialNodeGroups) {
     const resiGroups = userConfig.residentialNodeGroups;
-    const allResiNodes = buckets.residential;
+    const allResiNodes = poolMembers(residentialPool);
     const resiRegionMap = buckets.resiRegionMap || {};
     for (const [regionKey, targetGroups] of Object.entries(resiGroups)) {
       if (!regionKey || !Array.isArray(targetGroups)) continue;

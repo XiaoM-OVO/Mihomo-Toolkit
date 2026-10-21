@@ -115,6 +115,27 @@ export type GroupDeclarationEntry = (
 ) & { disabled?: boolean };
 
 /**
+ * 自定义节点池：用 match 条件从节点集合里圈出一批节点。
+ * 池本身不是策略组；被 `@pool:<池名>` 或分流规则引用时才物化成组（引用即激活）。
+ */
+export interface PoolDefinition {
+  /** 池名（同时是物化后的策略组名，内置池已占用「家宽优选 / 高倍率优选 / 实验节点 / 低倍率节点」） */
+  name: string;
+  /** 节点匹配配方（必填，与 groups 的 match 同构） */
+  match: CustomGroupRecipe | CustomGroupRecipe[];
+  /** 黑名单排除配方 */
+  exclude?: CustomGroupRecipe | CustomGroupRecipe[];
+  /** 池成员是否从地区池与全量标准池中剔除（默认 false） */
+  isolate?: boolean;
+  /** 物化后的组是否在界面隐藏（默认 false） */
+  hidden?: boolean;
+  /** 物化时机：always（总是建组）| onDemand（被引用才建，默认） */
+  group?: 'always' | 'onDemand';
+  /** 物化后的组类型：select (默认) | fallback */
+  type?: 'select' | 'fallback';
+}
+
+/**
  * 分流表条目：数组顺序即优先级（前者先匹配）。
  * - `preset`：展开一整个预设段（订阅直连 / 广告 / AI / 流媒体 / 社交 / 游戏 / 开发 / 专项 / 系统 / 进程 / 下载 / 国内外 / 兜底）
  * - `service`：展开单个服务（内置目录键或 `customServices` 键）
@@ -125,7 +146,7 @@ export interface RoutingEntry {
   preset?: string;
   service?: string;
   rule?: string;
-  /** 目标：内置目标 (DIRECT/REJECT/…) / 内置组目录键 / 自定义组名 */
+  /** 目标：内置目标 (DIRECT/REJECT/…) / 内置组目录键 / 自定义组名 / `@pool:<池名>` */
   to?: string;
   /** 关闭该条目（默认顺序表里用于表达「默认不启用」） */
   disabled?: boolean;
@@ -214,16 +235,18 @@ export interface ToolkitConfig {
   aiPreferredRegions?: string[];
 
   // 🚀 高级分组特性
-  /** 是否开启高倍率节点隔离独立分组 */
-  isolateHighMulti?: boolean;
+  /**
+   * 隔离机制总开关：打开后启用「家宽优选 / 高倍率优选 / 实验节点」三个内置隔离池，
+   * 池成员从地区池与全量标准池中剔除（默认 false，关闭时与旧版行为一致）。
+   */
+  enableIsolation?: boolean;
   /** 高倍率判定阈值（倍率大于等于此值判定为高倍率，默认 2.5） */
   highMultiThreshold?: number;
-  /** 是否开启低倍率/下载专用节点隔离分组 */
-  isolateDownload?: boolean;
-  /** 是否开启实验节点隔离独立分组（含 测试/实验/备用/测速 字样的节点聚合为「🧪 实验节点」） */
-  isolateExperimental?: boolean;
-  /** 是否开启家宽/住宅 IP 节点隔离分组 */
-  enableResidential?: boolean;
+  /**
+   * 自定义节点池：用 match 条件圈出一组节点，被 `@pool:<池名>` 或分流规则引用时物化成策略组。
+   * 内置池已占用「家宽优选 / 高倍率优选 / 实验节点 / 低倍率节点」四个名字。
+   */
+  pools?: PoolDefinition[];
   /** 自定义地区分组阈值（节点数达到此值时独立建组，默认 3） */
   minorNodeThreshold?: number;
   /** 主力免折叠大区代码清单（即使节点数低于阈值也保证独立建组，默认 ["cn", "hk", "tw", "jp", "kr", "sg", "us"]） */
