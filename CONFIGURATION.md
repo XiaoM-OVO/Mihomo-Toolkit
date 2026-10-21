@@ -139,8 +139,8 @@ match:
   # 2. 节点倍率 (支持区间 [0, 1.5]、不等式 '<= 1.5'、'> 2.0'、'== 1.0')
   multi: "<= 1.5"
 
-  # 3. 标签匹配 (支持单标签、数组 OR、取反 '!download'、或复合 { any: [...], all: [...] })
-  tags: ["streaming", "!download"]
+  # 3. 标签匹配 (支持单标签、数组 OR、取反 '!lowMulti'、或复合 { any: [...], all: [...] })
+  tags: ["streaming", "!lowMulti"]
 
   # 4. 名称/正则 (支持子串 '专线'、正则表达式 '/(?:iepl|iplc)/i')
   pattern: "/(?:iepl|iplc|bgp)/i"
@@ -209,7 +209,7 @@ groups:
     match:
       region: ["jp", "kr"]
       multi: "<= 1.0"
-      tags: ["!download"]
+      tags: ["!lowMulti"]
     proxies:
       - "@matchedNodes"
       - "DIRECT"
@@ -349,7 +349,8 @@ groupIcons:
 1. **`isolateHighMulti: true`（高倍率隔离）**：
    - 当节点倍率 >= `highMultiThreshold`（默认 2.5 倍）时，该节点会被**强行移出**普通的地区测速池（防止自动测速跑分或看 4K 视频时瞬间榨干机场月度流量配额！），统一收拢至独立的「`🚀 高倍率优选`」策略组中，由用户按需手动调用。
 2. **`isolateDownload: true`（下载低倍率隔离）**：
-   - 当节点倍率 <= `lowMultiThreshold`（默认 0.99 倍，例如 0.1x 节点）时，该节点被从主力大区池剔除，单独收拢至「`⏬ 下载策略`」组，专供大流量下载工具使用。
+   - 当节点倍率 <= `lowMultiThreshold`（默认 0.99 倍，例如 0.1x 节点）时，该节点被从主力大区池剔除，只留在低倍率池中；「`⏬ 下载策略`」与「`🔄 负载均衡-轮询`」按需从这个池取成员。
+   - 低倍率池包含**全部**低倍率节点；节点名标记「禁止下载」只会让它被下载组排除，不影响它属于低倍率池这一事实。
 3. **`isolateExperimental: true`（测试/实验节点隔离）**：
    - 过滤名称中带有“测试 / 实验 / 试用 / 测速 / 流量”等关键词的节点，将其移出主力路由，归纳到「`🧪 实验节点`」组，避免不稳定的实验节点拉低自动测速组的整体可用率。
 
@@ -513,7 +514,7 @@ include:
 | `strictRegionMatch`| `boolean` | `false` | `any` | `override` | **地区识别严格度**：`true` 为严格官方标准字典，`false` 允许国旗 Emoji 与启发式捕获。 |
 | `adTextThreshold` | `number` | `6` | `any` | `override` | **纯文本广告拦截阈值**：节点名无数字且无任何网络线路特征时，字符长度超过此值判定为广告丢弃。 |
 | `lowMultiThreshold`| `number` | `0.99` | `any` | `override` | **低倍率判定阈值**：倍率 <= 此值时归入低倍率分桶（设为 `0` 关闭）。 |
-| `isolateDownload` | `boolean` | `false` | `any` | `override` | **低倍率隔离**：`true` 将低倍率节点从常规大区池中移出，归入「`⏬ 下载策略`」组。 |
+| `isolateDownload` | `boolean` | `false` | `any` | `override` | **低倍率隔离**：`true` 将低倍率节点从常规大区池中移出（下载组会自动排除标记「禁止下载」的节点）。 |
 | `highMultiThreshold`| `number` | `2.5` | `any` | `override` | **高倍率判定阈值**：倍率 >= 此值判定为高倍率节点。 |
 | `isolateHighMulti` | `boolean` | `false` | `any` | `override` | **高倍率隔离**：`true` 将高倍率节点从常规大区池移出，收拢至「`🚀 高倍率优选`」组。 |
 | `isolateExperimental`| `boolean`| `false` | `any` | `override` | **实验节点隔离**：`true` 将含测试/备用等字样的节点移出常规池，收拢至「`🧪 实验节点`」组。 |
@@ -557,7 +558,7 @@ include:
 | `to` | 目标覆写：内置目标（`DIRECT` / `REJECT` / `REJECT-DROP`）或组引用键 | `{ service: 'twitter', to: 'chatgpt' }` |
 | `disabled: true` | 跳过该条目（用于「默认表里保留、按需打开」） | 见 `quic` / `social` 示例 |
 
-预设清单（`PRESET_DEFINITIONS`）：`subscription`（订阅直连与基础网络）、`quic`、`ads`、`ai`、`streaming`、`social`、`game`、`dev`、`specialized`、`system`、`process`、`download`、`domestic`、`final`。分类预设 = **该分类下全部服务 + `customServices` 里新增的服务**；只要一部分就改用逐条 `{ service }`。
+预设清单（`PRESET_DEFINITIONS`）：`subscription`（订阅直连与基础网络）、`quic`、`ads`、`ai`、`streaming`、`social`、`game`、`dev`、`specialized`、`system`、`process`（进程直连）、`bt`（BT 追踪器 + 下载软件，默认直连）、`download`（游戏 / 安卓下载规则集）、`domestic`、`final`。分类预设 = **该分类下全部服务 + `customServices` 里新增的服务**；只要一部分就改用逐条 `{ service }`。
 
 组与规则的关系：**规则指向谁，谁才会被建出来**。表里没有出现的分类不会生成策略组；反过来，`groups` 里用 `{ ref }` 声明的组即使表里没有规则也会建出来（供手动切换），只是不会有流量进它。
 
@@ -574,8 +575,9 @@ routing:
   - preset: dev
   - service: telegram
   - preset: system
-  - preset: process         # 去掉这一条 = 不要进程直连 / BT 规则
-  - preset: download
+  - preset: process         # 进程直连（qBittorrent / 迅雷等）
+  - preset: bt              # BT 追踪器 + 下载软件进程，默认直连
+  - preset: download        # 游戏 / 安卓下载规则集 → 下载策略（低倍率池）
   - preset: domestic
   - preset: final
 ```
@@ -808,6 +810,7 @@ routing:
   - service: telegram
   - preset: system
   - preset: process
+  - preset: bt
   - preset: download
   - preset: domestic
   - preset: final

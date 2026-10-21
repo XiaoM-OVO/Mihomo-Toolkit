@@ -355,7 +355,7 @@ groups:
 
 - `DEFAULT_CONFIG.groups`：全部服务 `ref`（含默认关闭的社交 / 专项）。是否生成由 10.3 决定，故「列出来」不影响默认产物。
 - `DEFAULT_CONFIG.routing`：默认条目由 `src/data/default-routing.js` 的**显式顺序表**给出（该表是「默认分流顺序」的单一真相源）；条目只写 `preset` / `service` / `rule` 与目标引用，规则文本与 Provider 由 catalog 数据补齐。
-- 默认顺序与今日一致：`pre: subscription` → `ads` → `ai` → `streaming` → `social`（默认关）→ `game` → `dev` → `specialized`（telegram 默认开；crypto / paypal / webrtc 默认关）→ `system` → `process` → `download` → `domestic` → `final`（`MATCH`）。
+- 默认顺序与今日一致：`pre: subscription` → `ads` → `ai` → `streaming` → `social`（默认关）→ `game` → `dev` → `specialized`（telegram 默认开；crypto / paypal / webrtc 默认关）→ `system` → `process` → `bt` → `download` → `domestic` → `final`（`MATCH`）。
 - 每个 `preset` 的默认开关沿用今日 A 类开关的默认值（见 10.7）。
 - 例外：`preset: ads` 展开为**两条独立规则来源**——`ad-block`（默认开，Provider `geosite/category-ads-all`）与 `anti-ad`（默认关，Provider `https://anti-ad.net/clash.yaml`），二者共享目标组「🚫 广告拦截」。两条目各自可被 `service` 单点引用或 `disabled` 关闭；不合并为一条，以避免把默认关闭的 `anti-ad` 规则强推生效。因此 `ads` 的默认输出仍只有 `RULE-SET,ads` 一条。
 
@@ -444,6 +444,21 @@ groups:
 - **不变量（新增）**：`prune.js` 阶段 4 的清理口径从「目标组刚被淘汰」升级为**「规则目标必须真实存在（策略组 ∪ 物理节点 ∪ 内置目标）」**，不满足则整条跳过并 `warn` 汇总。该不变量同时兜住了「开关关闭」「空桶」「被 DSE 剪掉」三种悬空来源，替代了此前缺失的「规则目标校验」。
 - **边界**：条件合法只针对这三个真实组名；拼错仍 fail-closed。隔离组不支持 `{ ref }`（自动桶不是目录条目），自定义隔离组用 `match: { tag: 'experimental' }` 自己声明。
 - 验证：636 条测试全绿（新增 `test/pipeline/isolation-groups.test.js` 4 例、`prune` 悬空目标 1 例）；默认产物 golden 零漂移。
+
+**10.14 低倍率池与下载口径收敛（已实施，2026-10-21）**
+
+> 目标：把 `下载策略` 身上粘着的三种身份拆开——池（哪些节点便宜）、出口（下载走哪）、BT 指向（BT 流量去哪）。
+
+- **池只表达身份**：节点标签/特征桶 `download` 更名 `lowMulti`，含义收窄为「倍率低」，不再预先过滤「是否允许下载」。
+- **禁止下载独立打标**：`forbidDownload` 成为独立 tag（不进入 `featurePools`），是否排除由使用侧决定。`低倍率池 = 全部低倍率节点`，不再被资格判断污染。
+- **使用侧排除**：`⏬ 下载策略` 与 `🔄 负载均衡-轮询` 的成员 = 低倍率池中不带 `forbidDownload` 的节点；池为空时两组都不生成，指向它们的 `download` 规则由 `prune` 阶段 4 一并剪除（沿用「不建空组」口径）。
+- **BT 拆段**：`process` 预设只保留「进程直连」；新增 `bt` 预设 = BT 追踪器规则 + `processProxy*` 软件进程，默认目标 `DIRECT`，用户可用 `{ preset: bt, to: <组> }` 整段改道。`download` 预设同样支持 `to`（此前两个预设的 `to` 被静默忽略）。
+- **`isolateDownload` 口径修正**：剔除判断从 `download` 标签改为 `lowMulti` 标签，因此标记禁止下载的低倍率节点也会被隔离（此前会漏在主池），下载侧排除与隔离侧剔除现在是两件独立的事。
+- **默认产物变更（按 10.8 第 1 条，已重采 golden）**：`IDMan.exe` / `fdm.exe` 目标由 `⏬ 下载策略` 改为 `DIRECT`；追踪器规则从 `process` 段移到 `bt` 段（文本与相对位置不变）。默认样本无低倍率节点，故默认产物不含 `⏬ 下载策略` / `🔄 负载均衡-轮询`，`download-games` / `download-android` 两条规则与同名 Provider 一并被剪：**默认产物从 32 组 / 59 规则 / 42 Provider 变为 31 组 / 57 规则 / 40 Provider**。`social-enabled` 场景相应为 35 组 / 61 规则。
+- **池依赖组的缺席不算悬空引用**：`prune` 阶段 4 把 `下载策略` / `负载均衡-轮询` 列为「池依赖目标」，池空时其规则按设计跳过，只记 debug 日志，不触发 `⚠️ 规则目标不存在` 告警（否则每次默认运行都会刷一条噪音）。
+- **禁止下载标记可展示**：`FEATURE_ICONS` / `FEATURE_TEXT_MAP` 的 `no_download` 键随标签改名同步为 `forbidDownload`，节点名上重新能看到 `🚫` 与「禁止下载」。
+- 验证：638 条测试全绿（新增「禁止下载只在使用侧排除」「空池不建组且规则剪除」2 例）；`lint` / `verify:arch` / `verify:docs` 通过。
+- **残留**：10.10 末尾所述 `trafficDirection` 推导「中国分流」成员顺序与「漏网之鱼」兜底顺序的问题，本批次未动，仍待骨架组声明化。
 
 **附：选型过程（历史，已归档为结论）**
 

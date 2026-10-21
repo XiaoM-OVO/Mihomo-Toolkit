@@ -98,8 +98,8 @@
 46  RULE-SET,bt-trackers-public,DIRECT
 47  DOMAIN-KEYWORD,tracker,DIRECT
 48  DOMAIN-KEYWORD,announce,DIRECT
-49  PROCESS-NAME,IDMan.exe,⏬ 下载策略
-50  PROCESS-NAME,fdm.exe,⏬ 下载策略
+49  PROCESS-NAME,IDMan.exe,DIRECT
+50  PROCESS-NAME,fdm.exe,DIRECT
 51  RULE-SET,download-games-cn,DIRECT
 52  RULE-SET,download-games,⏬ 下载策略
 53  RULE-SET,download-android,⏬ 下载策略

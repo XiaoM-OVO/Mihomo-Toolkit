@@ -237,6 +237,7 @@ routing:                          # 分流表：顺序即优先级，表里没�
   - service: telegram
   - preset: system
   - preset: process
+  - preset: bt
   - preset: download
   - preset: domestic
   - preset: final
