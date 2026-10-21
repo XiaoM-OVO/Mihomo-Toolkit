@@ -81,14 +81,32 @@ function applyAdditiveFields(merged, logger) {
  */
 const REMOVED_FIELD_SET = new Set(REMOVED_FIELDS);
 
+/**
+ * 退役字段的专用迁移提示。
+ *
+ * 开关类字段都指向 `routing` 表；但 `customRules` / `customGroups` 是「搬家」而不是
+ * 「换开关」（前者进 `routing` 的 `{ rule, to }`，后者进 `groups`），统一文案会让用户
+ * 以为把它们塞进 routing 就完事，所以单独给出落点。
+ */
+const REMOVED_FIELD_HINTS = {
+  customRules: '规则请改写为 `routing` 里的 `{ rule: \'DOMAIN-SUFFIX,a.com\', to: <组名> }\` 条目（表内位置即优先级）',
+  customGroups: '组请改写为 `groups` 声明（组只声明成员与呈现，不再携带 rules / providers / process）',
+};
+
 function assertNoRemovedFields(config) {
   const removed = Object.keys(config || {}).filter(key => REMOVED_FIELD_SET.has(key));
   if (removed.length === 0) return;
-  const names = removed.map(key => `\`${key}\``).join('、');
-  throw new Error(
-    `[Config] 已删除字段 ${names}：批次 3 起分流由 \`routing\` 表表达` +
-      '（批量用 preset、单项用 service），迁移对照见 ROADMAP.md 10.7'
-  );
+  const plain = removed.filter(key => !REMOVED_FIELD_HINTS[key]);
+  const hinted = removed.filter(key => REMOVED_FIELD_HINTS[key]);
+  const parts = [];
+  if (plain.length > 0) {
+    parts.push(
+      `已删除字段 ${plain.map(key => `\`${key}\``).join('、')}：批次 3 起分流由 \`routing\` 表表达` +
+        '（批量用 preset、单项用 service）'
+    );
+  }
+  for (const key of hinted) parts.push(`已删除字段 \`${key}\`：${REMOVED_FIELD_HINTS[key]}`);
+  throw new Error(`[Config] ${parts.join('；')}，迁移对照见 ROADMAP.md 10.7`);
 }
 
 /**

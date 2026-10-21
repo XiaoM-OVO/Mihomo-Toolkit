@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { FIELDS, DEFAULTLESS_FIELDS, REMOTE_DENIED_FIELDS } = require('../../src/data');
+const { FIELDS, DEFAULTLESS_FIELDS, REMOTE_DENIED_FIELDS, REMOVED_FIELDS } = require('../../src/data');
 const {
   absolutizeMountPaths,
   readMountFile,
@@ -65,6 +65,32 @@ describe('【Pipeline】配置面一致性与外挂文件管理 (config-surface)
     [],
     `发现隐形字段（代码在读但注册表里查不到）：\n` +
     [...ghosts.entries()].map(([k, v]) => `  ${k}  ← ${[...v].join(', ')}`).join('\n')
+  );
+});
+
+it('退役字段解析期 fail-closed，并给出各自的迁移落点', () => {
+  // 注册表里登记为退役：一旦重新出现就当错误，不静默忽略（否则用户以为开关还生效）
+  for (const key of ['enableAI', 'customRules', 'customGroups', 'proxyFirst']) {
+    assert.ok(REMOVED_FIELDS.includes(key), `${key} 应在 REMOVED_FIELDS 里`);
+  }
+  // 开关类：统一指向 routing 表
+  assert.throws(
+    () => resolveConfig({ enableAI: true }),
+    /已删除字段 `enableAI`：批次 3 起分流由 `routing` 表表达/
+  );
+  // customRules / customGroups：不是「换开关」，各给一句落点（否则用户会把它们塞进 routing）
+  assert.throws(
+    () => resolveConfig({ customRules: ['DOMAIN,a.com,DIRECT'] }),
+    /已删除字段 `customRules`：规则请改写为 `routing` 里的 `\{ rule: 'DOMAIN-SUFFIX,a\.com', to: <组名> \}` 条目/
+  );
+  assert.throws(
+    () => resolveConfig({ customGroups: [{ name: 'g' }] }),
+    /已删除字段 `customGroups`：组请改写为 `groups` 声明/
+  );
+  // 同时出现多个退役字段时一次报全，两类提示都保留
+  assert.throws(
+    () => resolveConfig({ enableAI: true, customGroups: [] }),
+    /`enableAI`[\s\S]*`customGroups`/
   );
 });
 
