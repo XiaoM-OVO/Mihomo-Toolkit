@@ -10,7 +10,7 @@ const { getTransportType } = require('./transport');
 const { isTrustedSynthetic, getTrustedProxyMetadata } = require('./node-trust');
 const { getIsolationBucket } = require('./isolation');
 const { isNoticeNode } = require('./notice');
-const { compressCarrierLines } = require('./metadata');
+const { compressCarrierLines, extractNodeAttributes } = require('./metadata');
 const ipaddr = require('ipaddr.js');
 const {
   REGEX_FORBID_DL,
@@ -21,21 +21,8 @@ const {
   REGEX_AD_TYPO,
   REGEX_AD_PROMO,
   REGEX_AD_PRICE,
-  TAG_MAP,
-  REGEX_ENTRY_CITY,
-  REGEX_MULTI,
-  ARCH_AVOID_SET,
-  REGEX_TECH_LINE,
-  REGEX_FLUFF_LINE,
-  LINE_MAP,
-  CARRIER_SHORT_MAP,
-  getLineQualityWeight,
   STATIC_FEATURE_RULES
 } = require('../data/cleaner-rules');
-
-function dedupe(arr) {
-  return [...new Set(arr)];
-}
 
 function toArray(val) {
   if (Array.isArray(val)) return val;
@@ -72,69 +59,6 @@ function sanitizeNodeName(rawName) {
  * @returns {Array<string>}
  */
 const compressLineArr = compressCarrierLines;
-
-/**
- * 提取节点属性 (倍率、入口城市、线路特征与质量权重)
- * @param {string} name
- * @param {object} [userConfig={}]
- */
-function extractNodeAttributes(name, userConfig = {}) {
-  const attrs = { multiNum: 1.0, multiStr: '', entryStr: '', lineArr: [], isLowMulti: false };
-
-  // 1. 提取入口城市
-  let cleanName = name.replace(REGEX_ENTRY_CITY, (match, p1) => {
-    const m = p1.replace(/[-|>至=\s]/g, '');
-    attrs.entryStr = TAG_MAP[m.toUpperCase()] || TAG_MAP[m] || m;
-    return '';
-  });
-
-  // 2. 提取倍率
-  cleanName = cleanName.replace(REGEX_MULTI, (m, m1, m2, m3) => {
-    // 排除系统架构与指令集关键词 (如 x64, x86, x32)
-    if (!m1 && !m.includes('倍') && (ARCH_AVOID_SET.has(m2) || ARCH_AVOID_SET.has(m3))) {
-      return m;
-    }
-    const num = parseFloat(m1 || m2 || m3);
-    if (!isNaN(num) && num >= 0 && num <= 50) {
-      attrs.multiNum = num;
-      if (num !== 1) attrs.multiStr = `x${num}`;
-      if (userConfig.lowMultiThreshold > 0 && num <= userConfig.lowMultiThreshold) {
-        attrs.isLowMulti = true;
-      }
-      return '';
-    }
-    return m;
-  });
-
-  // 3. 提取线路类型
-  cleanName = cleanName.replace(REGEX_TECH_LINE, match => {
-    let key = match.toUpperCase();
-    if (key === 'AS9929') key = '9929';
-    else if (key === 'AS4837') key = '4837';
-    let short = LINE_MAP[key];
-    if (!short) {
-      const cnKey = Object.keys(CARRIER_SHORT_MAP).find(k => match.includes(k));
-      if (cnKey) short = cnKey;
-    }
-    if (short) attrs.lineArr.push(short);
-    else if (key.length >= 2) attrs.lineArr.push(key);
-    return '';
-  });
-
-  attrs.lineArr = compressLineArr(attrs.lineArr);
-
-  // 4. 提取营销标识
-  let fluffStr = '';
-  cleanName = cleanName.replace(REGEX_FLUFF_LINE, match => {
-    fluffStr += match.toUpperCase();
-    return '';
-  });
-
-  attrs.cleanLines = dedupe(attrs.lineArr).join('/');
-  attrs.bestLineWeight = getLineQualityWeight(attrs.cleanLines + fluffStr);
-
-  return { attrs, cleanName };
-}
 
 /**
  * 用户显式黑名单判定：节点名关键词 / 服务器字段命中即拦截。
@@ -468,6 +392,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
 
 module.exports = {
   sanitizeNodeName,
+  compressLineArr,
   extractNodeAttributes,
   checkNodeBlockReason,
   getFeatureRules,

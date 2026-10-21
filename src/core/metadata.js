@@ -1,19 +1,21 @@
 /**
  * -----------------------------------------------------------------------------
- * Core Layer: 节点名称元数据只读旁路提取器 (Metadata Bypass Extractor)
+ * Core Layer: 节点名称元数据与语义提取器 (Node Semantic Metadata Extractor)
  * -----------------------------------------------------------------------------
  * 职责：
- * 1. 纯函数 extractMetadata(rawName)：不修改输入，不做链式 replace
+ * 1. 纯函数单点真实源 (SSOT)：统一节点倍率、线路、入口、落地、业务特征提取；
  * 2. 复用项目现存的大区定义 (regions)、线路与运营商字典 (cleaner-rules)、
- *    倍率正则与业务特征词库 (cleaner-rules)
- * 3. 产出规范化的只读元数据契约（地区、线路、特征、倍率、完成度状态）
- * 4. 严格杜绝将 lineTier 写入元数据；线路质量权重属于后续策略层职责
+ *    倍率正则与业务特征词库 (cleaner-rules)；
+ * 3. 产出规范化只读语义契约，同时向 Envelope 提供只读旁路快照 (extractMetadata)，
+ *    向 Cleaner / Nodes 流水线提供结构化属性契约 (extractNodeAttributes / extractSemanticMetadata)；
+ * 4. 彻底消除 cleaner 与 metadata 之间的重复提取逻辑。
  */
 
 'use strict';
 
 const {
   REGEX_TECH_LINE,
+  REGEX_FLUFF_LINE,
   LINE_MAP,
   CARRIER_SHORT_MAP,
   SORTED_CARRIER_COMBOS,
@@ -21,7 +23,9 @@ const {
   STATIC_FEATURE_RULES,
   STREAMING_FEATURE_REG,
   DOMESTIC_ENTRY_CITIES,
-  REGEX_ENTRY_CITY
+  REGEX_ENTRY_CITY,
+  TAG_MAP,
+  getLineQualityWeight
 } = require('../data/cleaner-rules');
 
 const { getEnhancedRegionDefs, getRegionFlagLookup, REGION_METADATA_MAP } = require('./shared/regions');
@@ -61,11 +65,88 @@ function compressCarrierLines(arr) {
 }
 
 /**
- * 从名称中提取规范化线路与原始命中线路
+ * 提取入口城市
  * @param {string} name
- * @returns {{ lines: string[], rawMatchedLines: string[], cleanLines: string|null }}
+ * @returns {{ entryStr: string, rawMatch: string|null }}
+ */
+function extractEntry(name) {
+  if (!name || typeof name !== 'string') {
+    return { entryStr: '', rawMatch: null };
+  }
+  const match = name.match(REGEX_ENTRY_CITY);
+  if (match) {
+    const rawMatch = match[0];
+    const m = match[1].replace(/[-|>至=\s]/g, '');
+    const entryStr = TAG_MAP[m.toUpperCase()] || TAG_MAP[m] || m;
+    return { entryStr, rawMatch };
+  }
+  return { entryStr: '', rawMatch: null };
+}
+
+/**
+ * 提取节点倍率信息 (纯函数，避让架构词与普通序号)
+ * @param {string} name
+ * @param {object} [options={}]
+ * @param {number} [options.lowMultiThreshold]
+ * @returns {{ value: number, hasExplicit: boolean, str: string, isLowMulti: boolean, rawMatch: string|null }}
+ */
+function extractMultiplier(name, options = {}) {
+  if (!name || typeof name !== 'string') {
+    return { value: 1, hasExplicit: false, str: '', isLowMulti: false, rawMatch: null };
+  }
+
+  // 1. 显式 "倍率: 2.5" 或 "倍率 2.5" 语法优先匹配，防被前面的序号串扰
+  const prefixMatch = name.match(/倍率\s*[:：]?\s*(\d+(?:\.\d+)?)/i);
+  if (prefixMatch) {
+    const num = parseFloat(prefixMatch[1]);
+    if (!isNaN(num) && num >= 0 && num <= 50) {
+      const isLowMulti = Boolean(options.lowMultiThreshold > 0 && num <= options.lowMultiThreshold);
+      const str = num !== 1 ? `x${num}` : '';
+      return { value: num, hasExplicit: true, str, isLowMulti, rawMatch: prefixMatch[0] };
+    }
+  }
+
+  // 2. 显式前缀 "x0.5" / "X1.0" 匹配 (排除 x64 / x86 等架构词)
+  const xMatch = name.match(/(?<![a-zA-Z0-9])[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍(?:率)?)?/i);
+  if (xMatch) {
+    const m = xMatch[1];
+    if (!ARCH_AVOID_SET.has(m)) {
+      const num = parseFloat(m);
+      if (!isNaN(num) && num >= 0 && num <= 50) {
+        const isLowMulti = Boolean(options.lowMultiThreshold > 0 && num <= options.lowMultiThreshold);
+        const str = num !== 1 ? `x${num}` : '';
+        return { value: num, hasExplicit: true, str, isLowMulti, rawMatch: xMatch[0] };
+      }
+    }
+  }
+
+  // 3. 显式后缀 "1.5倍" / "0倍率" / "2x" 匹配
+  const suffixMatch = name.match(/(?<![a-zA-Z0-9])(\d+(?:\.\d+)?)\s*(?:[xX×]|倍(?:率)?)(?!\s*[:：\d])/i);
+  if (suffixMatch) {
+    const m = suffixMatch[1];
+    if (!ARCH_AVOID_SET.has(m)) {
+      const num = parseFloat(m);
+      if (!isNaN(num) && num >= 0 && num <= 50) {
+        const isLowMulti = Boolean(options.lowMultiThreshold > 0 && num <= options.lowMultiThreshold);
+        const str = num !== 1 ? `x${num}` : '';
+        return { value: num, hasExplicit: true, str, isLowMulti, rawMatch: suffixMatch[0] };
+      }
+    }
+  }
+
+  return { value: 1, hasExplicit: false, str: '', isLowMulti: false, rawMatch: null };
+}
+
+/**
+ * 从名称中提取规范化线路与原始命中线路，并计算质量权重
+ * @param {string} name
+ * @returns {{ lines: string[], rawMatchedLines: string[], cleanLines: string|null, bestLineWeight: number }}
  */
 function extractLines(name) {
+  if (!name || typeof name !== 'string') {
+    return { lines: [], rawMatchedLines: [], cleanLines: null, bestLineWeight: 6 };
+  }
+
   const rawMatchedLines = [];
   const normalizedLines = [];
 
@@ -90,73 +171,40 @@ function extractLines(name) {
   const dedupedLines = [...new Set(lines)];
   const cleanLines = dedupedLines.length > 0 ? dedupedLines.join('/') : null;
 
+  let fluffStr = '';
+  const fluffMatches = name.match(new RegExp(REGEX_FLUFF_LINE.source, 'gi'));
+  if (fluffMatches) {
+    fluffStr = fluffMatches.map(m => m.toUpperCase()).join('');
+  }
+  const bestLineWeight = getLineQualityWeight((cleanLines || '') + fluffStr);
+
   return {
     lines: dedupedLines,
     rawMatchedLines: [...new Set(rawMatchedLines)],
-    cleanLines
-  };
-}
-
-/**
- * 提取节点倍率信息 (纯函数，避让架构词与普通序号)
- * @param {string} name
- * @returns {{ value: number, hasExplicit: boolean }}
- */
-function extractMultiplier(name) {
-  // 1. 显式 "倍率: 2.5" 或 "倍率 2.5" 语法优先匹配，防被前面的序号串扰
-  const prefixMatch = name.match(/倍率\s*[:：]?\s*(\d+(?:\.\d+)?)/i);
-  if (prefixMatch) {
-    const num = parseFloat(prefixMatch[1]);
-    if (!isNaN(num) && num >= 0 && num <= 50) {
-      return { value: num, hasExplicit: true };
-    }
-  }
-
-  // 2. 显式前缀 "x0.5" / "X1.0" 匹配 (排除 x64 / x86 等架构词)
-  const xPrefixMatch = name.match(/(?<![a-zA-Z0-9])[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍(?:率)?)?/i);
-  if (xPrefixMatch) {
-    const m = xPrefixMatch[1];
-    if (!ARCH_AVOID_SET.has(m)) {
-      const num = parseFloat(m);
-      if (!isNaN(num) && num >= 0 && num <= 50) {
-        return { value: num, hasExplicit: true };
-      }
-    }
-  }
-
-  // 3. 显式后缀 "1.5倍" / "2x" 匹配
-  const suffixMatch = name.match(/(?<![a-zA-Z0-9])(\d+(?:\.\d+)?)\s*(?:[xX×]|倍(?:率)?)(?!\s*\d)/i);
-  if (suffixMatch) {
-    const m = suffixMatch[1];
-    if (!ARCH_AVOID_SET.has(m)) {
-      const num = parseFloat(m);
-      if (!isNaN(num) && num >= 0 && num <= 50) {
-        return { value: num, hasExplicit: true };
-      }
-    }
-  }
-
-  return {
-    value: 1,
-    hasExplicit: false
+    cleanLines,
+    bestLineWeight
   };
 }
 
 /**
  * 提取业务特征列表 (纯函数，非互斥业务标签)
  * @param {string} name
+ * @param {object} [options={}]
+ * @param {Array<object>} [options.featureRules] 可选动态特征规则列表
  * @returns {Array<string>}
  */
-function extractFeatures(name) {
+function extractFeatures(name, options = {}) {
+  if (!name || typeof name !== 'string') return [];
   const features = new Set();
+  const rules = options.featureRules || STATIC_FEATURE_RULES;
 
-  for (const rule of STATIC_FEATURE_RULES) {
-    if (rule.reg.test(name)) {
+  for (const rule of rules) {
+    if (rule.reg && rule.reg.test(name)) {
       features.add(rule.tag);
     }
   }
 
-  if (STREAMING_FEATURE_REG.test(name)) {
+  if (!options.featureRules && STREAMING_FEATURE_REG.test(name)) {
     features.add('streaming');
   }
 
@@ -250,7 +298,115 @@ function detectRegion(name, defs = DEFAULT_ENHANCED_DEFS) {
 }
 
 /**
- * 纯函数：从原始名称中提取白名单元数据
+ * 剥离入口、倍率、线路等特征词生成干净名称 (供兜底地区匹配与重命名计划使用)
+ * @param {string} name
+ * @param {object} [matches={}]
+ * @returns {string}
+ */
+function computeCleanName(name, { entryMatch, multiMatch } = {}) {
+  let clean = name;
+  if (entryMatch) clean = clean.replace(entryMatch, '');
+  if (multiMatch) clean = clean.replace(multiMatch, '');
+  clean = clean.replace(new RegExp(REGEX_TECH_LINE.source, 'gi'), '');
+  clean = clean.replace(new RegExp(REGEX_FLUFF_LINE.source, 'gi'), '');
+  return clean.trim();
+}
+
+/**
+ * 提取全量语义元数据契约 (内部核心计算)
+ * @param {string} rawName
+ * @param {object} [options={}]
+ * @returns {object}
+ */
+function extractSemanticMetadata(rawName, options = {}) {
+  const safeName = typeof rawName === 'string' ? rawName : '';
+  const multi = extractMultiplier(safeName, options);
+  const linesInfo = extractLines(safeName);
+  const entry = extractEntry(safeName);
+  const features = extractFeatures(safeName, options);
+  const { regionDef, hasConflict } = detectRegion(safeName, options.regionDefs);
+
+  let groupKey = 'unknown';
+  let regionName = null;
+  let countryCode = null;
+  let city = null;
+  let status = 'unknown';
+
+  if (hasConflict) {
+    status = 'partial';
+  } else if (regionDef) {
+    const metaMapping = REGION_METADATA_MAP[regionDef.name] || {
+      groupKey: regionDef.id || 'unknown',
+      countryCode: regionDef.code || (regionDef.id && regionDef.id.length === 2 ? regionDef.id.toUpperCase() : null),
+      regionName: regionDef.name || null
+    };
+    groupKey = metaMapping.groupKey;
+    regionName = metaMapping.regionName;
+    countryCode = metaMapping.countryCode;
+
+    const cityStr = extractCity(safeName, regionDef);
+    city = cityStr || null;
+    status = 'complete';
+  } else if (linesInfo.lines.length > 0 || multi.hasExplicit || features.length > 0) {
+    status = 'partial';
+  } else {
+    status = 'unknown';
+  }
+
+  const cleanName = computeCleanName(safeName, {
+    entryMatch: entry.rawMatch,
+    multiMatch: multi.rawMatch
+  });
+
+  return {
+    groupKey,
+    regionName,
+    countryCode,
+    city,
+    regionDef,
+    hasRegionConflict: hasConflict,
+    entryStr: entry.entryStr,
+    entryMatch: entry.rawMatch,
+    lines: linesInfo.lines,
+    rawMatchedLines: linesInfo.rawMatchedLines,
+    cleanLines: linesInfo.cleanLines || '',
+    bestLineWeight: linesInfo.bestLineWeight,
+    multiNum: multi.value,
+    multiStr: multi.str,
+    hasExplicitMulti: multi.hasExplicit,
+    isLowMulti: multi.isLowMulti,
+    features,
+    status,
+    cleanName
+  };
+}
+
+/**
+ * 提取节点属性 (给 Cleaner 模块和测试用例交付的契约)
+ * @param {string} name
+ * @param {object} [userConfig={}]
+ * @returns {{ attrs: object, cleanName: string }}
+ */
+function extractNodeAttributes(name, userConfig = {}) {
+  const meta = extractSemanticMetadata(name, {
+    lowMultiThreshold: userConfig.lowMultiThreshold
+  });
+
+  const attrs = {
+    multiNum: meta.multiNum,
+    multiStr: meta.multiStr,
+    entryStr: meta.entryStr,
+    lineArr: meta.lines,
+    cleanLines: meta.cleanLines,
+    bestLineWeight: meta.bestLineWeight,
+    isLowMulti: meta.isLowMulti
+  };
+
+  return { attrs, cleanName: meta.cleanName };
+}
+
+/**
+ * 纯函数：从原始名称中提取只读旁路元数据 (供 Envelope 与报告消费)
  * @param {string} rawName 原始节点名称
  * @returns {object} 冻结的元数据对象
  */
@@ -276,64 +432,37 @@ function extractMetadata(rawName) {
     return Object.freeze(emptyMeta);
   }
 
-  // 1. 线路提取
-  const { lines, rawMatchedLines, cleanLines } = extractLines(safeName);
-
-  // 2. 业务特征提取
-  const features = extractFeatures(safeName);
-
-  // 3. 倍率提取
-  const multiplier = extractMultiplier(safeName);
-
-  // 4. 地区与冲突识别
-  const { regionDef, hasConflict } = detectRegion(safeName);
-
-  let groupKey = 'unknown';
-  let regionName = null;
-  let countryCode = null;
-  let city = null;
-  let status = 'unknown';
-
-  if (hasConflict) {
-    status = 'partial';
-  } else if (regionDef) {
-    const metaMapping = REGION_METADATA_MAP[regionDef.name] || {
-      groupKey: regionDef.id || 'unknown',
-      countryCode: regionDef.code || (regionDef.id && regionDef.id.length === 2 ? regionDef.id.toUpperCase() : null),
-      regionName: regionDef.name || null
-    };
-    groupKey = metaMapping.groupKey;
-    regionName = metaMapping.regionName;
-    countryCode = metaMapping.countryCode;
-
-    const cityStr = extractCity(safeName, regionDef);
-    city = cityStr || null;
-
-    status = 'complete';
-  } else if (lines.length > 0 || multiplier.hasExplicit || features.length > 0) {
-    status = 'partial';
-  } else {
-    status = 'unknown';
-  }
+  const meta = extractSemanticMetadata(safeName);
 
   const result = {
-    groupKey,
-    regionName,
-    countryCode,
-    city,
-    lines: Object.freeze(lines),
-    rawMatchedLines: Object.freeze(rawMatchedLines),
-    cleanLines,
-    features: Object.freeze(features),
-    multiplier: Object.freeze(multiplier),
-    status
+    groupKey: meta.groupKey,
+    regionName: meta.regionName,
+    countryCode: meta.countryCode,
+    city: meta.city,
+    lines: Object.freeze(meta.lines),
+    rawMatchedLines: Object.freeze(meta.rawMatchedLines),
+    cleanLines: meta.cleanLines ? meta.cleanLines : null,
+    features: Object.freeze(meta.features),
+    multiplier: Object.freeze({
+      value: meta.multiNum,
+      hasExplicit: meta.hasExplicitMulti
+    }),
+    status: meta.status
   };
 
   return Object.freeze(result);
 }
 
 module.exports = {
+  compressCarrierLines,
+  extractEntry,
+  extractMultiplier,
+  extractLines,
+  extractFeatures,
+  detectRegion,
+  computeCleanName,
+  extractSemanticMetadata,
+  extractNodeAttributes,
   extractMetadata,
-  REGION_METADATA_MAP,
-  compressCarrierLines
+  REGION_METADATA_MAP
 };

@@ -2,7 +2,15 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { extractMetadata, REGION_METADATA_MAP } = require('../../src/core/metadata');
+const {
+  extractMetadata,
+  extractEntry,
+  extractMultiplier,
+  extractLines,
+  extractSemanticMetadata,
+  extractNodeAttributes,
+  REGION_METADATA_MAP
+} = require('../../src/core/metadata');
 const { getEnhancedRegionDefs } = require('../../src/core/shared/regions');
 
 describe('【Core】节点名称元数据只读旁路提取 (metadata)', () => {
@@ -184,5 +192,80 @@ describe('【Core】节点名称元数据只读旁路提取 (metadata)', () => {
       assert.ok(meta.countryCode, `${r.name} 必须包含有效 ISO 国家代码`);
       assert.ok(Object.isFrozen(meta), `${r.name} 元数据项必须已冻结`);
     }
+  });
+
+  it('extractEntry - 入口城市识别与单字标签映射', () => {
+    assert.equal(extractEntry('深-港 IEPL 01').entryStr, '深');
+    assert.equal(extractEntry('SZX-HK 01').entryStr, '深');
+    assert.equal(extractEntry('广州-香港 01').entryStr, '广');
+    assert.equal(extractEntry('CAN-HK 01').entryStr, '广');
+    assert.equal(extractEntry('北京-美国 01').entryStr, '京');
+    assert.equal(extractEntry('上海-日本 01').entryStr, '沪');
+    assert.equal(extractEntry('普通香港节点 01').entryStr, '');
+    assert.equal(extractEntry('').entryStr, '');
+    assert.equal(extractEntry(null).entryStr, '');
+  });
+
+  it('extractMultiplier - 增强倍率语法支持与指令集避让', () => {
+    assert.equal(extractMultiplier('香港 01 0倍率').value, 0);
+    assert.equal(extractMultiplier('香港 01 0倍率').str, 'x0');
+    assert.equal(extractMultiplier('香港 01 倍率: 2.5').value, 2.5);
+    assert.equal(extractMultiplier('香港 01 倍率：2.5').value, 2.5);
+    assert.equal(extractMultiplier('香港 01 x0.5').value, 0.5);
+    assert.equal(extractMultiplier('香港 01 1.5倍').value, 1.5);
+    assert.equal(extractMultiplier('香港 01 2x').value, 2);
+    assert.equal(extractMultiplier('香港 x64 01').hasExplicit, false);
+    assert.equal(extractMultiplier('香港 x86 01').hasExplicit, false);
+    assert.equal(extractMultiplier('香港 4X4 01').hasExplicit, false);
+    assert.equal(extractMultiplier('Node v1.0').hasExplicit, false);
+    assert.equal(extractMultiplier(null).value, 1);
+  });
+
+  it('extractLines - 线路、运营商压缩与质量权重计算', () => {
+    const iplc = extractLines('香港 IPLC 01');
+    assert.ok(iplc.lines.includes('IPLC'));
+    assert.equal(iplc.bestLineWeight, 1);
+
+    const cmin2 = extractLines('香港 CMIN2 01');
+    assert.ok(cmin2.lines.includes('CMIN2'));
+    assert.equal(cmin2.bestLineWeight, 2);
+
+    const as9929 = extractLines('香港 AS9929 01');
+    assert.ok(as9929.lines.includes('9929'));
+    assert.equal(as9929.bestLineWeight, 2);
+
+    const trio = extractLines('香港 电信 联通 移动 01');
+    assert.deepEqual(trio.lines, ['三网']);
+
+    const duo = extractLines('香港 电信 联通 01');
+    assert.deepEqual(duo.lines, ['电联']);
+  });
+
+  it('extractSemanticMetadata - 全量语义契约结构与单点真实源对齐', () => {
+    const meta = extractSemanticMetadata('深-港 IEPL x2.0 电信 联通 游戏', {
+      lowMultiThreshold: 0.5
+    });
+
+    assert.equal(meta.status, 'complete');
+    assert.equal(meta.groupKey, 'hk');
+    assert.equal(meta.regionName, '香港');
+    assert.equal(meta.entryStr, '深');
+    assert.ok(meta.lines.includes('IEPL'));
+    assert.ok(meta.lines.includes('电联'));
+    assert.equal(meta.multiNum, 2.0);
+    assert.equal(meta.multiStr, 'x2');
+    assert.equal(meta.hasExplicitMulti, true);
+    assert.equal(meta.isLowMulti, false);
+    assert.ok(meta.features.includes('game'));
+    assert.ok(meta.cleanName.includes('港'));
+
+    // extractNodeAttributes 契约代理测试
+    const nodeAttrs = extractNodeAttributes('深-港 IEPL x2.0 电信 联通', {
+      lowMultiThreshold: 0.5
+    });
+    assert.equal(nodeAttrs.attrs.multiNum, 2.0);
+    assert.equal(nodeAttrs.attrs.entryStr, '深');
+    assert.equal(nodeAttrs.attrs.bestLineWeight, 1);
+    assert.equal(nodeAttrs.cleanName, '港');
   });
 });
