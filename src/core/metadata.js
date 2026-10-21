@@ -22,14 +22,14 @@ const {
   ARCH_AVOID_SET,
   STATIC_FEATURE_RULES,
   STREAMING_FEATURE_REG,
-  DOMESTIC_ENTRY_CITIES,
-  REGEX_ENTRY_CITY,
   TAG_MAP,
   getLineQualityWeight
 } = require('../data/cleaner-rules');
+const { REGEX_ENTRY_CITY, MULTIPLIER_PATTERNS } = require('../data/name-grammar');
 
-const { getEnhancedRegionDefs, getRegionFlagLookup, REGION_METADATA_MAP } = require('./shared/regions');
+const { getEnhancedRegionDefs, REGION_METADATA_MAP } = require('./shared/regions');
 const { extractCity } = require('./geo');
+const { recognizeRegion } = require('./recognizer');
 
 // 模块级单例大区定义缓存，避免每次单节点提取产生高频克隆
 const DEFAULT_ENHANCED_DEFS = getEnhancedRegionDefs();
@@ -91,50 +91,28 @@ function extractEntry(name) {
  * @returns {{ value: number, hasExplicit: boolean, str: string, isLowMulti: boolean, rawMatch: string|null }}
  */
 function extractMultiplier(name, options = {}) {
-  if (!name || typeof name !== 'string') {
-    return { value: 1, hasExplicit: false, str: '', isLowMulti: false, rawMatch: null };
+  const fallback = { value: 1, hasExplicit: false, str: '', isLowMulti: false, rawMatch: null };
+  if (!name || typeof name !== 'string') return fallback;
+
+  const threshold = options.lowMultiThreshold;
+
+  // 语法顺序固定：显式「倍率: 2.5」→ 前缀「x0.5」→ 后缀「1.5倍」，命中即止。
+  for (const { kind, reg } of MULTIPLIER_PATTERNS) {
+    const m = name.match(reg);
+    if (!m) continue;
+
+    // x64 / x86 / x32 是指令集架构词，不是倍率；「倍率: 64」这类显式写法不受限。
+    if (kind !== 'prefix' && ARCH_AVOID_SET.has(m[1])) continue;
+
+    const num = parseFloat(m[1]);
+    if (isNaN(num) || num < 0 || num > 50) continue;
+
+    const isLowMulti = Boolean(threshold > 0 && num <= threshold);
+    const str = num !== 1 ? `x${num}` : '';
+    return { value: num, hasExplicit: true, str, isLowMulti, rawMatch: m[0] };
   }
 
-  // 1. 显式 "倍率: 2.5" 或 "倍率 2.5" 语法优先匹配，防被前面的序号串扰
-  const prefixMatch = name.match(/倍率\s*[:：]?\s*(\d+(?:\.\d+)?)/i);
-  if (prefixMatch) {
-    const num = parseFloat(prefixMatch[1]);
-    if (!isNaN(num) && num >= 0 && num <= 50) {
-      const isLowMulti = Boolean(options.lowMultiThreshold > 0 && num <= options.lowMultiThreshold);
-      const str = num !== 1 ? `x${num}` : '';
-      return { value: num, hasExplicit: true, str, isLowMulti, rawMatch: prefixMatch[0] };
-    }
-  }
-
-  // 2. 显式前缀 "x0.5" / "X1.0" 匹配 (排除 x64 / x86 等架构词)
-  const xMatch = name.match(/(?<![a-zA-Z0-9])[xX×]\s*(\d+(?:\.\d+)?)(?:\s*倍(?:率)?)?/i);
-  if (xMatch) {
-    const m = xMatch[1];
-    if (!ARCH_AVOID_SET.has(m)) {
-      const num = parseFloat(m);
-      if (!isNaN(num) && num >= 0 && num <= 50) {
-        const isLowMulti = Boolean(options.lowMultiThreshold > 0 && num <= options.lowMultiThreshold);
-        const str = num !== 1 ? `x${num}` : '';
-        return { value: num, hasExplicit: true, str, isLowMulti, rawMatch: xMatch[0] };
-      }
-    }
-  }
-
-  // 3. 显式后缀 "1.5倍" / "0倍率" / "2x" 匹配
-  const suffixMatch = name.match(/(?<![a-zA-Z0-9])(\d+(?:\.\d+)?)\s*(?:[xX×]|倍(?:率)?)(?!\s*[:：\d])/i);
-  if (suffixMatch) {
-    const m = suffixMatch[1];
-    if (!ARCH_AVOID_SET.has(m)) {
-      const num = parseFloat(m);
-      if (!isNaN(num) && num >= 0 && num <= 50) {
-        const isLowMulti = Boolean(options.lowMultiThreshold > 0 && num <= options.lowMultiThreshold);
-        const str = num !== 1 ? `x${num}` : '';
-        return { value: num, hasExplicit: true, str, isLowMulti, rawMatch: suffixMatch[0] };
-      }
-    }
-  }
-
-  return { value: 1, hasExplicit: false, str: '', isLowMulti: false, rawMatch: null };
+  return fallback;
 }
 
 /**
@@ -213,88 +191,18 @@ function extractFeatures(name, options = {}) {
 
 /**
  * 识别地区定义及是否存在未解决的冲突
+ *
+ * 判定实现统一在 `core/recognizer`（与 geo 共用），这里只保留 metadata 需要的
+ * 形状：落地地区 + 冲突标记。冲突不再意味着「认不出落地」——落地仍取最后出现
+ * 的地区（`香港 转 日本` → 日本），冲突只表示名字里出现了多个地区/国旗不一致。
+ *
  * @param {string} name
  * @param {Array<object>} [defs=DEFAULT_ENHANCED_DEFS]
  * @returns {{ regionDef: object|null, hasConflict: boolean }}
  */
 function detectRegion(name, defs = DEFAULT_ENHANCED_DEFS) {
-  if (!name || typeof name !== 'string') {
-    return { regionDef: null, hasConflict: false };
-  }
-
-  // 1. Unicode 国旗图标与多国旗冲突检查
-  const flags = name.match(/\p{Regional_Indicator}{2}/gu);
-  if (flags && flags.length > 1) {
-    const distinctFlags = [...new Set(flags)];
-    if (distinctFlags.length > 1) {
-      return { regionDef: null, hasConflict: true };
-    }
-  }
-
-  const singleFlag = flags ? flags[0] : null;
-  const flagLookup = getRegionFlagLookup(defs);
-  const flagRegion = singleFlag ? flagLookup.get(singleFlag) : null;
-
-  // 2. 识别中转入口城市（避免将国内入口城市误判为出口冲突地区）
-  let entryCityMatch = null;
-  const entryM = name.match(REGEX_ENTRY_CITY);
-  if (entryM && DOMESTIC_ENTRY_CITIES.has(entryM[1])) {
-    entryCityMatch = entryM[1];
-  }
-
-  // 3. 收集所有匹配的地区定义
-  const matchedDefs = [];
-  for (const r of defs) {
-    const regs = [
-      r.matchReg || (r.reg ? new RegExp(r.city ? r.reg.source + '|' + r.city : r.reg.source, 'i') : null),
-      r.codeReg || null
-    ].filter(Boolean);
-
-    for (const reg of regs) {
-      const m = name.match(reg);
-      if (m) {
-        // 若命中仅为国内中转入口城市部分，不作为落地目的地区
-        if (entryCityMatch && m[0] === entryCityMatch && m.index === entryM.index) {
-          continue;
-        }
-        matchedDefs.push({ def: r, match: m[0], index: m.index, len: m[0].length });
-        break;
-      }
-    }
-  }
-
-  // 按地区标准化名称去重
-  const uniqueDefs = [];
-  const seenNames = new Set();
-  for (const item of matchedDefs) {
-    if (!seenNames.has(item.def.name)) {
-      seenNames.add(item.def.name);
-      uniqueDefs.push(item);
-    }
-  }
-
-  // 国旗与文本冲突检查 (例如 🇯🇵 图标却出现 香港)
-  if (flagRegion && uniqueDefs.length > 0) {
-    const hasFlagConflict = uniqueDefs.some(u => u.def.name !== flagRegion.name);
-    if (hasFlagConflict) {
-      return { regionDef: null, hasConflict: true };
-    }
-  }
-
-  // 多个不同落地地区直接冲突 (例如 香港 日本 专线)
-  if (uniqueDefs.length > 1) {
-    return { regionDef: null, hasConflict: true };
-  }
-
-  if (uniqueDefs.length === 1) {
-    return { regionDef: uniqueDefs[0].def, hasConflict: false };
-  }
-
-  if (flagRegion) {
-    return { regionDef: flagRegion, hasConflict: false };
-  }
-
-  return { regionDef: null, hasConflict: false };
+  const { regionDef, hasConflict } = recognizeRegion(name, defs);
+  return { regionDef, hasConflict };
 }
 
 /**
@@ -332,6 +240,9 @@ function extractSemanticMetadata(rawName, options = {}) {
   let city = null;
   let status = 'unknown';
 
+  // 冲突（多个地区 / 国旗与文案不一致）说明名字不干净：旁路契约保守地不认领
+  // groupKey / regionName（状态降为 partial），但 regionDef 仍返回识别到的落地，
+  // 供需要「先分组再纠错」的调用方使用。
   if (hasConflict) {
     status = 'partial';
   } else if (regionDef) {

@@ -110,12 +110,8 @@ const SINGLE_EXIT_LOOKAHEAD = {
   中: '(?![转间心])'
 };
 
-const entryPattern = ENTRY_CITIES.map(escapeRegex).join('|');
-const exitPattern = EXIT_REGIONS.map(r => {
-  const esc = escapeRegex(r);
-  return SINGLE_EXIT_LOOKAHEAD[r] ? `${esc}${SINGLE_EXIT_LOOKAHEAD[r]}` : esc;
-}).join('|');
-const REGEX_ENTRY_CITY = new RegExp(`(${entryPattern})(?:\\s*(?:->|=>|~>|→|⇒|-|—|=|>|至)\\s*|\\s+)?(?=${exitPattern})`, 'i');
+// 入口 / 落地 / 连接符 / 国旗等名称语法正则统一在 `data/name-grammar.js` 构造，
+// 本文件只保留词表（ENTRY_CITIES / EXIT_REGIONS / SINGLE_EXIT_LOOKAHEAD / TAG_MAP）。
 
 // =============================================================================
 // 3. 倍率识别与指令架构词避让
@@ -285,7 +281,6 @@ module.exports = {
   SINGLE_EXIT_LOOKAHEAD,
   TAG_MAP,
   DOMESTIC_ENTRY_CITIES,
-  REGEX_ENTRY_CITY,
   // 倍率
   ARCH_AVOID_SET,
   // 线路与运营商
