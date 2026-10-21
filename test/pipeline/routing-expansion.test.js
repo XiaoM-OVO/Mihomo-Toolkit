@@ -57,7 +57,7 @@ describe('routing 展开引擎：条目语义', () => {
   });
 
   it('preset + to 覆写整段目标（含三段式规则的 no-resolve 保留）', () => {
-    const { config, registries } = pair();
+    const { config, registries } = pair({ groups: [{ name: '游戏专线', proxies: ['DIRECT'] }] });
     const { rules } = expandRouting(config, registries, {
       routing: [{ preset: 'game', to: '游戏专线' }]
     });
@@ -97,17 +97,27 @@ describe('routing 展开引擎：条目语义', () => {
     assert.ok(rules.includes('RULE-SET,twitter,ChatGPT'));
   });
 
-  it('customRules 仍排在 QUIC 拦截之前（旧优先级不变）', () => {
-    const { config, registries } = pair({
-      customRules: ['DOMAIN-SUFFIX,corp.example,DIRECT']
-    });
-    const { rules } = expandRouting(config, registries, {
-      routing: [{ preset: 'subscription' }, { preset: 'quic' }, { preset: 'final' }]
-    });
-    const customAt = rules.indexOf('DOMAIN-SUFFIX,corp.example,DIRECT');
-    const quicAt = rules.findIndex(r => r.startsWith('AND,((NETWORK,UDP)'));
-    assert.ok(customAt >= 0, '自定义规则必须展开');
-    assert.ok(quicAt > customAt, 'QUIC 拦截必须排在 customRules 之后');
+  it('rule 条目按表内位置决定优先级（不再有隐式注入锚点）', () => {
+    const { config, registries } = pair();
+    const before = expandRouting(config, registries, {
+      routing: [
+        { preset: 'subscription' },
+        { rule: 'DOMAIN-SUFFIX,corp.example', to: 'DIRECT' },
+        { preset: 'quic' },
+        { preset: 'final' }
+      ]
+    }).rules;
+    const after = expandRouting(config, registries, {
+      routing: [
+        { preset: 'subscription' },
+        { preset: 'quic' },
+        { rule: 'DOMAIN-SUFFIX,corp.example', to: 'DIRECT' },
+        { preset: 'final' }
+      ]
+    }).rules;
+    const quicIndex = list => list.findIndex(r => r.startsWith('AND,((NETWORK,UDP)'));
+    assert.ok(before.indexOf('DOMAIN-SUFFIX,corp.example,DIRECT') < quicIndex(before), '写在 quic 之前就先匹配');
+    assert.ok(after.indexOf('DOMAIN-SUFFIX,corp.example,DIRECT') > quicIndex(after), '写在 quic 之后就后匹配');
   });
 
   it('未知预设 / 未知服务 / 缺目标都是 fail-closed', () => {

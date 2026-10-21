@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { runStrategyPipeline: strategyMain } = require('../../src/pipeline/strategy.js');
 const { markTrustedSynthetic } = require('../../src/core/node-trust');
 const { resolveConfig } = require('../../src/config');
-const { validateCustomGroups } = require('../../src/strategy/matcher');
+const { validateGroups } = require('../../src/strategy/matcher');
 
 describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () => {
   test('strategyMain - AI / 流媒体 / 社交策略组生成与节点注入测试', () => {
@@ -239,7 +239,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.equal(hiddenUnknown.hidden, true);
   });
 
-  test('strategyMain - customGroups 策略组、分流规则与图标全链路端到端闭环', () => {
+  test('strategyMain - groups 策略组 + routing 规则 + 图标全链路端到端闭环', () => {
     const rawConfig = {
       proxies: [
         { name: '🇭🇰 香港 01', type: 'ss', server: 'hk1.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
@@ -250,18 +250,20 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     const userConfig = {
       minorNodeThreshold: 1,
       groupIconMode: 'both',
-      customGroups: [
+      groups: [
         {
           name: '奈飞专线',
           type: 'url-test',
           emoji: '🍿',
           icon: 'Netflix.png',
-          match: { region: 'hk' },
-          rules: [
-            'netflix',
-            'DOMAIN-SUFFIX,netflix.com'
-          ]
+          match: { region: 'hk' }
         }
+      ],
+      routing: [
+        { preset: 'subscription' },
+        { rule: 'geosite:netflix', to: '奈飞专线' },
+        { rule: 'DOMAIN-SUFFIX,netflix.com', to: '奈飞专线' },
+        { preset: 'final' }
       ]
     };
 
@@ -275,9 +277,9 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(netflixGroup.icon && netflixGroup.icon.includes('Netflix.png'), '应正确挂载在线图标');
     assert.deepEqual(netflixGroup.proxies, ['🇭🇰 香港']);
 
-    // 2. 路由分流规则 (rules) 自动挂载且目标组名与展示层同步
+    // 2. 路由规则来自 routing 表，目标组名与展示层同步
     const rules = result.rules;
-    assert.ok(rules.some(r => r === 'RULE-SET,netflix,🍿 奈飞专线'), '简写规则集应自动挂载并对齐组名');
+    assert.ok(rules.some(r => r === 'RULE-SET,netflix,🍿 奈飞专线'), '规则集简写应自动登记 Provider 并对齐组名');
     assert.ok(rules.some(r => r === 'DOMAIN-SUFFIX,netflix.com,🍿 奈飞专线'), '域名规则应自动补齐目标组');
 
     // 3. Rule-Providers 自动登记
@@ -353,10 +355,11 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
 
   test('resolveConfig - groups 的 { ref } 展开结果与手写完整声明逐字段同构（不变量 2）', () => {
     const resolved = resolveConfig({ groups: [{ ref: 'chatgpt' }] });
-    const declared = resolved.customGroups.find(g => g.name === 'ChatGPT');
+    const declared = resolved.groups.find(g => g.name === 'ChatGPT');
 
     assert.ok(declared, 'ref 条目应被展开为一条完整组声明');
     // 手写同一条声明必须得到完全一致的字段（ref 不引入任何独有概念）
+    // 规则字段（rules / providers / process）已不属于组：批次 3 起规则只由 routing 表生成
     assert.deepEqual(declared, {
       name: 'ChatGPT',
       type: 'select',
@@ -364,21 +367,19 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
       exclude: undefined,
       proxies: ['@residentialGroup', '@preferredRegions', '@matchedNodes', '@defaultProxy', 'DIRECT'],
       preferredRegions: ['us', 'jp', 'tw', 'sg', 'kr', 'eu'],
-      rules: ['RULE-SET,openai,ChatGPT'],
-      providers: { openai: 'geosite/openai' },
       hidden: undefined
     });
   });
 
   test('resolveConfig - groups 支持条目内覆写与 disabled 显式关闭', () => {
     const overridden = resolveConfig({ groups: [{ ref: 'chatgpt', type: 'url-test', name: '我的 GPT 专线' }] });
-    const declared = overridden.customGroups.find(g => g.name === '我的 GPT 专线');
+    const declared = overridden.groups.find(g => g.name === '我的 GPT 专线');
     assert.ok(declared, 'ref 条目应允许覆写 name');
     assert.equal(declared.type, 'url-test', 'ref 条目应允许覆写 type');
     assert.deepEqual(declared.match, { pool: 'chatgpt' }, '未覆写字段应保留目录声明原值');
 
     const disabled = resolveConfig({ groups: [{ ref: 'chatgpt', disabled: true }] });
-    assert.equal(disabled.customGroups, undefined, 'disabled: true 的条目不得进入引擎消费清单');
+    assert.deepEqual(disabled.groups, [], 'disabled: true 的条目不得进入引擎消费清单');
   });
 
   test('resolveConfig - groups 未知 ref 键 fail-closed 并报出字段路径（不变量 6）', () => {
@@ -393,14 +394,14 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     );
   });
 
-  test('validateCustomGroups - 未知宏配置期 fail-closed 并报出字段路径', () => {
+  test('validateGroups - 未知宏配置期 fail-closed 并报出字段路径', () => {
     assert.throws(
-      () => validateCustomGroups([{ name: '未知宏组', proxies: ['@bogusMacro'] }]),
+      () => validateGroups([{ name: '未知宏组', proxies: ['@bogusMacro'] }]),
       /proxies\[0\]: 未知宏/,
       '未知宏必须在配置期 fail-closed（禁止运行期静默跳过）'
     );
     // 已登记宏不得误报
-    validateCustomGroups([{ name: '合法宏组', proxies: ['@matchedNodes', '@preferredRegions', 'DIRECT'] }]);
+    validateGroups([{ name: '合法宏组', proxies: ['@matchedNodes', '@preferredRegions', 'DIRECT'] }]);
   });
 
   test('strategyMain - groups 引用内置组目录：声明即激活、组/规则/Provider 全链路贯通（不变量 3）', () => {
@@ -413,34 +414,35 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
 
     const result = strategyMain(buildRawConfig(), {
       minorNodeThreshold: 1,
-      groups: [{ ref: 'chatgpt' }]
+      groups: [{ ref: 'chatgpt' }],
+      routing: [{ preset: 'subscription' }, { service: 'chatgpt' }, { preset: 'final' }]
     });
 
     const gpt = result['proxy-groups'].find(g => g.name === '🤖 ChatGPT');
-    assert.ok(gpt, 'AI 总开关关闭时，groups 里的 ref 声明仍应建组（声明即激活）');
+    assert.ok(gpt, 'groups 里的 ref 声明 + routing 引用即建组（声明即激活）');
     assert.ok(
       gpt.proxies.some(p => p.includes('🤖')),
-      'ref 组应按目录 match 配方命中节点（标签打标不被总开关掐断）'
+      'ref 组应按目录 match 配方命中节点'
     );
     assert.ok(
       result.rules.includes('RULE-SET,openai,🤖 ChatGPT'),
-      'ref 条目应随组一起交付分流规则'
+      '规则由 routing 条目生成，目标指向 ref 声明的组'
     );
     const provider = result['rule-providers'].openai;
-    assert.ok(provider && provider.url.includes('geosite/openai'), 'ref 条目应随组一起登记规则集 Provider');
+    assert.ok(provider && provider.url.includes('geosite/openai'), 'routing 展开应登记规则集 Provider');
   });
 
   test('resolveConfig - 可引用判据 = 条目自带非空 proxies（成员配方未备齐者仍 fail-closed）', () => {
     // 已备齐成员配方的条目：可作为 ref 目标
     const ok = resolveConfig({ groups: [{ ref: 'youtube' }, { ref: 'telegram' }, { ref: 'google' }] });
-    assert.ok(ok.customGroups.find(g => g.name === 'YouTube'), '流媒体条目应可被引用');
-    assert.ok(ok.customGroups.find(g => g.name === 'Google'), '系统条目应可被引用');
+    assert.ok(ok.groups.find(g => g.name === 'YouTube'), '流媒体条目应可被引用');
+    assert.ok(ok.groups.find(g => g.name === 'Google'), '系统条目应可被引用');
 
-    // 专项条目的 process 名单必须随组交付（否则 ref 后 PROCESS-NAME 规则会静默丢失）
-    const tg = ok.customGroups.find(g => g.name === 'Telegram');
-    assert.deepEqual(tg.process, { win: ['Telegram'], mac: ['Telegram'], lin: ['Telegram'] });
-    assert.deepEqual(tg.rules, ['RULE-SET,telegram,Telegram', 'RULE-SET,telegram-ip,Telegram,no-resolve']);
-    assert.deepEqual(tg.providers, { telegram: 'geosite/telegram', 'telegram-ip': 'geoip/telegram' });
+    // 组只声明成员与呈现：规则字段（rules / providers / process）不再随组展开
+    const tg = ok.groups.find(g => g.name === 'Telegram');
+    assert.equal(tg.process, undefined, 'process 名单不再属于组声明');
+    assert.equal(tg.rules, undefined, 'rules 不再属于组声明');
+    assert.equal(tg.providers, undefined, 'providers 不再属于组声明');
 
     // 聚合组成员（无 proxies，不单独成组）不得进入目录：引用它必须配置期 fail-closed，并给出改引聚合组的指引
     assert.throws(
@@ -450,21 +452,15 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     );
     // 社交服务一服务一组：每个社交服务自带配方，可直接引用（不再有合并组）
     const fb = resolveConfig({ groups: [{ ref: 'facebook' }] });
-    assert.ok(fb.customGroups.find(g => g.name === 'Facebook'), 'facebook 应可直接作为 ref 目标');
+    assert.ok(fb.groups.find(g => g.name === 'Facebook'), 'facebook 应可直接作为 ref 目标');
   });
 
-  test('validateCustomGroups - process 进程名单结构非法时配置期 fail-closed', () => {
+  test('validateGroups - 组里写 process 等规则字段被顶层白名单拒绝', () => {
     assert.throws(
-      () => validateCustomGroups([{ name: '进程组', process: { win64: ['Telegram'] } }]),
-      /process: 未知平台键/,
-      '未知平台键必须 fail-closed'
+      () => validateGroups([{ name: '进程组', process: { win64: ['Telegram'] } }]),
+      /未知字段「process」/,
+      'process 属于规则侧（routing 表），组声明里出现必须 fail-closed'
     );
-    assert.throws(
-      () => validateCustomGroups([{ name: '进程组', process: { win: 'Telegram' } }]),
-      /process\.win: 期望非空 string\[\]/,
-      '进程名单必须是 string[]'
-    );
-    validateCustomGroups([{ name: '进程组', process: { win: ['Telegram'] } }]);
   });
 
   test('strategyMain - ref 与默认表叠加时幂等：不产生重复组、重复规则或重复 Provider', () => {

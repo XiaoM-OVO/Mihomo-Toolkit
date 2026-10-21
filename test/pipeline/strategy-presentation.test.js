@@ -36,9 +36,9 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
   });
 
   describe('2. 映射表构建与防双重 Emoji 机制 (buildPresentationMaps)', () => {
-    it('customGroups 包含预设 Emoji 时不发生双重拼接', () => {
+    it('groups 包含预设 Emoji 时不发生双重拼接', () => {
       const userConfig = {
-        customGroups: [
+        groups: [
           { name: '⚡ 极速日韩', emoji: '⚡' },
           { name: '🚀 极速欧美', emoji: '✈️' },
           { name: '纯净节点', emoji: '🛡️' }
@@ -164,7 +164,7 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
 
       const userConfig = {
         groupIconMode: 'icon',
-        customGroups: [
+        groups: [
           { name: '⚡ 极速日韩', icon: 'https://cdn.example.com/fast.png' }
         ]
       };
@@ -201,7 +201,7 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
 
       const userConfig = {
         groupIconMode: 'emoji',
-        customGroups: [
+        groups: [
           { name: '⚡ 极速日韩', emoji: '⚡' }
         ]
       };
@@ -219,7 +219,7 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
   });
 
   describe('4. 流水线集成验证 (runStrategyPipeline)', () => {
-    it('customGroups 预设带有 Emoji 时，在 emoji 模式下输出干净单一 Emoji', () => {
+    it('groups 预设带有 Emoji 时，在 emoji 模式下输出干净单一 Emoji', () => {
       const rawConfig = {
         proxies: [
           { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' },
@@ -227,7 +227,7 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
         ]
       };
       const userConfig = {
-        customGroups: [
+        groups: [
           {
             name: '⚡ 极速亚太',
             type: 'select',
@@ -245,7 +245,7 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
       assert.ok(!groupNames.includes('⚡ ⚡ 极速亚太'), '严禁出现双重 Emoji 前缀');
     });
 
-    it('customGroups 预设带有 Emoji 时，在 none 模式下输出纯净中文无 Emoji', () => {
+    it('groups 预设带有 Emoji 时，在 none 模式下输出纯净中文无 Emoji', () => {
       const rawConfig = {
         proxies: [
           { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
@@ -253,7 +253,7 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
       };
       const userConfig = {
         groupIconMode: 'none',
-        customGroups: [
+        groups: [
           {
             name: '⚡ 极速亚太',
             type: 'select',

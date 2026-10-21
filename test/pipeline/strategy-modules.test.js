@@ -85,31 +85,35 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.equal(providers['ads'].behavior, 'domain');
   });
 
-  it('rules - customRules 优先级提前：置于基础网络之后、业务分流规则集之前', () => {
+  it('rules - 私域规则写在 routing 表里：位置即优先级（基础网络之后、业务规则之前）', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
     const testConfig = {
       ...DEFAULT_CONFIG,
-      subDomain: ['sub.example.com'],
-      customRules: [
-        'DOMAIN,my-private-domain.com,DIRECT',
-        'DOMAIN-SUFFIX,custom-proxy.com,节点选择'
-      ]
+      subDomain: ['sub.example.com']
     };
-    const { rules } = expandRouting(testConfig, registries);
+    const { rules } = expandRouting(testConfig, registries, {
+      routing: [
+        { preset: 'subscription' },
+        { rule: 'DOMAIN,my-private-domain.com,DIRECT' },
+        { rule: 'DOMAIN-SUFFIX,custom-proxy.com,DIRECT' },
+        { preset: 'ads' },
+        { preset: 'final' }
+      ]
+    });
 
     const lanIndex = rules.indexOf('RULE-SET,lan-domain,DIRECT');
     const subDomainIndex = rules.indexOf('DOMAIN,sub.example.com,DIRECT');
     const customRule1Index = rules.indexOf('DOMAIN,my-private-domain.com,DIRECT');
-    const customRule2Index = rules.indexOf('DOMAIN-SUFFIX,custom-proxy.com,节点选择');
+    const customRule2Index = rules.indexOf('DOMAIN-SUFFIX,custom-proxy.com,DIRECT');
     const adsIndex = rules.indexOf('RULE-SET,ads,广告拦截');
     const matchIndex = rules.indexOf('MATCH,漏网之鱼');
 
     assert.ok(lanIndex >= 0, '必须包含 LAN 规则');
     assert.ok(subDomainIndex > lanIndex, 'subDomain 应在 LAN 之后');
-    assert.ok(customRule1Index > subDomainIndex, 'customRules 应在 subDomain 之后');
-    assert.ok(customRule2Index > customRule1Index, 'customRules 内部保持顺序');
-    assert.ok(customRule2Index < adsIndex, 'customRules 必须在广告拦截等业务规则之前');
-    assert.ok(customRule2Index < matchIndex, 'customRules 必须在漏网之鱼之前');
+    assert.ok(customRule1Index > subDomainIndex, '私域规则写在 subscription 之后即排在它后面');
+    assert.ok(customRule2Index > customRule1Index, '表内顺序保持');
+    assert.ok(customRule2Index < adsIndex, '写在 ads 预设之前就先于广告拦截匹配');
+    assert.ok(customRule2Index < matchIndex, '必须排在漏网之鱼之前');
   });
 
   it('config - 支持自定义 logger 注入且在 silent 模式下静默', () => {

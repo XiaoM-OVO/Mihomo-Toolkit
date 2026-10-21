@@ -12,7 +12,7 @@ const {
   createNodePredicate,
   filterNodes,
   validateRecipe,
-  validateCustomGroups
+  validateGroups
 } = require('../../src/strategy/matcher');
 
 describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', () => {
@@ -367,7 +367,7 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
     });
   });
 
-  describe('7. 配方合规校验与严格阻断 (validateRecipe & validateCustomGroups)', () => {
+  describe('7. 配方合规校验与严格阻断 (validateRecipe & validateGroups)', () => {
     it('合法配方与函数谓词正常通过', () => {
       assert.doesNotThrow(() => validateRecipe({ region: 'hk' }, 'test'));
       assert.doesNotThrow(() => validateRecipe({ multi: '<= 1.5', tags: ['streaming'] }, 'test'));
@@ -412,29 +412,29 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
       assert.throws(() => validateRecipe({ custom: 'not_fn' }, 'test'), /期望 function 谓词类型/);
     });
 
-    it('validateCustomGroups 批次校验与路径溯源', () => {
+    it('validateGroups 批次校验与路径溯源', () => {
       assert.throws(
-        () => validateCustomGroups('not_array'),
-        /customGroups 配置必须为策略组对象数组/
+        () => validateGroups('not_array'),
+        /groups 配置必须为策略组对象数组/
       );
 
       assert.throws(
-        () => validateCustomGroups([null]),
-        /customGroups\[0\]: 策略组定义必须为有效对象/
+        () => validateGroups([null]),
+        /groups\[0\]: 策略组定义必须为有效对象/
       );
 
       assert.throws(
-        () => validateCustomGroups([{ name: '流媒体', match: [] }]),
+        () => validateGroups([{ name: '流媒体', match: [] }]),
         /策略组\s*「流媒体」 -> match: 配方数组不能为空/
       );
 
       assert.throws(
-        () => validateCustomGroups([{ name: '流媒体', match: [{ regin: 'hk' }] }]),
+        () => validateGroups([{ name: '流媒体', match: [{ regin: 'hk' }] }]),
         /策略组\s*「流媒体」 -> match\[0\]: 未知匹配维度「regin」/
       );
 
       assert.doesNotThrow(() => {
-        validateCustomGroups([
+        validateGroups([
           {
             name: '流媒体',
             match: { region: 'hk' },
@@ -446,50 +446,54 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
 
     it('顶层未知字段拦截 (Fail-Closed)', () => {
       assert.throws(
-        () => validateCustomGroups([{ name: '幽灵组', pool: 'ai' }]),
+        () => validateGroups([{ name: '幽灵组', pool: 'ai' }]),
         /未知字段「pool」/
       );
       assert.throws(
-        () => validateCustomGroups([{ name: '幽灵组', includeInfo: true }]),
+        () => validateGroups([{ name: '幽灵组', includeInfo: true }]),
         /未知字段「includeInfo」/
       );
       assert.throws(
-        () => validateCustomGroups([{ name: '幽灵组', tag: 'ai' }]),
+        () => validateGroups([{ name: '幽灵组', tag: 'ai' }]),
         /未知字段「tag」/
       );
     });
 
     it('组类型白名单：非法 type 直接抛错，不再静默降级', () => {
       assert.throws(
-        () => validateCustomGroups([{ name: '测试组', type: 'selector' }]),
+        () => validateGroups([{ name: '测试组', type: 'selector' }]),
         /未知策略组类型「selector」/
       );
-      assert.doesNotThrow(() => validateCustomGroups([{ name: '测试组', type: 'load-balance' }]));
-      assert.doesNotThrow(() => validateCustomGroups([{ name: '测试组', type: 'URL-TEST' }]));
+      assert.doesNotThrow(() => validateGroups([{ name: '测试组', type: 'load-balance' }]));
+      assert.doesNotThrow(() => validateGroups([{ name: '测试组', type: 'URL-TEST' }]));
     });
 
-    it('proxies 与 rules 类型约束', () => {
+    it('proxies 类型约束 + 规则字段不再属于组', () => {
       assert.throws(
-        () => validateCustomGroups([{ name: '测试组', proxies: 'DIRECT' }]),
+        () => validateGroups([{ name: '测试组', proxies: 'DIRECT' }]),
         /\.proxies: 期望 string\[\] 数组/
       );
       assert.throws(
-        () => validateCustomGroups([{ name: '测试组', proxies: ['DIRECT', 123] }]),
+        () => validateGroups([{ name: '测试组', proxies: ['DIRECT', 123] }]),
         /\.proxies\[1\]: 期望非空 string/
       );
+      // 规则与组彻底分家：组里写 rules / providers / process 会被顶层字段白名单拒绝
       assert.throws(
-        () => validateCustomGroups([{ name: '测试组', rules: { a: 1 } }]),
-        /\.rules: 期望 string 或 string\[\]/
+        () => validateGroups([{ name: '测试组', rules: ['youtube'] }]),
+        /未知字段「rules」/
       );
       assert.throws(
-        () => validateCustomGroups([{ name: '测试组', rules: ['youtube', ''] }]),
-        /\.rules\[1\]: 期望非空 string/
+        () => validateGroups([{ name: '测试组', providers: { a: 'geosite/a' } }]),
+        /未知字段「providers」/
       );
-      assert.doesNotThrow(() => validateCustomGroups([{ name: '测试组', rules: 'youtube' }]));
+      assert.throws(
+        () => validateGroups([{ name: '测试组', process: { win: ['Telegram'] } }]),
+        /未知字段「process」/
+      );
     });
 
     it('完整合法声明通过校验 (含 hidden / filter / exclude-filter)', () => {
-      assert.doesNotThrow(() => validateCustomGroups([
+      assert.doesNotThrow(() => validateGroups([
         {
           name: '专属流媒体',
           type: 'url-test',
@@ -505,8 +509,7 @@ describe('【Strategy】拓扑 DSL 节点谓词匹配器 (strategy-matcher)', ()
           'exclude-filter': '(?i)过期',
           match: { region: 'us' },
           exclude: [{ tags: ['download'] }],
-          proxies: ['@matchedNodes', 'DIRECT'],
-          rules: ['youtube']
+          proxies: ['@matchedNodes', 'DIRECT']
         }
       ]));
     });

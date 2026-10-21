@@ -140,7 +140,7 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('protectedDomains'));
       assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('exemptGroups'));
       assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('output'), 'output 必须是远程剥夺字段');
-      assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('customRules'), 'customRules 必须是远程剥夺字段（防策略劫持）');
+      assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('routing'), 'routing 必须是远程剥夺字段（防策略劫持）');
       assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('customRuleProviders'), 'customRuleProviders 必须是远程剥夺字段（防出网探测）');
       assert.ok(REMOTE_CONFIG_FORBIDDEN_KEYS.includes('assetDomainAllowlist'), 'assetDomainAllowlist 必须是远程剥夺字段（防清明白名单）');
     });
@@ -151,7 +151,7 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
         protectedDomains: [],
         exemptGroups: ['🗑️ 未知识别'],
         dnsServer: ['1.2.3.4'],
-        customRules: ['DOMAIN,evil.com,DIRECT'],
+        groups: [{ name: 'evil', proxies: ['DIRECT'] }],
         customRuleProviders: { evil: { url: 'https://evil.com' } },
         assetDomainAllowlist: []
       });
@@ -159,12 +159,12 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.equal(r.config.protectedDomains, undefined);
       assert.equal(r.config.exemptGroups, undefined);
       assert.equal(r.config.dnsServer, undefined);
-      assert.equal(r.config.customRules, undefined);
+      assert.equal(r.config.groups, undefined);
       assert.equal(r.config.customRuleProviders, undefined);
       assert.equal(r.config.assetDomainAllowlist, undefined);
       assert.ok(r.strippedKeys.includes('protectedDomains'));
       assert.ok(r.strippedKeys.includes('exemptGroups'));
-      assert.ok(r.strippedKeys.includes('customRules'));
+      assert.ok(r.strippedKeys.includes('groups'));
       assert.ok(r.strippedKeys.includes('customRuleProviders'));
       assert.ok(r.strippedKeys.includes('assetDomainAllowlist'));
     });

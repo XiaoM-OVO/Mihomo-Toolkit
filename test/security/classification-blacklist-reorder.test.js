@@ -109,7 +109,7 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
         _keepName: true,
         _subTag: 'malicious-tag',
         _indexPrefix: '99',
-        _customGroups: ['admin'],
+        _groupTags: ['admin'],
         _cleaned: true
       };
 
@@ -130,7 +130,7 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
       assert.equal(sanitized._keepName, undefined);
       assert.equal(sanitized._subTag, undefined);
       assert.equal(sanitized._indexPrefix, undefined);
-      assert.equal(sanitized._customGroups, undefined);
+      assert.equal(sanitized._groupTags, undefined);
       assert.equal(sanitized._cleaned, undefined);
 
       // 无内部保留字段的对象应直接返回原引用（避免无谓拷贝）

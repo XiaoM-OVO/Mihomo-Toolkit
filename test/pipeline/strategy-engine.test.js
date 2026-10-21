@@ -53,13 +53,13 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
     });
 
     it('evaluateCustomTopology 检测到环路死锁严格抛错 (Fail-Closed)', () => {
-      const customGroups = [
+      const groups = [
         { name: '组A', proxies: ['组B'] },
         { name: '组B', proxies: ['组A'] }
       ];
       assert.throws(
-        () => evaluateCustomTopology({ customGroups }),
-        /\[customGroups\] 检测到策略组存在循环依赖 \(Cycle Dependency\): 组A -> 组B -> 组A/
+        () => evaluateCustomTopology({ groups }),
+        /\[groups\] 检测到策略组存在循环依赖 \(Cycle Dependency\): 组A -> 组B -> 组A/
       );
     });
 
@@ -362,7 +362,7 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
 
   describe('4. 批量求解自定义拓扑 (evaluateCustomTopology)', () => {
     it('批量求解多策略组并正常返回', () => {
-      const customGroups = [
+      const groups = [
         {
           name: '香港优选',
           type: 'url-test',
@@ -382,7 +382,7 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       ];
 
       const { evaluatedGroups, cycles } = evaluateCustomTopology({
-        customGroups,
+        groups,
         classifiedNodes
       });
 
@@ -395,20 +395,20 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
     });
 
     it('异常策略组不阻断整体批次 (Fail-Safe)', () => {
-      const customGroups = [
+      const groups = [
         null,
         { name: '正常组', proxies: ['DIRECT'] },
         { /* 缺失 name */ type: 'select' }
       ];
 
-      const { evaluatedGroups } = evaluateCustomTopology({ customGroups });
+      const { evaluatedGroups } = evaluateCustomTopology({ groups });
       assert.equal(evaluatedGroups.length, 1);
       assert.equal(evaluatedGroups[0].name, '正常组');
     });
 
     it('策略组引用大小写不敏感 (chatgpt 命中 ChatGPT)', () => {
       const { evaluatedGroups } = evaluateCustomTopology({
-        customGroups: [
+        groups: [
           { name: 'ChatGPT', proxies: ['DIRECT'] },
           { name: 'AI 合集', proxies: ['chatgpt', 'DIRECT'] }
         ]
@@ -419,7 +419,7 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
 
     it('@activeRegions 采用调用方显式传入的地区组口径 (含「其他节点」)', () => {
       const { evaluatedGroups } = evaluateCustomTopology({
-        customGroups: [{ name: '海外优选', proxies: ['@activeRegions', 'DIRECT'] }],
+        groups: [{ name: '海外优选', proxies: ['@activeRegions', 'DIRECT'] }],
         activeRegionGroups: ['香港节点', '其他节点']
       });
       assert.deepEqual(evaluatedGroups[0].proxies, ['香港节点', '其他节点', 'DIRECT']);
@@ -427,7 +427,7 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
 
     it('未传入 activeRegionGroups 时不再启发式推断地区组', () => {
       const { evaluatedGroups } = evaluateCustomTopology({
-        customGroups: [{ name: '海外优选', proxies: ['@activeRegions', 'DIRECT'] }],
+        groups: [{ name: '海外优选', proxies: ['@activeRegions', 'DIRECT'] }],
         existingGroups: [{ name: '香港节点', type: 'select', proxies: ['DIRECT'] }]
       });
       assert.deepEqual(evaluatedGroups[0].proxies, ['DIRECT']);
@@ -435,7 +435,7 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
 
     it('@nonCnRegions 与 @domesticGroup 由调用方口径驱动', () => {
       const { evaluatedGroups } = evaluateCustomTopology({
-        customGroups: [
+        groups: [
           { name: '海外组', proxies: ['@nonCnRegions', 'DIRECT'] },
           { name: '回国组', proxies: ['@domesticGroup', 'DIRECT'] }
         ],
@@ -460,7 +460,7 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       };
 
       const userConfig = {
-        customGroups: [
+        groups: [
           {
             name: '🤖 ChatGPT',
             type: 'select',
@@ -469,12 +469,14 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
               '🇯🇵 日本节点',
               '@defaultProxy',
               'DIRECT'
-            ],
-            rules: [
-              'DOMAIN-SUFFIX,openai.com',
-              'IP-CIDR,192.168.0.0/16,no-resolve'
             ]
           }
+        ],
+        routing: [
+          { preset: 'subscription' },
+          { rule: 'DOMAIN-SUFFIX,openai.com', to: '🤖 ChatGPT' },
+          { rule: 'IP-CIDR,192.168.0.0/16,no-resolve', to: '🤖 ChatGPT' },
+          { preset: 'final' }
         ]
       };
 

@@ -155,7 +155,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.deepEqual(buckets.hk, ['🇭🇰 香港 01', '🇭🇰 香港 02']);
   });
 
-  it('buildProxyTopology - 节点专属策略组注入 (customGroups)', () => {
+  it('buildProxyTopology - 节点专属策略组注入 (groupTags 节点标签)', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
     const classifiedNodes = [
       {
@@ -164,7 +164,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
         regionInfo: { id: 'us', name: '美国' },
         groupKey: 'us',
         keepName: true,
-        customGroups: ['🤖 ChatGPT', '我的独享专线'],
+        groupTags: ['🤖 ChatGPT', '我的独享专线'],
         tags: []
       },
       {
@@ -197,7 +197,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.ok(buckets.hk.includes('🇭🇰 香港 01'), '普通节点正常入桶');
   });
 
-  it('buildProxyTopology - customGroups 精确匹配：短目标名不再子串误注入', () => {
+  it('buildProxyTopology - groupTags 精确匹配：短目标名不再子串误注入', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
     const classifiedNodes = [
       {
@@ -212,7 +212,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
         rawName: '🇺🇸 专线·自建节点',
         regionInfo: { id: 'us', name: '美国' },
         groupKey: 'us',
-        customGroups: ['节点'],
+        groupTags: ['节点'],
         tags: []
       },
       {
@@ -220,7 +220,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
         rawName: '🇺🇸 专线·AI节点',
         regionInfo: { id: 'us', name: '美国' },
         groupKey: 'us',
-        customGroups: ['🤖 ChatGPT'],
+        groupTags: ['🤖 ChatGPT'],
         tags: []
       }
     ];
@@ -292,7 +292,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.ok(resCustom.buckets.other.includes('🇭🇰 香港 01'), '香港节点应折叠进 other 桶');
   });
 
-  it('buildProxyTopology - customGroups 声明式自定义策略组装配与覆写', () => {
+  it('buildProxyTopology - groups 声明式策略组装配与覆写', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
     const classifiedNodes = [
       {
@@ -326,7 +326,7 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
       userConfig: {
         ...DEFAULT_CONFIG,
         enableResidential: true,
-        customGroups: [
+        groups: [
           {
             name: '🎬 我的专属流媒体',
             type: 'url-test',
