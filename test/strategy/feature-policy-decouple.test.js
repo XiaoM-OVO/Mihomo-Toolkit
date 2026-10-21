@@ -258,7 +258,7 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
     assert.equal(
       downloadGroup.proxies.filter(p => p === nodeName).length,
       1,
-      '下载策略组内该节点数量必须为 1，严禁因 featurePools + buckets.download 路径产生重复'
+      '下载策略组内该节点数量必须为 1，严禁因 featurePools + 低倍率桶两条路径重复入组'
     );
 
     // 3. 实验节点组唯一性

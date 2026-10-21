@@ -353,7 +353,7 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.equal(ISOLATION_SORT_ORDER[''], 0);
       assert.equal(ISOLATION_SORT_ORDER.std, 0);
       assert.equal(ISOLATION_SORT_ORDER.residential, 1);
-      assert.equal(ISOLATION_SORT_ORDER.download, 2);
+      assert.equal(ISOLATION_SORT_ORDER.lowMulti, 2);
       assert.equal(ISOLATION_SORT_ORDER.experimental, 3);
       assert.equal(ISOLATION_SORT_ORDER.highMulti, 4);
     });

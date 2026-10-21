@@ -138,6 +138,33 @@ describe('【Pipeline】DAG 级联空组剪枝与级联清理 (strategy-prune)',
     assert.match(warnings[0], /🧪 实验节点/);
   });
 
+  it('pruneEmptyGroups - 池依赖组缺席按设计跳过：不刷悬空引用告警', () => {
+    const warnings = [];
+    const debugs = [];
+    const proxyGroups = [{ name: '🚀 基础代理', proxies: ['Node1'] }];
+    const proxies = [{ name: 'Node1', server: '1.2.3.4', port: 443 }];
+    const rules = [
+      'DOMAIN-SUFFIX,keep.example,🚀 基础代理',
+      'RULE-SET,download-games,⏬ 下载策略', // 低倍率池为空 -> 下载组不建，按设计跳过
+      'DOMAIN-SUFFIX,ghost.example,🧪 实验节点', // 真悬空 -> 必须告警
+      'MATCH,DIRECT'
+    ];
+
+    const result = pruneEmptyGroups({
+      proxyGroups,
+      proxies,
+      rules,
+      logger: { warn: msg => warnings.push(msg), debug: msg => debugs.push(msg) }
+    });
+
+    assert.deepEqual(result.rules, ['DOMAIN-SUFFIX,keep.example,🚀 基础代理', 'MATCH,DIRECT']);
+    assert.equal(warnings.length, 1, '只有真悬空目标告警');
+    assert.match(warnings[0], /已跳过 1 条分流规则/);
+    assert.match(warnings[0], /🧪 实验节点/);
+    assert.ok(!warnings.some(msg => msg.includes('下载策略')), '池依赖组不得进告警');
+    assert.ok(debugs.some(msg => msg.includes('下载策略')), '池依赖组只记 debug');
+  });
+
   it('pruneEmptyGroups - 内置目标 GLOBAL 作为有效代理目标不被剪枝', () => {
     const proxyGroups = [
       { name: 'MyGlobalProxy', proxies: ['GLOBAL'] }

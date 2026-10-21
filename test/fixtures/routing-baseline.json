@@ -53,8 +53,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -481,6 +481,9 @@
             "preset": "process"
           },
           {
+            "preset": "bt"
+          },
+          {
             "preset": "download"
           },
           {
@@ -544,8 +547,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -1005,6 +1008,9 @@
             "preset": "process"
           },
           {
+            "preset": "bt"
+          },
+          {
             "preset": "download"
           },
           {
@@ -1065,8 +1071,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -1512,8 +1518,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -1962,8 +1968,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -2391,6 +2397,9 @@
             "preset": "process"
           },
           {
+            "preset": "bt"
+          },
+          {
             "preset": "download"
           },
           {
@@ -2452,8 +2461,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -2880,6 +2889,9 @@
             "preset": "process"
           },
           {
+            "preset": "bt"
+          },
+          {
             "preset": "download"
           },
           {
@@ -2942,8 +2954,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -3367,6 +3379,9 @@
             "preset": "process"
           },
           {
+            "preset": "bt"
+          },
+          {
             "preset": "download"
           },
           {
@@ -3426,8 +3441,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -3848,6 +3863,9 @@
             "preset": "process"
           },
           {
+            "preset": "bt"
+          },
+          {
             "preset": "download"
           },
           {
@@ -3906,8 +3924,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -4789,6 +4807,9 @@
             "preset": "process"
           },
           {
+            "preset": "bt"
+          },
+          {
             "preset": "download"
           },
           {
@@ -4839,8 +4860,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -5205,8 +5226,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -5652,8 +5673,8 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",
@@ -6104,9 +6125,9 @@
         "RULE-SET,bt-trackers-public,DIRECT",
         "DOMAIN-KEYWORD,tracker,DIRECT",
         "DOMAIN-KEYWORD,announce,DIRECT",
-        "PROCESS-NAME,IDMan.exe,下载策略",
-        "PROCESS-NAME,fdm.exe,下载策略",
-        "PROCESS-NAME,fdm,下载策略",
+        "PROCESS-NAME,IDMan.exe,DIRECT",
+        "PROCESS-NAME,fdm.exe,DIRECT",
+        "PROCESS-NAME,fdm,DIRECT",
         "RULE-SET,download-games-cn,DIRECT",
         "RULE-SET,download-games,下载策略",
         "RULE-SET,download-android,下载策略",

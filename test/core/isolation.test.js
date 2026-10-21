@@ -31,10 +31,10 @@ describe('【Core】节点隔离策略 (isolation)', () => {
       getIsolationBucket({ attrs: { multiNum: 3.0 } }, { isolateHighMulti: true, highMultiThreshold: 2.5 }),
       'highMulti'
     );
-    // 3. BT 下载
+    // 3. 低倍率
     assert.equal(
-      getIsolationBucket({ tags: ['download'] }, { isolateDownload: true }),
-      'download'
+      getIsolationBucket({ tags: ['lowMulti'] }, { isolateDownload: true }),
+      'lowMulti'
     );
     // 4. 实验性
     assert.equal(
@@ -53,7 +53,7 @@ describe('【Core】节点隔离策略 (isolation)', () => {
       ''
     );
     assert.equal(
-      getIsolationBucket({ tags: ['download'] }, { isolateDownload: false }),
+      getIsolationBucket({ tags: ['lowMulti'] }, { isolateDownload: false }),
       ''
     );
     assert.equal(
@@ -62,7 +62,7 @@ describe('【Core】节点隔离策略 (isolation)', () => {
     );
   });
 
-  it('getIsolationBucket - 优先级顺序严格判定: residential > highMulti > download > experimental', () => {
+  it('getIsolationBucket - 优先级顺序严格判定: residential > highMulti > lowMulti > experimental', () => {
     const allEnabled = {
       enableResidential: true,
       isolateHighMulti: true,
@@ -73,20 +73,20 @@ describe('【Core】节点隔离策略 (isolation)', () => {
 
     // 家宽 + 高倍率 -> residential 优先
     assert.equal(
-      getIsolationBucket({ tags: ['residential', 'download', 'experimental'], attrs: { multiNum: 3.0 } }, allEnabled),
+      getIsolationBucket({ tags: ['residential', 'lowMulti', 'experimental'], attrs: { multiNum: 3.0 } }, allEnabled),
       'residential'
     );
 
-    // 高倍率 + 下载 + 实验 -> highMulti 优先
+    // 高倍率 + 低倍率 + 实验 -> highMulti 优先
     assert.equal(
-      getIsolationBucket({ tags: ['download', 'experimental'], attrs: { multiNum: 3.0 } }, allEnabled),
+      getIsolationBucket({ tags: ['lowMulti', 'experimental'], attrs: { multiNum: 3.0 } }, allEnabled),
       'highMulti'
     );
 
-    // 下载 + 实验 -> download 优先
+    // 低倍率 + 实验 -> lowMulti 优先
     assert.equal(
-      getIsolationBucket({ tags: ['download', 'experimental'], attrs: { multiNum: 1.0 } }, allEnabled),
-      'download'
+      getIsolationBucket({ tags: ['lowMulti', 'experimental'], attrs: { multiNum: 1.0 } }, allEnabled),
+      'lowMulti'
     );
 
     // 仅实验 -> experimental
@@ -128,10 +128,10 @@ describe('【Core】节点隔离策略 (isolation)', () => {
     const nodeNormal = { rawName: '普通节点', tags: [], attrs: { multiNum: 1.0 } };
     const nodeHighMulti = { rawName: '高倍率节点', tags: [], attrs: { multiNum: 3.0 } };
     const nodeRes = { rawName: '家宽节点', tags: ['residential'], attrs: { multiNum: 1.0 } };
-    const nodeDownload = { rawName: '下载节点', tags: ['download'], attrs: { multiNum: 1.0 } };
+    const nodeLowMulti = { rawName: '下载节点', tags: ['lowMulti'], attrs: { multiNum: 1.0 } };
 
-    // ISOLATION_SORT_ORDER: '' (标准节点): 0, residential: 1, download: 2, experimental: 3, highMulti: 4
-    const sorted = sortNodes([nodeHighMulti, nodeNormal, nodeDownload, nodeRes], cfg);
+    // ISOLATION_SORT_ORDER: '' (标准节点): 0, residential: 1, lowMulti: 2, experimental: 3, highMulti: 4
+    const sorted = sortNodes([nodeHighMulti, nodeNormal, nodeLowMulti, nodeRes], cfg);
     assert.equal(sorted[0].rawName, '普通节点');
     assert.equal(sorted[1].rawName, '家宽节点');
     assert.equal(sorted[2].rawName, '下载节点');

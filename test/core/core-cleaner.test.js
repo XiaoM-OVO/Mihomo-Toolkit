@@ -250,18 +250,20 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     assert.deepEqual(extractNodeAttributes('香港 电信 移动 01').attrs.lineArr, ['电移']);
   });
 
-  it('classifyNode - 严禁BT下载隔离桶防护 (不进入下载策略组)', () => {
-    // 带有严禁BT特征的低倍率节点：不可进入 download 隔离池
+  it('classifyNode - 严禁BT节点仍属低倍率池，但带独立的禁止下载标记', () => {
+    // 低倍率是节点身份；能否下载是独立标记，由下载组在使用侧排除
     const forbidNode = { name: '🇭🇰 香港 01 x0.2 严禁BT', server: '1.2.3.4', port: 443 };
     const forbidRes = classifyNode(forbidNode, { lowMultiThreshold: 0.5, isolateDownload: true });
-    assert.ok(!forbidRes.tags.includes('download'), '严禁BT节点不应获得 download 标签');
-    assert.notEqual(forbidRes.isolateBucket, 'download', '严禁BT节点不进入 download 隔离池');
+    assert.ok(forbidRes.tags.includes('lowMulti'), '低倍率身份不受禁止下载影响');
+    assert.ok(forbidRes.tags.includes('forbidDownload'), '禁止下载必须独立打标');
+    assert.equal(forbidRes.isolateBucket, 'lowMulti', '严禁BT节点仍进入低倍率隔离桶');
 
-    // 正常低倍率节点：正常进入 download 隔离池
+    // 正常低倍率节点：进入低倍率池，且不带禁止下载标记
     const normalNode = { name: '🇭🇰 香港 01 x0.2 高速', server: '1.2.3.4', port: 443 };
     const normalRes = classifyNode(normalNode, { lowMultiThreshold: 0.5, isolateDownload: true });
-    assert.ok(normalRes.tags.includes('download'));
-    assert.equal(normalRes.isolateBucket, 'download');
+    assert.ok(normalRes.tags.includes('lowMulti'));
+    assert.ok(!normalRes.tags.includes('forbidDownload'));
+    assert.equal(normalRes.isolateBucket, 'lowMulti');
   });
 
   it('classifyNode - 单字大区避让常见中文词 (日常/新建/完美 不误判为海外地区)', () => {
