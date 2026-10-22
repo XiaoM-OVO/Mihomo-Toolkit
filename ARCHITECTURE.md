@@ -158,6 +158,7 @@ src/
 │   ├── fetcher.js                # HTTP 请求调度与 Stale 容灾兜底缓存
 │   ├── cache.js                  # 内存级 LRU-TTL 缓存管理器
 │   ├── ssrf.js                   # SSRF 深度校验、私网拦截与防探测
+│   ├── pinned-agent.js           # 直连建连期 IP Pinning (undici Agent)
 │   ├── dns-resolver.js           # 异步 DNS 批量解析器 (用于 Fission 裂变)
 │   ├── limits.js                 # 资源超限防御 (URL、配置大小、节点总数)
 │   ├── fetch-proxy.js            # 本地代理调度封装 (undici ProxyAgent)
@@ -344,10 +345,10 @@ include:
 
 为了保持技术评估的客观性，以下为系统当前版本明确存在的局限与待攻坚点：
 
-1. **SSRF 防御存在 DNS Rebinding (TOCTOU) 风险**：
-   `src/io/ssrf.js` 在验证阶段与后续实际建立网络连接阶段各执行一次独立 DNS 解析，未做 IP 固定（IP Pinning）。在面对恶意 DNS 动态切换回环 IP 的场景下理论上存在绕过窗口。
+1. **SSRF 的 DNS Rebinding (TOCTOU) 风险（直连已闭环，代理模式保留）**：
+   直连模式已通过 `src/io/pinned-agent.js` 在 undici 建连阶段（`connect.lookup`）完成同一次解析内的地址校验并固定已校验 IP，消除请求前校验与建连解析之间的窗口；代理模式因目标域名由代理侧解析，本机无法固定 IP，残余风险需由代理侧 ACL 兜底（见 `src/io/ssrf.js` 文件头）。
 2. **宿主适配层较为简陋**：
    当前 `targets/` 仅提供了最基础的 CLI 与轻量 HTTP 服务端，对于更广泛的集成场景（如 Serverless / 边缘 Worker / 复杂进程守护）尚未形成标准化的适配接口。
 
 > [!NOTE]
-> 原“策略组拓扑与装配逻辑双硬编码耦合”已在 Milestone 3 落地（引入 `groups` 声明式 DSL 引擎与 `data/catalog` SSOT + `catalog.js` 投影驱动）；M3 尚余安全进阶防御项，整体未闭环。
+> 原“策略组拓扑与装配逻辑双硬编码耦合”已在 Milestone 3 落地（引入 `groups` 声明式 DSL 引擎与 `data/catalog` SSOT + `catalog.js` 投影驱动）；安全进阶防御项（直连建连期 IP Pinning）亦已闭环。M3 规划项全部完成，未排期的候选改进（schema 收敛、组身份 `ref` 化等）按长期演进处理。

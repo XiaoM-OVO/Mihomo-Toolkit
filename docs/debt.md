@@ -8,7 +8,7 @@
 | `IO -> Core` 反向引用 (已修复) | `src/io/ssrf.js`, `parsers/index.js` | 🟡 中 | 依赖 Core 的基础工具函数，下沉公共基础模块 | M1 阶段 |
 | customRules 分流优先级倒挂 (已修复) | `src/strategy/rules.js` | 🔴 高 | 文档声明最高但代码放在最后，自上而下首命中导致失效，需提至首位 | M1 阶段 |
 | 策略组装配与元数据双硬编码耦合 (已修复) | `src/strategy/topology.js` | 🔴 高 | 引入声明式 DSL 配方与拓扑引擎，破除双硬编码与业务强耦合 | M3 阶段 |
-| SSRF TOCTOU 窗口 | `src/io/ssrf.js` | 🟡 中 | 校验与连接使用两次 DNS，评估 IP Pinning 成本 | M3 阶段 |
+| SSRF TOCTOU 窗口 (已修复) | `src/io/ssrf.js`, `src/io/pinned-agent.js` | 🟡 中 | 直连模式在建连阶段由 `connect.lookup` 完成同一次解析内的地址校验并固定已校验 IP，消除校验与建连之间的 DNS Rebinding 窗口；代理模式解析发生在代理侧，残余风险保留 | M3 阶段 |
 
 ### 2. Data & Config 层问题清单 (第 1 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |

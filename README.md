@@ -270,7 +270,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 2. **控制面净化与资产闭包**（`src/pipeline/ingestion.js` + `src/core/security/dns-sanitizer.js`）：剥离非节点控制字段的同时，自动识别并继承节点服务器专用的 Hosts 映射与私有 DoH 解析策略，兼顾安全性与节点连通性。
 3. **DNS 净化与不变式自检**（`src/strategy/dns.js` + `src/core/security/resolver-plan.js`）：引导层 DNS 纯 IP 化，过滤高危修饰符；交付前执行 INV 不变式自检，降低 Fake-IP 虚拟环路与解析异常风险。
 4. **远程配置白名单收敛**（`src/core/security/remote-config.js`）：对 `?config=` 输入实施 fail-closed 白名单过滤，仅放行明确允许的安全字段，限制对宿主机资源的访问。
-5. **SSRF 与资源配额防御**（`src/io/ssrf.js` / `src/io/fetcher.js` / `src/io/limits.js`）：包含私网网段拦截、重定向逐跳复核、响应体流式限长与单次构建节点配额限制，缓解网络探测与资源消耗风险。
+5. **SSRF 与资源配额防御**（`src/io/ssrf.js` / `src/io/pinned-agent.js` / `src/io/fetcher.js` / `src/io/limits.js`）：包含私网网段拦截、直连建连期 IP Pinning、重定向逐跳复核、响应体流式限长与单次构建节点配额限制，缓解网络探测与资源消耗风险。
 
 > 📖 **进阶架构与威胁模型**：关于系统分层契约、安全沙箱算法及残余风险评估的完整技术推演，请参阅 [架构设计文档](ARCHITECTURE.md)。
 
@@ -301,7 +301,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 
 - 🟢 **Milestone 1 (v2.0-Alpha)**：已闭环 —— 稳定性加固与核心债务清零（优先级倒挂、SSRF 穿透、IO 反向依赖、协议截断）；
 - 🟡 **Milestone 2 (v2.0-Beta)**：已闭环 —— 优雅停机、DNS 并发流控、CLI `--dry-run` / `--validate`；
-- 🔵 **Milestone 3 (v4.0.0-alpha)**：推进中 —— 声明式策略拓扑 DSL 收口（`groups` + `routing` 两表、方向限定）与配置解耦；
+- 🔵 **Milestone 3 (v4.0.0-alpha)**：已闭环 —— 声明式策略拓扑 DSL 收口（`groups` + `routing` 两表、方向限定）、配置解耦与直连建连期 IP Pinning；
 - 🟣 **Milestone 4 (v4.0-GA)**：正式发版 —— main 合流、默认产物基线锁定与迁移说明（不再扩展新功能面）。
 
 > 📋 **详细任务跟踪**：41 项审查排查出的技术债务明细见 [技术债务跟踪表](docs/debt.md)，里程碑规划见 [开发路线图](ROADMAP.md)；历史决策与实施记录见 [docs/ 索引](docs/README.md)。

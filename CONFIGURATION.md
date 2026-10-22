@@ -404,7 +404,7 @@ routing:
 
 当拉取远程订阅或执行节点裂变 DoH 解析时，本机的网络出口策略由 `fetchProxyStrategy` 裁决：
 
-- `direct`（直连模式）：严格通过本机网卡与本地 DNS 解析直连拉取。若解析失败或网络不通直接报错（Fail-Closed）。
+- `direct`（直连模式）：严格通过本机网卡与本地 DNS 解析直连拉取；建连阶段固定已校验 IP（IP Pinning），消除校验与建连之间的 DNS Rebinding 窗口。若解析失败或网络不通直接报错（Fail-Closed）。
 - `proxy`（强制代理模式）：严格通过 `fetchProxyPort`（如 7890）指定的本地 HTTP/SOCKS 代理抓取目标。
 - `auto`（**默认智能容灾模式**）：**先直连，失败自动切代理**。
   - 针对国内 CDN 加速的订阅链接，直连毫秒级迅速完成；
