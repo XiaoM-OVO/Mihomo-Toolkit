@@ -7,6 +7,8 @@
  * （旧实现 `buildRoutingRules` 已于批次 3 删除，顺序表见 `src/data/default-routing.js`）。
  */
 
+const { GROUP_KEYS, groupName } = require('../data/catalog/identity');
+
 function dedupe(arr) {
   return [...new Set(arr)];
 }
@@ -43,8 +45,8 @@ const BT_TRACKER_RULES = Object.freeze([
 
 const DOWNLOAD_RULESETS = Object.freeze([
   { provider: 'download-games-cn', target: 'DIRECT' },
-  { provider: 'download-games', target: '下载策略' },
-  { provider: 'download-android', target: '下载策略' }
+  { provider: 'download-games', target: groupName(GROUP_KEYS.download) },
+  { provider: 'download-android', target: groupName(GROUP_KEYS.download) }
 ]);
 
 /**

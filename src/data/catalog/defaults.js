@@ -7,6 +7,8 @@
 
 'use strict';
 
+const { GROUP_KEYS, groupName } = require('./identity');
+
 const DEFAULT_AGGREGATES = Object.freeze({
   game: {
     service: {
@@ -26,7 +28,13 @@ const DEFAULT_AGGREGATES = Object.freeze({
       icon: { repo: 'koolson', file: 'Game.png' },
       type: 'select',
       match: { pool: 'game' },
-      proxies: ['DIRECT', '下载策略', '自动选择', '手动选择', '@matchedNodes']
+      proxies: [
+        'DIRECT',
+        groupName(GROUP_KEYS.download),
+        groupName(GROUP_KEYS.auto),
+        groupName(GROUP_KEYS.manual),
+        '@matchedNodes'
+      ]
     }
   }
   // social 已取消聚合：社交服务一律「一服务一组」，不再有合并组与成员归属概念。

@@ -409,11 +409,13 @@ groups:
 
 **结果**：`buildBuiltinAppRecipes` 改为消费 `BUILTIN_RECIPE_SOURCES`（`src/strategy/topology.js`）。每个分类只登记四件事——条目来源、缺省 `proxies` 模板、是否回传 `preferredRegions`、必要的条目覆写；八段手写 `if` 与重复的 `recipes.push` 字段组装已删除，新增分类只需在表中追加一项。
 
-### 3. 组身份：改用 `ref` 键做唯一 ID，名字只做标签
+### 3. 🚧 阶段 1 已完成：组身份内部键化，名字只做标签
 
-**现状**：多处仍以中文组名作为唯一标识：`target-registry.js` 硬编码 14 项骨架组清单，`topology.js` 用 `referencedTargets.has('中国分流')` 之类的名字字面量判断激活；中文组名在全仓散落近百处、覆盖十余个文件，重命名时极易漂移。
+**现状修正**：骨架组不在用户 `ref` 目录中，没有可用的 `ref` 键；组名允许被用户 `{ ref, name }` 覆写，因此「静态 `refKey → 规范组名` 映射表」不足以支撑全程 ID 化。全仓命中里约四成是合理单一真相源（图标表、组声明、池表），真正需要键化的身份判定点约 25–30 处。
 
-**修复方案**：内置组都有唯一 `ref` 键，建立一张 `refKey → 规范组名` 的静态映射表，所有判断匹配改走 `refKey`，名字全程只读不做 ID。这会减少约 100 处硬编码字面量，极大降低维护成本。
+**阶段 1（已落地）**：新增 `src/data/catalog/identity.js` 作为内部身份单一真相源（`GROUP_KEYS` / 规范名 / `skeleton` / `poolDependent`，未知键 fail-closed）；`target-registry` 的 14 项骨架组与池依赖名单改为投影该表；`topology` / `topology-engine` / `rules` / `security-baselines` / `macros` / `routing` / catalog 组声明 / `presentation` 图标表全部消费身份键；装饰剥离规则收敛为同一实现，展示层仍以组名为终末契约。默认输出逐字节不变，`npm test` 692 项通过。
+
+**阶段 2（待办）**：在 `verify:arch` 增加防回潮校验，禁止逻辑层再出现骨架组中文字面量；若仍存在按名字判定的跨层激活语义，改为在 routing 边界解析一次身份键后向下传递。
 
 ### 4. ✅ 已完成：目标解析：四种写法与多份白名单收敛为单一 TargetRegistry
 

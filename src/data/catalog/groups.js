@@ -7,6 +7,9 @@
 
 'use strict';
 
+const { GROUP_KEYS, groupName } = require('./identity');
+const { POOL_NAMES } = require('../default-pools');
+
 const SPECIAL_SERVICES = Object.freeze({
   crypto: {
     key: 'crypto',
@@ -42,7 +45,13 @@ const SPECIAL_SERVICES = Object.freeze({
       'DST-PORT,5350,WebRTC',
       'DST-PORT,19302,WebRTC'
     ],
-    proxies: ['@defaultProxy', 'DIRECT', '手动选择', '自动选择', '@activeRegions']
+    proxies: [
+      '@defaultProxy',
+      'DIRECT',
+      groupName(GROUP_KEYS.manual),
+      groupName(GROUP_KEYS.auto),
+      '@activeRegions'
+    ]
   },
   telegram: {
     key: 'telegram',
@@ -66,50 +75,50 @@ const SPECIAL_SERVICES = Object.freeze({
 const ADS_GROUPS = Object.freeze({
   'ad-block': {
     refKey: 'ad-block',
-    name: '广告拦截',
+    name: groupName(GROUP_KEYS.adBlock),
     type: 'select',
     proxies: ['REJECT-DROP', 'REJECT', 'DIRECT'],
-    rules: ['RULE-SET,ads,广告拦截'],
+    rules: [`RULE-SET,ads,${groupName(GROUP_KEYS.adBlock)}`],
     providers: { ads: 'geosite/category-ads-all' }
   },
   'anti-ad': {
     refKey: 'anti-ad',
-    name: '广告拦截',
+    name: groupName(GROUP_KEYS.antiAd),
     type: 'select',
     proxies: ['REJECT-DROP', 'REJECT', 'DIRECT'],
-    rules: ['RULE-SET,anti-ad,广告拦截'],
+    rules: [`RULE-SET,anti-ad,${groupName(GROUP_KEYS.antiAd)}`],
     providers: { 'anti-ad': 'https://anti-ad.net/clash.yaml' }
   }
 });
 
 const DOWNLOAD_GROUPS = Object.freeze([
   {
-    name: '下载策略',
+    name: groupName(GROUP_KEYS.download),
     type: 'select',
     hidden: false,
-    proxies: ['DIRECT', '负载均衡-轮询', '自动选择', '@pool:低倍率节点']
+    proxies: ['DIRECT', groupName(GROUP_KEYS.roundRobin), groupName(GROUP_KEYS.auto), `@pool:${POOL_NAMES.lowMulti}`]
   },
   {
-    name: '负载均衡-轮询',
+    name: groupName(GROUP_KEYS.roundRobin),
     type: 'load-balance',
     strategy: 'round-robin',
     interval: 300,
     lazy: true,
     hidden: true,
-    proxies: ['@pool:低倍率节点']
+    proxies: [`@pool:${POOL_NAMES.lowMulti}`]
   }
 ]);
 
 const SKELETON_GROUP_DEFS = Object.freeze({
   domestic: Object.freeze({
     split: Object.freeze({
-      name: '中国分流',
+      name: groupName(GROUP_KEYS.domestic),
       type: 'select',
       hidden: false,
       proxies: Object.freeze(['DIRECT', '@cnCoreGroups', '@defaultProxy'])
     }),
     return: Object.freeze({
-      name: '中国分流',
+      name: groupName(GROUP_KEYS.domestic),
       type: 'select',
       hidden: false,
       proxies: Object.freeze(['@defaultProxy', '@cnCoreGroups', 'DIRECT'])
@@ -117,16 +126,30 @@ const SKELETON_GROUP_DEFS = Object.freeze({
   }),
   final: Object.freeze({
     split: Object.freeze({
-      name: '漏网之鱼',
+      name: groupName(GROUP_KEYS.final),
       type: 'select',
       hidden: false,
-      proxies: Object.freeze(['@defaultProxy', '自动选择', '手动选择', '故障转移', '@downloadGroup', 'DIRECT'])
+      proxies: Object.freeze([
+        '@defaultProxy',
+        groupName(GROUP_KEYS.auto),
+        groupName(GROUP_KEYS.manual),
+        groupName(GROUP_KEYS.fallback),
+        '@downloadGroup',
+        'DIRECT'
+      ])
     }),
     return: Object.freeze({
-      name: '漏网之鱼',
+      name: groupName(GROUP_KEYS.final),
       type: 'select',
       hidden: false,
-      proxies: Object.freeze(['DIRECT', '@defaultProxy', '自动选择', '手动选择', '故障转移', '@downloadGroup'])
+      proxies: Object.freeze([
+        'DIRECT',
+        '@defaultProxy',
+        groupName(GROUP_KEYS.auto),
+        groupName(GROUP_KEYS.manual),
+        groupName(GROUP_KEYS.fallback),
+        '@downloadGroup'
+      ])
     })
   })
 });

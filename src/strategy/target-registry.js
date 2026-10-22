@@ -26,6 +26,10 @@ const {
   CONTINENT_DEFS
 } = require('../core/shared/regions');
 const { POOL_NAMES } = require('../data/default-pools');
+const {
+  skeletonGroupNames,
+  poolDependentGroupNames
+} = require('../data/catalog/identity');
 const { ADS_GROUPS } = require('../config/catalog');
 const { filterGroupsByDirection } = require('../config/groups');
 const { resolvePoolDefinitions } = require('./pools');
@@ -46,31 +50,13 @@ const POOL_PREFIX = '@pool:';
 
 /**
  * 骨架常驻组：由拓扑按开关产出，`routing` 可直接引用（未产出时由剪枝层按设计跳过）。
- * `广告拦截` 不在此列——它由 ads 预设派生，存在性取决于分组声明。
+ * 名单与顺序来自 `data/catalog/identity.js` 的单一身份表；`广告拦截` 不在此列——
+ * 它由 ads 预设派生，存在性取决于分组声明。
  */
-const SKELETON_GROUP_NAMES = Object.freeze([
-  '自动选择',
-  '手动选择',
-  '故障转移',
-  '下载策略',
-  '负载均衡-轮询',
-  '漏网之鱼',
-  '家宽优选',
-  '中国分流',
-  'IPv6控制台',
-  '高倍率优选',
-  '实验节点',
-  '订阅与状态看板',
-  '其他节点',
-  '未知识别'
-]);
+const SKELETON_GROUP_NAMES = Object.freeze(skeletonGroupNames());
 
 /** 池依赖的骨架组：成员来自节点池，池为空 / 未激活时不建组 */
-const POOL_DEPENDENT_GROUP_NAMES = Object.freeze([
-  '下载策略',
-  '负载均衡-轮询',
-  ...Object.values(POOL_NAMES)
-]);
+const POOL_DEPENDENT_GROUP_NAMES = Object.freeze(poolDependentGroupNames());
 
 /** 服务注册表分类（与 `findService` 的查找范围同源） */
 const SERVICE_CATEGORIES = Object.freeze(['ai', 'streaming', 'social', 'game', 'dev', 'system']);

@@ -19,6 +19,8 @@
 
 'use strict';
 
+const { GROUP_KEYS, groupName } = require('./catalog/identity');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 受保护域名基线（禁止被 hosts 覆盖）
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,7 +68,7 @@ const PROTECTED_DOMAINS = [
  *
  * 用户如需补充自己的常驻组名，请用 `exemptGroups` 配置项**追加**。
  */
-const SKELETON_EXEMPT_GROUPS = ['手动选择', '漏网之鱼'];
+const SKELETON_EXEMPT_GROUPS = [groupName(GROUP_KEYS.manual), groupName(GROUP_KEYS.final)];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. Fake-IP 过滤器基线（内核出站直连与本地服务保护）

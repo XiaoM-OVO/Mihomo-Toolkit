@@ -12,6 +12,7 @@
  */
 
 const { filterRegionsByContinent } = require('../core/shared/regions');
+const { GROUP_KEYS, groupName } = require('../data/catalog/identity');
 
 /** 大洲 / 次大区宏：统一走 filterRegionsByContinent 口径 */
 const CONTINENT_DEFS = [
@@ -39,7 +40,7 @@ const MACRO_DEFS = [
   { aliases: ['@highmulti'], resolve: ctx => ctx.highMulti || [] },
   { aliases: ['@special'], resolve: ctx => ctx.special || [] },
   { aliases: ['@activeregions', '@regions'], resolve: ctx => ctx.activeRegions || [] },
-  { aliases: ['@defaultproxy', '@proxy'], resolve: ctx => [ctx.defaultProxy || '自动选择'] },
+  { aliases: ['@defaultproxy', '@proxy'], resolve: ctx => [ctx.defaultProxy || groupName(GROUP_KEYS.auto)] },
   { aliases: ['@standardoptions', '@standard'], resolve: ctx => ctx.standardOptions || [] },
   { aliases: ['@domesticgroup', '@domestic'], resolve: ctx => ctx.domesticGroup || [] },
   { aliases: ['@cncoregroups', '@cncore'], resolve: ctx => ctx.cnCoreGroups || [] },

@@ -12,40 +12,49 @@
 const { getEnhancedRegionDefs, getHashLbGroupNames, CONTINENT_DEFS } = require('../core/shared/regions');
 const { replaceRuleTarget } = require('../core/chinese-sync');
 const { FIELDS_BY_KEY } = require('../data');
-
-const GROUP_DECORATION_PREFIX = /^[^\p{L}\p{N}]+/u;
+const {
+  GROUP_KEYS,
+  GROUP_DECORATION_PREFIX,
+  stripGroupDecoration,
+  groupName
+} = require('../data/catalog/identity');
 
 /**
  * 非中国大中华核心区组名集合：用于 `@nonCnRegions` 宏剔除。
  * 语义与 catalog.js 的 TikTok 组选点保持一致（含「未知识别」，不含澳门/台湾）。
  */
-const NON_CN_EXCLUDED_GROUPS = ['香港节点', '大陆节点', '中国节点', '未知识别'];
+const NON_CN_EXCLUDED_GROUPS = ['香港节点', '大陆节点', '中国节点', groupName(GROUP_KEYS.unknown)];
 
 /** 「中国分流」策略组引用的中国大中华核心地区组（含港澳台） */
 const CN_CORE_PROXY_GROUPS = ['大陆节点', '香港节点', '澳门节点', '台湾节点'];
 
-function stripGroupDecoration(rawName) {
-  const stripped = String(rawName || '').replace(GROUP_DECORATION_PREFIX, '').trim();
-  return stripped || String(rawName || '').trim();
-}
-
-const SKELETON_GROUPS = {
-  '手动选择':       { emoji: '📍', icon: 'Static.png', repo: 'orz' },
-  '自动选择':       { emoji: '🚀', icon: 'Urltest.png', repo: 'orz' },
-  '故障转移':       { emoji: '♻️', icon: 'Available.png', repo: 'orz' },
-  '下载策略':       { emoji: '⏬', icon: 'Roundrobin.png', repo: 'orz' },
-  '负载均衡-轮询':   { emoji: '🔄', icon: 'Roundrobin.png', repo: 'orz' },
-  '高倍率优选':     { emoji: '🚀', icon: 'Speedtest.png', repo: 'koolson' },
-  '实验节点':       { emoji: '🧪', icon: 'Lab.png', repo: 'koolson' },
-  '家宽优选':       { emoji: '🏠', icon: '05icon/home.png', repo: 'lige47' },
-  '中国分流':       { emoji: '🇨🇳', icon: 'China_Map.png', repo: 'koolson' },
-  '广告拦截':       { emoji: '🚫', icon: 'Reject.png', repo: 'koolson' },
-  'IPv6控制台':     { emoji: '🌐', icon: 'Direct.png', repo: 'koolson' },
-  '订阅与状态看板':   { emoji: '📊', icon: 'Airport.png', repo: 'koolson' },
-  '漏网之鱼':       { emoji: '🐟', icon: 'Final.png', repo: 'koolson' },
-  '其他节点':       { emoji: '🌐', icon: 'Global.png', repo: 'koolson' },
-  '未知识别':       { emoji: '🗑️', icon: 'Cydia.png', repo: 'koolson' }
+/**
+ * 骨架组图标表：键为内部身份键，组名由身份表投影，避免图标表与组名两处各写一遍。
+ * 对外仍导出以组名为键的 `SKELETON_GROUPS`（终末装配按名字消费）。
+ */
+const SKELETON_GROUP_ICONS = {
+  [GROUP_KEYS.manual]:       { emoji: '📍', icon: 'Static.png', repo: 'orz' },
+  [GROUP_KEYS.auto]:         { emoji: '🚀', icon: 'Urltest.png', repo: 'orz' },
+  [GROUP_KEYS.fallback]:     { emoji: '♻️', icon: 'Available.png', repo: 'orz' },
+  [GROUP_KEYS.download]:     { emoji: '⏬', icon: 'Roundrobin.png', repo: 'orz' },
+  [GROUP_KEYS.roundRobin]:   { emoji: '🔄', icon: 'Roundrobin.png', repo: 'orz' },
+  [GROUP_KEYS.highMulti]:    { emoji: '🚀', icon: 'Speedtest.png', repo: 'koolson' },
+  [GROUP_KEYS.experimental]: { emoji: '🧪', icon: 'Lab.png', repo: 'koolson' },
+  [GROUP_KEYS.residential]:  { emoji: '🏠', icon: '05icon/home.png', repo: 'lige47' },
+  [GROUP_KEYS.domestic]:     { emoji: '🇨🇳', icon: 'China_Map.png', repo: 'koolson' },
+  [GROUP_KEYS.adBlock]:      { emoji: '🚫', icon: 'Reject.png', repo: 'koolson' },
+  [GROUP_KEYS.ipv6]:         { emoji: '🌐', icon: 'Direct.png', repo: 'koolson' },
+  [GROUP_KEYS.dashboard]:    { emoji: '📊', icon: 'Airport.png', repo: 'koolson' },
+  [GROUP_KEYS.final]:        { emoji: '🐟', icon: 'Final.png', repo: 'koolson' },
+  [GROUP_KEYS.other]:        { emoji: '🌐', icon: 'Global.png', repo: 'koolson' },
+  [GROUP_KEYS.unknown]:      { emoji: '🗑️', icon: 'Cydia.png', repo: 'koolson' }
 };
+
+const SKELETON_GROUPS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(SKELETON_GROUP_ICONS).map(([key, def]) => [groupName(key), def])
+  )
+);
 
 /**
  * 纯组名 → 展示名（emoji 前缀只由展示层提供）
@@ -197,22 +206,22 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
   // 4. 用户全局组图标与 Emoji 自定义覆盖 (groupIcons)
   const explicitIcons = new Set();
   if (userConfig.groupIcons && typeof userConfig.groupIcons === 'object') {
-    for (const [groupName, iconConf] of Object.entries(userConfig.groupIcons)) {
-      if (!groupName || !iconConf) continue;
-      const cleanName = stripGroupDecoration(groupName);
+    for (const [declaredName, iconConf] of Object.entries(userConfig.groupIcons)) {
+      if (!declaredName || !iconConf) continue;
+      const cleanName = stripGroupDecoration(declaredName);
 
       if (typeof iconConf === 'string') {
         if (/\p{Extended_Pictographic}/u.test(iconConf)) {
           const emoji = iconConf.trim();
           const fullName = `${emoji} ${cleanName}`;
           emojiMap[cleanName] = fullName;
-          emojiMap[groupName] = fullName;
+          emojiMap[declaredName] = fullName;
           emojiMap[fullName] = fullName;
         } else {
           const iconUrl = iconConf.startsWith('http') ? iconConf : resolveIconUrl(iconConf, 'koolson', userConfig);
           iconMap[cleanName] = iconUrl;
           explicitIcons.add(cleanName);
-          iconMap[groupName] = iconUrl;
+          iconMap[declaredName] = iconUrl;
           if (emojiMap[cleanName]) iconMap[emojiMap[cleanName]] = iconUrl;
         }
       } else if (typeof iconConf === 'object') {
@@ -220,7 +229,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
           const emoji = String(iconConf.emoji).trim();
           const fullName = `${emoji} ${cleanName}`;
           emojiMap[cleanName] = fullName;
-          emojiMap[groupName] = fullName;
+          emojiMap[declaredName] = fullName;
           emojiMap[fullName] = fullName;
         }
         if (iconConf.icon) {
@@ -233,7 +242,7 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
           if (iconUrl) {
             iconMap[cleanName] = iconUrl;
             explicitIcons.add(cleanName);
-            iconMap[groupName] = iconUrl;
+            iconMap[declaredName] = iconUrl;
             if (emojiMap[cleanName]) iconMap[emojiMap[cleanName]] = iconUrl;
           }
         }

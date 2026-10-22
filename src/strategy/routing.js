@@ -18,6 +18,7 @@
 'use strict';
 
 const { FIELDS_BY_KEY } = require('../data');
+const { GROUP_KEYS, groupName } = require('../data/catalog/identity');
 const { PRESET_DEFINITIONS, DEFAULT_ROUTING } = require('../data/default-routing');
 const { ADS_GROUPS, SPECIAL_SERVICES, buildServiceCatalog } = require('../config/catalog');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
@@ -139,7 +140,7 @@ function createContext(userConfig, registries, options) {
     isReturn: direction === 'return',
     proxyTarget: options.proxyTarget
       || DEFAULT_MODE_MAP[config.defaultProxyMode]
-      || '自动选择',
+      || groupName(GROUP_KEYS.auto),
     osInfo: {
       isWin: os === 'windows' || os === 'all',
       isMac: os === 'mac' || os === 'all',

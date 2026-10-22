@@ -10,6 +10,18 @@
 const DEFAULT_REPOS = require('./repos').DEFAULT_REPOS;
 const { DEFAULT_AGGREGATES, CATEGORY_DEFAULTS } = require('./defaults');
 const { SPECIAL_SERVICES, ADS_GROUPS, DOWNLOAD_GROUPS, SKELETON_GROUP_DEFS } = require('./groups');
+const {
+  GROUP_KEYS,
+  GROUP_IDENTITIES,
+  SKELETON_GROUP_KEYS,
+  GROUP_DECORATION_PREFIX,
+  stripGroupDecoration,
+  groupName,
+  groupIdentity,
+  groupKeyOfName,
+  skeletonGroupNames,
+  poolDependentGroupNames
+} = require('./identity');
 
 const BUILTIN_SERVICES = {
   ...require('./services/ai'),
@@ -28,5 +40,15 @@ module.exports = {
   ADS_GROUPS,
   DOWNLOAD_GROUPS,
   SKELETON_GROUP_DEFS,
+  GROUP_KEYS,
+  GROUP_IDENTITIES,
+  SKELETON_GROUP_KEYS,
+  GROUP_DECORATION_PREFIX,
+  stripGroupDecoration,
+  groupName,
+  groupIdentity,
+  groupKeyOfName,
+  skeletonGroupNames,
+  poolDependentGroupNames,
   BUILTIN_SERVICES
 };

@@ -13,12 +13,17 @@ const { validateGroups } = require('./matcher');
 const { filterGroupsByDirection } = require('../config/groups');
 const { resolvePoolDefinitions, createPoolMatchers } = require('./pools');
 const { POOL_NAMES } = require('../data/default-pools');
+const {
+  GROUP_KEYS,
+  groupName,
+  groupKeyOfName
+} = require('../data/catalog/identity');
 // 目标组名归一化工具与展示层 (presentation) 共用同一实现，避免装饰剥离规则两侧漂移。
 const { stripGroupDecoration, NON_CN_EXCLUDED_GROUPS, CN_CORE_PROXY_GROUPS } = require('./presentation');
 
-// 组名唯一来源是池定义，避免同一名字在两处各写一遍
-const HIGH_MULTI_GROUP = POOL_NAMES.highMulti;
-const EXPERIMENTAL_GROUP = POOL_NAMES.experimental;
+// 组名唯一来源是身份表（池名再由池表投影），避免同一名字在两处各写一遍
+const HIGH_MULTI_GROUP = groupName(GROUP_KEYS.highMulti);
+const EXPERIMENTAL_GROUP = groupName(GROUP_KEYS.experimental);
 
 // 由专用分支/策略独立维护的桶，通用 featurePools 遍历不重复入桶
 const DEDICATED_FEATURE_POOLS = new Set(['residential', 'lowMulti', 'experimental']);
@@ -131,7 +136,13 @@ const BUILTIN_RECIPE_SOURCES = [
     resolveProxies: (entry, ctx) => {
       // WebRTC 回国模式使用固定配方
       if (entry.key === 'webrtc' && ctx.userConfig.trafficDirection === 'return') {
-        return ['DIRECT', '@defaultProxy', '手动选择', '自动选择', '@activeRegions'];
+        return [
+          'DIRECT',
+          '@defaultProxy',
+          groupName(GROUP_KEYS.manual),
+          groupName(GROUP_KEYS.auto),
+          '@activeRegions'
+        ];
       }
       return entry.proxies ? [...entry.proxies] : ['@standardOptions', 'DIRECT'];
     }
@@ -224,6 +235,13 @@ function buildProxyTopology({
 
   // 规则引用到的目标组名：内置应用组与「中国分流」是否存在，由它决定（引用即激活）
   const referencedTargets = new Set(Array.isArray(ruleTargets) ? ruleTargets : []);
+  // 需要按“身份”判断的激活口径一律走身份键，不再比较中文字面量
+  const referencedKeys = new Set();
+  for (const target of referencedTargets) {
+    const key = groupKeyOfName(target);
+    if (key) referencedKeys.add(key);
+  }
+  const isReferenced = key => referencedKeys.has(key);
 
   const regionDefs = getEnhancedRegionDefs();
   const mixedRegionIds = [...CONTINENT_DEFS.map(c => c.id), 'other'];
@@ -368,7 +386,7 @@ function buildProxyTopology({
   const activeRegionGroups = Object.keys(regionNames)
     .filter(k => buckets[k]?.length > 0)
     .map(k => regionNames[k]);
-  if (buckets.other?.length > 0) activeRegionGroups.push('其他节点');
+  if (buckets.other?.length > 0) activeRegionGroups.push(groupName(GROUP_KEYS.other));
 
   if (logger && typeof logger.debug === 'function') {
     Object.keys(regionNames).forEach(k => {
@@ -415,14 +433,31 @@ function buildProxyTopology({
   const experimentalPool = activePool(POOL_NAMES.experimental);
 
   const resiPrefix = residentialPool ? [POOL_NAMES.residential] : [];
-  const proxyTarget = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
+  const proxyTarget = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || groupName(GROUP_KEYS.auto);
 
   const highMultiRef = highMultiPool ? [HIGH_MULTI_GROUP] : [];
   const experimentalRef = experimentalPool ? [EXPERIMENTAL_GROUP] : [];
 
-  const baseOptions = ['手动选择', '自动选择', '故障转移', ...highMultiRef, ...experimentalRef, ...resiPrefix, ...activeRegionGroups];
+  const baseOptions = [
+    groupName(GROUP_KEYS.manual),
+    groupName(GROUP_KEYS.auto),
+    groupName(GROUP_KEYS.fallback),
+    ...highMultiRef,
+    ...experimentalRef,
+    ...resiPrefix,
+    ...activeRegionGroups
+  ];
   const standardOptions = dedupe([proxyTarget, ...baseOptions]);
-  const coreSelectProxies = ['自动选择', '故障转移', ...resiPrefix, ...highMultiRef, ...experimentalRef, ...buckets.special, ...activeRegionGroups, 'DIRECT'];
+  const coreSelectProxies = [
+    groupName(GROUP_KEYS.auto),
+    groupName(GROUP_KEYS.fallback),
+    ...resiPrefix,
+    ...highMultiRef,
+    ...experimentalRef,
+    ...buckets.special,
+    ...activeRegionGroups,
+    'DIRECT'
+  ];
 
   const testURL = userConfig.testURL || FIELDS_BY_KEY.testURL.default;
   const testInterval = userConfig.testInterval || FIELDS_BY_KEY.testInterval.default;
@@ -446,7 +481,9 @@ function buildProxyTopology({
     regionNames,
     standardOptions,
     residentialGroup: resiPrefix,
-    domesticGroup: referencedTargets.has('中国分流') ? ['中国分流'] : ['DIRECT'],
+    domesticGroup: isReferenced(GROUP_KEYS.domestic)
+      ? [groupName(GROUP_KEYS.domestic)]
+      : ['DIRECT'],
     nonCnRegions: activeRegionGroups.filter(g => !NON_CN_EXCLUDED_GROUPS.includes(g))
   };
 
@@ -468,13 +505,26 @@ function buildProxyTopology({
   const finalGroups = [];
 
   if (userConfig.enableDashboard !== false && buckets.info.length > 0) {
-    finalGroups.push(buildSelect('订阅与状态看板', [...buckets.info, 'DIRECT']));
+    finalGroups.push(buildSelect(groupName(GROUP_KEYS.dashboard), [...buckets.info, 'DIRECT']));
   }
 
   finalGroups.push(
-    buildSelect('手动选择', coreSelectProxies),
-    { name: '自动选择', type: 'url-test', url: testURL, interval: testInterval, tolerance: testTolerance, proxies: buckets.allStandard },
-    { name: '故障转移', type: 'fallback', url: testURL, interval: testInterval, proxies: activeRegionGroups }
+    buildSelect(groupName(GROUP_KEYS.manual), coreSelectProxies),
+    {
+      name: groupName(GROUP_KEYS.auto),
+      type: 'url-test',
+      url: testURL,
+      interval: testInterval,
+      tolerance: testTolerance,
+      proxies: buckets.allStandard
+    },
+    {
+      name: groupName(GROUP_KEYS.fallback),
+      type: 'fallback',
+      url: testURL,
+      interval: testInterval,
+      proxies: activeRegionGroups
+    }
   );
 
   // 池 → 组：规格（type / hidden）一律取自池声明，装配层只决定建组顺序与「空池不建组」。
@@ -528,7 +578,7 @@ function buildProxyTopology({
     nonCnRegions: engineContext.nonCnRegions,
     poolMembers: allPoolMembers,
     cnCoreGroups: CN_CORE_PROXY_GROUPS.filter(name => activeRegionGroups.includes(name)),
-    downloadGroup: lowMultiPool ? ['下载策略'] : [],
+    downloadGroup: lowMultiPool ? [groupName(GROUP_KEYS.download)] : [],
     logger
   });
 
@@ -562,7 +612,7 @@ function buildProxyTopology({
     });
 
   // 中国分流组：只有某条生效规则把它当目标时才生成（引用即激活）
-  if (referencedTargets.has('中国分流')) {
+  if (isReferenced(GROUP_KEYS.domestic)) {
     const domesticGroup = assembleSkeleton(SKELETON_GROUP_DEFS.domestic[direction]);
     if (domesticGroup) finalGroups.push(domesticGroup);
   }
@@ -570,7 +620,10 @@ function buildProxyTopology({
   finalGroups.push(...appGroups);
 
   if (userConfig.enableIPv6) {
-    finalGroups.push(buildSelect('IPv6控制台', ['REJECT', '手动选择', 'DIRECT']));
+    finalGroups.push(buildSelect(
+      groupName(GROUP_KEYS.ipv6),
+      ['REJECT', groupName(GROUP_KEYS.manual), 'DIRECT']
+    ));
   }
 
   // 兜底组：成员顺序同样由方向声明给出（split 以默认代理起头，return 以 DIRECT 起头）
@@ -604,8 +657,8 @@ function buildProxyTopology({
   });
 
   finalGroups.push(
-    buildSelect('其他节点', buckets.other),
-    buildSelect('未知识别', buckets.unknown, userConfig.hideUnknownGroup)
+    buildSelect(groupName(GROUP_KEYS.other), buckets.other),
+    buildSelect(groupName(GROUP_KEYS.unknown), buckets.unknown, userConfig.hideUnknownGroup)
   );
 
   // 声明式自定义策略组装配 (groups DSL 引擎)

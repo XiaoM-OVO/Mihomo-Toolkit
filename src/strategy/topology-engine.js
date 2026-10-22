@@ -15,6 +15,7 @@ const { filterNodes, SUPPORTED_GROUP_TYPES } = require('./matcher');
 const { resolveMacro } = require('./macros');
 const { stripGroupDecoration } = require('./presentation');
 const { FIELDS_BY_KEY } = require('../data');
+const { GROUP_KEYS, groupName } = require('../data/catalog/identity');
 
 /** Mihomo 内置代理目标，非组引用，不参与悬空目标告警 */
 const BUILTIN_PROXY_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS', 'GLOBAL']);
@@ -28,9 +29,9 @@ const DEFAULT_TOLERANCE = FIELDS_BY_KEY.testTolerance.default;
  * 模式与默认代理目标映射表
  */
 const DEFAULT_MODE_MAP = {
-  auto: '自动选择',
-  manual: '手动选择',
-  fallback: '故障转移',
+  auto: groupName(GROUP_KEYS.auto),
+  manual: groupName(GROUP_KEYS.manual),
+  fallback: groupName(GROUP_KEYS.fallback),
   direct: 'DIRECT',
   reject: 'REJECT'
 };
@@ -246,8 +247,9 @@ function evaluateGroupDefinition(groupDef, context = {}) {
   }
 
   // 3. 构建宏上下文 (地区/家宽/中国分流等口径一律由调用方显式传入，禁止在此启发式推断)
-  const defaultProxy = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || '自动选择';
-  const resiGroup = context.residentialGroup || ((userConfig.enableIsolation && buckets.residential?.length) ? ['家宽优选'] : []);
+  const defaultProxy = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || groupName(GROUP_KEYS.auto);
+  const resiGroup = context.residentialGroup
+    || ((userConfig.enableIsolation && buckets.residential?.length) ? [groupName(GROUP_KEYS.residential)] : []);
   const domesticGroup = context.domesticGroup || [];
   const nonCnRegions = context.nonCnRegions || [];
 
