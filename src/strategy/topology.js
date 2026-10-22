@@ -565,7 +565,7 @@ function buildProxyTopology({
     allPoolMembers[def.name] = poolMembers(def);
   });
 
-  // 方向语义骨架组：成员顺序写在各方向的数据声明里（config/catalog.js），
+  // 方向语义骨架组：成员顺序写在各方向的数据声明里（data/catalog/groups.js），
   // 此处只按 trafficDirection 取对应变体并交给统一求值器，不再现场推导顺序。
   const assembleSkeleton = (def) => evaluateGroupDefinition(def, {
     classifiedNodes,
@@ -585,7 +585,7 @@ function buildProxyTopology({
     logger
   });
 
-  // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 config/catalog.js，
+  // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 data/catalog/groups.js，
   // 拓扑只负责「低倍率池非空时装配」；成员由 `@pool:低倍率节点` 展开。
   if (lowMultiPool) {
     const { evaluatedGroups } = evaluateCustomTopology({

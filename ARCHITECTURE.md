@@ -13,7 +13,7 @@ Mihomo-Toolkit 是一个面向 Mihomo (Clash.Meta) 的代理节点清洗、重�
    - 所有网络请求、文件读写等具有副作用的操作收敛在 `io/`、`config/` 和 `targets/`。
 2. **单一事实来源 (SSOT)**：
    - 字段规范、默认值与信任级别统一在 `src/data/field-registry.js` 声明；
-   - 服务定义基准统一在 `src/config/catalog.js` 维护。
+   - 服务定义基准统一在 `src/data/catalog/` 维护（`services/` 按类别拆分），`src/config/catalog.js` 只负责运行期投影。
 3. **输入不可信与安全收敛 (Fail-Closed)**：
    - 外部订阅源与远程请求参数一律视为不可信数据，默认剥离所有可能控制宿主环境或改变网络监听面的特权字段。
 4. **务实求真，技术债务透明化**：
@@ -61,7 +61,7 @@ Mihomo-Toolkit 是一个面向 Mihomo (Clash.Meta) 的代理节点清洗、重�
                             │
 ┌───────────────────────────▼────────────────────────────┐
 │ 6. Config (配置装载与合并)                             │
-│    • index.js (配置求解器)    • catalog.js (服务编目)  │
+│    • index.js (配置求解器)    • catalog.js (编目投影)  │
 │    • include.js (片段展开)    • mounts.js (外挂读盘)   │
 │    • defaults.js (出厂默认值)                          │
 └───────────────────────────┬────────────────────────────┘
@@ -71,6 +71,7 @@ Mihomo-Toolkit 是一个面向 Mihomo (Clash.Meta) 的代理节点清洗、重�
 │    • field-registry.js (字段字典与信任元数据)          │
 │    • security-baselines.js (不可变安全基线与受保护域)  │
 │    • cleaner-rules.js (地区、线路、清洗正则词库)       │
+│    • catalog/* (服务与策略组静态声明)                  │
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
@@ -172,15 +173,27 @@ src/
 │       ├── http.js               # HTTP 代理协议解析器
 │       └── base64.js             # Base64 订阅内容解码器
 │
-├── 6. config/                    # ⚙️ Layer 6: 配置策略层 (装载/合并/编目)
+├── 6. config/                    # ⚙️ Layer 6: 配置策略层 (装载/合并/投影)
 │   ├── index.js                  # resolveConfig 合并器 (只增不减基线合并)
-│   ├── catalog.js                # 领域服务编目 (SSOT) 与服务基准
+│   ├── catalog.js                # 服务编目投影层 (静态声明来自 data/catalog)
 │   ├── defaults.js               # 出厂默认配置 (由 field-registry 派生)
 │   ├── include.js                # 配置片段挂载 include (主文件优先/环路防护)
 │   └── mounts.js                 # 外挂文件载入与存在性校验
 │
 ├── 7. data/                      # 📦 Layer 7: 只读运行基础层 (静态基线与字典)
 │   ├── index.js                  # 基础层统一导出
+│   ├── catalog/                  # 内置服务、出厂策略组与仓库前缀 (按类别拆分)
+│   │   ├── index.js              # 编目静态基线汇总导出
+│   │   ├── repos.js              # 仓库 / 图标源前缀 (取自字段注册表)
+│   │   ├── defaults.js           # 分类默认策略与游戏聚合组声明
+│   │   ├── groups.js             # 专项服务 / 广告 / 下载 / 方向骨架组声明
+│   │   └── services/             # 六类内置服务字典
+│   │       ├── ai.js             # AI 助手
+│   │       ├── streaming.js      # 流媒体平台
+│   │       ├── social.js         # 海外社交平台
+│   │       ├── game.js           # 游戏服务
+│   │       ├── dev.js            # 开发者与学术
+│   │       └── system.js         # 系统基础服务
 │   ├── field-registry.js         # 字段注册表 SSOT (定义/默认值/信任级别)
 │   ├── security-baselines.js     # 安全基线 (受保护域名/豁免组/Fake-IP 保底)
 │   ├── cleaner-rules.js          # 节点清洗规则库 (地区/线路/阻断正则/权重)
@@ -336,4 +349,4 @@ include:
    当前 `targets/` 仅提供了最基础的 CLI 与轻量 HTTP 服务端，对于更广泛的集成场景（如 Serverless / 边缘 Worker / 复杂进程守护）尚未形成标准化的适配接口。
 
 > [!NOTE]
-> 原“策略组拓扑与装配逻辑双硬编码耦合”已在 Milestone 3 落地（引入 `groups` 声明式 DSL 引擎与 `catalog.js` SSOT 驱动）；M3 尚余安全进阶防御项，整体未闭环。
+> 原“策略组拓扑与装配逻辑双硬编码耦合”已在 Milestone 3 落地（引入 `groups` 声明式 DSL 引擎与 `data/catalog` SSOT + `catalog.js` 投影驱动）；M3 尚余安全进阶防御项，整体未闭环。

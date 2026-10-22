@@ -1,7 +1,7 @@
 /**
  * 六维服务注册表管理模块
  *
- * 委托至 config/catalog 统一编目事实来源，维护 AI 助手、流媒体、社交、游戏平台、开发者工具及系统服务。
+ * 委托至 config/catalog 的投影层，静态事实来源为 data/catalog；维护 AI 助手、流媒体、社交、游戏平台、开发者工具及系统服务。
  */
 
 const { buildServiceCatalog } = require('../config/catalog');
