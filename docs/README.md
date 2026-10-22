@@ -6,7 +6,7 @@
 | :--- | :--- |
 | [README.md](../README.md) | 项目概览、架构分层、快速开始 |
 | [CONFIGURATION.md](../CONFIGURATION.md) | 用户配置契约（字段、语义、默认值） |
-| [DEFAULTS.md](../DEFAULTS.md) | 默认产物与基线说明 |
+| [DEFAULTS.md](../DEFAULTS.md) | 默认产物基线（规模、59 条规则顺序、变更规则） |
 | [ARCHITECTURE.md](../ARCHITECTURE.md) | 分层架构与依赖规则 |
 | [ROADMAP.md](../ROADMAP.md) | 当前状态、里程碑、M3.B 规格与候选改进 |
 

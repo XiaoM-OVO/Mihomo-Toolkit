@@ -1,222 +1,199 @@
 # =====================================================================
-# 📦 Mihomo-Toolkit 统一配置文件模板
+# 📦 Mihomo-Toolkit  统一配置模板
 # =====================================================================
-# 📖 三分钟概念速览
-# ─────────────────────────────────────────────────────────────────────
-# 统一流水线支持三种输出形态（outputMode 字段或 CLI -m / --mode 参数）：
-#   config  【默认/推荐】完整配置文件：订阅拉取 ➔ 节点清洗 ➔ 状态看板 ➔ 策略组与分流 ➔ 内核优化
-#           • 全自动执行「智能节点资产依赖保活沙箱」：只继承节点专属 DNS/Hosts 依赖
-#           • 交付契约白名单：产物顶层键只能由本工具生成，订阅的 external-controller / secret /
-#             script / tunnels / geox-url 等控制面字段一律不会进入产物
-#   nodes   【纯净节点】仅执行节点清洗、去重与打标，输出干净的 proxies 节点数组（专供客户端）
-#   report  【审计报告】输出结构化节点清洗统计与健康审计报告 (JSON)
+# 一句话数据流：
+#   subscriptions → 清洗/重命名 → groups（组怎么长）+ pools（可选节点集合）→ routing（谁走谁）→ 产物
 #
-# 💡 不修改节点名称：只需将 enableNodeRename 设为 false 即可，
-#    底层的地区识别、倍率抽取与特征分析仍会照常进行，确保策略组依然精准归类。
+# 必改两项：
+#   subscriptions   订阅清单
+#   output          产物输出路径
 #
-# 📌 被注释的配置项均带内置默认值，按需取消注释覆盖即可。
+# 三条规则记住就不绕：
+#   • routing 是唯一规则来源：表里出现即生效，没写就没有，数组顺序即优先级
+#   • groups 只声明「组」，不产出规则；多数场景写 { ref: <键> } 引用内置目录
+#   • 所有被注释的项都有内置默认值，取消注释即可覆盖
+#
+# 交付形态（outputMode 字段或 CLI -m / --mode）：
+#   config  完整配置（默认）｜ nodes  纯节点数组 ｜ report  审计报告 JSON
 # =====================================================================
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ① 订阅源与拉取设置
-# ─────────────────────────────────────────────────────────────────────
-# 抓取设置（本地代理 + 容灾兜底）
+# ───── ① 订阅源与拉取 ─────────────────────────────────────────────────
+# 抓取出口（本地代理 + 容灾兜底）
 fetchProxyPort: 7890          # 抓取代理端口，留空=直连；每项订阅可用 proxy 单独覆盖
 fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失败自动走代理
-# 直连模式：本机 DNS 解析失败/无记录一律拒绝（fail-closed）。
-# 代理模式：目标域名由代理侧解析，本机校验无法约束其实际出口；如需完整 SSRF 防护，
-#           请在代理侧配置 ACL 拒绝私网/回环/云元数据目标（本工具不宣称代理模式已完整防护）。
+# 直连模式：本机 DNS 解析失败/无记录一律拒绝（fail-closed）
+# 代理模式：目标域名由代理侧解析，本机校验无法约束实际出口；需要完整 SSRF 防护时，
+#           请在代理侧配置 ACL 拒绝私网/回环/云元数据目标
 # fetchRetry: 2               # 拉取失败重试次数（超时/网络错误/5xx 重试，4xx 快速失败）
 # fetchTimeout: 15            # 单次拉取超时秒数
 # fetchStaleTtl: 24           # 网络中断时复用上次成功缓存的小时数（0=关闭容灾）
-# expireAggregation: "min"    # 多订阅到期聚合策略：min=最早到期预警(推荐) / max=最晚 / first=首项
+# expireAggregation: "min"    # 多订阅到期聚合：min=最早到期预警(推荐) / max=最晚 / first=首项
 
-# 订阅清单（支持多订阅并行抓取；url 为远程链接或本地 YAML 路径）
 # 订阅正文格式自动识别，无需额外配置：
-#   • 多协议 URI 列表 (vless:// vmess:// trojan:// ss:// hysteria2:// tuic:// socks:// http://)
+#   • 多协议 URI 列表（vless:// vmess:// trojan:// ss:// hysteria2:// tuic:// socks:// http://）
 #   • Base64 编码的 URI 列表 / YAML
-#   • 标准 YAML 订阅 (顶层 proxies: 数组)
-#   • 结构化单节点声明（直接在 subscriptions 列表中书写 type/server/port 等对象）
+#   • 标准 YAML 订阅（顶层 proxies: 数组）
+#   • 结构化单节点声明（直接在 subscriptions 里书写 type/server/port 等对象）
 subscriptions:
   - url: "https://example.com/api/v1/sub1"
     tag: "订阅A"
-    # enabled: true             # 是否启用该订阅（设为 false 可临时停用）
+    # enabled: true             # 是否启用该订阅（false 可临时停用）
     # indexPrefix: "A"          # 节点序号前缀（如 A01/B01），不填按地区统一编号
     # proxy: false              # 单独指定是否走本地代理
     # retry: 3                  # 单独指定重试次数
-    # resetDay: 19              # 每月固定重置日（自动计算"距离重置剩余 X 天"）
+    # resetDay: 19              # 每月固定重置日（自动计算「距离重置剩余 X 天」）
   - url: "https://example.com/api/v1/sub2"
     tag: "订阅B"
 
-  # 本地文件示例
-  # - url: "./my-local-nodes.yaml"
+  # 本地文件：- url: "./my-local-nodes.yaml"
 
-  # 直接注入单节点 URI (支持 hysteria2:// tuic:// vless:// vmess:// trojan:// ss:// socks:// http://)
-  # 方式 1：随大流（全自动清洗、地区识别、模板重命名、自动进各地区组）
+  # 内联 URI（随大流：自动清洗、地区识别、模板重命名、进各地区组）
   # - uri: "hysteria2://password@hk01.example.com:443/?sni=hk01.example.com#Hy2-HK"
   #   tag: "自建"
-  #
-  # 方式 2：开小灶（保持指定名称 + 精准投放到指定策略组，不随大流进其他组）
+
+  # 内联 URI（开小灶：指定名称 + 定向投放，不随大流进其他组）
   # - uri: "vless://uuid@us01.example.com:443?security=tls#My-VPS"
-  #   name: "🇺🇸 专线·我的自建节点" # 手动指定节点名
-  #   keepName: true              # 保持指定原名：不执行模板重命名，豁免无效/广告节点拦截
-  #   groups:                     # 定向投放到哪些策略组（支持现有组如 ChatGPT，也支持自定义新组名）
+  #   name: "🇺🇸 专线·我的自建节点"
+  #   keepName: true            # 保留原名：不执行模板重命名，豁免无效/广告节点拦截
+  #   groups:                   # 定向投放（可写现有组名，也可写自定义新组名）
   #     - "🤖 ChatGPT"
   #     - "📍 手动选择"
-  #
-  # 方式 3：结构化字段单节点（支持链式代理 dialerProxy 与原生字段）：
-  # - type: socks5               # 支持 socks5 / http / ss / vless / vmess / trojan 等
+
+  # 结构化单节点（支持链式代理 dialerProxy）
+  # - type: socks5              # socks5 / http / ss / vless / vmess / trojan 等
   #   server: "198.51.100.1"
   #   port: 1080
-  #   username: "myuser"
-  #   password: "mypassword"
-  #   name: "🇺🇸 自建专线"        # 自定义名称（有 name 时默认保持该名，无需担心被自动模版改名）
+  #   username: "user"
+  #   password: "pass"
+  #   name: "🇺🇸 自建专线"       # 有 name 时默认保持该名
   #   tag: "自建"
-  #   keepName: true             # 主动决定：true=保留原名 / false=强制交由模版重命名
-  #   dialerProxy: "🇭🇰 香港前置" # 链式代理：指定前置出口代理节点或策略组（前置节点被重命名会自动级联更新）
+  #   keepName: true
+  #   dialerProxy: "🇭🇰 香港前置"  # 前置节点被重命名时会自动级联更新
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ② 运行模式与输出
-# ─────────────────────────────────────────────────────────────────────
+# ───── ② 输出与运行 ───────────────────────────────────────────────────
 outputMode: "config"            # config (完整配置) | nodes (纯节点) | report (审计报告)
-output: "./dist/config.yaml"    # 默认输出路径
+output: "./dist/config.yaml"    # 产物输出路径
 # logLevel: "info"              # silent | error | warn | info | debug
-# redactLevel: "partial"        # 日志脱敏档位：
-#   off     本地调试：完整展示 URL
-#   partial 推荐日常：仅保留协议与域名，屏蔽参数与凭据
-#   full    分享脱敏：隐藏全部 IP 与域名
+# redactLevel: "partial"        # 日志脱敏：off 完整 URL / partial 保留协议与域名 / full 隐藏 IP 与域名
+# enablePipeline: true          # 流水线总控：false 则跳过策略编排与内核优化，仅交付清洗后的节点
+# enableIPv6: false             # 全局 IPv6：控制 TUN / DNS / 路由；本机无公网 IPv6 时保持 false
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ③ 部署与安全（常驻 server 模式生效，CLI 本地运行不受限）
-# ─────────────────────────────────────────────────────────────────────
-# 安全姿态（默认值即安全）：
-#   • 服务默认只监听 127.0.0.1；对外提供请同时配置 authToken，
-#     否则监听非回环地址时 ?url= / ?config= 参数会被自动拒绝 (fail-closed)。
-#   • ?config= 拉取的远程配置视为不可信输入：只允许 http(s) 订阅源，
-#     DNS 控制面与本机资源类字段会被剥夺。
-#   • 产物顶层键受「交付契约白名单」约束：订阅携带的 external-controller / secret /
-#     script / tunnels / hosts 等字段一律不会进入 config 产物。
-# ⚠️ 监听地址不在本文件配置：由环境变量 HOST（或 startServer({host})）控制。
-#    历史模板里的 serverHost 从未被读取，已移除；等价做法：HOST=0.0.0.0 node src/targets/server.js
-# enableCache: true                # 启用本地内存缓存（键含配置整体结构摘要 + 外挂文件内容摘要）
-# cacheTtl: 300                    # 新鲜缓存有效时间（秒，默认 300）；此窗口内请求秒级命中 Fresh 缓存
-# cacheStaleMaxAge: 86400          # SWR 陈旧缓存最大容忍秒数（默认 86400 即 24 小时）；超过 cacheTtl 但未超此窗口时返回旧快照并异步重构
-# refreshCooldown: 15              # 强制刷新冷却防爆盾（秒，默认 15，0 为禁用）；?refresh=1 在此窗口内重复请求时直接返回最新缓存
-# autoRefreshInterval: 3600        # 后台自动拉取与缓存预热周期（秒，默认 0 关闭；建议 3600-7200）；静默拉取失败时保留旧缓存
-# enableWarmup: true               # 服务启动时是否在后台自动预热初始订阅缓存（默认根据 autoRefreshInterval 自动判定）
-# authToken: "your-secret-token"   # 服务端访问鉴权 Token (?token=xxx 或 Authorization 头)
-# enableUrlParams: true            # 是否允许前端通过 ?url= / ?config= 动态传参
-# maxConcurrentBuilds: 8           # 并发构建上限，超出返回 503
-# security:                        # 资源配额：声明为「本机可信字段」，?config= 远程配置无法写入
-#   maxSubscriptionUrls: 20        # 单次允许的最大订阅 URL 数
-#   maxRemoteConfigBytes: 1048576  # 远程配置最大字节数 (1MB)
-#   maxSubscriptionBytes: 8388608  # 单个订阅响应体最大字节数 (8MB，流式截断)
-#   maxTotalNodes: 5000            # 单次允许最大处理节点总数
-#   perSubscriptionMaxNodes: 3000  # 单个订阅最大允许节点数
+# ───── ③ 配置组织：片段挂载 include ───────────────────────────────────
+# 片段与主文件共用同一套 schema，无需学习新概念。适合按「变动频率」拆分。
+# 优先级：主文件 > include[n] > ... > include[0]
+# 合并：数组并集去重（保留先出现顺序）、对象深度递归、标量后者覆盖
+# 支持片段内再 include（相对路径以该片段所在目录为基准），环路/超深直接报错
+# 跨片段关闭某个组/条目时，必须显式写 disabled: true（并集语义下注释不生效）
+# include:
+#   - "./base.yaml"
+#   - "./overrides.yaml"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ④ 简繁中文转换（可选，需 npm install opencc-js）
-# ─────────────────────────────────────────────────────────────────────
-# enableChineseConvert: false      # 开启简繁智能转换
-# chineseConvertMode: "s2t"        # s2t=转为繁体中文 / t2s=转为简体中文
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑤ 节点清洗与去重（cleaner）
-# ─────────────────────────────────────────────────────────────────────
-enableDedupe: true                 # 开启底层物理特征指纹去重
-enableDashboard: true              # 生成高颜值订阅状态虚拟看板节点（流量剩余、套餐到期等）
-removeInfoNodes: true              # 自动过滤订阅原生说明伪节点（避免与合成看板冲突）
-enableAirportTag: true             # 多订阅时自动为节点打上订阅来源标签
-# strictRegionMatch: false         # 严格地区匹配模式
-# adTextThreshold: 6               # 纯文本广告判定阈值（无数字/线路特征且长度超过此值判定为广告）
-# whitelistKeywords:               # 白名单豁免关键词（包含即放行并保留原名）
+# ───── ④ 节点清洗与重命名 ─────────────────────────────────────────────
+enableDedupe: true                 # 底层物理特征指纹去重
+enableDashboard: true              # 生成订阅状态看板节点（流量剩余、套餐到期等）
+removeInfoNodes: true              # 过滤机场原生说明/流量提示伪节点
+enableAirportTag: true             # 多订阅时自动打上机场来源标签
+# airportTag: ""                   # 手动指定标签（逗号分隔），留空=自动检测
+# strictRegionMatch: false         # true=严格字典匹配 / false=允许国旗 Emoji 与启发式识别
+# adTextThreshold: 6               # 纯文本广告判定阈值（无数字/线路特征且长度超过此值）
+# whitelistKeywords:               # 白名单：包含即放行并保留原名
 #   - "x-ray"
 #   - "自建"
-# blockKeywords:                   # 黑名单关键词（节点名包含即拦截，优先于白名单）
+# blockKeywords:                   # 黑名单关键词（优先于白名单）
 #   - "免费领取"
-#   - "点击购买"
-# blockServers: []                 # 黑名单服务器（server 字段包含即拦截，优先于白名单）
+# blockServers: []                 # 黑名单服务器地址（优先于白名单）
+
+enableNodeRename: true             # 节点重命名总开关（false=保留原名，地区识别照常进行）
+showFeatureIcon: true              # 节点名后追加特征 Emoji（🚀 4K 等）
+# enableNodeSort: false            # 智能排序：大区 → 隔离分桶 → 线路质量 → 倍率升序
+# renameTemplate: "{icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
+# 改名模板变量：
+#   {airport}   订阅标签前缀        {icon}      国旗/地区 Emoji
+#   {region}    地区中文名          {index}     自动补零序号
+#   {features}  特征图标            {protocol}  协议 Emoji
+#   {in}        入口城市            {city}      落地城市
+#   {line}      线路特征            {multi}     倍率（x0.5 / x2.0）
+#   {ip_stack}  IP 栈标识           {transport} 传输协议（WS / GRPC）
+# renameSeparators: ["|", "-", "·", "/"]   # 允许自动清理的悬空分隔符
+# indexPrefixMap: { "订阅A": "A" }         # 序号前缀映射（= 订阅的 indexPrefix）
+# specialNodeRules:                        # 自定义重命名规则
+#   - { reg: "/iepl|iplc/i", targetName: "专线" }
+# nodeIpVersion: "dual"             # 节点连接 IP 栈：dual 双栈竞速(推荐) / ipv6-prefer / ipv4-prefer / ipv6 / ipv4
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ⑥ 域名多 IP 节点裂变（fission）
-# ─────────────────────────────────────────────────────────────────────
-# enableFission: false             # 开启单域名并发解析为多个 IP 独立实体节点
-# fissionMaxNodes: 5               # 单域名最大裂变节点数（代码实际默认值为 5）
+# ───── ⑤ 节点裂变 ─────────────────────────────────────────────────────
+# enableFission: false             # 单域名并发解析为多个 IP 独立节点
+# fissionMaxNodes: 5               # 单域名最大裂变节点数
 # fissionStack: "all"              # all=双栈 / v4=纯 IPv4 / v6=纯 IPv6
-# fissionExcludeKeywords:          # 包含这些关键词的节点跳过裂变
+# fissionExcludeKeywords:          # 含这些关键词的节点跳过裂变
 #   - "负载均衡"
 #   - "故障转移"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ⑦ 节点重命名与模板
-# ─────────────────────────────────────────────────────────────────────
-enableNodeRename: true             # 是否启用节点重命名（设为 false 可原样保留节点名称，且不影响地区识别）
-# enableNodeSort: false            # 是否启用节点智能排序（按大区、质量权重、入口、倍率升序排布）
-showFeatureIcon: true              # 是否在节点名后追加特征 Emoji 图标 (如 🚀 4K 等)
-# renameTemplate: "{icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}"
-# nodeIpVersion: "dual"            # 节点连接 IP 栈策略: dual (双栈并发竞速，推荐) | ipv6-prefer | ipv4-prefer | ipv6 | ipv4
-# 命名模板可用变量:
-#   {airport}   订阅标签前缀 (如 [AirportA])
-#   {icon}      国家/地区国旗 Emoji (如 🇭🇰, 🇯🇵)
-#   {region}    国家/地区中文名称 (如 香港, 日本)
-#   {index}     按大区与订阅前缀自动补零序号 (如 01, L01)
-#   {features}  特征图标/说明 (如 🤖, 🏠, 📺)
-#   {protocol}  协议 Emoji (如 🛸, 🦊, 🐴)
-#   {in}        入口城市 (如 深, 沪, 京)
-#   {city}      落地城市 (如 洛杉矶, 东京)
-#   {line}      线路特征 (如 BGP, IPLC, CN2)
-#   {multi}     节点倍率数值 (如 x0.5, x2.0)
-#   {ip_stack}  IP栈标识 (如 IPv6, 双栈)
-#   {transport} 传输协议 (如 WS, GRPC)
+# ───── ⑥ 策略组 groups ────────────────────────────────────────────────
+# groups 只声明「组长什么样、成员是谁」，不产出任何规则。
+#   • { ref: <键> } 引用内置目录：列了即激活，可覆写任意字段，未知键直接报错并列出可用键
+#   • 目录之外的组直接写完整声明，字段与目录条目完全同构
+#   • disabled: true 显式关闭（跨 include 片段时必需）
+#   • direction: split | return 限定生效方向
+#   • 组要接流量，必须在 ⑦ routing 里写指向它的条目
+# 内置目录已覆盖 AI / 流媒体 / 社交 / 游戏 / 开发学术 / 系统服务 / 专项服务。
+#
+# match / exclude 配方（pools 共用同一套语法）：
+#   region: ["hk", "jp"]            地区代码 / "asia" / "!cn" / "unknown"
+#   multi: "<= 1.5"                 倍率区间 [0, 1.5] / "> 2.0" / "== 1.0"
+#   tags: ["streaming", "!lowMulti"] 标签（可数组 OR / 取反 / { any, all }）
+#   pattern: "/(?:iepl|iplc)/i"     名称子串或正则
+#   protocol: ["hysteria2", "tuic"] 协议类型（可取反 "!http"）
+#   airport: ["主力机场A"]          订阅来源标签
+#   mode: all | any                 复合条件默认 all（exclude 默认 any）
+#
+# proxies 成员可写固定名，也可写宏：
+#   @matchedNodes  @residentialGroup  @defaultProxy  @standardOptions
+#   @activeRegions  @asia  @europe  @americas  @oceania  @sea  @preferredRegions  @nonCnRegions
+#   （完整宏表见 CONFIGURATION.md 2.1）
+# groups:
+#   - { ref: chatgpt }               # 引用内置 ChatGPT 组
+#   - { ref: gemini }
+#   - { ref: claude, disabled: true } # 显式关闭
+#   - ref: copilot                   # 引用条目亦可覆写字段
+#     name: 我的 Copilot 线路
+#     type: url-test
+#   - name: 我的专属线路             # 目录之外的自定义组
+#     match: { region: ["hk", "jp"], multi: "<= 1.0" }
+#     proxies: ["@matchedNodes", "DIRECT"]
 
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑧ 策略组总控与拓扑模式（profile）
-# ─────────────────────────────────────────────────────────────────────
-# 核心策略总控
-trafficDirection: "split"          # split=国内直连/海外代理（默认） | return=回国（国内代理/海外直连）
-defaultProxyMode: "manual"         # auto (自动测速) | manual (手动选择) | fallback (故障转移) | direct | reject
-regionGroupType: "url-test"        # 地区策略组类型: url-test (测速优选) | select (手动选择) | fallback (故障转移)
-# enableRegionHashLB: false        # 为达到条件的地区组增加哈希负载均衡（建议配合 regionGroupType: "select"）
-# minorNodeThreshold: 3            # 小众地区独立建组最小节点数（低于此值自动折叠至大洲组）
-# coreRegions:                     # 主力免折叠大区（低于阈值也保证独立建组）
-#   - "cn"
-#   - "hk"
-#   - "tw"
-#   - "jp"
-#   - "kr"
-#   - "sg"
-#   - "us"
-# hideUnknownGroup: false          # 是否在面板中隐藏「🗑️ 未知识别」组
-# groupIconMode: "emoji"             # 策略组图标模式: emoji (默认带Emoji) | icon (仅在线图标纯净名) | both (两者兼备) | none (纯文本无装饰)
-# groupIcons:                        # 自定义策略组/骨架组的图标与 Emoji 覆盖映射表
+# 拓扑与呈现（进阶，全部有默认值）
+# minorNodeThreshold: 3            # 小众地区独立建组最小节点数（低于则折叠进大洲组）
+# coreRegions: ["cn", "hk", "tw", "jp", "kr", "sg", "us"]  # 主力免折叠大区
+# enableRegionHashLB: false        # 地区组增加哈希负载均衡（建议配 regionGroupType: select）
+# hideUnknownGroup: false          # 面板隐藏「🗑️ 未知识别」组
+# groupIconMode: "emoji"           # emoji | icon（纯净名+在线图标）| both | none
+# groupIcons:                      # 图标覆盖
 #   自动选择: "⚡"
-#   手动选择:
-#     emoji: "📍"
-#     icon: "Static.png"
-# exemptGroups:                    # 在只读骨架基线（手动选择 / 漏网之鱼）之外【追加】永不被空组剪枝斩首的组名
-#                                  # 同样只增不减：用于保护自建常驻组不被 DAG 级联清理误删
+#   手动选择: { emoji: "📍", icon: "Static.png" }
+# exemptGroups:                    # 追加「永不被空组剪枝」的组名（只增不减）
 #   - "🏠 家宽优选"
+# iconRepoOrz / iconRepoKoolson / iconRepoLige47   # 在线图标仓库前缀
 
-# 分流表 (routing)：唯一规则来源，数组顺序即优先级
-#
-# 「表里出现即生效，没写就没有」——分流不再有开关，要少一点分流就删条目，
-# 只要某几个服务就把整段 preset 换成逐条 service。
-# 条目形式：
-#   - preset: ai                      整段展开该分类下的全部服务（含自定义服务）
-#   - service: twitter                单个服务（可用 customServices 里自定义的键）
-#   - { rule: "DOMAIN,example.com", to: 自动选择 }   直接写一条规则，to 可省略（三段式天然带目标）
-#   - { preset: ai, to: 手动选择 }     给整段统一换目标
-#   - { service: twitter, disabled: true }           临时停用一条
-#
-# 默认表（src/data/default-routing.js）等价于下面这份：
+
+# ───── ⑦ 分流表 routing（最常改的一项）─────────────────────────────────
+# routing 是唯一规则来源：数组顺序即优先级，前面写的先匹配。
+# 条目三选一：
+#   { preset: ai }                      整段预设展开
+#   { service: twitter }                单个服务
+#   { rule: "DOMAIN-SUFFIX,a.com" }     原生规则（两段式由 to 补目标，三段式自带目标）
+# 可选字段：
+#   to: <组名 | DIRECT | REJECT | @pool:池名>   覆写目标
+#   disabled: true                              停用同键条目
+#   direction: split | return                   仅指定方向生效
+# 预设清单：subscription / quic / ads / ai / streaming / social / game / dev /
+#           specialized / system / process / bt / download / domestic / final
+# 下表与出厂默认一致。想少一类就删条目；只想留某几个服务就换成逐条 service。
 routing:
   - preset: subscription
   - service: ad-block
@@ -231,63 +208,67 @@ routing:
   - preset: download
   - preset: domestic
   - preset: final
+
+# 常用改法：
+#   开社交整段：    - preset: social
+#   只开某一个：    - service: twitter
+#   激进广告拦截：  - service: anti-ad
+#   拦截 QUIC：     - preset: quic
+#   私域直连（最高优先级，放最前）：
+#     - rule: "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve"
+#     - rule: "DOMAIN-SUFFIX,company.internal"
+#       to: "DIRECT"
+#   换目标：
+#     - service: youtube
+#       to: 我的专属线路
 #
-# 常用改动示例：
-#   开社交整段：   - preset: social
-#   只开某一个：   - service: twitter
-#   激进广告拦截： - service: anti-ad
-#   拦截 QUIC：    - preset: quic
-#   开专项：       - service: crypto / paypal / webrtc
+# 自定义 Rule-Provider（供上面的 rule / RULE-SET 引用）
+# customRuleProviders:
+#   my-rules:
+#     type: http
+#     behavior: domain
+#     url: "https://example.com/my-rules.yaml"
+#     path: ./ruleset/my-rules.yaml
+#     interval: 86400
+#     format: yaml
+#
+# 订阅域名/IP 直连（自动注入最前列直连规则与 fake-ip-filter，防止刷新订阅走代理循环）
+# subDomain: "sub.example.com"
 
-# AI 策略组地区保底优先列表 (默认无专属节点时兜底)
-aiPreferredRegions:
-  - us
-  - jp
-  - tw
-  - sg
-  - kr
-  - eu
-# ⚠️ biliPreferredRegions 已移除：该字段从未被实现（历史文档遗留的空承诺）
 
-# 节点池与隔离机制
-# 池 = 用 match 条件圈出的一组节点；本身不是策略组，被 `@pool:<池名>` 或分流规则引用时才物化成组。
-# 内置池：家宽优选 / 高倍率优选 / 实验节点（隔离池，需 enableIsolation: true）、低倍率节点（默认隐藏，供下载引用）
-# enableIsolation: true            # 打开隔离机制：三个隔离池的成员从地区池中剔除（默认 false）
-# lowMultiThreshold: 0.99          # 倍率 <= 此值的节点自动标记为低倍率 (0 关闭)
-# highMultiThreshold: 2.5          # 高倍率判定阈值
-# pools:                           # 自定义池（可选）
+# ───── ⑧ 节点池与隔离 ────────────────────────────────────────────────
+# 池 = 用 match 圈出的一组节点，本身不是策略组；被 routing.to 或 @pool:<池名> 引用时才物化。
+# 内置池：家宽优选 / 高倍率优选 / 实验节点（需 enableIsolation: true）、低倍率节点（恒在，默认隐藏）
+# enableIsolation: true            # 打开后三个隔离池启用，成员从地区池剔除（默认 false）
+# lowMultiThreshold: 0.99          # 倍率 <= 此值标记低倍率（0 关闭）
+# highMultiThreshold: 2.5          # 倍率 > 此值标记高倍率
+# pools:                           # 自定义池（与内置池共用命名空间，重名报错）
 #   - name: 低延迟节点
 #     match: { region: [hk, jp], multi: "<= 1" }
-#     isolate: false               # true=成员从地区池剔除（默认 false）
-#     hidden: false                # true=物化后的组在界面隐藏
+#     isolate: false               # true=成员从地区池剔除
+#     hidden: false                # true=物化后的组在面板隐藏
 #     group: onDemand              # always=总是建组 / onDemand=被引用才建（默认）
 #     type: select                 # select（默认） / fallback
 
+# 家宽节点注入业务组（需 enableIsolation: true，键=地区或 "all"）
+# residentialNodeGroups:
+#   "all": ["ChatGPT", "Gemini"]
+#   "hk": ["ChatGPT"]
 
-# 🧩 通用配置片段挂载（include）：把配置拆成多个片段，片段与主文件共用同一份 schema
-# 优先级：主文件优先（合并顺序 = include[0] ⊕ include[1] ⊕ … ⊕ 主文件自身）
-# 合并规则：数组并集去重（保留先出现的顺序）、对象深度递归合并、标量高优先级覆盖
-# 支持片段内再 include（相对路径以该片段所在目录为基准），环路与超深会直接报错
-# include:
-#   - "./base.yaml"
-#   - "./overrides.yaml"
 
-# 🧩 动态服务编目扩展（支持行内定义或外部挂载配置文件）
-# servicesConfigFile: "./services.config.js" # 外部服务定义文件路径 (支持 .js / .yaml / .json)
-#                                  # ⚠️ 相对路径以「本配置文件所在目录」为基准；文件缺失/格式不支持会直接报错
-#                                  #    （不会像旧版那样静默忽略）；.js 改动无需重启即可生效
+# ───── ⑨ 服务编目扩展 ─────────────────────────────────────────────────
+# 新增或覆写服务：新增项会自动并入对应分类的预设，也可用 { service: <键> } 单独点名。
+# servicesConfigFile: "./services.config.js"   # 外部 .js / .yaml / .json（相对本文件目录，缺失即报错）
 # customServices:
 #   ai:
-#     # 场景 A: 仅覆盖官方内置服务的某些字段（未写的字段如正则、图标、规则集全量继承）
-#     chatgpt:
+#     chatgpt:                     # 只覆盖部分字段（未写的正则/图标/规则集全量继承）
 #       name: "专属ChatGPT"
 #       emoji: "🧠"
-#     # 场景 B: 纯新增全新第三方服务
-#     deepseek:
+#     deepseek:                    # 纯新增第三方服务
 #       name: "DeepSeek"
 #       emoji: "🧠"
-#       reg: "/\\b(?:DeepSeek|DS|深度求索)\\b/i" # 支持标准正则字符串或简单关键词
-#       rules: "deepseek"                      # 自动映射 geosite/deepseek
+#       reg: "/\\b(?:DeepSeek|DS|深度求索)\\b/i"
+#       rules: "deepseek"          # 自动映射 geosite/deepseek
 #       icon: { repo: "koolson", file: "AI.png" }
 #   streaming:
 #     hbo:
@@ -295,160 +276,103 @@ aiPreferredRegions:
 #       emoji: "🎬"
 #       reg: "HBO|HBOMax"
 #       rules: "hbomax"
-#       icon: "https://example.com/hbo.png"     # 也支持直接填完整 URL 图标
+#       icon: "https://example.com/hbo.png"
+# aiPreferredRegions: ["us", "jp", "tw", "sg", "kr", "eu"]   # AI 组无专属节点时的地区兜底顺序
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ⑩ 家宽节点注入
-# ─────────────────────────────────────────────────────────────────────
-# 🏠 家宽节点注入 (需开启 enableIsolation: true，内置池「家宽优选」随之启用)
-# residentialNodeGroups:           # 将家宽节点注入到应用策略组：键=地区("all"或"hk"/"us")，值=策略组列表
-#   "all": ["ChatGPT", "Gemini"]
-#   "hk": ["ChatGPT"]
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑩-B 规则与组的分工
-# ─────────────────────────────────────────────────────────────────────
-# groups 只声明「组长什么样、成员是谁」；规则一律写进 routing 表，用 to 指向目标组。
-# 想给自建组喂规则，就在 routing 里加 { rule: ..., to: 组名 } 或 { service: ..., to: 组名 }。
-# 顺序即优先级：条目在表里越靠前越先匹配。
-# routing:
-#   - preset: subscription
-#   - rule: "DOMAIN-SUFFIX,company.internal"   # 两段式：目标由 to 提供
-#     to: "DIRECT"
-#   - service: youtube
-#     to: 我的专属线路                          # 覆写服务默认目标组
-#   - rule: "geosite:google"                   # 规则集简写：自动登记 geosite/google Provider
-#     to: 🚀 自动选择
-#   - preset: final
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑩-C 统一策略组声明清单 (groups)
-# ─────────────────────────────────────────────────────────────────────
-# 策略组的单一声明入口：列了即激活，注释即关闭。
-# - { ref: <键> } 引用内置组目录（定义内置于程序，无需外部文件），可覆写任意字段
-# - 目录之外的组直接写完整声明，字段与目录条目完全同构
-# - 组不产出规则：给组喂规则请写在 routing 表里（见 ⑩-B）
-# - 跨 include 片段关闭某组时，必须显式书写 disabled: true（片段数组是并集去重）
-# groups:
-#   - { ref: chatgpt }               # 引用内置 ChatGPT 组
-#   - { ref: gemini }
-#   - { ref: claude, disabled: true } # 显式关闭
-#   - ref: copilot                   # 引用条目亦可覆写字段
-#     name: 我的 Copilot 线路
-#     type: url-test
-#   - name: 我的专属线路              # 目录之外的自定义组
-#     match: { region: ["hk", "jp"] }
-#     proxies: ["@matchedNodes", "DIRECT"]
-
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ⑪ 进程级分流名单与自定义分流规则
-# ─────────────────────────────────────────────────────────────────────
-# 🛑 BT / P2P 下载软件直连防封号
-# 这一段由 routing 表的 `{ preset: process }` 启用：表里没有这一条就没有进程直连规则。
-# processDirectWin:                # Windows 强制直连进程名单 (覆写默认)
+# ───── ⑩ 进程分流名单 ─────────────────────────────────────────────────
+# 由 routing 的 { preset: process } / { preset: bt } 启用；表里没有这两个 preset 就不生成进程规则。
+# osType: "windows"                # windows | mac | linux | all（决定读取哪一组名单）
+# processDirectWin:                # Windows 强制直连（覆写默认）
 #   - qBittorrent
 #   - Thunder
 #   - BitComet
 #   - uTorrent
 #   - aria2c
-# processDirectMac:                # macOS 强制直连进程名单 (默认: Thunder/BitComet/uTorrent/qbittorrent/aria2c/transmission-daemon)
-# processDirectLin:                # Linux 强制直连进程名单 (默认: qbittorrent/aria2c/transmission-daemon)
-# processProxyWin:                 # Windows 强制走下载策略的工具 (默认: IDMan/fdm)
+# processDirectMac:                # macOS 强制直连（默认 Thunder/BitComet/uTorrent/qbittorrent/aria2c/transmission-daemon）
+#   - Thunder
+#   - qbittorrent
+# processDirectLin:                # Linux 强制直连（默认 qbittorrent/aria2c/transmission-daemon）
+#   - qbittorrent
+#   - aria2c
+# processProxyWin:                 # 走下载策略的工具（默认 IDMan/fdm）
 #   - IDMan
 #   - fdm
-# processProxyMac: []              # macOS 强制走下载策略的工具 (默认: fdm)
-# processProxyLin: []              # Linux 强制走下载策略的工具 (默认: 空)
-
-# 🎯 自定义路由规则与 Rule-Providers
-# 私域规则写在 routing 表里（见 ⑩-B）：两段式规则由 to 提供目标，三段式规则自带目标。
-# 位置决定优先级——想「最高优先级」，就把条目放在 subscription 预设与业务预设之前。
-# routing:
-#   - rule: "DOMAIN-SUFFIX,company.internal"
-#     to: "DIRECT"
-#   - rule: "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve"
-#   - rule: "RULE-SET,my-custom-rules,📍 手动选择"
-# customRuleProviders:
-#   my-custom-rules:
-#     type: http
-#     behavior: domain
-#     url: "https://example.com/my-rules.yaml"
-#     path: ./ruleset/my-rules.yaml
-#     interval: 86400
-#     format: yaml
-
-# 🌐 订阅服务域名/IP 直连（自动注入最前列直连规则与 fake-ip-filter，防止客户端刷新订阅走代理循环与高延迟）
-# 服务端亦支持根据 HTTP 请求 Host 头自动推导；此处配置可用于预热、CLI 生成或显式固定
-# subDomain: "sub.example.com"
-# 或配置多个域名/IP 列表：
-# subDomain:
-#   - "sub.example.com"
-#   - "198.51.100.1"
+# processProxyMac:                 # 走下载策略的工具（默认 fdm）
+#   - fdm
+# processProxyLin: []              # 默认空；写 [] 即清空该平台名单
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ⑫ 测速与规则集
-# ─────────────────────────────────────────────────────────────────────
-testTolerance: 50                  # 自动选择组切换延迟容忍度 (ms，防止频繁颠簸)
-# testInterval: 300                # 自动健康检查测速间隔 (秒)
+# ───── ⑪ 测速与规则集 ────────────────────────────────────────────────
+testTolerance: 50                  # url-test 切换延迟容忍度（ms，防频繁颠簸）
+# testInterval: 300                # 健康检查间隔（秒）
 # testURL: "https://cp.cloudflare.com/generate_204"
-# useMRS: true                     # 启用 Mihomo Rule-Set 极速二进制规则集格式 (节省内存)
-# ruleProviderCDN: "https://fastly.jsdelivr.net/gh" # 规则集加速 CDN 前缀
-# geositeRepo: "MetaCubeX/meta-rules-dat@meta/geo/geosite" # geosite 域名规则集仓库路径（与 CDN 前缀拼接）
-# geoipRepo: "MetaCubeX/meta-rules-dat@meta/geo/geoip"     # geoip 网段规则集仓库路径
-#                                  # ↑ 想换成自建/镜像规则集仓库，改这两个即可（此前未文档化但一直可用）
+# useMRS: true                     # 使用 Mihomo 二进制规则集（省内存）
+# ruleProviderCDN: "https://fastly.jsdelivr.net/gh"
+# geositeRepo: "MetaCubeX/meta-rules-dat@meta/geo/geosite"
+# geoipRepo: "MetaCubeX/meta-rules-dat@meta/geo/geoip"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ⑬ DNS 高级覆写与防泄漏模式
-# ─────────────────────────────────────────────────────────────────────
-# overwriteDns: true               # 注入权威防泄漏 DNS
-# fakeIpFilterNodes: "smart"       # 节点防环注入模式:
-                                   #   smart  【推荐】智能主域聚合泛化（折叠为 +.<主域>），排除 SNI 伪装干扰，配置清爽紧凑
-                                   #   exact  逐项保留节点完整服务器域名（旧版兼容行为，仍剔除 SNI 伪装）
-                                   #   off    完全不向 fake-ip-filter 注入任何节点域名（由内核原生出站机制直连）
-# fakeIpFilter:                    # 自定义 fake-ip-filter 规则名单追加
+# ───── ⑫ DNS 与 Hosts ─────────────────────────────────────────────────
+# 解析链分工：
+#   dnsDefault  引导 DNS（必须纯 IP，破除解析死锁）
+#   dnsDirect   国内/直连域名解析
+#   dnsProxy    海外代理域名解析
+#   dnsServer   节点服务器域名专用解析（不吃分流）
+# overwriteDns: true               # 注入防泄漏 DNS 总开关
+# dnsListen: "127.0.0.1:1053"
+# dnsAllowNonLoopback: false       # 安全铁律 INV-8：非回环监听=对外开放解析器，软路由才开
+# allowPrivateDns: false           # 是否允许私网地址作为解析器
+# trustedPrivateCidrs: []          # 显式信任的私网解析器网段，如 ["192.168.1.0/24"]
+# dnsDefault: ["223.5.5.5", "119.29.29.29"]
+# dnsDirect: ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"]
+# dnsProxy: ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"]
+# dnsServer: ["223.5.5.5", "119.29.29.29"]
+# fakeIpFilterNodes: "smart"       # 节点域名注入 fake-ip-filter：smart 主域聚合 / exact 逐项 / off 关闭
+# fakeIpFilter:                    # 追加自定义 fake-ip-filter 条目
 #   - "+.my-internal.company"
-# dnsListen: "127.0.0.1:1053"      # 本地 DNS 监听端口
-# dnsAllowNonLoopback: false       # 安全铁律(INV-8)：非回环监听会成为对外开放 DNS 解析器，需显式开启
-#                                  # 软路由对外提供 DNS 时才设为 true（如 dnsListen: "0.0.0.0:53"）
-# allowPrivateDns: false           # 是否允许私网地址作为解析器（企业内网 DNS 需配合下方网段信任）
-# trustedPrivateCidrs: []          # 显式信任的私网解析器网段，例如 ["192.168.1.0/24"]
-# trustedHostDomains: []           # 允许被 hosts 覆盖的受保护域名例外清单（谨慎使用）
-# allowInternalHosts: false        # 是否允许 hosts 指向内网地址（TUN 场景下等同开放内网探测）
-# protectedDomains:                # 在只读安全基线之外【追加】受保护域名（github/paypal/CA/DNS 等 60 余个域已内置）
-#                                  # 语义为「只增不减」：基线不可被此处清空或替换，写 [] 也不会降低保护强度；
-#                                  # 条目按域名规则归一化（小写、忽略 +./*. 前缀与首尾点），非法条目丢弃并告警。
+# assetClosure: "standard"         # 订阅 DNS 依赖继承：standard 按节点域名 / strict 仅白名单 / off 不继承
+# assetDomainAllowlist: []         # assetClosure=strict 时允许继承的域名
+# protectedDomains:                # 在只读基线之外追加受保护域名（只增不减，无法清空基线）
 #   - "mybank.example"
-#   - "+.internal.company.com"
-# dnsDefault:                      # 基础引导 DNS (必须为纯 IP，破除解析死锁)
-#   - "223.5.5.5"
-#   - "119.29.29.29"
-#   - "1.1.1.1"
-# dnsDirect:                       # 直连域名 DoH（用户声明属可信来源：#proxy/#h3 等修饰符保留，
-#                                  # #skip-cert-verify 等致命修饰符仍会被剥离并审计）
-#   - "https://223.5.5.5/dns-query"
-#   - "https://120.53.53.53/dns-query"
-# dnsProxy:                        # 海外代理域名 DoH
-#   - "https://8.8.8.8/dns-query"
-#   - "https://1.1.1.1/dns-query"
-# dnsServer:                       # 节点服务器域名专用解析 DNS
-#   - "223.5.5.5"
-#   - "119.29.29.29"
-# assetClosure: "standard"         # 订阅节点专属 DNS 依赖继承强度：
-#                                  #   standard 按节点域名继承（依赖受保护域名清单兜底）
-#                                  #   strict   仅继承 assetDomainAllowlist 中声明的域名（推荐给高安全需求）
-#                                  #   off      完全不继承订阅的 hosts / nameserver-policy / fake-ip-filter
-# assetDomainAllowlist: []         # assetClosure=strict 时允许继承的域名，例如 ["myairport.com"]
+# hosts: {}                        # 静态 hosts（受保护域名与内网地址默认被拒绝）
+# nameserverPolicy: {}             # 按域分流解析链（保留键不可覆盖）
+# trustedHostDomains: []           # hosts 覆盖受保护域名的例外清单（谨慎使用）
+# allowInternalHosts: false        # 允许 hosts 指向内网（等同开放内网探测）
 
 
-# ─────────────────────────────────────────────────────────────────────
-# ⑭ 内核优化与网络安全
-# ─────────────────────────────────────────────────────────────────────
-# enableTrafficAudit: true         # 审计非标端口流量，非 53/80/443 强制直连
-# QUIC 拦截：由 routing 表的 `{ preset: quic }` 启用（默认表不含）
-# overwriteTun: true               # 注入高性能 TUN 虚拟网卡配置
-# overwriteSniffer: true           # 注入域名嗅探器配置 (强制精确嗅探 TLS/HTTP)
-# enableCoreOptimize: true         # 启用内核层全面性能调优与指纹伪装
+# ───── ⑬ 内核覆写与网络安全 ───────────────────────────────────────────
+# enableTrafficAudit: true         # 非标端口流量强制直连
+# overwriteTun: true               # 注入 TUN 配置
+# overwriteSniffer: true           # 注入域名嗅探器（精确嗅探 TLS/HTTP）
+# enableCoreOptimize: true         # 内核性能调优与指纹伪装
+# QUIC 拦截由 routing 的 { preset: quic } 启用（默认表不含）
+
+
+# ───── ⑭ 简繁中文转换（可选，需 npm install opencc-js）─────────────────
+# enableChineseConvert: false
+# chineseConvertMode: "s2t"         # s2t=简体转繁体 / t2s=繁体转简体
+
+
+# ───── ⑮ 服务端部署与安全（常驻 server 模式生效，CLI 不受限）────────────
+# ⚠️ 监听地址不在本文件配置：由环境变量 HOST 或 startServer({ host }) 控制
+#    （历史字段 serverHost 从未被读取，已废弃）
+# 安全姿态（默认值即安全）：
+#   • 默认只监听 127.0.0.1；监听非回环地址时必须配 authToken，否则 ?url= / ?config= 被拒绝
+#   • ?config= 远程配置视为不可信输入：只允许 http(s) 订阅源，DNS 控制面/本机资源字段被剥夺
+#   • 产物顶层键受交付契约白名单约束：external-controller / secret / script / tunnels / hosts 不进入产物
+# enableCache: true                # 内存构建缓存
+# cacheTtl: 300                    # 新鲜缓存秒数
+# cacheStaleMaxAge: 86400          # SWR 陈旧缓存最大容忍秒数（超期同步重构）
+# refreshCooldown: 15              # ?refresh=1 强制刷新冷却（秒，0 关闭）
+# autoRefreshInterval: 3600        # 后台自动拉取与预热周期（秒，0 关闭）
+# enableWarmup: true               # 启动时后台预热初始订阅
+# authToken: "your-secret-token"   # 访问鉴权（?token=xxx 或 Authorization 头）
+# enableUrlParams: true            # 允许 ?url= / ?config= 动态传参
+# maxConcurrentBuilds: 8           # 并发构建上限，超出返回 503
+# security:                        # 资源配额（本机可信字段，远程配置无法写入）
+#   maxSubscriptionUrls: 20
+#   maxRemoteConfigBytes: 1048576  # 1MB
+#   maxSubscriptionBytes: 8388608  # 8MB，流式截断
+#   maxTotalNodes: 5000
+#   perSubscriptionMaxNodes: 3000

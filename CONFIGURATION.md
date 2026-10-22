@@ -7,6 +7,7 @@
 
 ## 目录
 
+- [零、三分钟上路](#零三分钟上路)
 - [一、配置体系与核心设计哲学](#一配置体系与核心设计哲学)
   - [1.1 扁平化声明与零心智负担](#11-扁平化声明与零心智负担)
   - [1.2 信任分级边界 (Trust Boundary)](#12-信任分级边界-trust-boundary)
@@ -47,6 +48,24 @@
   - [配方 B：高要求 AI 与流媒体玩家版](#配方-b高要求-ai-与流媒体玩家版)
   - [配方 C：HomeLab / 软路由局域网网关版](#配方-chomelab--软路由局域网网关版)
   - [配方 D：模块化片段架构 (`include`)](#配方-d模块化片段架构-include)
+
+---
+
+## 零、三分钟上路
+
+先别背参数。配置面只有三个核心概念，按下面的顺序读即可：
+
+```text
+subscriptions → 清洗/重命名 → groups（组怎么长）+ pools（可选节点集合）→ routing（谁走谁）→ 产物
+```
+
+1. **必改两项**：`subscriptions`（订阅清单）与 `output`（产物路径）。
+2. **分流只认 `routing` 表**：数组顺序即优先级，表里出现即生效、没写就没有（见第 4 节）。
+3. **需要自定义组时才写 `groups`**：多数场景用 `{ ref: <键> }` 引用内置目录；组只声明成员与呈现，不产规则（见 2.1.1）。
+4. **需要圈选/隔离节点时才用 `pools`**：池本身不是组，被 `routing.to` 或 `@pool:<池名>` 引用时才物化（见 2.6）。
+5. **其余字段都有默认值**：按需查第三节字典，不必通读。
+
+完整可运行模板见 [`config.example.yaml`](config.example.yaml)，其 ①–⑮ 分节与本文分类一一对应。
 
 ---
 
@@ -549,7 +568,7 @@ include:
 | `enableNodeRename` | `boolean` | `true` | `any` | `override` | **重命名开关**：设为 `false` 可完全原样保留订阅原有节点名称，但底层地区识别照常生效。 |
 | `strictRegionMatch`| `boolean` | `false` | `any` | `override` | **地区识别严格度**：`true` 为严格官方标准字典，`false` 允许国旗 Emoji 与启发式捕获。 |
 | `adTextThreshold` | `number` | `6` | `any` | `override` | **纯文本广告拦截阈值**：节点名无数字且无任何网络线路特征时，字符长度超过此值判定为广告丢弃。 |
-| `lowMultiThreshold`| `number` | `0.99` | `any` | `override` | **低倍率判定阈值**：倍率 <= 此值时打上 `lowMulti` 标签（进入「`⏬ 低倍率节点`」池，设为 `0` 关闭）。 |
+| `lowMultiThreshold`| `number` | `0.99` | `any` | `override` | **低倍率判定阈值**：倍率 <= 此值时打上 `lowMulti` 标签（进入「`低倍率节点`」池，设为 `0` 关闭）。 |
 | `enableIsolation` | `boolean` | `false` | `any` | `override` | **隔离总开关**：`true` 启用「家宽优选 / 高倍率优选 / 实验节点」三个内置隔离池，成员从地区池剔除；池本身由 `pools` 描述。 |
 | `pools` | `object[]` | `[]` | `local` | `override` | **节点池声明**：`[{ name, match, exclude?, isolate?, hidden?, group?, type? }]`，被 `routing` 引用时物化成同名策略组。 |
 | `highMultiThreshold`| `number` | `2.5` | `any` | `override` | **高倍率判定阈值**：倍率 >= 此值判定为高倍率节点（`enableIsolation` 打开时进入「`🚀 高倍率优选`」池）。 |
