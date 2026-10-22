@@ -590,7 +590,7 @@ include:
 | `{ service: '<键>' }` | 只展开单个服务（内置目录键或 `customServices` 键） | `{ service: 'netflix' }` |
 | `{ rule: '<规则>' }` | 一条原生规则，两段式自动补目标、三段式替换目标；另支持 `geosite:<名>` / `geoip:<名>` 简写（自动登记同名 Provider） | `{ rule: 'DOMAIN-SUFFIX,example.com', to: 'DIRECT' }`、`{ rule: 'geosite:netflix', to: '奈飞专线' }` |
 | `to` | 目标覆写：内置目标（`DIRECT` / `REJECT` / `REJECT-DROP`）或组引用键 | `{ service: 'twitter', to: 'chatgpt' }` |
-| `disabled: true` | 跳过该条目（用于「默认表里保留、按需打开」） | 见 `quic` / `social` 示例 |
+| `disabled: true` | 关闭同键条目（key = `preset` / `service` / `rule` 原文，并叠加 `direction`）。同键多次出现时由靠后者决定开关状态；include 合并后主文件在后，因此「片段启用、主文件关闭」或反之都以主文件为准 | 见 `quic` / `social` 示例 |
 | `direction` | 只在指定方向生效：`split`（去程）/ `return`（回国）。方向不符时整条不生成；缺省 = 双向生效。同一规则需要两个方向各自落地时，写两条同名规则各带一个 `direction`，而不是在一条里塞两个目标 | `{ rule: 'DOMAIN-SUFFIX,x.com', to: '回国专线', direction: 'return' }` |
 
 预设清单（`PRESET_DEFINITIONS`）：`subscription`（订阅直连与基础网络）、`quic`、`ads`、`ai`、`streaming`、`social`、`game`、`dev`、`specialized`、`system`、`process`（进程直连）、`bt`（BT 追踪器 + 下载软件，默认直连）、`download`（游戏 / 安卓下载规则集）、`domestic`、`final`。分类预设 = **该分类下全部服务 + `customServices` 里新增的服务**；只要一部分就改用逐条 `{ service }`。

@@ -519,6 +519,30 @@ function expandRule(ctx, entry) {
 }
 
 /**
+ * 计算 routing 条目的稳定键：preset / service / rule 原文，并叠加方向
+ *
+ * 同键条目视为「同一个槽位」：开关状态取该槽位最后一次出现的声明，
+ * `disabled` 会关闭同键的全部条目。include 合并后片段在前、主文件在后，
+ * 因此主文件的关闭 / 重新启用在合并清单上稳定生效。方向参与键，保证
+ * split / return 两条同名规则互不误伤（见 CONFIGURATION 4 节）。
+ *
+ * @param {object} entry routing 条目
+ * @returns {string|null}
+ */
+function routingEntryKey(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  let key = null;
+  if (entry.preset) key = `preset:${entry.preset}`;
+  else if (entry.service) key = `service:${entry.service}`;
+  else if (entry.rule) key = `rule:${String(entry.rule).trim()}`;
+  if (!key) return null;
+  const direction = entry.direction === 'split' || entry.direction === 'return'
+    ? entry.direction
+    : 'both';
+  return `${key}|${direction}`;
+}
+
+/**
  * 展开单个 routing 条目
  * @param {object} ctx 上下文
  * @param {object} entry routing 条目
@@ -622,7 +646,22 @@ function expandRouting(userConfig = {}, registries = {}, options = {}) {
   const ruleFormat = userConfig.useMRS ? 'mrs' : 'yaml';
 
   // 规则只有一个来源：`routing` 表按数组顺序展开。组声明（`groups`）不再顺带产出规则。
+  // `disabled` 先按「同键最后一次出现」结算成关闭键集合，再统一过滤：
+  // 与 groups 的「位置靠后者胜」一致；include 合并后主文件位于片段之后，其写法稳定生效。
+  const finalState = new Map();
   for (const entry of routing) {
+    if (!entry || typeof entry !== 'object') continue;
+    const key = routingEntryKey(entry);
+    if (key) finalState.set(key, { disabled: entry.disabled === true });
+  }
+  const disabledKeys = new Set(
+    [...finalState.entries()].filter(([, state]) => state.disabled).map(([key]) => key)
+  );
+  for (const entry of routing) {
+    if (entry && typeof entry === 'object' && entry.disabled !== true) {
+      const key = routingEntryKey(entry);
+      if (key && disabledKeys.has(key)) continue;
+    }
     expandEntry(ctx, entry);
   }
 

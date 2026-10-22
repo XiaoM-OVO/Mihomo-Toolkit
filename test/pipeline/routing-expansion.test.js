@@ -125,6 +125,54 @@ describe('routing 展开引擎：条目语义', () => {
     assert.strictEqual(rules.some(r => r.startsWith('RULE-SET,ads,')), false);
   });
 
+  it('disabled 在合并后按同键结算：主文件靠后的关闭可覆盖片段条目', () => {
+    const { config, registries } = pair();
+    // include 并集：片段条目在前，主文件条目在后
+    const routing = [
+      { preset: 'subscription' },
+      { preset: 'ads' },
+      { preset: 'final' },
+      { preset: 'ads', disabled: true }
+    ];
+    const { rules } = expandRouting(config, registries, { routing });
+    assert.strictEqual(
+      rules.some(r => r.startsWith('RULE-SET,ads,')),
+      false,
+      '同键 disabled 必须关闭片段中残留的启用条目'
+    );
+    assert.ok(rules.at(-1).startsWith('MATCH,'), '其余条目不受影响');
+  });
+
+  it('disabled 后同键再次声明可重新启用（位置靠后者胜）', () => {
+    const { config, registries } = pair();
+    const { rules } = expandRouting(config, registries, {
+      routing: [{ preset: 'ads', disabled: true }, { preset: 'ads' }, { preset: 'final' }]
+    });
+    assert.ok(rules.some(r => r.startsWith('RULE-SET,ads,')));
+  });
+
+  it('direction 参与关闭键，split / return 同名规则互不误伤', () => {
+    const routing = [
+      { rule: 'DOMAIN-SUFFIX,direction-key.test', to: 'DIRECT', direction: 'split' },
+      { rule: 'DOMAIN-SUFFIX,direction-key.test', to: 'REJECT', direction: 'return' },
+      { rule: 'DOMAIN-SUFFIX,direction-key.test', disabled: true, direction: 'split' },
+      { preset: 'final' }
+    ];
+    const split = pair();
+    assert.strictEqual(
+      expandRouting(split.config, split.registries, { routing }).rules
+        .some(r => r.includes('direction-key.test')),
+      false,
+      'split 方向的同键条目应被关闭'
+    );
+    const ret = pair({ trafficDirection: 'return' });
+    assert.ok(
+      expandRouting(ret.config, ret.registries, { routing }).rules
+        .includes('DOMAIN-SUFFIX,direction-key.test,REJECT'),
+      'return 方向的同键条目不得被 split 的 disabled 误伤'
+    );
+  });
+
   it('rule 条目按 to 定目标（两段式补目标、三段式替换目标）', () => {
     const { config, registries } = pair();
     const { rules } = expandRouting(config, registries, {
