@@ -89,6 +89,8 @@ Mihomo-Toolkit 是一个面向 Mihomo (Clash.Meta) 的代理节点清洗、重�
 - `Data -> Other`:   ✅ 0 违规 (数据基线只读无外引)
 - `Infra -> Other`:  ✅ 0 违规 (基础设施基元纯计算无内部依赖)
 
+此外，`verify:arch` 还会扫描 `src/` 中的「组身份字面量」：已登记的策略组规范名只允许出现在 `data/catalog/identity.js` 与内置池名来源中，逻辑层必须通过 `groupName(GROUP_KEYS.xxx)` 取值；命中即退出非零，防止以中文组名做身份判定回潮。
+
 ---
 
 ### 📂 代码库物理文件结构映射 (Physical Layout)

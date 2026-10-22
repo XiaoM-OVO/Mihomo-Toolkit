@@ -126,3 +126,65 @@ console.log(`• Core -> IO:      ${coreToIo.length === 0 ? '✅ 0 违规' : '�
 console.log(`• IO -> Core:      ${ioToCore.length === 0 ? '✅ 0 违规 (底层通信不反向依赖核心)' : '❌ ' + ioToCore.length + ' 条 (需关注)'}`);
 console.log(`• Data -> Other:   ${dataOut.length === 0 ? '✅ 0 违规 (数据基线只读无外引)' : '❌ ' + dataOut.length + ' 违规'}`);
 console.log(`• Infra -> Other:  ${infraOut.length === 0 ? '✅ 0 违规 (基础设施基元无外引)' : '❌ ' + infraOut.length + ' 违规'}`);
+
+// 3. 组身份字面量防回潮：逻辑层不得再以中文组名作为身份判断
+const { GROUP_IDENTITIES } = require('../src/data/catalog/identity');
+
+/** 规范名的合法声明处：身份表本身与内置池名来源 */
+const IDENTITY_SSOT_FILES = new Set([
+  'src/data/catalog/identity.js',
+  'src/data/default-pools.js'
+]);
+
+/** 与组名同字面、但语义无关的用户面词元：按「文件 + 字面量」精确豁免 */
+const GROUP_LITERAL_ALLOWLIST = new Map([
+  ['src/strategy/matcher.js', new Map([
+    ['未知识别', '用户 DSL 匹配词（region 未知语义），不参与组身份判断']
+  ])],
+  ['src/data/default-routing.js', new Map([
+    ['广告拦截', 'routing 预设显示标签，不参与组身份判断']
+  ])]
+]);
+
+function stripComments(code) {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, block => block.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
+const identityNames = [...new Set(Object.values(GROUP_IDENTITIES).map(def => def.name))];
+const literalViolations = [];
+
+for (const file of files) {
+  const normFile = file.replace(/\\/g, '/');
+  if (IDENTITY_SSOT_FILES.has(normFile)) continue;
+  const allowed = GROUP_LITERAL_ALLOWLIST.get(normFile) || new Map();
+  const code = stripComments(fs.readFileSync(file, 'utf8'));
+  for (const name of identityNames) {
+    if (allowed.has(name)) continue;
+    const idx = code.indexOf(name);
+    if (idx === -1) continue;
+    literalViolations.push({
+      file: normFile,
+      line: code.slice(0, idx).split('\n').length,
+      name
+    });
+  }
+}
+
+console.log('\n=================================================================');
+console.log('🔒 组身份字面量 (Group Identity Literals) 检验结果');
+console.log('=================================================================');
+if (literalViolations.length === 0) {
+  console.log('✅ 0 违规：逻辑层未出现已登记组名的中文字面量，身份统一走 data/catalog/identity。');
+} else {
+  console.log(`❌ 发现 ${literalViolations.length} 处组名字面量（请改用 groupName(GROUP_KEYS.xxx)）：`);
+  for (const v of literalViolations) {
+    console.log(`  • ${v.file}:${v.line}  「${v.name}」`);
+  }
+}
+
+// 任一项失败即退出非零，避免 CI 中「只打印不拦截」
+if (cycles.length > 0 || literalViolations.length > 0) {
+  process.exitCode = 1;
+}

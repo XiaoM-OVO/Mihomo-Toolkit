@@ -27,6 +27,7 @@ const {
   SKELETON_EXEMPT_GROUPS
 } = require('./security-baselines');
 const { DEFAULT_ROUTING } = require('./default-routing');
+const { GROUP_KEYS, groupName } = require('./catalog/identity');
 
 /**
  * 字段声明表。
@@ -114,7 +115,7 @@ const FIELDS = [
   { key: 'enableRegionHashLB', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '地区组是否增加哈希负载均衡策略组' },
   { key: 'hideUnknownGroup', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '策略组建组与 UI 面板', doc: '隐藏未知识别节点组' },
+    group: '策略组建组与 UI 面板', doc: `隐藏${groupName(GROUP_KEYS.unknown)}节点组` },
   { key: 'groupIconMode', type: 'string', default: 'emoji', merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '策略组图标: emoji | icon | both | none' },
   { key: 'groupIcons', type: 'object', default: {}, merge: 'override', trust: 'any',

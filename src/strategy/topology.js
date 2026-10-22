@@ -407,7 +407,7 @@ function buildProxyTopology({
     });
 
     if (buckets.other?.length > 0) {
-      logger.debug(`📦 [🌐 其他节点] 汇入 ${buckets.other.length} 个节点`);
+      logger.debug(`📦 [🌐 ${groupName(GROUP_KEYS.other)}] 汇入 ${buckets.other.length} 个节点`);
     }
     if (buckets.special?.length > 0) {
       logger.debug(`📦 [📌 特殊节点] 汇入 ${buckets.special.length} 个节点`);

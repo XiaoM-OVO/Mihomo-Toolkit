@@ -20,6 +20,7 @@ const { getEnhancedRegionDefs } = require('../core/shared/regions');
 const { getIsolationBucket } = require('../core/isolation');
 const { POOL_SORT_ORDER } = require('../data/default-pools');
 const { decorateGroupName } = require('../strategy/presentation');
+const { GROUP_KEYS, groupName: resolveGroupName } = require('../data/catalog/identity');
 // Name rendering and feature variables are owned by core/rename.
 const { FEATURE_TEXT_MAP } = require('../core/shared/icons');
 const { resolveProxiesDomains } = require('../io/dns-resolver');
@@ -173,7 +174,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       const icon = item.regionInfo.icon ? `${item.regionInfo.icon} ` : '';
       groupName = `${icon}${item.regionInfo.groupName || `${item.regionInfo.name}节点`}`;
     } else {
-      groupName = '🌐 其他节点';
+      groupName = `🌐 ${resolveGroupName(GROUP_KEYS.other)}`;
     }
 
     const parts = [`[归组]: ${groupName}${isolationNote ? ` (${isolationNote})` : ''}`];

@@ -371,11 +371,16 @@ function expandDomestic(ctx, to) {
  * @param {object} ctx 上下文
  */
 function expandFinal(ctx) {
-  if (ctx.config.enableIPv6) ctx.rules.push('IP-CIDR6,::/0,IPv6控制台,no-resolve');
-  if (ctx.config.enableTrafficAudit) {
-    ctx.rules.push('DST-PORT,53/80/443,漏网之鱼', 'DST-PORT,1-65535,DIRECT');
+  if (ctx.config.enableIPv6) {
+    ctx.rules.push(`IP-CIDR6,::/0,${groupName(GROUP_KEYS.ipv6)},no-resolve`);
   }
-  ctx.rules.push('MATCH,漏网之鱼');
+  if (ctx.config.enableTrafficAudit) {
+    ctx.rules.push(
+      `DST-PORT,53/80/443,${groupName(GROUP_KEYS.final)}`,
+      'DST-PORT,1-65535,DIRECT'
+    );
+  }
+  ctx.rules.push(`MATCH,${groupName(GROUP_KEYS.final)}`);
 }
 
 /**
