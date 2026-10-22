@@ -152,18 +152,13 @@ function resolveGroupProxies({
     const tokenLower = token.toLowerCase();
 
     // 0. 节点池引用：`@pool:<池名>` 展开为池成员（load-balance 需要节点列表，不能只给池组名）
+    //    池名存在性已在装载期 fail-closed；此处只处理「已声明但当前为空 / 未启用」的合法跳过
     if (tokenLower.startsWith('@pool:')) {
       const poolName = token.slice('@pool:'.length).trim();
-      const members = macroCtx.pools && Object.prototype.hasOwnProperty.call(macroCtx.pools, poolName)
-        ? macroCtx.pools[poolName]
-        : null;
-      if (!Array.isArray(members) || members.length === 0) {
-        if (logger && typeof logger.warn === 'function') {
-          logger.warn(`⚠️ [TopologyEngine] 节点池「${poolName}」不存在或为空，引用已跳过`);
-        }
-        continue;
+      const members = macroCtx.pools ? macroCtx.pools[poolName] : null;
+      if (Array.isArray(members) && members.length > 0) {
+        resolved.push(...members);
       }
-      resolved.push(...members);
       continue;
     }
 

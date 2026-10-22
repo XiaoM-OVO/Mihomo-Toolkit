@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 
 const { buildDefaultPools, POOL_NAMES } = require('../../src/data/default-pools');
 const { resolvePoolDefinitions } = require('../../src/strategy/pools');
+const { resolveConfig } = require('../../src/config');
 const { buildDefaultOutput } = require('../fixtures/default-output.scenario');
 const { DEFAULT_ROUTING } = require('../../src/data/default-routing');
 
@@ -118,5 +119,40 @@ describe('【Strategy】节点池 (pools) 定义与物化', () => {
     assert.ok(myGroup, '用户声明的策略组必须正常生成');
     assert.ok(myGroup.proxies.includes('DIRECT'), '普通代理应保留');
     assert.ok(myGroup.proxies.some(p => p.includes('日本')), '@pool 宏应正确展开池成员');
+  });
+});
+
+describe('【Config】池引用装载期 fail-closed（groups / routing 同一口径）', () => {
+  it('groups[].proxies 的未知池报出字段路径', () => {
+    assert.throws(
+      () => resolveConfig({
+        groups: [{ name: '幽灵组', type: 'select', proxies: ['DIRECT', '@pool:幽灵池'] }]
+      }),
+      /groups\[0\]\.proxies\[1\]: 节点池「幽灵池」未声明/
+    );
+  });
+
+  it('routing[].to 的未知池同样在装载期报错', () => {
+    assert.throws(
+      () => resolveConfig({
+        routing: [{ rule: 'DOMAIN-SUFFIX,pool.example', to: '@pool:幽灵池' }]
+      }),
+      /routing\[\d+\]\.to: 节点池「幽灵池」未声明/
+    );
+  });
+
+  it('`@pool:` 后缺少池名直接报错', () => {
+    assert.throws(
+      () => resolveConfig({
+        groups: [{ name: '空池名', type: 'select', proxies: ['@pool:'] }]
+      }),
+      /groups\[0\]\.proxies\[0\]: `@pool:` 后缺少池名/
+    );
+  });
+
+  it('已声明但未启用的内置池不拦截（空池由装配期按设计跳过）', () => {
+    assert.doesNotThrow(() => resolveConfig({
+      groups: [{ name: '实验引用组', type: 'select', proxies: ['@pool:实验节点'] }]
+    }));
   });
 });

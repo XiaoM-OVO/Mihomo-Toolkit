@@ -169,7 +169,7 @@ groups:
 **六、宏的终态定位修正 + Phase A 补修**
 
 - **定位修正**：`@residential` / `@domesticGroup` / `@nonCnRegions` / `@activeRegions` 保留，但文档需明确其定位为**跨层桥**（引用分池层产物或目录条目），而非「硬编码开关的副产品」。宏语义不再随开关增减而漂移。
-- **Phase A 补修（回退一处先前判断）**：未知宏的处置应由「运行期告警并跳过」改为**校验期 fail-closed 并报出字段路径**——项目在 CONFIGURATION.md 已宣称「严格阻断」，运行期告警属「配了等于没配」的软失败，违反不变量 6。实现方式：在配置校验阶段用宏白名单（单一真相源）比对 `@xxx`；引擎内部配方走另一条路径，不受影响。**该补修仅覆盖「未知宏」；`groups[].proxies` 中的 `@pool:<池名>` 未知 / 空池仍是运行期 `warn + skip`，与 `routing` 的 fail-closed 口径尚未统一（见「候选改进 3」）。**
+- **Phase A 补修（回退一处先前判断）**：未知宏的处置应由「运行期告警并跳过」改为**校验期 fail-closed 并报出字段路径**——项目在 CONFIGURATION.md 已宣称「严格阻断」，运行期告警属「配了等于没配」的软失败，违反不变量 6。实现方式：在配置校验阶段用宏白名单（单一真相源）比对 `@xxx`；引擎内部配方走另一条路径，不受影响。**该补修已覆盖「未知宏」；`groups[].proxies` 中的 `@pool:<池名>` 未知池名也已改为装载期 fail-closed（「池已声明但当前为空 / 未启用」仍按设计跳过），见「候选改进 5」。**
 
 **七、验收标准**
 
@@ -419,15 +419,19 @@ groups:
 
 **结果**：新增 `src/strategy/target-registry.js`，把内核内置目标、14 项骨架组、池名、`负载均衡-哈希 (…)` 派生组、地区组、大洲组、按方向过滤的用户组、组目录（含 `disabledRefs`）与服务键收敛成一张按优先级登记的目标表。`resolveTo` / `isValidTargetName` 与 `prune.js` 的内置目标、池依赖判定均改为消费同一份事实，`routing.js` 内的骨架白名单与 `prune.js` 的两份独立白名单已删除。派生哈希组名改由 `regions#getHashLbGroupNames` 统一派生，routing 白名单与展示层徽标登记同源，新增一类目标只需在注册表登记一处。顺带补齐「大洲组名（如 `欧洲节点`）此前不被识别为合法目标」的缺口。
 
-### 5. 校验职责：schema 校验散在三处、失败口径两套
+### 5. ✅ 已完成：池引用口径统一（`@pool:` 装载期 fail-closed）
 
-**现状**：组的结构与配方校验在 `validateGroups`（`src/strategy/matcher.js#L582`，负责 top-level 字段白名单、`match` / `exclude` 维度与类型）；`{ ref }` / `disabled` 的结构校验在 `src/config/groups.js`；目标合法性在 `src/strategy/target-registry.js`。失败口径也不一致：未知宏、未知 ref、未知 `routing.to` 为配置期 fail-closed，而 `groups[].proxies` 中的未知 / 空池是运行期 `warn + skip`（详见本文档上一节「候选改进 3」）。
+**结果**：`resolveConfig` 在装载期校验 `groups[].proxies` 与 `routing[].to` 中的 `@pool:<池名>`，必须指向内置池表或用户 `pools` 中已声明的池，否则报出字段路径（`groups[0].proxies[1]` / `routing[2].to`）并中止；「池已声明但当前为空 / 未启用」仍属合法运行期跳过。`topology-engine.js` 中「节点池不存在或为空」的 `warn + skip` 分支已删除，装配层只保留空成员跳过；`CONFIGURATION.md` 的「两套口径」说明同步移除。
 
-**风险**：新增 DSL 字段要跨三个模块同步，最容易出现「一边已校验、一边仍放行」的软失败；错误发生的阶段（装载期 / 装配期）与错误消息风格也无法统一，用户排查时很难判断某条配置到底在哪一层被丢弃。
+### 6. 校验职责：schema 校验散在三处、执行阶段不统一
 
-**修复方案**：收敛为单一配置 schema 校验层（装载期执行），装配层只消费已通过校验的对象、不再重复判类型；`groups[].proxies` 的池引用与 `routing` 的 `@pool:` 统一为配置期 fail-closed（「池已声明但当前为空」仍属合法运行期跳过）。
+**现状**：组的结构与配方校验在 `validateGroups`（`src/strategy/matcher.js#L582`，装配期执行）；`{ ref }` / `disabled` 的结构校验在 `src/config/groups.js`（装载期）；目标合法性在 `src/strategy/target-registry.js`（解析期）。池引用已在装载期统一（见第 5 条），但其余字段的校验阶段仍是三套。
 
-**验收口径**：任何非法 `groups` / `routing` 配置都在装载期报错并给出字段路径；`topology-engine.js` 中不再存在类型/存在性判断的 `warn + skip` 分支。
+**风险**：新增 DSL 字段要跨三个模块同步，最容易出现「一边已校验、一边仍放行」的软失败；错误发生的阶段（装载期 / 装配期）与错误消息风格不统一，用户排查时很难判断某条配置到底在哪一层被丢弃。
+
+**修复方案**：收敛为单一配置 schema 校验层（装载期执行），装配层只消费已通过校验的对象、不再重复判类型；`topology-engine.js` 中未知宏的 `warn + skip` 兜底随之删除。
+
+**验收口径**：任何非法 `groups` / `routing` 配置都在装载期报错并给出字段路径；`topology-engine.js` 中不再存在类型 / 存在性判断的 `warn + skip` 分支。
 
 ---
 

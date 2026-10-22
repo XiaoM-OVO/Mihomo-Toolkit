@@ -10,6 +10,9 @@ const { resolveMountPath, readMountFile } = require('./mounts');
 const { expandIncludes } = require('./include');
 const { buildServiceCatalog, buildMemberHints, deepMerge } = require('./catalog');
 const { resolveGroupDeclarations } = require('./groups');
+const { POOL_NAMES } = require('../data/default-pools');
+
+const POOL_PREFIX = '@pool:';
 
 /**
  * 加载外部服务定义配置文件 (.js, .cjs, .yaml, .yml, .json)
@@ -114,6 +117,47 @@ function assertNoRemovedFields(config) {
 }
 
 /**
+ * 校验 `@pool:<池名>` 引用是否指向已声明的池
+ *
+ * 口径统一（装载期 fail-closed）：`groups[].proxies` 与 `routing[].to` 中的池引用
+ * 必须在内置池表或用户 `pools` 中声明，否则报出字段路径并中止。
+ * 「池已声明但当前为空 / 未启用」仍属合法状态，由装配期的空成员跳过处理。
+ *
+ * @param {object} config 归一化后的完整配置
+ */
+function validatePoolReferences(config) {
+  const knownPools = new Set(Object.values(POOL_NAMES));
+  for (const pool of Array.isArray(config.pools) ? config.pools : []) {
+    if (pool && typeof pool.name === 'string' && pool.name.trim()) {
+      knownPools.add(pool.name.trim());
+    }
+  }
+
+  const available = [...knownPools].join(' / ') || '无';
+  const check = (value, path) => {
+    if (typeof value !== 'string') return;
+    const token = value.trim();
+    if (!token.toLowerCase().startsWith(POOL_PREFIX)) return;
+    const poolName = token.slice(POOL_PREFIX.length).trim();
+    if (!poolName) {
+      throw new Error(`[Config] ${path}: \`@pool:\` 后缺少池名`);
+    }
+    if (!knownPools.has(poolName)) {
+      throw new Error(`[Config] ${path}: 节点池「${poolName}」未声明，可用池: ${available}（自定义池见 pools）`);
+    }
+  };
+
+  (Array.isArray(config.groups) ? config.groups : []).forEach((group, gIdx) => {
+    if (!group || !Array.isArray(group.proxies)) return;
+    group.proxies.forEach((item, pIdx) => check(item, `groups[${gIdx}].proxies[${pIdx}]`));
+  });
+
+  (Array.isArray(config.routing) ? config.routing : []).forEach((entry, idx) => {
+    if (entry && typeof entry === 'object') check(entry.to, `routing[${idx}].to`);
+  });
+}
+
+/**
  * 解析并生成最终生效的配置对象
  * @param {object} [userConfig={}] 用户自定义配置
  * @param {object} [options={}] 可选解析选项 (baseDir: 相对挂载路径基准目录, logger)
@@ -196,6 +240,9 @@ function resolveConfig(userConfig = {}, options = {}) {
   merged.groups = declaredGroups;
   // 关闭状态以显式字段随配置下传；routing 展开据此报出「目标组已关闭」，不再读目录上的隐式标记
   merged.disabledGroupRefs = disabledRefs;
+
+  // 6. 池引用统一在装载期 fail-closed：groups[].proxies 与 routing[].to 同一套口径
+  validatePoolReferences(merged);
 
   return merged;
 }
