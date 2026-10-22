@@ -119,6 +119,7 @@ src/
 │   ├── matcher.js                # groups / pools 节点匹配配方计算与黑名单校验
 │   ├── pools.js                  # 节点池定义合并、校验与谓词编译
 │   ├── routing.js                # 分流表 (routing) 展开引擎：规则唯一来源
+│   ├── target-registry.js        # 目标白名单唯一真相源：内置/池/地区/目录/服务目标登记与解析
 │   ├── rules.js                  # 规则集 (Rule-Providers) 数据表与进程规则工具
 │   ├── macros.js                 # 策略组引用宏符号注册与求值
 │   ├── presentation.js           # 策略组展示层装饰器 (在线图标/徽标挂载)

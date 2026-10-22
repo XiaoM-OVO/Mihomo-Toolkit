@@ -411,23 +411,17 @@ groups:
 
 ### 3. 组身份：改用 `ref` 键做唯一 ID，名字只做标签
 
-**现状**：多处仍以中文组名作为唯一标识：`routing.js` 硬编码 14 项骨架组清单，`topology.js` 用 `referencedTargets.has('中国分流')` 之类的名字字面量判断激活；中文组名在全仓散落近百处、覆盖十余个文件，重命名时极易漂移。
+**现状**：多处仍以中文组名作为唯一标识：`target-registry.js` 硬编码 14 项骨架组清单，`topology.js` 用 `referencedTargets.has('中国分流')` 之类的名字字面量判断激活；中文组名在全仓散落近百处、覆盖十余个文件，重命名时极易漂移。
 
 **修复方案**：内置组都有唯一 `ref` 键，建立一张 `refKey → 规范组名` 的静态映射表，所有判断匹配改走 `refKey`，名字全程只读不做 ID。这会减少约 100 处硬编码字面量，极大降低维护成本。
 
-### 4. 目标解析：四种写法与多份白名单收敛为单一 TargetRegistry
+### 4. ✅ 已完成：目标解析：四种写法与多份白名单收敛为单一 TargetRegistry
 
-**现状**：`routing` 的 `to` 支持四种写法——内置目标（`DIRECT` / `REJECT` / `REJECT-DROP` / `PASS` / `COMPATIBLE` / `MUTE`）、`@pool:<池名>`、内置目录 `ref` 键、策略组名；解析入口是 `resolveTo`（`src/strategy/routing.js`），合法性判定另起炉灶在 `isValidTargetName`（同文件），其中分别枚举了 `BUILTIN_TARGETS`、`CORE_SKELETON_GROUPS`（14 项骨架组）、池名（`resolvePoolDefinitions` + `POOL_NAMES`）、`负载均衡-哈希 (…)` 正则、地区组（`getEnhancedRegionDefs`）、大洲组（`CONTINENT_DEFS`）、按方向过滤后的用户 `groups`、`registries.groups`（附带 `disabledRefs` 关闭检查）与注册表服务名。此外 `src/strategy/prune.js` 对「哪些组必须存活」还有一套独立认知。
-
-**风险**：新增一类组或目标时，必须同时改动 `resolveTo`、`isValidTargetName`、`prune.js` 与展示层；漏改任何一处，轻则运行期静默漏网，重则误报「未知目标」中断构建。白名单之间没有交集校验，互相矛盾时也无人发现。
-
-**修复方案**：启动时把上述来源收敛成一张 `name → target` 的 TargetRegistry（字段至少包含：原始名、去装饰名、ref 键、来源类别、是否可物化、是否骨架常驻）。`resolveTo` 与 `isValidTargetName` 都只消费这张表，`prune.js` 复用同一张表判断存活。
-
-**验收口径**：新增一种组类型只需在注册表登记一处；现有 `routing-baseline.json` 与 `default-output.golden.json` 逐字节不变。
+**结果**：新增 `src/strategy/target-registry.js`，把内核内置目标、14 项骨架组、池名、`负载均衡-哈希 (…)` 派生组、地区组、大洲组、按方向过滤的用户组、组目录（含 `disabledRefs`）与服务键收敛成一张按优先级登记的目标表。`resolveTo` / `isValidTargetName` 与 `prune.js` 的内置目标、池依赖判定均改为消费同一份事实，`routing.js` 内的骨架白名单与 `prune.js` 的两份独立白名单已删除。派生哈希组名改由 `regions#getHashLbGroupNames` 统一派生，routing 白名单与展示层徽标登记同源，新增一类目标只需在注册表登记一处。顺带补齐「大洲组名（如 `欧洲节点`）此前不被识别为合法目标」的缺口。
 
 ### 5. 校验职责：schema 校验散在三处、失败口径两套
 
-**现状**：组的结构与配方校验在 `validateGroups`（`src/strategy/matcher.js#L582`，负责 top-level 字段白名单、`match` / `exclude` 维度与类型）；`{ ref }` / `disabled` 的结构校验在 `src/config/groups.js`；目标合法性在 `src/strategy/routing.js`。失败口径也不一致：未知宏、未知 ref、未知 `routing.to` 为配置期 fail-closed，而 `groups[].proxies` 中的未知 / 空池是运行期 `warn + skip`（详见本文档上一节「候选改进 3」）。
+**现状**：组的结构与配方校验在 `validateGroups`（`src/strategy/matcher.js#L582`，负责 top-level 字段白名单、`match` / `exclude` 维度与类型）；`{ ref }` / `disabled` 的结构校验在 `src/config/groups.js`；目标合法性在 `src/strategy/target-registry.js`。失败口径也不一致：未知宏、未知 ref、未知 `routing.to` 为配置期 fail-closed，而 `groups[].proxies` 中的未知 / 空池是运行期 `warn + skip`（详见本文档上一节「候选改进 3」）。
 
 **风险**：新增 DSL 字段要跨三个模块同步，最容易出现「一边已校验、一边仍放行」的软失败；错误发生的阶段（装载期 / 装配期）与错误消息风格也无法统一，用户排查时很难判断某条配置到底在哪一层被丢弃。
 

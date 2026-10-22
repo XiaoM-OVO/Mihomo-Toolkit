@@ -20,12 +20,8 @@
 const { FIELDS_BY_KEY } = require('../data');
 const { PRESET_DEFINITIONS, DEFAULT_ROUTING } = require('../data/default-routing');
 const { ADS_GROUPS, SPECIAL_SERVICES, buildServiceCatalog } = require('../config/catalog');
-const { filterGroupsByDirection } = require('../config/groups');
 const { DEFAULT_MODE_MAP } = require('./topology-engine');
-const { stripGroupDecoration } = require('./presentation');
-const { getEnhancedRegionDefs, CONTINENT_DEFS } = require('../core/shared/regions');
-const { resolvePoolDefinitions } = require('./pools');
-const { POOL_NAMES } = require('../data/default-pools');
+const { createTargetRegistry, BUILTIN_TARGETS } = require('./target-registry');
 const { normalizeSubDomains, isIPv4, isIPv6 } = require('../infra/ip');
 const {
   BASE_PROVIDER_ROUTES,
@@ -36,84 +32,8 @@ const {
   pushDownloadRules
 } = require('./rules');
 
-const BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE', 'MUTE']);
-
-const POOL_PREFIX = '@pool:';
-
-const CORE_SKELETON_GROUPS = new Set([
-  '自动选择',
-  '手动选择',
-  '故障转移',
-  '下载策略',
-  '负载均衡-轮询',
-  '漏网之鱼',
-  '家宽优选',
-  '中国分流',
-  'IPv6控制台',
-  '高倍率优选',
-  '实验节点',
-  '订阅与状态看板',
-  '其他节点',
-  '未知识别'
-]);
-
 function dedupe(list) {
   return [...new Set(list)];
-}
-
-/**
- * 校验目标策略组名是否属于有效已知的策略组
- * @param {string} value 目标组名
- * @param {object} ctx 展开上下文
- * @returns {boolean}
- */
-function isValidTargetName(value, ctx) {
-  const clean = stripGroupDecoration(value);
-  if (CORE_SKELETON_GROUPS.has(value) || CORE_SKELETON_GROUPS.has(clean)) return true;
-
-  // 节点池：池被引用时才物化成同名策略组。
-  // 内置池名始终是合法目标（隔离关闭时只是不物化，规则由剪枝层按设计跳过），
-  // 这样关掉隔离不需要去 routing 表里逐条注释。
-  const poolNames = resolvePoolDefinitions(ctx.config).map(def => def.name);
-  const builtinPoolNames = Object.values(POOL_NAMES);
-  if (poolNames.includes(value) || poolNames.includes(clean)) return true;
-  if (builtinPoolNames.includes(value) || builtinPoolNames.includes(clean)) return true;
-
-  if (/^负载均衡-哈希 \(/.test(value) || /^负载均衡-哈希 \(/.test(clean)) return true;
-
-  // 地区组与大洲组
-  const regionDefs = getEnhancedRegionDefs();
-  for (const r of regionDefs) {
-    if (r.groupName && (r.groupName === value || stripGroupDecoration(r.groupName) === clean)) return true;
-    if (r.name && (r.name === value || stripGroupDecoration(r.name) === clean)) return true;
-  }
-  for (const c of CONTINENT_DEFS) {
-    if (c.name && (c.name === value || stripGroupDecoration(c.name) === clean)) return true;
-  }
-
-  // 用户配置的策略组声明 (groups)：只看当前方向生效的声明，
-  // 避免规则指向一条本方向不会生成的组（这类引用应在配置期就报错）
-  const userGroups = filterGroupsByDirection(ctx.config.groups, ctx.direction);
-  for (const g of userGroups) {
-    if (!g || !g.name) continue;
-    if (g.name === value || stripGroupDecoration(g.name) === clean) return true;
-  }
-
-  // 目录/注册表中的组（含改名后名称与 ref 键）
-  const dir = ctx.registries.groups || {};
-  for (const [key, g] of Object.entries(dir)) {
-    if (g && (key === value || g.name === value || stripGroupDecoration(g.name) === clean)) {
-      if (ctx.disabledRefs.has(key)) {
-        throw new Error(`routing: 目标组「${value}」已在 groups 中被禁用 (disabled: true)`);
-      }
-      return true;
-    }
-  }
-
-  // 注册表分类服务名
-  if (findService(ctx.registries, value)) return true;
-
-  return false;
 }
 
 /**
@@ -145,7 +65,7 @@ function collectTargets(rules) {
   const targets = [];
   for (const rule of rules) {
     const target = ruleTargetOf(rule);
-    if (target && !BUILTIN_TARGETS.has(target.toUpperCase())) targets.push(target);
+    if (target && !BUILTIN_TARGETS.includes(target.toUpperCase())) targets.push(target);
   }
   return dedupe(targets);
 }
@@ -160,36 +80,7 @@ function resolveTo(to, ctx) {
   if (typeof to !== 'string' || !to.trim()) {
     throw new Error('routing: 条目缺少目标 `to`');
   }
-  const value = to.trim();
-  if (BUILTIN_TARGETS.has(value.toUpperCase())) return value.toUpperCase();
-
-  // `@pool:<池名>`：求值为该池物化后的策略组名（不是节点列表）
-  if (value.startsWith(POOL_PREFIX)) {
-    const poolName = value.slice(POOL_PREFIX.length).trim();
-    if (!poolName) {
-      throw new Error('routing: `@pool:` 后缺少池名');
-    }
-    const def = resolvePoolDefinitions(ctx.config).find(item => item.name === poolName);
-    if (!def) {
-      const builtin = resolvePoolDefinitions(ctx.config).filter(item => item.builtin).map(item => item.name);
-      throw new Error(`routing: 节点池「${poolName}」不存在（当前可用内置池: ${builtin.join(' / ') || '无'}；自定义池见 pools）`);
-    }
-    return def.name;
-  }
-
-  const refEntry = ctx.registries.groups?.[value];
-  if (refEntry) {
-    if (ctx.disabledRefs.has(value)) {
-      throw new Error(`routing: 目标组「${value}」已在 groups 中被禁用 (disabled: true)`);
-    }
-    return refEntry.name;
-  }
-
-  if (isValidTargetName(value, ctx)) {
-    return value;
-  }
-
-  throw new Error(`routing: 目标组「${value}」未声明或不存在（可用内置目标: DIRECT / REJECT 等，或现有策略组/地区组名）`);
+  return ctx.targets.resolve(to.trim());
 }
 
 /**
@@ -240,6 +131,8 @@ function createContext(userConfig, registries, options) {
     options: options || {},
     // 组关闭状态由配置归一化阶段显式产出，不读目录对象上的隐式标记
     disabledRefs: new Set(disabledRefs),
+    // 目标合法性唯一真相源：解析、校验与剪枝共用同一张注册表
+    targets: createTargetRegistry({ config, registries: effective, direction, disabledRefs }),
     providerBase: { ...BASE_PROVIDER_ROUTES },
     rules: [],
     direction,

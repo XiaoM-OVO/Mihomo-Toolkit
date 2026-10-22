@@ -9,15 +9,11 @@
 const { SKELETON_EXEMPT_GROUPS, effectiveExemptGroups } = require('../data');
 const { stripGroupDecoration } = require('./presentation');
 const { ruleTargetOf } = require('./routing');
-const { resolvePoolDefinitions } = require('./pools');
-const { POOL_NAMES } = require('../data/default-pools');
+const { createTargetRegistry } = require('./target-registry');
 
 const DEFAULT_EXEMPT_GROUPS = [...SKELETON_EXEMPT_GROUPS];
-const VALID_BUILTIN_TARGETS = ['DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS', 'GLOBAL'];
 // 能够证明策略组具备真实代理能力或安全拦截动作的终点（纯 DIRECT 无法证明具备代理能力）
 const PRODUCTIVE_BUILTIN_SINKS = new Set(['GLOBAL', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS']);
-// 池依赖目标：池为空 / 池未被激活时不建组，指向它们的规则按设计跳过（不属于悬空引用告警）
-const POOL_DEPENDENT_TARGETS = new Set(['下载策略', '负载均衡-轮询', ...Object.values(POOL_NAMES)]);
 const MAX_DFS_DEPTH = 1000;
 
 /**
@@ -42,7 +38,9 @@ function pruneEmptyGroups({
   logger = null
 }) {
   // 1. 构建命名空间：严格区分物理代理、内置目标与策略组，防止静默覆盖与命名歧义
-  const builtinTargets = new Set(VALID_BUILTIN_TARGETS);
+  //    目标口径与 routing 共用同一张注册表（内核内置目标 / 池依赖组判定）
+  const targets = createTargetRegistry({ config: userConfig || {}, strictPools: false });
+  const builtinTargets = new Set(targets.builtinNames);
   const physicalNodeNames = new Set();
   if (Array.isArray(proxies)) {
     for (const p of proxies) {
@@ -335,12 +333,6 @@ function pruneEmptyGroups({
 
   if (currentRules.length > 0) {
     const knownTargets = new Set([...builtinTargets, ...physicalNodeNames, ...groupMap.keys()]);
-    const poolDependent = new Set(POOL_DEPENDENT_TARGETS);
-    try {
-      resolvePoolDefinitions(userConfig || {}).forEach(def => poolDependent.add(def.name));
-    } catch {
-      // 池定义非法会在 routing 展开期 fail-closed，这里不重复报错
-    }
     const orphanTargets = new Map();
     const expectedAbsent = new Map();
     currentRules = currentRules.filter(rule => {
@@ -349,7 +341,7 @@ function pruneEmptyGroups({
       if (!target) return true;
       if (knownTargets.has(target) || knownTargets.has(stripGroupDecoration(target))) return true;
       // 池依赖组的缺席是设计内状态（池为空 / 池未激活时不建组），按 debug 记录，不打扰用户
-      if (poolDependent.has(stripGroupDecoration(target))) {
+      if (targets.isPoolDependent(target)) {
         expectedAbsent.set(target, (expectedAbsent.get(target) || 0) + 1);
         return false;
       }

@@ -765,6 +765,25 @@ function filterRegionsByContinent(groupNames = [], continentToken) {
   });
 }
 
+/**
+ * 「负载均衡-哈希 (地区)」派生组名全集
+ *
+ * 后缀与展示层的地区/大洲徽标同源（地区用 `name`，大洲用 `name`），
+ * 拓扑建组、routing 目标白名单与展示层登记共用这一份派生规则，避免各自枚举漂移。
+ *
+ * @returns {string[]} 形如 `负载均衡-哈希 (香港)` 的组名列表
+ */
+function getHashLbGroupNames() {
+  const suffixes = new Set(['大陆']);
+  for (const r of getEnhancedRegionDefs()) {
+    if (r.id !== 'cn' && r.name !== '中国' && r.name) suffixes.add(r.name);
+  }
+  for (const c of CONTINENT_DEFS) {
+    if (c.name) suffixes.add(c.name);
+  }
+  return [...suffixes].map(suffix => `负载均衡-哈希 (${suffix})`);
+}
+
 module.exports = {
   CONTINENT_DEFS,
   SUB_REGION_DEFS,
@@ -774,5 +793,6 @@ module.exports = {
   filterRegionsByContinent,
   getEnhancedRegionDefs,
   getRegionFlagLookup,
+  getHashLbGroupNames,
   validateMapping
 };
