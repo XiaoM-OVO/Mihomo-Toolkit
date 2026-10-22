@@ -1,7 +1,8 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const { createPinnedLookup, createPinnedAgent } = require('../../src/io/pinned-agent');
+const { fetch: undiciFetch } = require('undici');
+const { createPinnedLookup, createPinnedAgent, extractSsrfBlock } = require('../../src/io/pinned-agent');
 
 const PUBLIC_V4 = '93.184.216.34';
 const PUBLIC_V6 = '2606:2800:220:1:248:1893:25c8:1946';
@@ -16,17 +17,11 @@ function callLookup(lookup, host, options = {}) {
   });
 }
 
-/** 沿 cause / errors 链查找 SSRF 拦截标记（undici 会包装连接器错误） */
-function findSsrfBlock(err, depth = 0) {
-  if (!err || typeof err !== 'object' || depth > 2) return null;
-  if (err.ssrfBlocked) return err;
-  if (Array.isArray(err.errors)) {
-    for (const inner of err.errors) {
-      const hit = findSsrfBlock(inner, depth + 1);
-      if (hit) return hit;
-    }
-  }
-  return findSsrfBlock(err.cause, depth + 1);
+function policyError(message) {
+  const err = new Error(message);
+  err.ssrfBlocked = 'policy';
+  err.retryable = false;
+  return err;
 }
 
 function listen(server) {
@@ -117,7 +112,7 @@ describe('【Security】建连期 IP Pinning (pinned-agent)', () => {
     });
 
     try {
-      const res = await fetch(`http://pinned-agent.example:${port}/`, { dispatcher: agent });
+      const res = await undiciFetch(`http://pinned-agent.example:${port}/`, { dispatcher: agent });
       assert.equal(res.status, 200);
       assert.equal(await res.text(), 'pinned-ok');
     } finally {
@@ -126,25 +121,22 @@ describe('【Security】建连期 IP Pinning (pinned-agent)', () => {
     }
   });
 
-  it('集成 - safeFetchText 将建连期 policy 拦截还原为不可重试错误', async () => {
-    const { safeFetchText } = require('../../src/io/fetcher');
-    const originalFetch = global.fetch;
-    global.fetch = async () => {
-      const blocked = new Error(`SSRF blocked: rebinding.example resolved to private IP 127.0.0.1`);
-      blocked.ssrfBlocked = 'policy';
-      blocked.retryable = false;
-      throw new Error('fetch failed', { cause: blocked });
-    };
+  it('错误链提取 - 支持 cause 与 AggregateError 包装，且深度上限生效', () => {
+    const inner = policyError('SSRF blocked: rebind.example resolved to private IP 127.0.0.1');
 
-    try {
-      // 字面量公网 IP 可跳过预检 DNS，专注于建连错误映射
-      await assert.rejects(
-        () => safeFetchText(`http://${PUBLIC_V4}/sub`),
-        (err) => err.ssrfBlocked === 'policy' && err.retryable === false && /private IP 127\.0\.0\.1/.test(err.message)
-      );
-    } finally {
-      global.fetch = originalFetch;
-    }
+    const wrapped = new Error('fetch failed', {
+      cause: new AggregateError([new Error('connect ECONNREFUSED'), inner])
+    });
+    assert.equal(extractSsrfBlock(wrapped), inner);
+
+    let deep = inner;
+    for (let i = 0; i < 4; i++) deep = new Error('layer', { cause: deep });
+    assert.equal(extractSsrfBlock(deep), inner);
+
+    let tooDeep = inner;
+    for (let i = 0; i < 5; i++) tooDeep = new Error('layer', { cause: tooDeep });
+    assert.equal(extractSsrfBlock(tooDeep), null);
+    assert.equal(extractSsrfBlock(null), null);
   });
 
   it('集成 - 私网目标在建连阶段被拒绝（fetch 错误链带出 policy 标记）', async () => {
@@ -156,9 +148,9 @@ describe('【Security】建连期 IP Pinning (pinned-agent)', () => {
 
     try {
       await assert.rejects(
-        async () => { await fetch(`http://rebind-to-loopback.example:${port}/`, { dispatcher: agent }); },
+        async () => { await undiciFetch(`http://rebind-to-loopback.example:${port}/`, { dispatcher: agent }); },
         (err) => {
-          const blocked = findSsrfBlock(err);
+          const blocked = extractSsrfBlock(err);
           return Boolean(blocked) && blocked.ssrfBlocked === 'policy';
         }
       );

@@ -23,6 +23,27 @@ const { policyBlocked, unverifiedBlocked } = require('./ssrf');
 let Agent = null;
 try { Agent = require('undici').Agent; } catch { Agent = null; }
 
+/**
+ * 从 fetch 抛出的错误链中提取 SSRF 拦截信息。
+ * undici 会把连接器错误包进 `fetch failed`，并可能以 AggregateError 聚合多地址失败，
+ * 因此需要沿 `cause` / `errors` 向下查找。
+ * @param {unknown} err
+ * @param {number} [depth]
+ * @returns {Error|null}
+ */
+function extractSsrfBlock(err, depth = 0) {
+  // 预留 4 层包装深度：undici 版本升级可能再套一层 cause，过窄会导致 policy 分类静默丢失
+  if (!err || typeof err !== 'object' || depth > 4) return null;
+  if (err.ssrfBlocked) return err;
+  if (Array.isArray(err.errors)) {
+    for (const inner of err.errors) {
+      const hit = extractSsrfBlock(inner, depth + 1);
+      if (hit) return hit;
+    }
+  }
+  return extractSsrfBlock(err.cause, depth + 1);
+}
+
 /** 默认地址判定：私网 / 回环 / 保留网段一律视为禁止目标 */
 function isBlockedAddress(address) {
   return isPrivateIp(address) || isPrivateIPv6(address);
@@ -129,5 +150,6 @@ function createPinnedAgent(options = {}) {
 module.exports = {
   createPinnedLookup,
   createPinnedAgent,
-  getPinnedAgent
+  getPinnedAgent,
+  extractSsrfBlock
 };

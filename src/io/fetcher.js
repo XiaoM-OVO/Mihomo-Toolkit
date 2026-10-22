@@ -22,7 +22,7 @@ const os = require('os');
 const { safeDecodeURIComponent } = require('./parsers/base64');
 const { validateUrlSsrf, redactUrl } = require('./ssrf');
 const { GenerationSource } = require('./generation');
-const { getPinnedAgent } = require('./pinned-agent');
+const { getPinnedAgent, extractSsrfBlock } = require('./pinned-agent');
 
 let fetchProxy = { resolveLocalProxyDispatcher: null };
 try {
@@ -30,25 +30,19 @@ try {
 } catch {}
 const { resolveLocalProxyDispatcher } = fetchProxy;
 
-/**
- * 从 fetch 抛出的错误链中提取 SSRF 拦截信息。
- * undici 会把连接器错误包进 `fetch failed`，并可能以 AggregateError 聚合多地址失败，
- * 因此需要沿 `cause` / `errors` 向下查找。
- * @param {unknown} err
- * @param {number} [depth]
- * @returns {Error|null}
- */
-function findSsrfBlock(err, depth = 0) {
-  // 预留 4 层包装深度：undici 版本升级可能再套一层 cause，过窄会导致 policy 分类静默丢失
-  if (!err || typeof err !== 'object' || depth > 4) return null;
-  if (err.ssrfBlocked) return err;
-  if (Array.isArray(err.errors)) {
-    for (const inner of err.errors) {
-      const hit = findSsrfBlock(inner, depth + 1);
-      if (hit) return hit;
-    }
-  }
-  return findSsrfBlock(err.cause, depth + 1);
+// fetch 实现必须与 dispatcher 同源：Node 内置 fetch 在不同大版本绑定的 undici 接口不一致，
+// 混用 npm undici 的 Agent 会报 `invalid onRequestStart method`（Node 22/24 实测）。
+// 因此正常运行时使用 npm undici 自带的 fetch；宿主或测试显式替换全局 fetch 时尊重其实现。
+const nativeFetch = globalThis.fetch;
+let undiciFetch = null;
+try {
+  const undici = require('undici');
+  if (typeof undici.fetch === 'function') undiciFetch = undici.fetch;
+} catch {}
+
+function currentFetchImpl() {
+  if (globalThis.fetch !== nativeFetch) return globalThis.fetch;
+  return undiciFetch || nativeFetch;
 }
 
 // 订阅抓取容灾：保留每个订阅最近一次成功抓取的内容，抓取失败时降级复用
@@ -230,7 +224,7 @@ async function safeFetchText(url, options = {}) {
       await validateUrlSsrf(currentUrl, { strict: ssrfStrict });
       const parsedUrl = new URL(currentUrl);
       const fetchOpts = buildFetchOpts(parsedUrl, controller.signal);
-      const res = await fetch(parsedUrl.toString(), dispatcher ? { ...fetchOpts, dispatcher } : fetchOpts);
+      const res = await currentFetchImpl()(parsedUrl.toString(), dispatcher ? { ...fetchOpts, dispatcher } : fetchOpts);
 
       // 说明：浏览器里 `redirect: 'manual'` 会产生 `type === 'opaqueredirect'`，
       // 但 Node/undici 不会（实测 302 的 response.type 为 'basic'，状态码仍是 302），
@@ -276,7 +270,7 @@ async function safeFetchText(url, options = {}) {
       throw e;
     }
     // 建连期 IP Pinning 拦截：从 undici 的错误包装中还原，保持与预检一致的分类语义
-    const blocked = findSsrfBlock(err);
+    const blocked = extractSsrfBlock(err);
     if (blocked) {
       const e = new Error(blocked.message);
       e.ssrfBlocked = blocked.ssrfBlocked;
