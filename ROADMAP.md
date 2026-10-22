@@ -139,9 +139,9 @@ groups:
 | `enableGitHub` / `enableScholar` | 仅具备「关闭」语义的畸形开关 | 否 | **删除** | `groups` 列出对应 `ref` |
 | `aiServices` / `streamingServices` / `socialServices` / `gameServices` / `systemServices` / `devServices` | 内置组条目清单 | 否 | **全部删除** | 无需字段：要哪个服务就列哪条 `ref` |
 | `independentSocial` | 独立成组的社交应用 | 否 | **删除** | 下沉为目录条目属性（该服务是否独立成组） |
-| `aiPreferredRegions` / `residentialNodeGroups` | 内置组成员编排参数 | 否 | **删除** | 下沉为目录条目的**默认值**；用户要改就在该条 `ref` 内覆写（可调能力不丢失） |
+| `aiPreferredRegions` / `residentialNodeGroups` | 内置组成员编排参数 | 否 | **待删除** | 目标为下沉为目录条目默认值；当前 `topology` 仍读取这两个字段，属于未收口残差 |
 | `customServices` | 行内自定义服务字典（按六维分类填写） | 否 | **删除** | 等价于 `groups` 中的一条完整自定义声明 |
-| `enableResidential` | 家宽节点分流 + **出主力池** | **是** | **保留（分池 + 建组特性门）** | 开关同时控制「🏠 家宽优选 建不建 / 家宽节点是否出主力池」；关闭时指向它的规则自动跳过（见 10.13） |
+| `enableResidential` | 家宽节点分流 + 出主力池 | 是 | **删除** | 并入 `enableIsolation`（三个内置隔离池总开关）；家宽节点不再单独门控 |
 
 **四、六维概念处置（最终结论：用户面彻底消失）**
 
@@ -162,15 +162,14 @@ groups:
 | `coreRegions` | DSL 是「在已有拓扑上叠加组」，无法表达「我只要这几组、别自动建地区组」 |
 | `minorNodeThreshold` | 决定小地区节点是否并入「其他节点」，属折叠规则而非组成员 |
 | `regionGroupType` / `enableRegionHashLB` | 决定地区组的原生类型，属折叠规则 |
-| `isolateHighMulti` / `isolateDownload` / `isolateExperimental` / `highMultiThreshold` | 决定节点入桶与是否从主力池剔除，纯分池语义 |
-| `enableResidential`（分池面） | 家宽节点出主力池的行为，DSL 无法表达 |
+| `enableIsolation` / `pools` / `highMultiThreshold` | 隔离池总开关、自定义池定义与高倍率阈值；决定入桶与是否从主力池剔除，纯分池语义 |
 
-> **配套安全要求**：分池开关把节点移出主力池后（如 `isolateHighMulti`、`enableResidential`），必须保证用户仍有组承接这些节点，不得出现「节点被剔除后无处可去」。
+> **配套安全要求**：`enableIsolation` 或自定义池的 `isolate: true` 把节点移出主力池后，必须保证用户仍有组承接这些节点，不得出现「节点被剔除后无处可去」。内置隔离池启用时总会建组，低倍率池恒存在（`hidden: true`）供下载策略引用。
 
 **六、宏的终态定位修正 + Phase A 补修**
 
 - **定位修正**：`@residential` / `@domesticGroup` / `@nonCnRegions` / `@activeRegions` 保留，但文档需明确其定位为**跨层桥**（引用分池层产物或目录条目），而非「硬编码开关的副产品」。宏语义不再随开关增减而漂移。
-- **Phase A 补修（回退一处先前判断）**：未知宏的处置应由「运行期告警并跳过」改为**校验期 fail-closed 并报出字段路径**——项目在 CONFIGURATION.md 已宣称「严格阻断」，运行期告警属「配了等于没配」的软失败，违反不变量 6。实现方式：在配置校验阶段用宏白名单（单一真相源）比对 `@xxx`；引擎内部配方走另一条路径，不受影响。
+- **Phase A 补修（回退一处先前判断）**：未知宏的处置应由「运行期告警并跳过」改为**校验期 fail-closed 并报出字段路径**——项目在 CONFIGURATION.md 已宣称「严格阻断」，运行期告警属「配了等于没配」的软失败，违反不变量 6。实现方式：在配置校验阶段用宏白名单（单一真相源）比对 `@xxx`；引擎内部配方走另一条路径，不受影响。**该补修仅覆盖「未知宏」；`groups[].proxies` 中的 `@pool:<池名>` 未知 / 空池仍是运行期 `warn + skip`，与 `routing` 的 fail-closed 口径尚未统一（见「候选改进 3」）。**
 
 **七、验收标准**
 
@@ -194,7 +193,7 @@ groups:
 
 | 项 | 结论 |
 | :--- | :--- |
-| 目录落地位置 | 实际写入 `src/config/catalog.js`（ROADMAP 此前文字写作 `src/data/catalog`；服务字典真实所在即此处），**不新建平行目录**，仅为其投影出 `registries.groups` 扁平目录 |
+| 目录落地位置 | 静态声明现位于 `src/data/catalog/`（`services/` 按类别拆分 + `groups.js` / `defaults.js` / `repos.js`），`src/config/catalog.js` 只保留投影与合并函数；批次 1 当时「不新建平行目录」的结论已被后续结构重构取代 |
 | `ref` 可引用条件 | 条目自身必须是「完整组声明」（`match` + `proxies` 齐备），否则不入目录 → 引用即 fail-closed，杜绝空壳组。当前仅 AI 大类（`chatgpt`/`gemini`/`claude`/`copilot`）达标 |
 | 宏单一真相源 | 新增 [macros.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/macros.js)：别名 → 求值器同表登记，引擎求值与校验器白名单共用，**同时落地第七节 Phase A 补修**（未知宏改为校验期 fail-closed 并报字段路径） |
 | 新增组声明字段 | `providers`（规则集 Provider 映射）与 `preferredRegions`（`@preferredRegions` 宏展开源）。二者是「`ref` ≡ 手写声明」同构性的必要条件 |

@@ -241,7 +241,7 @@ routing:                          # 分流表：顺序即优先级，表里没�
   - preset: download
   - preset: domestic
   - preset: final
-isolateHighMulti: true           # 大倍率节点专属隔离组 (防偷跑流量)
+enableIsolation: true            # 开启节点隔离池（家宽 / 高倍率 / 实验），隔离成员从地区池剔除
 
 # 6. 内核优化
 overwriteDns: true               # 注入 Fake-IP / DoH 防泄漏 DNS
