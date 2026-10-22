@@ -353,4 +353,4 @@ include:
    当前 `targets/` 仅提供了最基础的 CLI 与轻量 HTTP 服务端，对于更广泛的集成场景（如 Serverless / 边缘 Worker / 复杂进程守护）尚未形成标准化的适配接口。
 
 > [!NOTE]
-> 原“策略组拓扑与装配逻辑双硬编码耦合”已在 Milestone 3 落地（引入 `groups` 声明式 DSL 引擎与 `data/catalog` SSOT + `catalog.js` 投影驱动）；安全进阶防御项（直连建连期 IP Pinning）亦已闭环。M3 规划项全部完成，未排期的候选改进（schema 收敛、组身份 `ref` 化等）按长期演进处理。
+> 原“策略组拓扑与装配逻辑双硬编码耦合”已在 Milestone 3 落地（引入 `groups` 声明式 DSL 引擎与 `data/catalog` SSOT + `catalog.js` 投影驱动）；安全进阶防御项（直连建连期 IP Pinning）亦已闭环。组身份已在 `data/catalog/identity.js` 完成内部键化，未排期的候选改进（schema 收敛等）按长期演进处理。
