@@ -56,6 +56,100 @@ function resolveTargetGroup(groups, rawTarget) {
   return groups.find(g => stripGroupDecoration(g.name).toLowerCase() === target) || null;
 }
 
+/** AI 大类偏好地区：用户全局覆写优先，其次条目默认值 */
+function resolveAiPreferredRegions(entry, userConfig) {
+  return Array.isArray(userConfig.aiPreferredRegions) && userConfig.aiPreferredRegions.length > 0
+    ? userConfig.aiPreferredRegions
+    : entry.preferredRegions;
+}
+
+function preferredRegionNames(entry, regionNames) {
+  return (entry.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
+}
+
+/**
+ * 内置应用策略组的分类配方来源（数据表）
+ *
+ * 每个分类只需登记四件事：从哪个注册表取条目、缺省 proxies 模板、是否回传
+ * preferredRegions、以及必要的条目覆写。新增分类时在此表追加一项即可，
+ * 不再复制 `recipes.push` 的字段组装逻辑。
+ */
+const BUILTIN_RECIPE_SOURCES = [
+  {
+    entries: registries => Object.values(registries.ai || {}),
+    preferredRegions: (entry, ctx) => resolveAiPreferredRegions(entry, ctx.userConfig),
+    resolveProxies: (entry, ctx) => {
+      if (entry.proxies) return entry.proxies;
+      const prefList = resolveAiPreferredRegions(entry, ctx.userConfig);
+      const servicePreferred = (prefList || []).map(id => ctx.regionNames[id]).filter(Boolean);
+      // 自定义条目多半只给了 reg，回落「偏好地区 + 特征桶」内置模板
+      return [
+        '@residentialGroup',
+        ...servicePreferred,
+        ...(ctx.buckets[entry.tag] || ctx.buckets[entry.pool] || []),
+        '@defaultProxy',
+        'DIRECT'
+      ];
+    }
+  },
+  {
+    entries: registries => Object.values(registries.streaming || {}),
+    preferredRegions: entry => entry.preferredRegions,
+    resolveProxies: (entry, ctx) => entry.proxies || [
+      ...(ctx.buckets[entry.pool] || ctx.buckets[entry.tag] || []),
+      ...preferredRegionNames(entry, ctx.regionNames),
+      '@standardOptions',
+      'DIRECT'
+    ]
+  },
+  {
+    entries: registries => Object.values(registries.social || {}),
+    resolveProxies: (entry, ctx) => entry.proxies || [
+      ...(ctx.buckets[entry.pool] || ctx.buckets[entry.tag] || []),
+      ...preferredRegionNames(entry, ctx.regionNames),
+      '@standardOptions',
+      'DIRECT'
+    ]
+  },
+  {
+    entries: registries => Object.values(registries.aggregates || {})
+      .filter(agg => agg && agg.category === 'game'),
+    resolveProxies: entry => entry.proxies
+  },
+  {
+    entries: registries => Object.values(registries.dev || {}),
+    preferredRegions: entry => entry.preferredRegions,
+    resolveProxies: (entry, ctx) => {
+      if (entry.proxies) return entry.proxies;
+      const pref = preferredRegionNames(entry, ctx.regionNames);
+      return pref.length > 0 ? [...pref, '@defaultProxy', 'DIRECT'] : ['@standardOptions', 'DIRECT'];
+    }
+  },
+  {
+    entries: registries => Object.values(registries.specialized || {}),
+    preferredRegions: entry => entry.preferredRegions,
+    resolveProxies: (entry, ctx) => {
+      // WebRTC 回国模式使用固定配方
+      if (entry.key === 'webrtc' && ctx.userConfig.trafficDirection === 'return') {
+        return ['DIRECT', '@defaultProxy', '手动选择', '自动选择', '@activeRegions'];
+      }
+      return entry.proxies ? [...entry.proxies] : ['@standardOptions', 'DIRECT'];
+    }
+  },
+  {
+    entries: registries => Object.values(registries.system || {}),
+    resolveProxies: entry => entry.proxies || ['DIRECT', '@standardOptions']
+  },
+  {
+    entries: registries => {
+      // ad-block / anti-ad 两条规则来源声明的是同一个组名
+      const ads = (registries.groups || {})['ad-block'] || ADS_GROUPS['ad-block'];
+      return ads ? [ads] : [];
+    },
+    resolveProxies: entry => entry.proxies
+  }
+];
+
 /**
  * 声明式构建全量内置应用策略组配方 (Recipes)
  * @param {object} params
@@ -74,174 +168,27 @@ function buildBuiltinAppRecipes({
   buckets = {},
   referencedTargets = new Set()
 }) {
+  const ctx = { userConfig, regionNames, buckets };
   const recipes = [];
 
   // 建组口径：只有「被规则引用到的目标」才建组，组不再由开关直接驱动。
-  // 开关只决定规则是否生成（进而决定目标是否出现），组永远跟着规则走——单一来源。
-
-  // 1. AI 分组：配方直接取自 catalog 条目（match + proxies + preferredRegions），
-  //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
-  if (effectiveRegistries.ai) {
-    Object.keys(effectiveRegistries.ai).forEach(key => {
-      const ai = effectiveRegistries.ai[key];
-      if (!ai) return;
-      if (!referencedTargets.has(ai.name)) return;
-      // aiPreferredRegions 为全局覆写（与内置组目录构建口径一致）
-      const prefList = Array.isArray(userConfig.aiPreferredRegions) && userConfig.aiPreferredRegions.length > 0
-        ? userConfig.aiPreferredRegions
-        : ai.preferredRegions;
-      const servicePreferred = (prefList || []).map(id => regionNames[id]).filter(Boolean);
-      // 内置条目 = 完整组声明（match + proxies 齐备）；用户 customsServices 条目多半只给了 reg，
-      // 此时回落到「偏好地区 + 特征桶」内置模板，保持既有行为不变。
-      const proxies = ai.proxies || [
-        '@residentialGroup',
-        ...servicePreferred,
-        ...(buckets[ai.tag] || buckets[ai.pool] || []),
-        '@defaultProxy',
-        'DIRECT'
-      ];
-      recipes.push({
-        name: ai.name,
-        type: ai.type || 'select',
-        match: ai.match,
-        exclude: ai.exclude,
-        proxies,
-        preferredRegions: prefList
-      });
-    });
-  }
-
-  // 2. 流媒体分组：与 AI 同构，配方直接取自 catalog 条目（match + proxies + preferredRegions），
-  //    因此这里生成的组与用户 `groups: [{ ref: <键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
-  if (effectiveRegistries.streaming) {
-    Object.keys(effectiveRegistries.streaming).forEach(key => {
-      const st = effectiveRegistries.streaming[key];
-      if (!st) return;
-      if (!referencedTargets.has(st.name)) return;
-
-      // 用户自建条目 (customServices) 多半只给了 reg，回落「特征桶 + 偏好地区」内置模板，保持既有行为
-      const matched = buckets[st.pool] || buckets[st.tag] || [];
-      const pref = (st.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
-      const defaultProxies = [...matched, ...pref, '@standardOptions', 'DIRECT'];
-
-      recipes.push({
-        name: st.name,
-        type: st.type || 'select',
-        match: st.match,
-        exclude: st.exclude,
-        proxies: st.proxies || defaultProxies,
-        preferredRegions: st.preferredRegions
-      });
-    });
-  }
-
-  // 3. 社交分组：一服务一组（与 AI / 流媒体同构）。
-  //    合并组与「独立/合并」二分已取消：每个社交服务都是一条完整组声明，可单独引用、单独排序。
-  if (effectiveRegistries.social) {
-    Object.keys(effectiveRegistries.social).forEach(key => {
-      const s = effectiveRegistries.social[key];
-      if (!s || !referencedTargets.has(s.name)) return;
-      const matched = buckets[s.pool] || buckets[s.tag] || [];
-      const pref = (s.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
-      recipes.push({
-        name: s.name,
-        type: s.type || 'select',
-        match: s.match,
-        exclude: s.exclude,
-        proxies: s.proxies || [...matched, ...pref, '@standardOptions', 'DIRECT']
-      });
-    });
-  }
-
-  // 4. 游戏分组：配方直接取自 catalog 聚合条目（match + proxies），
-  //    因此这里生成的组与用户 `groups: [{ ref: <聚合键> }]` 引用到的声明完全同构——同一份定义，不是两条路径。
-  if (effectiveRegistries.aggregates) {
-    const gameAggs = Object.values(effectiveRegistries.aggregates || {})
-      .filter(agg => agg.category === 'game');
-
-    gameAggs.forEach(agg => {
-      if (!referencedTargets.has(agg.name)) return;
-      recipes.push({
-        name: agg.name,
-        type: agg.type || 'select',
-        match: agg.match,
-        exclude: agg.exclude,
-        proxies: agg.proxies
-      });
-    });
-  }
-
-  // 5. 开发者与学术服务：配方直接取自 catalog 条目（含 match / proxies / preferredRegions）
-  if (effectiveRegistries.dev) {
-    Object.keys(effectiveRegistries.dev).forEach(key => {
-      const conf = effectiveRegistries.dev[key];
-      if (!conf) return;
-      if (!referencedTargets.has(conf.name)) return;
-
-      // 用户自建条目回落模板，保持既有行为
-      const pref = (conf.preferredRegions || []).map(id => regionNames[id]).filter(Boolean);
-      const defaultProxies = pref.length > 0
-        ? [...pref, '@defaultProxy', 'DIRECT']
-        : ['@standardOptions', 'DIRECT'];
-
-      recipes.push({
-        name: conf.name,
-        type: conf.type || 'select',
-        match: conf.match,
-        exclude: conf.exclude,
-        proxies: conf.proxies || defaultProxies,
-        preferredRegions: conf.preferredRegions
-      });
-    });
-  }
-
-  // 6. 专项应用分组 (由 effectiveRegistries.specialized 驱动)
-  //    成员的 `@preferredRegions` 由拓扑引擎按条目 preferredRegions 展开（不再在此处手工预展开）
-  const specializedMap = effectiveRegistries.specialized || {};
-  for (const spec of Object.values(specializedMap)) {
-    if (!referencedTargets.has(spec.name)) continue;
-
-    let proxies = spec.proxies ? [...spec.proxies] : ['@standardOptions', 'DIRECT'];
-
-    // 处理 WebRTC 回国模式偏好
-    if (spec.key === 'webrtc' && userConfig.trafficDirection === 'return') {
-      proxies = ['DIRECT', '@defaultProxy', '手动选择', '自动选择', '@activeRegions'];
-    }
-
-    recipes.push({
-      name: spec.name,
-      type: spec.type || 'select',
-      match: spec.match,
-      exclude: spec.exclude,
-      proxies,
-      preferredRegions: spec.preferredRegions
-    });
-  }
-
-  // 7. 系统服务：配方直接取自 catalog 条目（含 match / proxies）
-  if (effectiveRegistries.system) {
-    Object.keys(effectiveRegistries.system).forEach(key => {
-      const sys = effectiveRegistries.system[key];
-      if (sys && referencedTargets.has(sys.name)) {
-        recipes.push({
-          name: sys.name,
-          type: sys.type || 'select',
-          match: sys.match,
-          exclude: sys.exclude,
-          proxies: sys.proxies || ['DIRECT', '@standardOptions']
-        });
+  // 配方直接取自 catalog 条目，因此这里生成的组与用户 `groups: [{ ref: <键> }]`
+  // 引用到的声明完全同构——同一份定义，不是两条路径。
+  for (const source of BUILTIN_RECIPE_SOURCES) {
+    for (const entry of source.entries(effectiveRegistries, ctx)) {
+      if (!entry || !referencedTargets.has(entry.name)) continue;
+      const recipe = {
+        name: entry.name,
+        type: entry.type || 'select',
+        match: entry.match,
+        exclude: entry.exclude,
+        proxies: source.resolveProxies(entry, ctx)
+      };
+      if (source.preferredRegions) {
+        recipe.preferredRegions = source.preferredRegions(entry, ctx);
       }
-    });
-  }
-
-  // 8. 广告拦截：组配方取自目录条目（ad-block / anti-ad 两条规则来源声明的是同一个组名，合并时归一）
-  const adsGroup = (effectiveRegistries.groups || {})['ad-block'] || ADS_GROUPS['ad-block'];
-  if (referencedTargets.has(adsGroup.name)) {
-    recipes.push({
-      name: adsGroup.name,
-      type: adsGroup.type || 'select',
-      proxies: adsGroup.proxies
-    });
+      recipes.push(recipe);
+    }
   }
 
   return recipes;

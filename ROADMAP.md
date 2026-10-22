@@ -405,11 +405,9 @@ groups:
 
 **结果**：`registries.groups` 现在只投影组声明（`name` / `type` / `match` / `exclude` / `proxies` / `preferredRegions` / `hidden`）；规则来源分别归位到分类条目、`registries.aggregates`（聚合组新增 `rules` / `providers`）与 `ADS_GROUPS`。`resolveGroupDeclarations` 不再需要展开期 `delete rules / providers / process`，routing 通过 `findService` 从源条目取规则。
 
-### 2. 建组激活：“规则指向驱动”收编成数据驱动
+### 2. ✅ 已完成：建组激活收编为数据表
 
-**现状**：`routing` 表中目标指向的内置应用组 / 服务组 / AI 组，需要在拓扑装配时重新从 catalog 取配方建组；目前 `buildBuiltinAppRecipes`（`src/strategy/topology.js`）按分类手写硬编码：`if (effectiveRegistries.ai)` → 遍历键 → 检查 `referencedTargets` → 生成配方，共 8 个手写分支。这带来「新增一个分类就要改这里」的维护成本，且容易遗漏。
-
-**修复方案**：将分类与键的对应关系做成数据化分类表，统一遍历所有分类下的所有条目，满足条件 `referencedTargets.has(ai.name)` 就加入配方，不再手写 `if`。
+**结果**：`buildBuiltinAppRecipes` 改为消费 `BUILTIN_RECIPE_SOURCES`（`src/strategy/topology.js`）。每个分类只登记四件事——条目来源、缺省 `proxies` 模板、是否回传 `preferredRegions`、必要的条目覆写；八段手写 `if` 与重复的 `recipes.push` 字段组装已删除，新增分类只需在表中追加一项。
 
 ### 3. 组身份：改用 `ref` 键做唯一 ID，名字只做标签
 
