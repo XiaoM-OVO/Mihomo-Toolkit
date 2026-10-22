@@ -96,19 +96,14 @@ function isValidTargetName(value, ctx) {
   const userGroups = filterGroupsByDirection(ctx.config.groups, ctx.direction);
   for (const g of userGroups) {
     if (!g || !g.name) continue;
-    if (g.name === value || stripGroupDecoration(g.name) === clean) {
-      if (g.disabled) {
-        throw new Error(`routing: 目标组「${value}」已在 groups 中被禁用 (disabled: true)`);
-      }
-      return true;
-    }
+    if (g.name === value || stripGroupDecoration(g.name) === clean) return true;
   }
 
   // 目录/注册表中的组（含改名后名称与 ref 键）
   const dir = ctx.registries.groups || {};
   for (const [key, g] of Object.entries(dir)) {
     if (g && (key === value || g.name === value || stripGroupDecoration(g.name) === clean)) {
-      if (g._disabled) {
+      if (ctx.disabledRefs.has(key)) {
         throw new Error(`routing: 目标组「${value}」已在 groups 中被禁用 (disabled: true)`);
       }
       return true;
@@ -184,7 +179,7 @@ function resolveTo(to, ctx) {
 
   const refEntry = ctx.registries.groups?.[value];
   if (refEntry) {
-    if (refEntry._disabled) {
+    if (ctx.disabledRefs.has(value)) {
       throw new Error(`routing: 目标组「${value}」已在 groups 中被禁用 (disabled: true)`);
     }
     return refEntry.name;
@@ -236,10 +231,15 @@ function createContext(userConfig, registries, options) {
   }
 
   const direction = userConfig && userConfig.trafficDirection === 'return' ? 'return' : 'split';
+  const disabledRefs = Array.isArray(options.disabledRefs)
+    ? options.disabledRefs
+    : (Array.isArray(config.disabledGroupRefs) ? config.disabledGroupRefs : []);
   return {
     config,
     registries: effective,
     options: options || {},
+    // 组关闭状态由配置归一化阶段显式产出，不读目录对象上的隐式标记
+    disabledRefs: new Set(disabledRefs),
     providerBase: { ...BASE_PROVIDER_ROUTES },
     rules: [],
     direction,

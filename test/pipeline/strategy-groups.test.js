@@ -380,6 +380,23 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
 
     const disabled = resolveConfig({ groups: [{ ref: 'chatgpt', disabled: true }] });
     assert.deepEqual(disabled.groups, [], 'disabled: true 的条目不得进入引擎消费清单');
+
+    // 同名 ref 多次出现时位置靠后者胜（与 include 的「主文件优先」一致），
+    // 关闭状态必须以显式字段下传，不得写回目录或泄漏进声明。
+    const disabledThenEnabled = resolveConfig({
+      groups: [{ ref: 'chatgpt', disabled: true }, { ref: 'chatgpt' }]
+    });
+    assert.ok(
+      disabledThenEnabled.groups.some(g => g.name === 'ChatGPT'),
+      '关闭后重新声明应生效，且声明中不得残留 _disabled'
+    );
+    assert.deepEqual(disabledThenEnabled.disabledGroupRefs, [], '重新启用后关闭清单应为空');
+
+    const enabledThenDisabled = resolveConfig({
+      groups: [{ ref: 'chatgpt' }, { ref: 'chatgpt', disabled: true }]
+    });
+    assert.deepEqual(enabledThenDisabled.groups, [], '靠后的 disabled 条目必须关闭先前声明');
+    assert.deepEqual(enabledThenDisabled.disabledGroupRefs, ['chatgpt'], '关闭状态应作为显式字段下传');
   });
 
   test('resolveConfig - groups 未知 ref 键 fail-closed 并报出字段路径（不变量 6）', () => {
@@ -391,6 +408,11 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.throws(
       () => resolveConfig({ groups: [{ ref: '' }] }),
       /groups\[0\]\.ref: 期望非空字符串引用键/
+    );
+    assert.throws(
+      () => resolveConfig({ groups: [{ ref: 'no-such-group', disabled: true }] }),
+      /groups\[0\]\.ref: 未知内置组引用键/,
+      '关闭条目同样要校验引用键，不得因 disabled 静默吞掉拼写错误'
     );
   });
 

@@ -165,16 +165,16 @@ function resolveConfig(userConfig = {}, options = {}) {
   //    `disabled: true` 显式关闭；未知 ref 键 fail-closed。
   //    归一化结果原地写回 `groups`，作为引擎/展示层唯一的组声明入口——组只声明成员与呈现，
   //    分流规则一律来自 `routing` 表（`{ rule }` 条目或 `preset` / `service` 的 `to`）。
-  const declaredGroups = resolveGroupDeclarations(merged.groups, {
+  const { declarations: declaredGroups, refKeys, disabledRefs } = resolveGroupDeclarations(merged.groups, {
     directory: merged.registries.groups,
     memberHints: buildMemberHints(merged.registries),
     fieldPath: 'groups'
   });
 
   // 改名不断链：用户覆写的组名实时同步至 registries，使 routing 展开与目标解析自动随动
-  for (const decl of declaredGroups) {
-    if (!decl._ref) continue;
-    const refKey = decl._ref;
+  declaredGroups.forEach((decl, index) => {
+    const refKey = refKeys[index];
+    if (!refKey) return;
     if (decl.name) {
       const groupEntry = merged.registries.groups?.[refKey];
       if (groupEntry) {
@@ -191,10 +191,11 @@ function resolveConfig(userConfig = {}, options = {}) {
         }
       }
     }
-    delete decl._ref;
-  }
+  });
 
   merged.groups = declaredGroups;
+  // 关闭状态以显式字段随配置下传；routing 展开据此报出「目标组已关闭」，不再读目录上的隐式标记
+  merged.disabledGroupRefs = disabledRefs;
 
   return merged;
 }

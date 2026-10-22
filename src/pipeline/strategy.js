@@ -39,7 +39,9 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
   // 4. 组装服务注册表与路由规则（规则先展开：组是否生成由「被规则引用」决定）
   const logger = pipelineContext.logger || userConfig.logger;
   const registries = createServiceRegistries(userConfig);
-  const { rules, providers, targets } = expandRouting(userConfig, registries);
+  const { rules, providers, targets } = expandRouting(userConfig, registries, {
+    disabledRefs: userConfig.disabledGroupRefs
+  });
 
   // 5. 组装策略拓扑（ruleTargets 决定哪些内置应用组需要生成）
   const { proxyGroups } = buildProxyTopology({

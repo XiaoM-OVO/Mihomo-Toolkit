@@ -13,20 +13,31 @@
 
 /**
  * 将原始 `groups` 清单归一化为完整组声明列表
+ *
+ * `disabled` 与 `ref` 都是声明层的元信息，这里一次性结算成**显式返回值**：
+ * 关闭状态不再写回目录对象（避免隐式通道与跨 include 的顺序残留），调用方
+ * 通过 `disabledRefs` 判断引用是否已关闭。同一条目多次出现时**位置靠后者胜**，
+ * 与 include 的「主文件优先」语义一致。
+ *
  * @param {Array} rawGroups 原始清单（用户配置 `groups` 字段）
  * @param {object} [options]
  * @param {Record<string, object>} [options.directory] 内置组目录（`registries.groups`）
  * @param {Record<string, string>} [options.memberHints] 聚合组成员键 → 所属聚合组 ref 键（报错时给出改引指引）
  * @param {string} [options.fieldPath='groups'] 报错时使用的字段路径前缀
- * @returns {Array<object>} 完整组声明列表（已剥离 `ref` / `disabled` 元键）
+ * @returns {{declarations: Array<object>, refKeys: Array<string|null>, disabledRefs: string[]}}
+ *   `refKeys[i]` 与 `declarations[i]` 一一对应（自写声明为 null）
  */
 function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {}, fieldPath = 'groups' } = {}) {
-  if (rawGroups === undefined || rawGroups === null) return [];
+  if (rawGroups === undefined || rawGroups === null) {
+    return { declarations: [], refKeys: [], disabledRefs: [] };
+  }
   if (!Array.isArray(rawGroups)) {
     throw new TypeError(`${fieldPath}: 期望策略组声明数组 (Array)，实际为 ${typeof rawGroups}`);
   }
 
-  const resolved = [];
+  // 1. 结构校验，并结算每个 ref 键的最终状态（最后一次出现为准）
+  const entries = [];
+  const finalState = new Map();
   rawGroups.forEach((entry, index) => {
     const path = `${fieldPath}[${index}]`;
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -39,27 +50,9 @@ function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {},
       throw new TypeError(`${path}.ref: 期望非空字符串引用键`);
     }
 
-    // 显式关闭：连带落在其上的覆写一起忽略（声明即激活，关闭靠 disabled）
-    if (entry.disabled === true) {
-      if (entry.ref) {
-        const refKey = entry.ref.trim();
-        if (directory[refKey]) directory[refKey]._disabled = true;
-      }
-      return;
-    }
-
-    const overrides = { ...entry };
-    delete overrides.ref;
-    delete overrides.disabled;
-
-    let declaration;
-    if (entry.ref === undefined) {
-      // 目录之外的完整自写声明：字段与目录条目同构，原样进入引擎校验
-      declaration = overrides;
-    } else {
-      const refKey = entry.ref.trim();
-      const base = directory[refKey];
-      if (!base) {
+    const refKey = entry.ref === undefined ? null : entry.ref.trim();
+    if (refKey) {
+      if (!directory[refKey]) {
         const available = Object.keys(directory).sort().join(', ');
         const aggregateRef = memberHints[refKey];
         // 聚合组成员（如 steam / epic / facebook）不单独成组：其规则目标指向聚合组，
@@ -72,15 +65,29 @@ function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {},
           (available ? `，可用键: ${available}` : '（当前无可引用的内置组）')
         );
       }
-      // 浅合并：每个顶层字段整体被覆写值替换（match / proxies / rules 等按整字段替换，语义直观可预测）
-      declaration = { ...base, ...overrides };
-      Object.defineProperty(declaration, '_ref', {
-        value: refKey,
-        enumerable: false,
-        writable: true,
-        configurable: true
-      });
+      // 关闭条目同样要校验引用键：拼错却因 disabled 被静默吞掉，属于 fail-open
+      finalState.set(refKey, { disabled: entry.disabled === true, index });
     }
+    entries.push({ path, entry, refKey, disabled: entry.disabled === true, index });
+  });
+
+  // 2. 按清单顺序产出；ref 条目只在「该键最后一次出现且未关闭」时进入声明清单
+  const declarations = [];
+  const refKeys = [];
+  for (const { path, entry, refKey, disabled, index } of entries) {
+    if (refKey) {
+      const state = finalState.get(refKey);
+      if (state.disabled || state.index !== index) continue;
+    } else if (disabled) {
+      continue;
+    }
+
+    const overrides = { ...entry };
+    delete overrides.ref;
+    delete overrides.disabled;
+
+    // 自写声明原样进入引擎校验；ref 条目做浅合并（顶层字段整体覆写，语义直观可预测）
+    const declaration = refKey ? { ...directory[refKey], ...overrides } : overrides;
 
     if (typeof declaration.name !== 'string' || !declaration.name.trim()) {
       throw new Error(`${path}: 策略组声明缺少 name`);
@@ -94,10 +101,15 @@ function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {},
     delete declaration.providers;
     delete declaration.process;
 
-    resolved.push(declaration);
-  });
+    declarations.push(declaration);
+    refKeys.push(refKey);
+  }
 
-  return resolved;
+  const disabledRefs = [...finalState.entries()]
+    .filter(([, state]) => state.disabled)
+    .map(([key]) => key);
+
+  return { declarations, refKeys, disabledRefs };
 }
 
 /**

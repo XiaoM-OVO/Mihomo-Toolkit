@@ -59,6 +59,8 @@
 | 内核优化阶段原地突变代理对象 (已修复) | `src/strategy/kernel.js` | 坏味道 | 原地修改 `config.proxies` 节点的 `client-fingerprint` 与 `udp` 属性 | M1 阶段 |
 | 规则展示层盲目分词替换组名 (已修复) | `src/strategy/presentation.js` | 坏味道 | 规则组装与更名限定在 TARGET 字段，杜绝误伤规则类型、参数或同名域名关键字 | M2 阶段 |
 | 看板虚拟节点服务 IP 定义冲突 (已修复) | `src/strategy/dashboard.js`, `core/cleaner.js` | 冗余/漂移 | 看板创建时使用 `1.0.0.1`，而在 cleaner 中又硬编码为 `127.0.0.1` | M1 阶段 |
+| `disabled` 语义经下划线隐式通道传递 (已修复) | `src/config/groups.js`, `src/config/index.js` | 设计坏味道 | `disabled` 曾原地写 `directory[refKey]._disabled` 传递关闭状态，违反「禁止在对象上挂 `_` 前缀隐式通道」约定；include 并集下两种书写顺序分别导致「组仍生成但 routing 报已禁用」与「`_disabled` 被浅拷贝进声明、校验报未知字段」。现改为 `resolveGroupDeclarations` 显式返回 `{ declarations, refKeys, disabledRefs }`，同键多次出现按位置靠后者胜，关闭状态由配置字段下传 routing | M3 收口 |
+| `routing` 的 `disabled` 与规格不一致 (待修复) | `src/strategy/routing.js`, `src/config/include.js` | 逻辑缺陷 | 仅跳过条目自身，不移除默认表条目；ROADMAP 10.4 描述的 `before` / `after` 锚点与重复匹配式冲突检查均未实现，规格与代码需二选一对齐 | M3 收口 |
 
 ### 6. Pipeline 编排与 Targets 宿主交付层问题清单 (第 5 批审查)
 | 问题项 | 归属模块 | 类别 | 现象与隐患说明 | 目标里程碑 |
