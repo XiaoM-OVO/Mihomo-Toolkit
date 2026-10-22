@@ -32,7 +32,7 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
     }).toRegistries();
 
     assert.ok(
-      registries.groups['game-service'].rules.includes('RULE-SET,mygame,游戏服务'),
+      registries.aggregates['游戏服务'].rules.includes('RULE-SET,mygame,游戏服务'),
       '声明 target: @service 的服务，其规则必须并入「游戏服务」聚合组'
     );
     assert.deepEqual(registries.game.mygame.rules, ['RULE-SET,mygame,游戏服务']);

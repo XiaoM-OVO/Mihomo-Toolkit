@@ -10,7 +10,7 @@ const {
   BASE_PROVIDER_ROUTES
 } = require('../../src/strategy/rules');
 const { expandRouting } = require('../../src/strategy/routing');
-const { SPECIAL_SERVICES } = require('../../src/config/catalog');
+const { SPECIAL_SERVICES, ADS_GROUPS } = require('../../src/config/catalog');
 const { runStrategyPipeline } = require('../../src/pipeline/strategy');
 
 describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
@@ -324,12 +324,15 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.equal(registries.aggregates['社交平台'], undefined, '社交聚合组已取消：一服务一组');
     assert.deepStrictEqual(registries.aggregates['游戏下载'].proxies, ['DIRECT', '下载策略', '自动选择', '手动选择', '@matchedNodes']);
     assert.deepStrictEqual(registries.aggregates['游戏服务'].proxies, ['DIRECT', '@standardOptions', '@matchedNodes']);
-    // 聚合组条目同样进入「可引用组目录」，且自带 match 配方（退役 @buckets.game 伪宏）与成员规则/Provider
+    // 聚合组条目同样进入「可引用组目录」，且自带 match 配方（退役 @buckets.game 伪宏）；
+    // 规则来源存放在聚合条目上，组目录只承载声明
     const gameService = registries.groups['game-service'];
     assert.deepStrictEqual(gameService.match, { pool: 'game' });
-    assert.ok(gameService.rules.includes('RULE-SET,steam,游戏服务'), '聚合组条目必须随组交付成员分流规则');
-    assert.ok(gameService.rules.includes('DOMAIN-SUFFIX,epicgames.com,游戏服务'), '成员规则的目标组名应指向聚合组');
-    assert.deepStrictEqual(gameService.providers, {
+    assert.equal(gameService.rules, undefined, '组目录不得夹带规则字段');
+    const gameServiceRules = registries.aggregates['游戏服务'].rules;
+    assert.ok(gameServiceRules.includes('RULE-SET,steam,游戏服务'), '聚合组条目必须随组交付成员分流规则');
+    assert.ok(gameServiceRules.includes('DOMAIN-SUFFIX,epicgames.com,游戏服务'), '成员规则的目标组名应指向聚合组');
+    assert.deepStrictEqual(registries.aggregates['游戏服务'].providers, {
       steam: 'geosite/steam@cn',
       epic: 'geosite/epicgames',
       riot: 'geosite/riot',
@@ -342,18 +345,18 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
       ea: 'geosite/ea'
     });
     assert.deepStrictEqual(
-      registries.groups['game-download'].rules,
+      registries.aggregates['游戏下载'].rules,
       ['DOMAIN-SUFFIX,steamcontent.com,游戏下载', 'RULE-SET,steam-cn,游戏下载', 'DOMAIN-SUFFIX,download.epicgames.com,游戏下载']
     );
-    assert.deepStrictEqual(registries.groups['game-download'].providers, { 'steam-cn': 'geosite/steam@cn' });
+    assert.deepStrictEqual(registries.aggregates['游戏下载'].providers, { 'steam-cn': 'geosite/steam@cn' });
     // 社交服务一服务一组：规则目标即自身组名，且每条都自带可引用配方（无合并组）
-    assert.deepStrictEqual(registries.groups['facebook'].rules, ['RULE-SET,facebook,Facebook']);
-    assert.deepStrictEqual(registries.groups['facebook'].providers, { facebook: 'geosite/facebook' });
+    assert.deepStrictEqual(registries.social.facebook.rules, ['RULE-SET,facebook,Facebook']);
+    assert.deepStrictEqual(registries.social.facebook.provider, 'geosite/facebook');
     assert.deepStrictEqual(registries.groups['twitter'].proxies, ['@standardOptions', 'DIRECT']);
     // 广告拦截的两条规则来源：同一组名、各自独立的 Provider/Rule
-    assert.deepStrictEqual(registries.groups['ad-block'].rules, ['RULE-SET,ads,广告拦截']);
-    assert.deepStrictEqual(registries.groups['ad-block'].providers, { ads: 'geosite/category-ads-all' });
-    assert.deepStrictEqual(registries.groups['anti-ad'].providers, { 'anti-ad': 'https://anti-ad.net/clash.yaml' });
+    assert.deepStrictEqual(ADS_GROUPS['ad-block'].rules, ['RULE-SET,ads,广告拦截']);
+    assert.deepStrictEqual(ADS_GROUPS['ad-block'].providers, { ads: 'geosite/category-ads-all' });
+    assert.deepStrictEqual(ADS_GROUPS['anti-ad'].providers, { 'anti-ad': 'https://anti-ad.net/clash.yaml' });
 
     assert.equal(registries.specialized['crypto'].fullName, '🪙 加密货币');
     assert.equal(registries.specialized['telegram'].fullName, '✈️ Telegram');

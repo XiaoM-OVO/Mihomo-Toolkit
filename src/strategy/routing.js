@@ -307,13 +307,13 @@ function expandQuic(ctx, to) {
 function expandAds(ctx, to) {
   const target = to === undefined ? null : resolveTo(to, ctx);
   for (const [refKey, ads] of Object.entries(ADS_GROUPS)) {
-    const entry = (ctx.registries.groups || {})[refKey] || ads;
-    for (const [name, path] of Object.entries(entry.providers || {})) {
+    // 规则来源只认 ADS_GROUPS；组名允许用户通过 groups 声明覆写
+    const declaredName = ctx.registries.groups?.[refKey]?.name;
+    for (const [name, path] of Object.entries(ads.providers || {})) {
       ctx.providerBase[name] = path;
     }
-    const list = entry.rules || [];
-    const effectiveTarget = target || entry.name || ads.name;
-    ctx.rules.push(...list.map(r => retarget(r, effectiveTarget)));
+    const effectiveTarget = target || declaredName || ads.name;
+    ctx.rules.push(...ads.rules.map(r => retarget(r, effectiveTarget)));
   }
 }
 
@@ -592,9 +592,16 @@ function findService(registries, key) {
   }
   const spec = registries.specialized?.[key];
   if (spec) return { category: 'specialized', item: spec };
-  // 单组规则来源（广告拦截）与其它自带完整声明的目录条目
-  const grouped = registries.groups?.[key] || ADS_GROUPS[key];
-  if (grouped) return { category: 'groups', item: grouped };
+  // 聚合组：规则来源在聚合条目上（组目录只承载声明）
+  const aggregate = Object.values(registries.aggregates || {})
+    .find(item => item && (item.refKey || item.key) === key);
+  if (aggregate) return { category: 'aggregates', item: aggregate };
+  // 独立单组规则来源（广告拦截）：规则与 Provider 由 ADS_GROUPS 提供
+  const ads = ADS_GROUPS[key];
+  if (ads) {
+    const declaredName = registries.groups?.[key]?.name;
+    return { category: 'groups', item: declaredName ? { ...ads, name: declaredName } : ads };
+  }
   return null;
 }
 

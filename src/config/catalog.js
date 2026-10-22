@@ -419,6 +419,9 @@ class ServiceCatalog {
           }
         }
 
+        // 规则来源归属聚合条目本身；组目录只投影「可独立成立的组声明」。
+        aggregates[meta.name].rules = rules;
+        if (Object.keys(providers).length > 0) aggregates[meta.name].providers = providers;
         aggregateDirectoryEntries[meta.refKey || aggKey] = {
           name: meta.name,
           type: meta.type || 'select',
@@ -426,8 +429,6 @@ class ServiceCatalog {
           exclude: meta.exclude,
           proxies: meta.proxies ? [...meta.proxies] : undefined,
           preferredRegions: undefined,
-          rules,
-          providers: Object.keys(providers).length > 0 ? providers : undefined,
           hidden: meta.hidden
         };
       }
@@ -457,6 +458,8 @@ class ServiceCatalog {
     // 条目必须自身就是一条「可独立成立的组声明」(自带非空 `proxies`) 才可被引用，
     // 否则引用它只会得到空壳组——那是「配了不生效」，必须 fail-closed 而非静默降级。
     // 该目录不是第二份真相源：它只是同一批 catalog 条目的另一种投影形态。
+    // 目录只投影「组声明」：rules / providers / process 属于规则来源，留在分类条目、
+    // 聚合条目或 ADS_GROUPS 中，由 routing 直接读取，不得混入声明层。
     const groupDirectory = {};
     for (const [cat, catReg] of Object.entries(registries)) {
       if (cat === 'aggregates') continue;
@@ -467,10 +470,6 @@ class ServiceCatalog {
           ? this.userConfig.aiPreferredRegions
           : null;
         const prefList = prefOverride || item.preferredRegions || [];
-        // 专项条目的 Provider 是显式映射表；服务类条目的 Provider 由其 RULE-SET 规则派生
-        const providers = cat === 'specialized'
-          ? (item.providers && Object.keys(item.providers).length > 0 ? { ...item.providers } : undefined)
-          : ((item.rules && item.rules.length > 0 && item.provider) ? { [item.ruleSet]: item.provider } : undefined);
         groupDirectory[key] = {
           name: item.cleanName,
           type: item.type || 'select',
@@ -478,24 +477,19 @@ class ServiceCatalog {
           exclude: item.exclude,
           proxies: [...item.proxies],
           preferredRegions: prefList.length > 0 ? [...prefList] : undefined,
-          rules: [...(item.rules || [])],
-          providers,
           hidden: item.hidden
         };
-        // 进程名单类规则随组交付（仅在条目确有声明时附挂，避免凭空多出 undefined 键）
-        if (item.process) {
-          groupDirectory[key].process = { ...item.process };
-        }
       }
     }
-    // 聚合组条目入目录：与分类条目同构，都是「自带非空 proxies 的组声明」，
-    // 区别只在它的 rules/providers 是成员规则的合并结果（引用它即一次交付组 + 规则 + Provider）。
+    // 聚合组条目入目录：与分类条目同构，都是「自带非空 proxies 的组声明」；
+    // 其规则来源存放在 registries.aggregates 条目上。
     for (const [refKey, item] of Object.entries(aggregateDirectoryEntries)) {
       if (!Array.isArray(item.proxies) || item.proxies.length === 0) continue;
       groupDirectory[refKey] = item;
     }
 
-    // 独立单组规则条目（「广告拦截」的两条规则来源）入目录
+    // 独立单组规则条目（「广告拦截」的两条规则来源）入目录：
+    // 目录只承载组声明，规则与 Provider 由 ADS_GROUPS 提供。
     for (const [refKey, item] of Object.entries(ADS_GROUPS)) {
       groupDirectory[refKey] = {
         name: item.name,
@@ -504,8 +498,6 @@ class ServiceCatalog {
         exclude: item.exclude,
         proxies: [...item.proxies],
         preferredRegions: undefined,
-        rules: [...(item.rules || [])],
-        providers: item.providers ? { ...item.providers } : undefined,
         hidden: item.hidden
       };
     }

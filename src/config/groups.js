@@ -93,14 +93,6 @@ function resolveGroupDeclarations(rawGroups, { directory = {}, memberHints = {},
       throw new Error(`${path}: 策略组声明缺少 name`);
     }
 
-    // 规则与组彻底分家：组只声明成员与呈现。
-    // 目录条目里的 rules / providers / process 是「该组对应的分流规则」的历史载体，
-    // 批次 3 起规则一律由 routing 表生成（见 README / CONFIGURATION 第 4 节），此处剥离，
-    // 保证 { ref } 展开结果与手写声明都不再夹带规则字段。
-    delete declaration.rules;
-    delete declaration.providers;
-    delete declaration.process;
-
     declarations.push(declaration);
     refKeys.push(refKey);
   }

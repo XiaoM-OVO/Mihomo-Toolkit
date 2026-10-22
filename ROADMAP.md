@@ -98,7 +98,7 @@
 | **折叠层** | 地区组是否生成、以何种类型生成 | 配置开关 | 折叠规则 |
 | **流水线层** | 清洗、重命名、内核、DNS 等与组无关的行为 | 配置开关 | 流水线行为 |
 
-> **目录不得复制**：`ref` 必须指向 catalog 的**现有条目**，只为其补齐缺失字段（如 `rules`）。在本该消灭第二真相源的任务里再造一份平行目录，是直接违反不变量 4。
+> **目录不得复制**：`ref` 必须指向 catalog 的**现有条目**，只为其补齐缺失字段（如 `name` / `proxies`）。在本该消灭第二真相源的任务里再造一份平行目录，是直接违反不变量 4。
 
 **二、`groups` 清单形态（目标终态）**
 
@@ -114,10 +114,10 @@ groups:
 
 | 条目形态 | 语义 |
 | :--- | :--- |
-| `{ ref: <键> }` | 引用目录里的**单条完整组声明**，原样插入（含其 `rules` → 自动生成 RULE-SET 与规则集 Provider），并允许**条目内覆写任意字段** |
-| 完整声明 | 目录之外的组，字段与目录条目**完全同构**（`name` / `type` / `match` / `exclude` / `proxies` / `rules` / `icon` / …） |
+| `{ ref: <键> }` | 引用目录里的**单条完整组声明**，原样插入（只含成员与呈现字段），并允许**条目内覆写任意字段** |
+| 完整声明 | 目录之外的组，字段与目录条目**完全同构**（`name` / `type` / `match` / `exclude` / `proxies` / `icon` / …） |
 
-**关于「一束产物」的澄清（重要）**：不需要发明「`ref` 输出组 + 规则 + Provider」这类概念。目录条目本身就是一条带 `rules` 的普通组声明，而 `rules` → `RULE-SET` + 规则集 Provider 的通道**现已存在**（[rules.js](file:///e:/CODE/mihomo-toolkit-next/src/strategy/rules.js#L195-L221)）。复用即可，符合不变量 2。
+**关于「一束产物」的澄清（重要）**：不需要发明「`ref` 输出组 + 规则 + Provider」这类概念。`ref` 只负责建组，目录条目只承载组声明；规则一律来自 `routing` 表，二者通过组名关联。
 
 **关于 `disabled` 字段（为什么必须有）**：`include` 的数组语义是**并集去重**（[include.js](file:///e:/CODE/mihomo-toolkit-next/src/config/include.js#L66-L76)），片段的条目会被并集加回，因此「注释掉即关闭」**只在单文件内成立**。要跨片段关闭，必须有一个显式表达。优雅解是加一个 `disabled: true` 字段，而不是去改 `include` 的通用数组语义（那是更大的补丁）。
 
@@ -398,6 +398,44 @@ groups:
   - 已知但未启用的内置池在 `routing` 被报成「不存在」，应改为「池未启用（`enableIsolation: false`）」并给出开关提示；
   - 宏报错目前只指向文档，可内联「可用宏」清单（`MACRO_ALIASES` 现成）；
   - 「已启用但暂无成员」仍属合法运行时跳过，但应在 `--explain` 里可见，而不是静默。
+
+## 📌 候选改进：收敛实现路径（当前基线设计成熟，实现仍存在多路径冗余，留作长期演进）
+
+### 1. ✅ 已完成：目录条目拆分，解除「一身二职」的隐式补丁
+
+**结果**：`registries.groups` 现在只投影组声明（`name` / `type` / `match` / `exclude` / `proxies` / `preferredRegions` / `hidden`）；规则来源分别归位到分类条目、`registries.aggregates`（聚合组新增 `rules` / `providers`）与 `ADS_GROUPS`。`resolveGroupDeclarations` 不再需要展开期 `delete rules / providers / process`，routing 通过 `findService` 从源条目取规则。
+
+### 2. 建组激活：“规则指向驱动”收编成数据驱动
+
+**现状**：`routing` 表中目标指向的内置应用组 / 服务组 / AI 组，需要在拓扑装配时重新从 catalog 取配方建组；目前 `buildBuiltinAppRecipes`（`src/strategy/topology.js`）按分类手写硬编码：`if (effectiveRegistries.ai)` → 遍历键 → 检查 `referencedTargets` → 生成配方，共 8 个手写分支。这带来「新增一个分类就要改这里」的维护成本，且容易遗漏。
+
+**修复方案**：将分类与键的对应关系做成数据化分类表，统一遍历所有分类下的所有条目，满足条件 `referencedTargets.has(ai.name)` 就加入配方，不再手写 `if`。
+
+### 3. 组身份：改用 `ref` 键做唯一 ID，名字只做标签
+
+**现状**：多处仍以中文组名作为唯一标识：`routing.js` 硬编码 14 项骨架组清单，`topology.js` 用 `referencedTargets.has('中国分流')` 之类的名字字面量判断激活；中文组名在全仓散落近百处、覆盖十余个文件，重命名时极易漂移。
+
+**修复方案**：内置组都有唯一 `ref` 键，建立一张 `refKey → 规范组名` 的静态映射表，所有判断匹配改走 `refKey`，名字全程只读不做 ID。这会减少约 100 处硬编码字面量，极大降低维护成本。
+
+### 4. 目标解析：四种写法与多份白名单收敛为单一 TargetRegistry
+
+**现状**：`routing` 的 `to` 支持四种写法——内置目标（`DIRECT` / `REJECT` / `REJECT-DROP` / `PASS` / `COMPATIBLE` / `MUTE`）、`@pool:<池名>`、内置目录 `ref` 键、策略组名；解析入口是 `resolveTo`（`src/strategy/routing.js`），合法性判定另起炉灶在 `isValidTargetName`（同文件），其中分别枚举了 `BUILTIN_TARGETS`、`CORE_SKELETON_GROUPS`（14 项骨架组）、池名（`resolvePoolDefinitions` + `POOL_NAMES`）、`负载均衡-哈希 (…)` 正则、地区组（`getEnhancedRegionDefs`）、大洲组（`CONTINENT_DEFS`）、按方向过滤后的用户 `groups`、`registries.groups`（附带 `disabledRefs` 关闭检查）与注册表服务名。此外 `src/strategy/prune.js` 对「哪些组必须存活」还有一套独立认知。
+
+**风险**：新增一类组或目标时，必须同时改动 `resolveTo`、`isValidTargetName`、`prune.js` 与展示层；漏改任何一处，轻则运行期静默漏网，重则误报「未知目标」中断构建。白名单之间没有交集校验，互相矛盾时也无人发现。
+
+**修复方案**：启动时把上述来源收敛成一张 `name → target` 的 TargetRegistry（字段至少包含：原始名、去装饰名、ref 键、来源类别、是否可物化、是否骨架常驻）。`resolveTo` 与 `isValidTargetName` 都只消费这张表，`prune.js` 复用同一张表判断存活。
+
+**验收口径**：新增一种组类型只需在注册表登记一处；现有 `routing-baseline.json` 与 `default-output.golden.json` 逐字节不变。
+
+### 5. 校验职责：schema 校验散在三处、失败口径两套
+
+**现状**：组的结构与配方校验在 `validateGroups`（`src/strategy/matcher.js#L582`，负责 top-level 字段白名单、`match` / `exclude` 维度与类型）；`{ ref }` / `disabled` 的结构校验在 `src/config/groups.js`；目标合法性在 `src/strategy/routing.js`。失败口径也不一致：未知宏、未知 ref、未知 `routing.to` 为配置期 fail-closed，而 `groups[].proxies` 中的未知 / 空池是运行期 `warn + skip`（详见本文档上一节「候选改进 3」）。
+
+**风险**：新增 DSL 字段要跨三个模块同步，最容易出现「一边已校验、一边仍放行」的软失败；错误发生的阶段（装载期 / 装配期）与错误消息风格也无法统一，用户排查时很难判断某条配置到底在哪一层被丢弃。
+
+**修复方案**：收敛为单一配置 schema 校验层（装载期执行），装配层只消费已通过校验的对象、不再重复判类型；`groups[].proxies` 的池引用与 `routing` 的 `@pool:` 统一为配置期 fail-closed（「池已声明但当前为空」仍属合法运行期跳过）。
+
+**验收口径**：任何非法 `groups` / `routing` 配置都在装载期报错并给出字段路径；`topology-engine.js` 中不再存在类型/存在性判断的 `warn + skip` 分支。
 
 ---
 
