@@ -18,24 +18,10 @@
 
 const net = require('net');
 const { isPrivateIp, isPrivateIPv6 } = require('../infra/ip');
+const { policyBlocked, unverifiedBlocked } = require('./ssrf');
 
 let Agent = null;
 try { Agent = require('undici').Agent; } catch { Agent = null; }
-
-/** 构造确定性策略拦截错误：不重试、且不允许 auto 模式回退代理 */
-function policyBlocked(message) {
-  const err = new Error(message);
-  err.ssrfBlocked = 'policy';
-  err.retryable = false;
-  return err;
-}
-
-/** 构造「无法证明目标安全」错误（解析失败 / 无可用地址） */
-function unverifiedBlocked(message) {
-  const err = new Error(message);
-  err.ssrfBlocked = 'unverified';
-  return err;
-}
 
 /** 默认地址判定：私网 / 回环 / 保留网段一律视为禁止目标 */
 function isBlockedAddress(address) {

@@ -277,5 +277,7 @@ module.exports = {
   isAllowedUrl,
   isAllowedUrlAsync,
   validateUrlSsrf,
-  redactUrl
+  redactUrl,
+  policyBlocked,
+  unverifiedBlocked
 };

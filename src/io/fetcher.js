@@ -39,7 +39,8 @@ const { resolveLocalProxyDispatcher } = fetchProxy;
  * @returns {Error|null}
  */
 function findSsrfBlock(err, depth = 0) {
-  if (!err || typeof err !== 'object' || depth > 2) return null;
+  // 预留 4 层包装深度：undici 版本升级可能再套一层 cause，过窄会导致 policy 分类静默丢失
+  if (!err || typeof err !== 'object' || depth > 4) return null;
   if (err.ssrfBlocked) return err;
   if (Array.isArray(err.errors)) {
     for (const inner of err.errors) {
