@@ -333,6 +333,7 @@ groups:
 | `customRules` | `routing: [{ rule, to }]`（位置即优先级，写在哪条预设前后就排在它前后）；**字段已删除**，旧配置在解析期报「已删除字段」并指向新写法 |
 | `customGroups` | `groups: [...]`（字段更名，但**不再接受 `rules` / `providers` / `process`**：规则一律写 `routing`）；字段已删除，同上 fail-closed |
 | `customServices` | 保留字段名，改为**扁平**服务字典（不再按六维嵌套），新增服务用 `{ service: <键> }` 路由引用 |
+| `enableAirportTag` + `airportTag`（+ `airportTagReg`） | 无需配置：标签由入站阶段按订阅源自动写入节点属性，不存在「识别」动作；**三个字段均已删除**，旧配置在解析期报「已删除字段」 |
 
 **10.8 验收标准（批次 3 完成判据）**
 

@@ -52,10 +52,6 @@ const FIELDS = [
     group: '基础全局配置', doc: '默认代理策略: auto / manual / fallback（特殊: direct / reject）' },
   { key: 'enableIPv6', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '全局 IPv6：控制 TUN、DNS 及路由（本地无物理 IPv6 请保持 false）' },
-  { key: 'enableAirportTag', type: 'boolean', default: false, merge: 'override', trust: 'any',
-    group: '基础全局配置', doc: '标签提取：订阅合并时自动/手动捕捉标签内容' },
-  { key: 'airportTag', type: 'string', default: '', merge: 'override', trust: 'any',
-    group: '基础全局配置', doc: '手动指定标签（逗号分隔），为空则自动正则检测' },
   { key: 'showFeatureIcon', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '特征图标：true(Emoji) / false(文字)' },
   { key: 'include', type: 'string[]', default: [], merge: 'override', trust: 'local',
@@ -312,6 +308,8 @@ const FIELDS_BY_KEY = Object.freeze(
 const REMOVED_FIELDS = Object.freeze([
   // 批次 3 之前退役
   'dnsMergeMode', 'airportTagReg', 'enableDomesticGroup', 'proxyFirst',
+  // 订阅标签改由入站阶段按订阅源自动写入，不再需要开关与手动指定
+  'enableAirportTag', 'airportTag',
   // 批次 3 退役：分流开关
   'enableAdBlock', 'enableAntiAD', 'enableAI', 'enableStreaming', 'enableSocial',
   'enableGame', 'enableSystemServices', 'enableGitHub', 'enableScholar',

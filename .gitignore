@@ -18,6 +18,7 @@ node_modules/
 # Config
 config.yaml
 config.yml
+config.yaml.bak
 dist/
 
 # 安全审计临时夹具与攻击探针（本地复现用，不入库）

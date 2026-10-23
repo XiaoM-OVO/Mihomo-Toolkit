@@ -371,7 +371,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
     isUnknownRegion,
     keepName,
     groupTags: options.groupTags || meta.groupTags || [],
-    airportTag: options.airportTag || meta.subTag || userConfig.airportTag || '',
+    airportTag: options.airportTag || meta.subTag || '',
     indexPrefix: options.indexPrefix || meta.indexPrefix || ''
   };
 }

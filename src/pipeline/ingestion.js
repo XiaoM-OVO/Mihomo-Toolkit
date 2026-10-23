@@ -417,7 +417,6 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   let sourceSkeleton = { proxies: [] };
   /** 订阅携带的节点专属 DNS 资产闭包累积容器（显式值通道，最终由 strategy 层消费） */
   const dnsAssets = { hosts: {}, policies: {}, fakeIpFilters: [] };
-  let hasInjectedTag = false;
   let hasFailedSub = false;
   let hasTerminalFailure = false;
   const collectedSubInfos = [];
@@ -476,8 +475,6 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
   // 1. 多订阅并发抓取分支
   if (subscriptions && Array.isArray(subscriptions) && subscriptions.length > 0) {
-    const urlSubs = subscriptions.filter(isSubEnabled).filter(s => s.url).length;
-
     const fetchTasks = subscriptions.map(async (sub) => {
       if (!isSubEnabled(sub)) {
         return { sub, rawResult: null, error: null, disabled: true };
@@ -653,10 +650,6 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         if (synthNodes.length > 0) {
           synthNodes.forEach(n => logger.debug(`📊 [合成看板] 「${n.name}」`));
           subProxies.unshift(...synthNodes);
-        }
-
-        if (sub.tag && urlSubs > 1) {
-          hasInjectedTag = true;
         }
 
         // 统一安全网关：控制面净化审计 + 节点专属资产闭包提取（详见 applySubscriptionGuards）
@@ -886,7 +879,6 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     collectedSubInfos,
     hasFailedSub,
     hasTerminalFailure,
-    hasInjectedTag,
     perSubCounts
   };
 }

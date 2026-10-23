@@ -4,8 +4,6 @@
   "osType": "windows",
   "defaultProxyMode": "auto",
   "enableIPv6": false,
-  "enableAirportTag": false,
-  "airportTag": "",
   "showFeatureIcon": true,
   "enableDedupe": false,
   "assetClosure": "standard",

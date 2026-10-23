@@ -245,7 +245,6 @@ async function executeBuildPipeline({
     collectedSubInfos,
     hasFailedSub,
     hasTerminalFailure,
-    hasInjectedTag,
     perSubCounts
   } = await processSubscriptionSources({
     subscriptions: userConfig.subscriptions,
@@ -267,7 +266,6 @@ async function executeBuildPipeline({
 
   // 5. Step 2: 节点标准化清洗与打标 (Core 纯算法阶段)
   const nodeConfig = { ...userConfig };
-  if (hasInjectedTag) nodeConfig.enableAirportTag = true;
 
   const {
     proxies: cleanProxies,

@@ -96,8 +96,6 @@ output: "./dist/config.yaml"    # 产物输出路径
 enableDedupe: true                 # 底层物理特征指纹去重
 enableDashboard: true              # 生成订阅状态看板节点（流量剩余、套餐到期等）
 removeInfoNodes: true              # 过滤机场原生说明/流量提示伪节点
-enableAirportTag: true             # 多订阅时自动打上机场来源标签
-# airportTag: ""                   # 手动指定标签（逗号分隔），留空=自动检测
 # strictRegionMatch: false         # true=严格字典匹配 / false=允许国旗 Emoji 与启发式识别
 # adTextThreshold: 6               # 纯文本广告判定阈值（无数字/线路特征且长度超过此值）
 # whitelistKeywords:               # 白名单：包含即放行并保留原名

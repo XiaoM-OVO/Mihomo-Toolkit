@@ -532,8 +532,6 @@ servicesConfigFile: "./services.config.yaml"
 | `trafficDirection` | `string` | `'split'` | `any` | `override` | **流量方向**：`split` 国内直连 / 海外代理（默认）；`return` 回国（国内代理 / 海外直连）。只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支；规则的国内 / 海外走向由 `routing` 决定。 |
 | `defaultProxyMode` | `string` | `'auto'` | `any` | `override` | **默认代理行为**：可选 `auto` (自动测速) \| `manual` (手动选择) \| `fallback` (故障转移) \| `direct` \| `reject`。 |
 | `enableIPv6` | `boolean` | `false` | `any` | `override` | **全局 IPv6 开关**：控制 TUN、DNS 及路由规则的 IPv6 通道。本机无公网物理 IPv6 时请保持 `false`。 |
-| `enableAirportTag` | `boolean` | `false` | `any` | `override` | **订阅标签提取**：多订阅聚合时，是否自动将订阅来源识别为标签并附着在节点属性中。 |
-| `airportTag` | `string` | `''` | `any` | `override` | **手动指定标签**：多订阅时逗号分隔的固定标签列表，留空则由引擎自动提取或按文件名分配。 |
 | `showFeatureIcon` | `boolean` | `true` | `any` | `override` | **节点特征图符**：是否在重命名后的节点末尾追加特征标识（如 🚀 4K 🏠 等）。 |
 | `include` | `string[]` | `[]` | `local` | `override` | **通用配置片段挂载**：引入外部 yaml/json 片段，主配置优先，数组并集去重，支持递归 include。 |
 | `servicesConfigFile` | `string` | `''` | `local` | `override` | **外部服务扩展文件**：挂载外部 `.js`、`.yaml` 或 `.json` 自定义服务编目文件。 |

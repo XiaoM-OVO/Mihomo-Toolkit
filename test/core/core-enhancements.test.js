@@ -186,11 +186,10 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     const rawP = markTrustedProxyMetadata({ name: '🇭🇰 香港 01', server: '1.2.3.4', port: 443 }, { subTag: 'A', indexPrefix: 'X' });
     const classified = classifyNode(rawP);
     assert.equal(classified.airportTag, 'A');
-    const fallback = classifyNode({ name: '🇭🇰 香港 02', server: '1.2.3.5', port: 443 }, { airportTag: 'Global' });
+    const fallback = classifyNode({ name: '🇭🇰 香港 02', server: '1.2.3.5', port: 443 }, {}, { airportTag: 'Global' });
     assert.equal(fallback.airportTag, 'Global');
 
     const config = {
-      airportTag: 'Global',
       indexPrefixMap: { A: 'A' },
       renameTemplate: '[{airport}] {icon} {region} {index}'
     };

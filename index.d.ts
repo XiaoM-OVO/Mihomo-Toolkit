@@ -274,10 +274,6 @@ export interface ToolkitConfig {
   defaultProxyMode?: string;
   /** 全局 IPv6：控制 TUN / DNS 及路由（本地无物理 IPv6 请保持 false） */
   enableIPv6?: boolean;
-  /** 标签提取：订阅合并时自动/手动捕捉标签内容 */
-  enableAirportTag?: boolean;
-  /** 手动指定标签（逗号分隔），为空则自动正则检测 */
-  airportTag?: string;
 
   // 节点清洗
   /** 过滤机场自带的原生说明/流量提示伪节点 */
