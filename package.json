@@ -4,12 +4,23 @@
   "description": "Mihomo-Toolkit - 自动化节点清洗与策略组构建工具",
   "main": "src/index.js",
   "types": "index.d.ts",
+  "files": [
+    "src/",
+    "standalone/",
+    "index.d.ts",
+    "config.example.yaml",
+    "CONFIGURATION.md",
+    "DEFAULTS.md",
+    "ARCHITECTURE.md",
+    "ROADMAP.md"
+  ],
   "bin": {
     "mihomo-toolkit": "src/targets/cli.js"
   },
   "scripts": {
     "verify:arch": "node scripts/verify-architecture.js",
     "verify:docs": "node scripts/verify-docs.js",
+    "verify:standalone": "node scripts/verify-standalone.js",
     "lint": "eslint .",
     "start": "node src/targets/server.js",
     "test": "node --test --test-reporter=spec",

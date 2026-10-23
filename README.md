@@ -25,6 +25,7 @@
   - [1. 终端命令行 (CLI)](#1-终端命令行-cli)
   - [2. 常驻 HTTP 订阅服务](#2-常驻-http-订阅服务)
   - [3. 客户端无缝集成](#3-客户端无缝集成)
+  - [4. 自包含单文件脚本（免部署）](#4-自包含单文件脚本免部署)
 - [⚙️ 配置详解 (`config.yaml`)](#️-配置详解-configyaml)
 - [🔐 安全模型与信任边界](#-安全模型与信任边界)
 - [🏗️ 系统架构与分层导览](#️-系统架构与分层导览)
@@ -173,14 +174,28 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 
 #### 与 Clash Verge Rev 搭配使用
 
-建议采用以下两种稳定方式之一，避免客户端内部沙箱编译超大单体脚本：
+按设备条件二选一；两者输出规格一致，只是执行位置不同：
 
 1. **本地订阅方式（推荐）**：启动 `npm start` 常驻服务，在 Clash Verge Rev 中添加新订阅为 `http://127.0.0.1:3000/sub`，完全当做普通远程订阅使用。
 2. **计划任务直写配置**：在 `config.yaml` 中将 `output` 路径指向 Verge 的 profiles 目录，通过系统计划任务（Windows Task Scheduler / Cron）定时执行 `node src/targets/cli.js -c config.yaml` 自动写入。
 
+> 若不想引入运行环境与常驻进程，可直接使用下节的[自包含单文件脚本](#4-自包含单文件脚本免部署)；代价是脚本在客户端沙箱内执行，设备性能较弱时编译超大单体会带来额外开销。
+
 #### 与 Sub-Store 搭配使用
 
 使用纯节点模式：`node src/targets/cli.js -u "订阅地址" -m nodes -o nodes.yaml`，生成的纯净代理数组可直接作为 Sub-Store 的本地/远程节点源进行聚合。
+
+### 4. 自包含单文件脚本（免部署）
+
+无需 Node.js 环境与 `npm install`：打开脚本链接复制全文（或使用 raw 链接），粘贴进客户端的「覆写 / 扩展脚本 / 节点操作」入口即可生效。三个脚本都是零依赖、独立自包含的 3.x 快照，与 `src/` 流水线并行维护、互不依赖。
+
+| 脚本 | 适用场景 | 核心职责 |
+| :--- | :--- | :--- |
+| [standalone/src/mihomo-toolkit.js](standalone/src/mihomo-toolkit.js) | Mihomo 系客户端（Clash Verge Rev / FlClash 等）的扩展脚本 | 清洗、智能分流、策略组拓扑与图标组装的完整一体化交付 |
+| [standalone/src/pure-nodes.js](standalone/src/pure-nodes.js) | Sub-Store / Surge / Loon / 浏览器等任意 JS 运行环境 | 纯节点处理：过滤、物理去重、重命名与多维排序 |
+| [standalone/substore/sub-info.js](standalone/substore/sub-info.js) | Sub-Store「节点操作 → 脚本操作」 | 订阅流量与到期信息节点的提取、计算与置顶 |
+
+> 定位说明与各脚本的完整配置项，请参阅 [谱系与取代边界](docs/history/v4-boundary.md)；这些脚本不参与 `src/` 的分层校验与单元测试，由 `npm run verify:standalone` 保证「语法可解析、无相对路径依赖」两条底线，属于冻结维护的独立资产。
 
 ---
 

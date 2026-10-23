@@ -14,7 +14,11 @@
 | `worker.js` 与 esbuild 打包（`build:worker`） | 无对应产物 | **砍掉**：不再提供 Cloudflare Worker 部署产物 |
 | 三产物构建 `build:full` / `build:pure` / `build:toolkit` | 单产物 `build` / `build:nodes` / `build:report` | **砍掉**：不再按产物分裂构建 |
 | `scripts/inject-shared.cjs` 跨产物注入共享逻辑 | `src/` 分层单一事实源 | **收敛**：共享字段不再逐产物复制，脚本职责单一化 |
-| `substore/` 适配脚本 | 保留资产，不再排期 | **不承诺原生适配**：现 `nodes` 模式可继续作为外部二次加工入口 |
+| `src/pure-nodes.js`（含 IP-API 富化 / 清洗 / 裂变） | 基础清洗已由新内核承担；IP 富化暂未移植 | **保留现行资产**：迁至 `standalone/src/pure-nodes.js`，IP 富化按需移植 |
+| `src/mihomo-toolkit.js`（客户端扩展脚本） | 无对应产物 | **保留现行资产**：迁至 `standalone/src/mihomo-toolkit.js` |
+| `substore/` 适配脚本 | 无对应产物 | **保留现行资产**：迁至 `standalone/substore/sub-info.js`，M4 后按需重写 |
+
+> `standalone/` 存放**仍在实际使用**的自包含单文件脚本（3.x 快照，冻结维护）：不接入 `src/` 的构建、测试与分层校验，零依赖、可直接粘贴进客户端，并显式纳入 npm 发布白名单，与 v4 流水线并行提供。
 
 ### 用户侧影响（发版说明中需显式交代）
 

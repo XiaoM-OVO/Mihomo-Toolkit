@@ -31,6 +31,8 @@ jobs:
         run: npm run lint
       - name: 文档一致性校验
         run: npm run verify:docs
+      - name: 自包含脚本校验
+        run: npm run verify:standalone
 
   test:
     name: 单元测试 (Node ${{ matrix.node }})

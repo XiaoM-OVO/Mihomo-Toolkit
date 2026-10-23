@@ -18,6 +18,7 @@
 | [history/m3-early-completions.md](history/m3-early-completions.md) | M3 前期完成条目（Phase A / B 批次 1–4），含已作废写法 |
 | [history/m3b-implementation.md](history/m3b-implementation.md) | M3.B 实施记录（10.10–10.19），含否决方案与选型依据 |
 | [history/v4-boundary.md](history/v4-boundary.md) | v4 统一内核的取代边界与命名谱系 |
+| [history/changelog-legacy.md](history/changelog-legacy.md) | v1 – v3.x 逐次更新记录归档（不再维护） |
 | [debt.md](debt.md) | 技术债务与坏味道跟踪表 |
 
 ## 约定
