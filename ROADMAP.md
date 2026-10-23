@@ -392,9 +392,9 @@ groups:
 
 - **现状修正**：
   - `routing` 的 `@pool:` 已 fail-closed，并会列出可用内置池（`routing.js`）；
-  - `@pool:` 不再被误报为「未知宏」，`matcher` 已放行、由求值期校验池存在性。
+  - `@pool:` 不再被误报为「未知宏」，`matcher` 已放行、由求值期校验池存在性；
+  - `groups[].proxies` 与 `routing[].to` 的未知池已统一为装载期 fail-closed（见下方「候选改进 5」）。
 - **剩余缺口**：
-  - `groups[].proxies` 中的「池不存在 / 池为空」仍是 `warn + skip`（`topology-engine.js`），与 `routing` 的 fail-closed 口径不一致——未知池名应配置期报错；
   - 已知但未启用的内置池在 `routing` 被报成「不存在」，应改为「池未启用（`enableIsolation: false`）」并给出开关提示；
   - 宏报错目前只指向文档，可内联「可用宏」清单（`MACRO_ALIASES` 现成）；
   - 「已启用但暂无成员」仍属合法运行时跳过，但应在 `--explain` 里可见，而不是静默。
@@ -425,15 +425,11 @@ groups:
 
 **结果**：`resolveConfig` 在装载期校验 `groups[].proxies` 与 `routing[].to` 中的 `@pool:<池名>`，必须指向内置池表或用户 `pools` 中已声明的池，否则报出字段路径（`groups[0].proxies[1]` / `routing[2].to`）并中止；「池已声明但当前为空 / 未启用」仍属合法运行期跳过。`topology-engine.js` 中「节点池不存在或为空」的 `warn + skip` 分支已删除，装配层只保留空成员跳过；`CONFIGURATION.md` 的「两套口径」说明同步移除。
 
-### 6. 校验职责：schema 校验散在三处、执行阶段不统一
+### 6. ✅ 已完成：校验职责收敛为单一 schema 层（装载期 fail-closed）
 
-**现状**：组的结构与配方校验在 `validateGroups`（`src/strategy/matcher.js#L582`，装配期执行）；`{ ref }` / `disabled` 的结构校验在 `src/config/groups.js`（装载期）；目标合法性在 `src/strategy/target-registry.js`（解析期）。池引用已在装载期统一（见第 5 条），但其余字段的校验阶段仍是三套。
+**现状修正**：组的结构与配方校验原本在 `validateGroups`（`src/strategy/matcher.js`，装配期）；`{ ref }` / `disabled` 结构在 `src/config/groups.js`（装载期）；目标合法性在 `src/strategy/target-registry.js`（解析期）。
 
-**风险**：新增 DSL 字段要跨三个模块同步，最容易出现「一边已校验、一边仍放行」的软失败；错误发生的阶段（装载期 / 装配期）与错误消息风格不统一，用户排查时很难判断某条配置到底在哪一层被丢弃。
-
-**修复方案**：收敛为单一配置 schema 校验层（装载期执行），装配层只消费已通过校验的对象、不再重复判类型；`topology-engine.js` 中未知宏的 `warn + skip` 兜底随之删除。
-
-**验收口径**：任何非法 `groups` / `routing` 配置都在装载期报错并给出字段路径；`topology-engine.js` 中不再存在类型 / 存在性判断的 `warn + skip` 分支。
+**结果**：新增 `src/pipeline/config-schema.js` 作为 `groups` / `routing` 的单一校验入口，在 `runStrategyPipeline` 的 `resolveConfig` 之后、清洗节点与装配之前执行（config 层不反向依赖 strategy，故入口挂在合法的 pipeline 编排层）。`topology.js` 装配期重复调用的 `validateGroups` 已删除；`routing.js` 抽出 `validateRouting`，与 `expandRouting` 共用同一实现。routing 条目补齐字段白名单、`preset / service / rule` 三选一、`disabled` / `direction` 取值、预设与服务存在性、规则目标完整性；`disabled: true` 与方向不符的条目同样全量校验（目标按条目自身 direction 的目标表解析），此前被静默吞掉的拼写错误不再漏网。`topology-engine.js` 的三处 `warn + skip`（未知宏、非法 type 静默降级 `select`、构建异常）全部改为直接抛错。错误消息统一带 `routing[i]` / `routing[i].to` 字段路径，`npm test` 701 项通过。
 
 ---
 

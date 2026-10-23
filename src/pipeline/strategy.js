@@ -7,6 +7,7 @@
 const { resolveConfig } = require('../config');
 const { cleanAndClassifyNodesSync } = require('./nodes');
 const { createServiceRegistries } = require('../strategy/registries');
+const { validateConfigSchema } = require('./config-schema');
 const { buildProxyTopology } = require('../strategy/topology');
 const { expandRouting } = require('../strategy/routing');
 const { pruneEmptyGroups } = require('../strategy/prune');
@@ -27,6 +28,13 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
   const userConfig = resolveConfig(safeExtConfig, { logger: pipelineContext.logger });
   if (!userConfig.enablePipeline) return sourceSkeleton;
 
+  // 3.5 配置装载后统一 schema 校验：groups / routing 的结构、配方与目标合法性
+  //     在清洗节点与装配之前 fail-closed，避免非法配置走到装配期才暴露。
+  const registries = createServiceRegistries(userConfig);
+  validateConfigSchema(userConfig, registries, {
+    disabledRefs: userConfig.disabledGroupRefs
+  });
+
   let classifiedNodes = pipelineContext.classifiedNodes;
 
   // 若上游流水线未提供已分类打标的节点（如独立脚本入口），统一复用 nodes 同步清洗打标流水线
@@ -36,9 +44,8 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     sourceSkeleton.proxies = classifiedNodes.map(item => item.proxy);
   }
 
-  // 4. 组装服务注册表与路由规则（规则先展开：组是否生成由「被规则引用」决定）
+  // 4. 组装路由规则（规则先展开：组是否生成由「被规则引用」决定）
   const logger = pipelineContext.logger || userConfig.logger;
-  const registries = createServiceRegistries(userConfig);
   const { rules, providers, targets } = expandRouting(userConfig, registries, {
     disabledRefs: userConfig.disabledGroupRefs
   });

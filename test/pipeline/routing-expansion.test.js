@@ -95,7 +95,7 @@ describe('routing 展开引擎：条目语义', () => {
       () => expandRouting(config, registries, {
         routing: [{ rule: 'DOMAIN-SUFFIX,x.com', to: 'DIRECT', direction: 'retrun' }]
       }),
-      /direction 仅支持 split \/ return/
+      /routing\[0\]\.direction: 仅支持 split \/ return/
     );
   });
 

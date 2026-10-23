@@ -170,12 +170,9 @@ function resolveGroupProxies({
       continue;
     }
 
-    // 2. 未命中任何已知宏的 `@` 符号：视为配置错误，告警并跳过（禁止退化为字面组名）
+    // 2. 未命中任何已知宏的 `@` 符号：配置错误，fail-closed（禁止退化为字面组名或静默跳过）
     if (token.startsWith('@')) {
-      if (logger && typeof logger.warn === 'function') {
-        logger.warn(`⚠️ [TopologyEngine] 未知宏变量「${token}」已跳过，可用宏见 CONFIGURATION.md 动态拓扑宏变量清单`);
-      }
-      continue;
+      throw new Error(`[groups] 未知宏「${token}」，可用宏见 CONFIGURATION.md 动态拓扑宏变量清单`);
     }
 
     // 3. 非宏 token：按「物理节点 / 已知组 / 内置目标」归一化
@@ -228,12 +225,13 @@ function evaluateGroupDefinition(groupDef, context = {}) {
   } = context;
 
   // 1. 规范化组类型 (Mihomo 原生类型，支持继承已有骨架组类型)
+  //    非法类型已在装载期 fail-closed，引擎内不再静默降级为 select。
   const existingGroup = context.existingGroupMap?.get(cleanName.toLowerCase());
-  let rawType = groupDef.type
+  const rawType = groupDef.type
     ? String(groupDef.type).toLowerCase().trim()
     : (existingGroup?.type || 'select');
   if (!SUPPORTED_GROUP_TYPES.has(rawType)) {
-    rawType = 'select';
+    throw new Error(`[groups] 策略组「${groupDef.name || cleanName}」.type: 未知策略组类型「${rawType}」`);
   }
 
   // 2. 节点匹配与筛选 (声明式 DSL 仅支持 match/exclude 配方，不再提供 pool/tag 组级捷径)
@@ -412,15 +410,10 @@ function evaluateCustomTopology({
   const evaluatedGroups = [];
 
   for (const def of groups) {
-    try {
-      const group = evaluateGroupDefinition(def, context);
-      if (group) {
-        evaluatedGroups.push(group);
-      }
-    } catch (err) {
-      if (logger && typeof logger.warn === 'function') {
-        logger.warn(`⚠️ [TopologyEngine] 策略组「${def?.name}」构建异常: ${err.message}`);
-      }
+    // 组声明已在装载期通过 schema 校验，构建异常直接上抛（不再 warn + skip 软失败）
+    const group = evaluateGroupDefinition(def, context);
+    if (group) {
+      evaluatedGroups.push(group);
     }
   }
 

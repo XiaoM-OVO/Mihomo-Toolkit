@@ -9,7 +9,6 @@ const { getTrustedProxyMetadata } = require('../core/node-trust');
 const { FIELDS_BY_KEY } = require('../data');
 const { ADS_GROUPS, DOWNLOAD_GROUPS, SKELETON_GROUP_DEFS } = require('../config/catalog');
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
-const { validateGroups } = require('./matcher');
 const { filterGroupsByDirection } = require('../config/groups');
 const { resolvePoolDefinitions, createPoolMatchers } = require('./pools');
 const { POOL_NAMES } = require('../data/default-pools');
@@ -220,9 +219,8 @@ function buildProxyTopology({
   ruleTargets = [],
   logger = null
 }) {
-  // 0. 校验声明式策略组 (groups) match/exclude 配方合规性
-  //    校验针对全量声明（含未生效方向），保证「换个方向才报错」的幽灵配置不存在
-  validateGroups(userConfig.groups);
+  // 声明式策略组（groups）的字段 / 配方 / 宏合法性已在装载期统一校验
+  // （pipeline/config-schema.js），装配层只消费已通过校验的对象。
 
   // 方向只筛选声明，不做同名仲裁：同名组各写一个方向，激活哪个由 trafficDirection 决定
   const direction = userConfig.trafficDirection === 'return' ? 'return' : 'split';

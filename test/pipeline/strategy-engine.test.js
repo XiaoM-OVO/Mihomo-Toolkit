@@ -209,20 +209,21 @@ describe('【Strategy】拓扑 DSL 装配引擎 (topology-engine)', () => {
       assert.deepEqual(resolve('@东亚'), ['日本节点']);
     });
 
-    it('未知宏变量被跳过并告警 (不再退化为字面组名)', () => {
-      const warnings = [];
-      const logger = { warn: (msg) => warnings.push(msg) };
-
-      const resolved = resolveGroupProxies({
-        declaredProxies: ['@tiktokregions', '@nope', 'DIRECT'],
-        macroContext: {},
-        logger
-      });
-
-      assert.deepEqual(resolved, ['DIRECT']);
-      assert.equal(warnings.length, 2);
-      assert.ok(warnings[0].includes('@tiktokregions'));
-      assert.ok(warnings[1].includes('@nope'));
+    it('未知宏变量 fail-closed (不再跳过或退化为字面组名)', () => {
+      assert.throws(
+        () => resolveGroupProxies({
+          declaredProxies: ['@tiktokregions', 'DIRECT'],
+          macroContext: {}
+        }),
+        /未知宏「@tiktokregions」/
+      );
+      assert.throws(
+        () => resolveGroupProxies({
+          declaredProxies: ['@nope'],
+          macroContext: {}
+        }),
+        /未知宏「@nope」/
+      );
     });
 
     it('未知非宏目标告警但保留 token (内置目标不告警)', () => {

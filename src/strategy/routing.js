@@ -37,6 +37,9 @@ function dedupe(list) {
   return [...new Set(list)];
 }
 
+/** routing 条目的合法字段（Fail-Closed：未知字段一律报错，杜绝拼错字段被静默忽略） */
+const ROUTING_ENTRY_KEYS = new Set(['preset', 'service', 'rule', 'to', 'disabled', 'direction']);
+
 /**
  * 取一条规则的目标字段（`AND,((…)),目标` 单独处理）
  * @param {string} rule 原始规则文本
@@ -122,7 +125,10 @@ function createContext(userConfig, registries, options) {
     }
   }
 
-  const direction = userConfig && userConfig.trafficDirection === 'return' ? 'return' : 'split';
+  // 方向：默认按 `trafficDirection` 推导；校验层会按条目自身 direction 显式指定
+  const direction = options.direction === 'return' || options.direction === 'split'
+    ? options.direction
+    : (userConfig && userConfig.trafficDirection === 'return' ? 'return' : 'split');
   const disabledRefs = Array.isArray(options.disabledRefs)
     ? options.disabledRefs
     : (Array.isArray(config.disabledGroupRefs) ? config.disabledGroupRefs : []);
@@ -389,17 +395,11 @@ function expandFinal(ctx) {
  * @param {object} entry 条目 ({ rule, to })
  */
 function expandRule(ctx, entry) {
-  if (typeof entry.rule !== 'string' || !entry.rule.trim()) {
-    throw new Error('routing: `rule` 条目缺少匹配表达式');
-  }
   const base = entry.rule.trim();
 
   // 规则集简写：`geosite:google` / `geoip:cn`——自动登记默认 Provider 路径并生成 RULE-SET 规则
   const shorthand = /^(geosite|geoip):([A-Za-z0-9_.!-]+)$/i.exec(base);
   if (shorthand) {
-    if (entry.to === undefined) {
-      throw new Error(`routing: 规则集简写缺少目标 \`to\`：${base}`);
-    }
     const kind = shorthand[1].toLowerCase();
     const name = shorthand[2];
     if (!ctx.providerBase[name]) ctx.providerBase[name] = `${kind}/${name}`;
@@ -410,9 +410,6 @@ function expandRule(ctx, entry) {
   if (entry.to !== undefined) {
     ctx.rules.push(retarget(base, resolveTo(entry.to, ctx)));
     return;
-  }
-  if (base.split(',').filter(Boolean).length < 3) {
-    throw new Error(`routing: 规则缺少目标且未提供 \`to\`：${base}`);
   }
   ctx.rules.push(base);
 }
@@ -442,40 +439,144 @@ function routingEntryKey(entry) {
 }
 
 /**
+ * 校验单个 routing 条目（fail-closed）
+ *
+ * 无论方向与 disabled 状态如何，凡是出现在 `routing` 表里的条目都必须全量校验：
+ * 未知字段 / 字段组合 / 预设与服务的存在性 / 规则形状。`disabled` 或方向不符只负责
+ * 「是否生成」，不豁免拼写错误——否则关闭的写错条目会被静默吞掉，用户无法排查。
+ *
+ * @param {object} ctx 展开上下文（用于目标解析）
+ * @param {object} entry routing 条目
+ * @param {number} idx 条目序号（用于报错路径 `routing[i]`）
+ */
+function validateRoutingEntry(ctx, entry, idx) {
+  const path = `routing[${idx}]`;
+  if (!entry || typeof entry !== 'object') {
+    throw new Error(`${path}: 条目必须是对象`);
+  }
+  // 1. 顶层字段白名单：未知字段 fail-closed
+  for (const key of Object.keys(entry)) {
+    if (!ROUTING_ENTRY_KEYS.has(key)) {
+      const allowed = [...ROUTING_ENTRY_KEYS].join(' / ');
+      throw new Error(`${path}: 未知字段「${key}」，routing 条目支持: ${allowed}`);
+    }
+  }
+  // 2. 三选一：preset / service / rule 互斥，任一出现即认定入口
+  const modeFields = ['preset', 'service', 'rule'].filter(k => entry[k] !== undefined && entry[k] !== null && entry[k] !== '');
+  if (modeFields.length === 0) {
+    throw new Error(`${path}: 条目需要 preset / service / rule 之一`);
+  }
+  if (modeFields.length > 1) {
+    throw new Error(`${path}: preset / service / rule 只能出现其一，收到 ${modeFields.join(' / ')}`);
+  }
+  // 3. disabled / direction 取值合法性
+  if (entry.disabled !== undefined && entry.disabled !== true && entry.disabled !== false) {
+    throw new Error(`${path}.disabled: 仅支持 true / false，收到 ${JSON.stringify(entry.disabled)}`);
+  }
+  if (entry.direction !== undefined && entry.direction !== 'split' && entry.direction !== 'return') {
+    throw new Error(`${path}.direction: 仅支持 split / return，收到 ${JSON.stringify(entry.direction)}`);
+  }
+  // 4. 入口具体校验：预设 / 服务存在性（方向不符的条目同样校验，防止关闭侧拼错被吞）
+  const disabled = entry.disabled === true;
+  if (entry.preset !== undefined && entry.preset !== null && entry.preset !== '') {
+    const preset = PRESET_DEFINITIONS[entry.preset];
+    if (!preset) throw new Error(`${path}.preset: 未知预设 "${entry.preset}"`);
+  }
+  if (entry.service !== undefined && entry.service !== null && entry.service !== '') {
+    const found = findService(ctx.registries, entry.service);
+    if (!found) throw new Error(`${path}.service: 未知服务 "${entry.service}"`);
+  }
+  if (entry.rule !== undefined && entry.rule !== null && entry.rule !== '') {
+    if (typeof entry.rule !== 'string' || !entry.rule.trim()) {
+      throw new Error(`${path}.rule: 期望非空匹配表达式`);
+    }
+    // 规则目标论证：自表达式缺目标且未提供 `to` 时 fail-closed。
+    // 例外：`disabled: true` 的条目只是「关闭同键槽位」，允许省略 `to`（该条目本身不产出规则）。
+    const base = entry.rule.trim();
+    if (!disabled && entry.to === undefined) {
+      const shorthand = /^(geosite|geoip):/i.test(base);
+      if (shorthand) {
+        throw new Error(`${path}: 规则集简写缺少目标 \`to\`：${base}`);
+      }
+      if (base.split(',').filter(Boolean).length < 3) {
+        throw new Error(`${path}: 规则缺少目标且未提供 \`to\`：${base}`);
+      }
+    }
+  }
+  // 5. `to` 目标解析：按条目自身 direction 取目标表（未生效方向的条目同样校验目标合法性）
+  if (entry.to !== undefined) {
+    if (typeof entry.to !== 'string' || !entry.to.trim()) {
+      throw new Error(`${path}.to: 条目缺少目标 \`to\``);
+    }
+    try {
+      ctx.targets.resolve(entry.to.trim());
+    } catch (err) {
+      throw new Error(`${path}.to: ${String(err.message).replace(/^routing:\s*/, '')}`);
+    }
+  }
+}
+
+/**
+ * 校验整张 routing 表（fail-closed）
+ *
+ * 方向参与校验上下文选择：`direction: return` 的条目在 `split` 构建时也会被校验，
+ * 但它的 `to` 必须按 `return` 方向的目标表判定，否则「只属于另一方向的合法配置」
+ * 会被误杀。缺省方向（双向生效）沿用当前构建方向。
+ *
+ * @param {Array<object>} routing 顺序化条目
+ * @param {object} userConfig 合并后的用户配置
+ * @param {object} registries `ServiceCatalog#toRegistries()` 的结果
+ * @param {object} [options={}] 展开选项（disabledRefs 等）
+ */
+function validateRouting(routing, userConfig, registries, options = {}) {
+  if (!Array.isArray(routing)) {
+    throw new TypeError('routing: 期望条目对象数组（数组顺序即匹配优先级）');
+  }
+  if (routing.length === 0) {
+    throw new Error('routing: 配置为空，至少需要一条 `{ preset: final }`（否则产物没有 MATCH 兜底）');
+  }
+  const contexts = new Map();
+  const contextFor = direction => {
+    const cacheKey = direction === 'split' || direction === 'return' ? direction : 'current';
+    if (!contexts.has(cacheKey)) {
+      const scoped = cacheKey === 'current' ? options : { ...options, direction: cacheKey };
+      contexts.set(cacheKey, createContext(userConfig, registries, scoped));
+    }
+    return contexts.get(cacheKey);
+  };
+  routing.forEach((entry, idx) => {
+    const direction = entry && typeof entry === 'object' ? entry.direction : undefined;
+    validateRoutingEntry(contextFor(direction), entry, idx);
+  });
+}
+
+/**
  * 展开单个 routing 条目
  * @param {object} ctx 上下文
  * @param {object} entry routing 条目
  */
 function expandEntry(ctx, entry) {
-  if (!entry || typeof entry !== 'object') {
-    throw new Error('routing: 条目必须是对象');
-  }
   if (entry.disabled === true) return;
-  if (entry.direction !== undefined) {
-    if (entry.direction !== 'split' && entry.direction !== 'return') {
-      throw new Error(`routing: 条目 direction 仅支持 split / return，收到 ${JSON.stringify(entry.direction)}`);
-    }
-    // 方向不符的条目直接不生成：每条只保留一个目标，不引入「同一条目两套目标」的分支状态
-    if (entry.direction !== ctx.direction) return;
+  if (entry.direction !== undefined && entry.direction !== ctx.direction) {
+    // 方向不符的条目不生成：每条只保留一个目标，不引入「同一条目两套目标」的分支状态。
+    // 结构校验已在 validateRouting 完成，此处只做「是否生成」的方向过滤。
+    return;
   }
-  if (entry.preset) {
+  if (entry.preset !== undefined && entry.preset !== null && entry.preset !== '') {
     const preset = PRESET_DEFINITIONS[entry.preset];
-    if (!preset) throw new Error(`routing: 未知预设 "${entry.preset}"`);
     expandPreset(ctx, preset, entry);
     return;
   }
-  if (entry.service) {
+  if (entry.service !== undefined && entry.service !== null && entry.service !== '') {
     const key = entry.service;
     const found = findService(ctx.registries, key);
-    if (!found) throw new Error(`routing: 未知服务 "${key}"`);
     expandService(ctx, key, found.item, entry.to);
     return;
   }
-  if (entry.rule) {
+  if (entry.rule !== undefined && entry.rule !== null && entry.rule !== '') {
     expandRule(ctx, entry);
     return;
   }
-  throw new Error('routing: 条目需要 preset / service / rule 之一');
 }
 
 /**
@@ -543,9 +644,9 @@ function expandRouting(userConfig = {}, registries = {}, options = {}) {
   const routing = Array.isArray(options.routing)
     ? options.routing
     : (Array.isArray(userConfig.routing) ? userConfig.routing : DEFAULT_ROUTING);
-  if (routing.length === 0) {
-    throw new Error('routing: 配置为空，至少需要一条 `{ preset: final }`（否则产物没有 MATCH 兜底）');
-  }
+  // 装配前先过同一份 schema 校验（与装载期共用单一实现）：
+  // 空表 / 结构 / 字段组合 / 预设与服务存在性 / 目标合法性全部在此 fail-closed。
+  validateRouting(routing, userConfig, registries, options);
 
   const cdnBase = userConfig.ruleProviderCDN || FIELDS_BY_KEY.ruleProviderCDN.default;
   const repo = `${cdnBase}/MetaCubeX/meta-rules-dat@meta`;
@@ -596,6 +697,7 @@ function expandRouting(userConfig = {}, registries = {}, options = {}) {
 
 module.exports = {
   expandRouting,
+  validateRouting,
   resolveTo,
   retarget,
   collectTargets,

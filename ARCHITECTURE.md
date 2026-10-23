@@ -111,6 +111,7 @@ src/
 │   ├── direct-node.js            # 骨架直连兜底节点声明与生成器
 │   ├── nodes.js                  # 纯净节点清洗流水线 (去重/打标/重命名)
 │   ├── strategy.js               # 策略拓扑与分流规则组装
+│   ├── config-schema.js          # 单一配置 schema 校验层 (groups / routing 装载后 fail-closed)
 │   ├── config.js                 # 完整配置装配流水线
 │   ├── report.js                 # 质量审计体检流水线 (JSON)
 │   └── envelope.js               # 节点只读 Envelope 包装与旁路接入
