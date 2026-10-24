@@ -79,6 +79,7 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
           'enableFission', 'fissionStack', 'fissionMaxNodes', 'fissionExcludeKeywords',
           'enableNodeSort',
           'processDirectLin', 'processDirectMac', 'processDirectWin',
+          'btProcessLin', 'btProcessMac', 'btProcessWin',
           'processProxyLin', 'processProxyMac', 'processProxyWin',
           'blockKeywords', 'blockServers',
           'nodeIpVersion',

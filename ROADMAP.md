@@ -349,7 +349,7 @@ groups:
 
 机制迁移完成后单独一笔「默认值复审」，逐项确认（可判定「维持现状」并要求在文档记录）：
 
-- A 类开关的默认值：现默认开 = AI / 流媒体 / 游戏 / 系统服务 / 专项 telegram / GitHub / 学术 / 广告 / 进程直连；默认关 = 社交 / 加密 / PayPal / WebRTC / QUIC 拒绝 / 国内组 / anti-ad。
+- A 类开关的默认值：现默认开 = AI / 流媒体 / 游戏 / 系统服务 / 专项 telegram / GitHub / 学术 / 广告 / BT 分段；默认关 = 社交 / 加密 / PayPal / WebRTC / QUIC 拒绝 / 国内组 / anti-ad / 额外强制直连进程。
 - 默认 `routing` 顺序是否仍然合理（例如 `ads` 与 `lan-domain` 的先后、`domestic` 是否应在 `non-cn` 之前）。
 - 默认组名 / 展示（含 emoji）是否仍合适。
 - `CONFIGURATION.md` 的默认值表与代码默认值是否一致。

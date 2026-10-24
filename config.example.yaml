@@ -201,7 +201,6 @@ routing:
   - preset: dev
   - service: telegram
   - preset: system
-  - preset: process
   - preset: bt
   - preset: download
   - preset: domestic
@@ -279,18 +278,25 @@ routing:
 
 
 # ───── ⑩ 进程分流名单 ─────────────────────────────────────────────────
-# 由 routing 的 { preset: process } / { preset: bt } 启用；表里没有这两个 preset 就不生成进程规则。
+# 三段归属：{ preset: bt } 读取 btProcess*（BT 客户端，默认直连）；
+#           { preset: download } 读取 processProxy*（下载软件，默认走「下载策略」）；
+#           { preset: process } 读取 processDirect*（额外强制直连，默认名单为空）。
+# 注意：routing 表里没有对应 preset 时，对应名单不会生成任何规则。
 # osType: "windows"                # windows | mac | linux | all（决定读取哪一组名单）
-# processDirectWin:                # Windows 强制直连（覆写默认）
+# processDirectWin:                # Windows 额外强制直连（默认空，需自行填写）
+#   - MyApp
+# processDirectMac: []             # macOS 额外强制直连（默认空）
+# processDirectLin: []             # Linux 额外强制直连（默认空）
+# btProcessWin:                    # Windows BT 客户端（默认 qBittorrent/Thunder/BitComet/uTorrent/aria2c）
 #   - qBittorrent
 #   - Thunder
 #   - BitComet
 #   - uTorrent
 #   - aria2c
-# processDirectMac:                # macOS 强制直连（默认 Thunder/BitComet/uTorrent/qbittorrent/aria2c/transmission-daemon）
+# btProcessMac:                    # macOS BT 客户端（默认 Thunder/BitComet/uTorrent/qbittorrent/aria2c/transmission-daemon）
 #   - Thunder
 #   - qbittorrent
-# processDirectLin:                # Linux 强制直连（默认 qbittorrent/aria2c/transmission-daemon）
+# btProcessLin:                    # Linux BT 客户端（默认 qbittorrent/aria2c/transmission-daemon）
 #   - qbittorrent
 #   - aria2c
 # processProxyWin:                 # 走下载策略的工具（默认 IDMan/fdm）

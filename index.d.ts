@@ -338,17 +338,23 @@ export interface ToolkitConfig {
   geoipRepo?: string;
 
   // 进程分流名单（P2P 下载软件防封号）
-  /** Windows 强制直连进程名单 */
+  /** Windows 额外强制直连进程名单（默认空，仅 { preset: 'process' } 使用） */
   processDirectWin?: string[];
-  /** macOS 强制直连进程名单 */
+  /** macOS 额外强制直连进程名单（默认空，仅 { preset: 'process' } 使用） */
   processDirectMac?: string[];
-  /** Linux 强制直连进程名单 */
+  /** Linux 额外强制直连进程名单（默认空，仅 { preset: 'process' } 使用） */
   processDirectLin?: string[];
-  /** Windows 强制走下载策略的进程名单 */
+  /** Windows BT 客户端进程名单（{ preset: 'bt' }，默认直连） */
+  btProcessWin?: string[];
+  /** macOS BT 客户端进程名单（{ preset: 'bt' }，默认直连） */
+  btProcessMac?: string[];
+  /** Linux BT 客户端进程名单（{ preset: 'bt' }，默认直连） */
+  btProcessLin?: string[];
+  /** Windows 下载软件进程名单（{ preset: 'download' }，默认走下载策略） */
   processProxyWin?: string[];
-  /** macOS 强制走下载策略的进程名单 */
+  /** macOS 下载软件进程名单（{ preset: 'download' }，默认走下载策略） */
   processProxyMac?: string[];
-  /** Linux 强制走下载策略的进程名单 */
+  /** Linux 下载软件进程名单（{ preset: 'download' }，默认走下载策略） */
   processProxyLin?: string[];
 
   // 自定义规则入口

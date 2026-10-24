@@ -55,36 +55,47 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
     assert.equal(hints.meta, undefined, 'meta 条目已删除');
   });
 
-  it('BT / 下载规则由数据表驱动：process、bt、download 三段互不影响且都能改道', () => {
+  it('BT / 下载规则由数据表驱动：bt、download 两段归属清晰且都能整段改道', () => {
     const isDownload = rule => /^RULE-SET,(download-games|download-android),.*下载策略$/.test(rule);
+    const isDownloadProcess = rule => /^PROCESS-NAME,(IDMan|fdm)\.exe,.*下载策略$/.test(rule);
     const { DEFAULT_ROUTING } = require('../../src/data/default-routing');
-    const withoutProcess = DEFAULT_ROUTING.filter(entry => entry.preset !== 'process');
     const withoutBt = DEFAULT_ROUTING.filter(entry => entry.preset !== 'bt');
     const withoutDownload = DEFAULT_ROUTING.filter(entry => entry.preset !== 'download');
 
     const on = strategyMain(withNodes({}), {}).rules;
     assert.ok(on.includes('RULE-SET,bt-trackers-pt,DIRECT'), 'BT 追踪器应直连');
     assert.ok(on.includes('DOMAIN-KEYWORD,tracker,DIRECT'), 'tracker 关键字兜底应注入');
+    assert.ok(on.includes('PROCESS-NAME,qBittorrent.exe,DIRECT'), 'BT 客户端进程应归 bt 段并直连');
+    assert.ok(on.some(isDownloadProcess), '下载软件进程默认走下载策略');
     assert.ok(on.some(isDownload), '下载规则集默认走下载策略');
-
-    const offProcess = strategyMain(withNodes({}), { routing: withoutProcess }).rules;
-    assert.ok(!offProcess.some(rule => rule.startsWith('PROCESS-NAME,qbittorrent')), '删掉 process 预设后直连进程规则应消失');
-    assert.ok(offProcess.some(rule => /^RULE-SET,bt-trackers-pt,/.test(rule)), 'bt 预设独立于 process');
 
     const offBt = strategyMain(withNodes({}), { routing: withoutBt }).rules;
     assert.ok(!offBt.some(rule => /^RULE-SET,bt-trackers-pt,/.test(rule)), '删掉 bt 预设后追踪器规则应消失');
     assert.ok(!offBt.some(rule => /^DOMAIN-KEYWORD,(tracker|announce),/.test(rule)), '删掉 bt 预设后关键字兜底也应消失');
-    assert.ok(offBt.some(isDownload), 'download 预设不受 bt 影响');
+    assert.ok(!offBt.some(rule => /^PROCESS-NAME,qBittorrent/.test(rule)), '删掉 bt 预设后 BT 客户端规则应消失');
+    assert.ok(offBt.some(isDownloadProcess), 'download 预设不受 bt 影响');
 
     const offDownload = strategyMain(withNodes({}), { routing: withoutDownload }).rules;
-    assert.ok(!offDownload.some(isDownload), '删掉 download 预设后下载规则应消失');
+    assert.ok(!offDownload.some(isDownload), '删掉 download 预设后下载规则集应消失');
+    assert.ok(!offDownload.some(isDownloadProcess), '删掉 download 预设后下载软件进程规则应消失');
+    assert.ok(offDownload.includes('PROCESS-NAME,qBittorrent.exe,DIRECT'), 'bt 预设不受 download 影响');
 
     // 整段改道：to 对 bt / download 生效（ref 键解析为真实组名），不再静默忽略
     const rerouted = strategyMain(withNodes({}), {
       routing: [{ preset: 'bt', to: 'github' }, { preset: 'download', to: 'github' }]
     }).rules;
-    assert.ok(rerouted.includes('RULE-SET,bt-trackers-pt,🐱 GitHub'), 'bt 预设的 to 必须生效');
-    assert.ok(rerouted.includes('RULE-SET,download-games,🐱 GitHub'), 'download 预设的 to 必须生效');
+    assert.ok(rerouted.includes('RULE-SET,bt-trackers-pt,🐱 GitHub'), 'bt 预设的 to 必须作用于追踪器');
+    assert.ok(rerouted.includes('PROCESS-NAME,qBittorrent.exe,🐱 GitHub'), 'bt 预设的 to 必须作用于 BT 客户端进程');
+    assert.ok(rerouted.includes('RULE-SET,download-games,🐱 GitHub'), 'download 预设的 to 必须作用于下载规则集');
+    assert.ok(rerouted.includes('PROCESS-NAME,IDMan.exe,🐱 GitHub'), 'download 预设的 to 必须作用于下载软件进程');
+  });
+
+  it('process 预设的 to 生效：自定义强制直连进程可整段改道', () => {
+    const rules = strategyMain(withNodes({}), {
+      processDirectWin: ['CustomApp'],
+      routing: [{ preset: 'process', to: 'github' }]
+    }).rules;
+    assert.ok(rules.includes('PROCESS-NAME,CustomApp.exe,🐱 GitHub'), 'process 预设的 to 不得被静默忽略');
   });
 
   it('低倍率池纯粹按倍率圈定节点，下载组与轮询出口直接按池展开', () => {

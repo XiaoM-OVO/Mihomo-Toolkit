@@ -43,7 +43,6 @@ const SOCIAL_ROUTING = Object.freeze([
   { preset: 'dev' },
   { service: 'telegram' },
   { preset: 'system' },
-  { preset: 'process' },
   { preset: 'bt' },
   { preset: 'download' },
   { preset: 'domestic' },

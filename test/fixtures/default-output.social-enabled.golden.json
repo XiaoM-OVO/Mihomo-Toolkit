@@ -589,9 +589,6 @@
       "preset": "system"
     },
     {
-      "preset": "process"
-    },
-    {
       "preset": "bt"
     },
     {
@@ -1046,17 +1043,15 @@
     "RULE-SET,microsoft,🪟 Microsoft",
     "RULE-SET,apple,🍎 Apple",
     "RULE-SET,google,🔍 Google",
+    "RULE-SET,bt-trackers-pt,DIRECT",
+    "RULE-SET,bt-trackers-public,DIRECT",
+    "DOMAIN-KEYWORD,tracker,DIRECT",
+    "DOMAIN-KEYWORD,announce,DIRECT",
     "PROCESS-NAME,qBittorrent.exe,DIRECT",
     "PROCESS-NAME,Thunder.exe,DIRECT",
     "PROCESS-NAME,BitComet.exe,DIRECT",
     "PROCESS-NAME,uTorrent.exe,DIRECT",
     "PROCESS-NAME,aria2c.exe,DIRECT",
-    "RULE-SET,bt-trackers-pt,DIRECT",
-    "RULE-SET,bt-trackers-public,DIRECT",
-    "DOMAIN-KEYWORD,tracker,DIRECT",
-    "DOMAIN-KEYWORD,announce,DIRECT",
-    "PROCESS-NAME,IDMan.exe,DIRECT",
-    "PROCESS-NAME,fdm.exe,DIRECT",
     "RULE-SET,download-games-cn,DIRECT",
     "RULE-SET,non-cn,🚀 自动选择",
     "RULE-SET,cn-domain,DIRECT",

@@ -304,13 +304,15 @@ function expandSpecialized(ctx, to) {
 }
 
 /**
- * 展开进程直连段
+ * 展开强制直连进程段（用户自定义）
  *
- * 只保留「强制直连进程」（BT 客户端、迅雷等）；BT 追踪器与下载软件进程
- * 属于「BT 段」，可整段改道，见 `expandBt`。
+ * 出厂默认名单为空：BT 客户端归 `bt` 段、下载软件归 `download` 段。
+ * 这里只承载用户额外指定「必须直连」的进程，默认目标 DIRECT，可用 `to` 覆写。
  * @param {object} ctx 上下文
+ * @param {string} [to] 目标覆写（默认直连）
  */
-function expandProcess(ctx) {
+function expandProcess(ctx, to) {
+  const target = to === undefined ? 'DIRECT' : resolveTo(to, ctx);
   const {
     processDirectWin, processDirectMac, processDirectLin
   } = ctx.config;
@@ -319,36 +321,49 @@ function expandProcess(ctx) {
     win: processDirectWin || FIELDS_BY_KEY.processDirectWin.default,
     mac: processDirectMac || FIELDS_BY_KEY.processDirectMac.default,
     lin: processDirectLin || FIELDS_BY_KEY.processDirectLin.default
-  }, 'DIRECT', ctx.osInfo));
+  }, target, ctx.osInfo));
 }
 
 /**
- * 展开 BT 段（追踪器 + BT 下载软件进程）
+ * 展开 BT 段（BT 客户端进程 + 追踪器）
+ *
+ * BT 客户端与 tracker 同属一段：整段默认直连，`to` 可把客户端和追踪器一起改道，
+ * 避免「追踪器走代理、peer 连接仍直连」的割裂。
  * @param {object} ctx 上下文
  * @param {string} [to] 目标覆写（默认直连）
  */
 function expandBt(ctx, to) {
   const target = to === undefined ? 'DIRECT' : resolveTo(to, ctx);
   const {
-    processProxyWin, processProxyMac, processProxyLin
+    btProcessWin, btProcessMac, btProcessLin
   } = ctx.config;
 
   pushDownloadRules(ctx.rules, BT_TRACKER_RULES, target);
+  ctx.rules.push(...expandProcessRules({
+    win: btProcessWin || FIELDS_BY_KEY.btProcessWin.default,
+    mac: btProcessMac || FIELDS_BY_KEY.btProcessMac.default,
+    lin: btProcessLin || FIELDS_BY_KEY.btProcessLin.default
+  }, target, ctx.osInfo));
+}
+
+/**
+ * 展开下载段（下载软件进程 + 下载规则集）
+ *
+ * 下载软件进程与下载规则集同属一段：默认都走「下载策略」组；
+ * `to` 覆写整段目标（含规则集表内的 DIRECT 行），不再出现「进程直连、规则集走组」的错位。
+ * @param {object} ctx 上下文
+ * @param {string} [to] 目标覆写（默认走「下载策略」）
+ */
+function expandDownload(ctx, to) {
+  const { processProxyWin, processProxyMac, processProxyLin } = ctx.config;
+  const target = to === undefined ? groupName(GROUP_KEYS.download) : resolveTo(to, ctx);
+
   ctx.rules.push(...expandProcessRules({
     win: processProxyWin || FIELDS_BY_KEY.processProxyWin.default,
     mac: processProxyMac || FIELDS_BY_KEY.processProxyMac.default,
     lin: processProxyLin || FIELDS_BY_KEY.processProxyLin.default
   }, target, ctx.osInfo));
-}
-
-/**
- * 展开下载规则集段
- * @param {object} ctx 上下文
- * @param {string} [to] 目标覆写（默认走「下载策略」）
- */
-function expandDownload(ctx, to) {
-  const target = to === undefined ? null : resolveTo(to, ctx);
-  pushDownloadRules(ctx.rules, DOWNLOAD_RULESETS, target);
+  pushDownloadRules(ctx.rules, DOWNLOAD_RULESETS, to === undefined ? null : target);
 }
 
 /**
@@ -620,7 +635,7 @@ function expandPreset(ctx, preset, entry) {
     case 'category': return expandCategory(ctx, preset, to);
     case 'dev': return expandDev(ctx, preset, to);
     case 'specialized': return expandSpecialized(ctx, to);
-    case 'process': return expandProcess(ctx);
+    case 'process': return expandProcess(ctx, to);
     case 'bt': return expandBt(ctx, to);
     case 'download': return expandDownload(ctx, to);
     case 'domestic': return expandDomestic(ctx, to);
