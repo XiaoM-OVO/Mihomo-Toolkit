@@ -208,15 +208,15 @@ const FIELDS = [
     doc: 'geoip 网段规则集仓库路径（配合 ruleProviderCDN 组成完整 URL）' },
 
   // ── 【11. 进程分流名单】（此前代码读取但从未登记） ────────────────────────
-  { key: 'processDirectWin', type: 'string[]', default: [],
+  { key: 'customProcessWin', type: 'string[]', default: [],
     merge: 'override', trust: 'any', group: '进程分流名单',
-    doc: 'Windows 额外强制直连进程名单（默认空；仅在 routing 使用 `{ preset: process }` 时生效）' },
-  { key: 'processDirectMac', type: 'string[]', default: [],
+    doc: 'Windows 自定义进程名单（默认直连；仅在 routing 使用 `{ preset: process }` 时生效，可用 to 改道）' },
+  { key: 'customProcessMac', type: 'string[]', default: [],
     merge: 'override', trust: 'any', group: '进程分流名单',
-    doc: 'macOS 额外强制直连进程名单（默认空；仅在 routing 使用 `{ preset: process }` 时生效）' },
-  { key: 'processDirectLin', type: 'string[]', default: [],
+    doc: 'macOS 自定义进程名单（默认直连；仅在 routing 使用 `{ preset: process }` 时生效，可用 to 改道）' },
+  { key: 'customProcessLin', type: 'string[]', default: [],
     merge: 'override', trust: 'any', group: '进程分流名单',
-    doc: 'Linux 额外强制直连进程名单（默认空；仅在 routing 使用 `{ preset: process }` 时生效）' },
+    doc: 'Linux 自定义进程名单（默认直连；仅在 routing 使用 `{ preset: process }` 时生效，可用 to 改道）' },
   { key: 'btProcessWin', type: 'string[]',
     default: ['qBittorrent', 'Thunder', 'BitComet', 'uTorrent', 'aria2c'],
     merge: 'override', trust: 'any', group: '进程分流名单',
@@ -229,13 +229,13 @@ const FIELDS = [
     default: ['qbittorrent', 'aria2c', 'transmission-daemon'],
     merge: 'override', trust: 'any', group: '进程分流名单',
     doc: 'Linux BT 客户端进程名单（默认直连，可用 `{ preset: bt, to }` 整段改道）' },
-  { key: 'processProxyWin', type: 'string[]', default: ['IDMan', 'fdm'],
+  { key: 'downloadProcessWin', type: 'string[]', default: ['IDMan', 'fdm'],
     merge: 'override', trust: 'any', group: '进程分流名单',
     doc: 'Windows 下载软件进程名单（默认走下载出口组，可用 `{ preset: download, to }` 改道）' },
-  { key: 'processProxyMac', type: 'string[]', default: ['fdm'],
+  { key: 'downloadProcessMac', type: 'string[]', default: ['fdm'],
     merge: 'override', trust: 'any', group: '进程分流名单',
     doc: 'macOS 下载软件进程名单（默认走下载出口组，可用 `{ preset: download, to }` 改道）' },
-  { key: 'processProxyLin', type: 'string[]', default: [],
+  { key: 'downloadProcessLin', type: 'string[]', default: [],
     merge: 'override', trust: 'any', group: '进程分流名单',
     doc: 'Linux 下载软件进程名单（默认走下载出口组，可用 `{ preset: download, to }` 改道）' },
 
@@ -336,7 +336,10 @@ const REMOVED_FIELDS = Object.freeze([
   // DSL 收口：规则与组彻底分家
   'customRules', 'customGroups',
   // 节点池收口：隔离开关并入 enableIsolation + pools
-  'enableResidential', 'isolateHighMulti', 'isolateExperimental', 'isolateDownload'
+  'enableResidential', 'isolateHighMulti', 'isolateExperimental', 'isolateDownload',
+  // process 段正名：直连/代理语义改为「自定义进程 / BT 客户端 / 下载软件」
+  'processDirectWin', 'processDirectMac', 'processDirectLin',
+  'processProxyWin', 'processProxyMac', 'processProxyLin'
 ]);
 
 /**

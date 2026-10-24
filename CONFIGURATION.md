@@ -528,7 +528,7 @@ servicesConfigFile: "./services.config.yaml"
 | :--- | :--- | :--- | :---: | :---: | :--- |
 | `enablePipeline` | `boolean` | `true` | `any` | `override` | **流水线总控**：设为 `false` 则跳过所有策略拓扑组建、规则集编排与内核优化，仅交付清洗后的节点。 |
 | `logLevel` | `string` | `'info'` | `any` | `override` | **日志输出级别**：可选 `silent` \| `error` \| `warn` \| `info` \| `debug`。日常使用建议 `info`。 |
-| `osType` | `string` | `'windows'` | `any` | `override` | **目标运行环境**：可选 `windows` \| `mac` \| `linux` \| `all`。用于匹配特定操作系统的强制直连进程名单。 |
+| `osType` | `string` | `'windows'` | `any` | `override` | **目标运行环境**：可选 `windows` \| `mac` \| `linux` \| `all`。用于匹配特定操作系统的进程分流名单。 |
 | `trafficDirection` | `string` | `'split'` | `any` | `override` | **流量方向**：`split` 国内直连 / 海外代理（默认）；`return` 回国（国内代理 / 海外直连）。只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支；规则的国内 / 海外走向由 `routing` 决定。 |
 | `defaultProxyMode` | `string` | `'auto'` | `any` | `override` | **默认代理行为**：可选 `auto` (自动测速) \| `manual` (手动选择) \| `fallback` (故障转移) \| `direct` \| `reject`。 |
 | `enableIPv6` | `boolean` | `false` | `any` | `override` | **全局 IPv6 开关**：控制 TUN、DNS 及路由规则的 IPv6 通道。本机无公网物理 IPv6 时请保持 `false`。 |
@@ -612,7 +612,7 @@ include:
 | `disabled: true` | 关闭同键条目（key = `preset` / `service` / `rule` 原文，并叠加 `direction`）。同键多次出现时由靠后者决定开关状态；include 合并后主文件在后，因此「片段启用、主文件关闭」或反之都以主文件为准 | 见 `quic` / `social` 示例 |
 | `direction` | 只在指定方向生效：`split`（去程）/ `return`（回国）。方向不符时整条不生成；缺省 = 双向生效。同一规则需要两个方向各自落地时，写两条同名规则各带一个 `direction`，而不是在一条里塞两个目标 | `{ rule: 'DOMAIN-SUFFIX,x.com', to: '回国专线', direction: 'return' }` |
 
-预设清单（`PRESET_DEFINITIONS`）：`subscription`（订阅直连与基础网络）、`quic`、`ads`、`ai`、`streaming`、`social`、`game`、`dev`、`specialized`、`system`、`process`（自定义强制直连进程，默认名单为空）、`bt`（BT 客户端进程 + 追踪器，默认直连）、`download`（下载软件进程 + 游戏 / 安卓下载规则集，默认走「下载策略」）、`domestic`、`final`。分类预设 = **该分类下全部服务 + `customServices` 里新增的服务**；只要一部分就改用逐条 `{ service }`。
+预设清单（`PRESET_DEFINITIONS`）：`subscription`（订阅直连与基础网络）、`quic`、`ads`、`ai`、`streaming`、`social`、`game`、`dev`、`specialized`、`system`、`process`（自定义进程名单，默认直连、可用 `to` 改道）、`bt`（BT 客户端进程 + 追踪器，默认直连）、`download`（下载软件进程 + 游戏 / 安卓下载规则集，默认走「下载策略」）、`domestic`、`final`。分类预设 = **该分类下全部服务 + `customServices` 里新增的服务**；只要一部分就改用逐条 `{ service }`。
 
 组与规则的关系：**规则指向谁，谁才会被建出来**。表里没有出现的分类不会生成策略组；反过来，`groups` 里用 `{ ref }` 声明的组即使表里没有规则也会建出来（供手动切换），只是不会有流量进它。
 
@@ -685,7 +685,7 @@ routing:
 | :--- | :--- | :--- | :---: | :---: | :--- |
 | `enableTrafficAudit` | `boolean`| `true` | `any` | `override` | **流量审计防漏**：强制非标端口（非 53/80/443 等常用服务端口）直连，防恶意吸血流量。 |
 
-> **BT / 下载分流**：`{ preset: 'bt' }` 负责 BT 客户端进程与追踪器（默认直连），`{ preset: 'download' }` 负责下载软件进程与下载规则集（默认走「下载策略」），两段都支持 `to` 整段改道；`{ preset: 'process' }` 只用于补充自定义强制直连进程（默认名单为空），同样支持 `to`。**QUIC 拦截**由 `{ preset: 'quic' }` 控制。
+> **BT / 下载分流**：`{ preset: 'bt' }` 负责 BT 客户端进程与追踪器（默认直连），`{ preset: 'download' }` 负责下载软件进程与下载规则集（默认走「下载策略」），两段都支持 `to` 整段改道；`{ preset: 'process' }` 只用于补充自定义进程名单（出厂为空，默认直连，同样支持 `to`）。**QUIC 拦截**由 `{ preset: 'quic' }` 控制。
 | `overwriteTun` | `boolean` | `true` | `any` | `override` | 注入高性能 TUN 虚拟网卡配置（包括 gvisor 协议栈、mtu 优化与自动路由）。 |
 | `overwriteDns` | `boolean` | `true` | `any` | `override` | 覆写内核 DNS 总开关（启用权威防污染 Fake-IP 分流解析体系）。 |
 | `overwriteSniffer` | `boolean` | `true` | `any` | `override` | 注入精确域名嗅探器配置（嗅探 TLS SNI 与 HTTP Host，提高路由准确度）。 |
@@ -717,15 +717,15 @@ routing:
 
 | 参数名 | 类型 | 默认值 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| `processDirectWin` | `string[]` | `[]` | `any` | `override` | Windows 下额外强制直连的进程名列表（默认空，仅在 routing 使用 `{ preset: process }` 时生效）。 |
-| `processDirectMac` | `string[]` | `[]` | `any` | `override` | macOS 下额外强制直连的进程名列表（默认空，仅在 routing 使用 `{ preset: process }` 时生效）。 |
-| `processDirectLin` | `string[]` | `[]` | `any` | `override` | Linux 下额外强制直连的进程名列表（默认空，仅在 routing 使用 `{ preset: process }` 时生效）。 |
+| `customProcessWin` | `string[]` | `[]` | `any` | `override` | Windows 下自定义进程名单（默认直连，可用 `to` 改道；仅在 routing 使用 `{ preset: process }` 时生效）。 |
+| `customProcessMac` | `string[]` | `[]` | `any` | `override` | macOS 下自定义进程名单（默认直连，可用 `to` 改道；仅在 routing 使用 `{ preset: process }` 时生效）。 |
+| `customProcessLin` | `string[]` | `[]` | `any` | `override` | Linux 下自定义进程名单（默认直连，可用 `to` 改道；仅在 routing 使用 `{ preset: process }` 时生效）。 |
 | `btProcessWin` | `string[]` | `['qBittorrent', 'Thunder', 'BitComet', 'uTorrent', 'aria2c']` | `any` | `override` | Windows 下 BT 客户端进程名单（`{ preset: bt }` 展开，默认直连，可用 `to` 改道）。 |
 | `btProcessMac` | `string[]` | `['Thunder', 'BitComet', 'qbittorrent', ...]` | `any` | `override` | macOS 下 BT 客户端进程名单（`{ preset: bt }` 展开，默认直连，可用 `to` 改道）。 |
 | `btProcessLin` | `string[]` | `['qbittorrent', 'aria2c', 'transmission-daemon']` | `any` | `override` | Linux 下 BT 客户端进程名单（`{ preset: bt }` 展开，默认直连，可用 `to` 改道）。 |
-| `processProxyWin` | `string[]` | `['IDMan', 'fdm']` | `any` | `override` | Windows 下下载软件进程名单（`{ preset: download }` 展开，默认走「下载策略」，可用 `to` 改道）。 |
-| `processProxyMac` | `string[]` | `['fdm']` | `any` | `override` | macOS 下下载软件进程名单（`{ preset: download }` 展开，默认走「下载策略」，可用 `to` 改道）。 |
-| `processProxyLin` | `string[]` | `[]` | `any` | `override` | Linux 下下载软件进程名单（`{ preset: download }` 展开，默认走「下载策略」，可用 `to` 改道）。 |
+| `downloadProcessWin` | `string[]` | `['IDMan', 'fdm']` | `any` | `override` | Windows 下下载软件进程名单（`{ preset: download }` 展开，默认走「下载策略」，可用 `to` 改道）。 |
+| `downloadProcessMac` | `string[]` | `['fdm']` | `any` | `override` | macOS 下下载软件进程名单（`{ preset: download }` 展开，默认走「下载策略」，可用 `to` 改道）。 |
+| `downloadProcessLin` | `string[]` | `[]` | `any` | `override` | Linux 下下载软件进程名单（`{ preset: download }` 展开，默认走「下载策略」，可用 `to` 改道）。 |
 
 ---
 

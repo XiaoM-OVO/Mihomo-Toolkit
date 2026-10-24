@@ -304,23 +304,23 @@ function expandSpecialized(ctx, to) {
 }
 
 /**
- * 展开强制直连进程段（用户自定义）
+ * 展开自定义进程段（默认直连，可用 `to` 改道）
  *
- * 出厂默认名单为空：BT 客户端归 `bt` 段、下载软件归 `download` 段。
- * 这里只承载用户额外指定「必须直连」的进程，默认目标 DIRECT，可用 `to` 覆写。
+ * 出厂名单为空：BT 客户端归 `bt` 段、下载软件归 `download` 段。
+ * 这里只承载用户自行添加的进程名单，默认目标 DIRECT。
  * @param {object} ctx 上下文
  * @param {string} [to] 目标覆写（默认直连）
  */
 function expandProcess(ctx, to) {
   const target = to === undefined ? 'DIRECT' : resolveTo(to, ctx);
   const {
-    processDirectWin, processDirectMac, processDirectLin
+    customProcessWin, customProcessMac, customProcessLin
   } = ctx.config;
 
   ctx.rules.push(...expandProcessRules({
-    win: processDirectWin || FIELDS_BY_KEY.processDirectWin.default,
-    mac: processDirectMac || FIELDS_BY_KEY.processDirectMac.default,
-    lin: processDirectLin || FIELDS_BY_KEY.processDirectLin.default
+    win: customProcessWin || FIELDS_BY_KEY.customProcessWin.default,
+    mac: customProcessMac || FIELDS_BY_KEY.customProcessMac.default,
+    lin: customProcessLin || FIELDS_BY_KEY.customProcessLin.default
   }, target, ctx.osInfo));
 }
 
@@ -355,13 +355,13 @@ function expandBt(ctx, to) {
  * @param {string} [to] 目标覆写（默认走「下载策略」）
  */
 function expandDownload(ctx, to) {
-  const { processProxyWin, processProxyMac, processProxyLin } = ctx.config;
+  const { downloadProcessWin, downloadProcessMac, downloadProcessLin } = ctx.config;
   const target = to === undefined ? groupName(GROUP_KEYS.download) : resolveTo(to, ctx);
 
   ctx.rules.push(...expandProcessRules({
-    win: processProxyWin || FIELDS_BY_KEY.processProxyWin.default,
-    mac: processProxyMac || FIELDS_BY_KEY.processProxyMac.default,
-    lin: processProxyLin || FIELDS_BY_KEY.processProxyLin.default
+    win: downloadProcessWin || FIELDS_BY_KEY.downloadProcessWin.default,
+    mac: downloadProcessMac || FIELDS_BY_KEY.downloadProcessMac.default,
+    lin: downloadProcessLin || FIELDS_BY_KEY.downloadProcessLin.default
   }, target, ctx.osInfo));
   pushDownloadRules(ctx.rules, DOWNLOAD_RULESETS, to === undefined ? null : target);
 }

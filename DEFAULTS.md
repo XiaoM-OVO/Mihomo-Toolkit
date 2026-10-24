@@ -35,7 +35,7 @@
 | `{ service: 'paypal' }` | 无 | 加 | +1 组、+1 规则、+1 provider |
 | `{ service: 'webrtc' }` | 无 | 加 | +1 组、+7 规则 |
 | `{ preset: 'quic' }` | 无 | 加 | +2 条 `AND` 规则（UDP 443 → REJECT-DROP） |
-| `{ preset: 'process' }` | 无 | 加 | 按 `processDirect*` 名单生成进程直连规则；出厂名单为空，需自行填写，可用 `to` 整段改道 |
+| `{ preset: 'process' }` | 无 | 加 | 按 `customProcess*` 名单生成进程规则；出厂名单为空，默认 DIRECT，可用 `to` 整段改道 |
 | `{ preset: 'bt' }` | 有 | 删 | −9 规则（4 条 BT 追踪器 + 5 条 BT 客户端进程规则） |
 | `{ preset: 'download' }` | 有 | 删 | −5 规则（2 条下载软件进程 + 3 条下载规则集），下载进程默认走「下载策略」 |
 | `{ preset: 'domestic', to: '中国分流' }` | 无 | 加 | +1 组（🇨🇳 中国分流）、国内规则目标由 DIRECT 改为该组 |
@@ -122,7 +122,7 @@
 - **社交默认不开**：需要时加 `{ preset: 'social' }`。
 - **BT 段默认直连**：`{ preset: 'bt' }` 同时覆盖 BT 客户端进程与 tracker，默认直连，`to` 可整段改道。
 - **下载段默认走下载策略**：`{ preset: 'download' }` 同时覆盖下载软件进程（IDMan / fdm）与下载规则集，默认指向「下载策略」。
-- **强制直连进程按需开启**：`{ preset: 'process' }` 不在出厂表内，`processDirect*` 默认名单为空，仅用于补充自定义的强制直连进程，支持 `to`。
+- **自定义进程按需开启**：`{ preset: 'process' }` 不在出厂表内，`customProcess*` 默认名单为空，仅用于补充自定义进程；默认直连，支持 `to` 改道。
 - **兜底默认走代理**：`MATCH` 指向 `🐟 漏网之鱼`，未命中流量默认消耗机场流量，而非直连。
 - **非标端口默认直连**：`enableTrafficAudit` 默认开，`DST-PORT,1-65535,DIRECT` 会放行第 58 条之后的非标准端口。
 

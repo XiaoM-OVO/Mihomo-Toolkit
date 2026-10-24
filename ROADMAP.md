@@ -334,6 +334,7 @@ groups:
 | `customGroups` | `groups: [...]`（字段更名，但**不再接受 `rules` / `providers` / `process`**：规则一律写 `routing`）；字段已删除，同上 fail-closed |
 | `customServices` | 保留字段名，改为**扁平**服务字典（不再按六维嵌套），新增服务用 `{ service: <键> }` 路由引用 |
 | `enableAirportTag` + `airportTag`（+ `airportTagReg`） | 无需配置：标签由入站阶段按订阅源自动写入节点属性，不存在「识别」动作；**三个字段均已删除**，旧配置在解析期报「已删除字段」 |
+| `processDirect*` / `processProxy*` | 更名 `customProcess*`（自定义进程，默认直连，可用 `{ preset: process, to }` 改道）/ `downloadProcess*`（下载软件，默认走下载组）；**六个旧键均已删除**，解析期报错并指向新键名 |
 
 **10.8 验收标准（批次 3 完成判据）**
 
@@ -349,7 +350,7 @@ groups:
 
 机制迁移完成后单独一笔「默认值复审」，逐项确认（可判定「维持现状」并要求在文档记录）：
 
-- A 类开关的默认值：现默认开 = AI / 流媒体 / 游戏 / 系统服务 / 专项 telegram / GitHub / 学术 / 广告 / BT 分段；默认关 = 社交 / 加密 / PayPal / WebRTC / QUIC 拒绝 / 国内组 / anti-ad / 额外强制直连进程。
+- A 类开关的默认值：现默认开 = AI / 流媒体 / 游戏 / 系统服务 / 专项 telegram / GitHub / 学术 / 广告 / BT 分段；默认关 = 社交 / 加密 / PayPal / WebRTC / QUIC 拒绝 / 国内组 / anti-ad / 自定义进程。
 - 默认 `routing` 顺序是否仍然合理（例如 `ads` 与 `lan-domain` 的先后、`domestic` 是否应在 `non-cn` 之前）。
 - 默认组名 / 展示（含 emoji）是否仍合适。
 - `CONFIGURATION.md` 的默认值表与代码默认值是否一致。

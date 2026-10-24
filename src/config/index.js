@@ -99,6 +99,12 @@ const REMOVED_FIELD_HINTS = {
   isolateHighMulti: `隔离组改由节点池表达：开 \`enableIsolation: true\` 启用内置「${groupName(GROUP_KEYS.highMulti)}」池，阈值仍是 \`highMultiThreshold\``,
   isolateExperimental: `隔离组改由节点池表达：开 \`enableIsolation: true\` 启用内置「${groupName(GROUP_KEYS.experimental)}」池`,
   isolateDownload: `隔离组改由节点池表达：「${groupName(GROUP_KEYS.lowMulti)}」是内置池（默认隐藏），用 \`@pool:${groupName(GROUP_KEYS.lowMulti)}\` 或 \`pools\` 引用`,
+  processDirectWin: '进程名单更名为 `customProcessWin`（自定义进程，默认直连，可用 `{ preset: process, to }` 改道）',
+  processDirectMac: '进程名单更名为 `customProcessMac`（自定义进程，默认直连，可用 `{ preset: process, to }` 改道）',
+  processDirectLin: '进程名单更名为 `customProcessLin`（自定义进程，默认直连，可用 `{ preset: process, to }` 改道）',
+  processProxyWin: '进程名单更名为 `downloadProcessWin`（下载软件，默认走下载组，可用 `{ preset: download, to }` 改道）',
+  processProxyMac: '进程名单更名为 `downloadProcessMac`（下载软件，默认走下载组，可用 `{ preset: download, to }` 改道）',
+  processProxyLin: '进程名单更名为 `downloadProcessLin`（下载软件，默认走下载组，可用 `{ preset: download, to }` 改道）',
 };
 
 function assertNoRemovedFields(config) {

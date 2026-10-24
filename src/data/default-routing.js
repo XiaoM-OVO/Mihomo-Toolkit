@@ -31,7 +31,7 @@
  *   - `category`     分类注册表（AI / 流媒体 / 社交 / 游戏 / 系统）下的全部服务
  *   - `dev`          开发者与学术分类下的全部服务
  *   - `specialized`  专项服务（Crypto / PayPal / WebRTC / Telegram）全部
- *   - `process`      额外强制直连进程（默认名单为空，按需自行填写）
+ *   - `process`      自定义进程名单（默认直连，可用 `to` 改道；出厂名单为空）
  *   - `bt`           BT 客户端进程 + BT 追踪器（默认直连，可整段改道）
  *   - `download`     下载软件进程 + 游戏 / 安卓下载规则集（默认走「下载策略」）
  *   - `domestic`     国内 / 海外路由方向
@@ -48,7 +48,7 @@ const PRESET_DEFINITIONS = Object.freeze({
   system: Object.freeze({ kind: 'category', label: '系统服务', registry: 'system' }),
   dev: Object.freeze({ kind: 'dev', label: '开发者与学术', registry: 'dev' }),
   specialized: Object.freeze({ kind: 'specialized', label: '专项服务' }),
-  process: Object.freeze({ kind: 'process', label: '强制直连进程' }),
+  process: Object.freeze({ kind: 'process', label: '自定义进程分流' }),
   bt: Object.freeze({ kind: 'bt', label: 'BT 客户端与追踪器' }),
   download: Object.freeze({ kind: 'download', label: '下载软件与下载规则集' }),
   domestic: Object.freeze({ kind: 'domestic', label: '国内 / 海外' }),
@@ -63,7 +63,7 @@ const PRESET_DEFINITIONS = Object.freeze({
  *   - 专项只挂 Telegram（Crypto / PayPal / WebRTC 要自己加）
  *   - 社交整段默认不挂（`{ preset: 'social' }` 或逐条 `{ service }` 自行开启）
  *   - QUIC 拦截默认不挂
- *   - 强制直连进程段默认不挂（BT 客户端由 `bt` 段覆盖，其余进程按需自行添加）
+ *   - 自定义进程段默认不挂（BT 客户端由 `bt` 段覆盖，其余进程按需自行添加）
  */
 const DEFAULT_ROUTING = Object.freeze([
   Object.freeze({ preset: 'subscription' }),

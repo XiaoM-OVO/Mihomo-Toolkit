@@ -338,12 +338,12 @@ export interface ToolkitConfig {
   geoipRepo?: string;
 
   // 进程分流名单（P2P 下载软件防封号）
-  /** Windows 额外强制直连进程名单（默认空，仅 { preset: 'process' } 使用） */
-  processDirectWin?: string[];
-  /** macOS 额外强制直连进程名单（默认空，仅 { preset: 'process' } 使用） */
-  processDirectMac?: string[];
-  /** Linux 额外强制直连进程名单（默认空，仅 { preset: 'process' } 使用） */
-  processDirectLin?: string[];
+  /** Windows 自定义进程名单（默认直连，可用 { preset: 'process', to } 改道） */
+  customProcessWin?: string[];
+  /** macOS 自定义进程名单（默认直连，可用 { preset: 'process', to } 改道） */
+  customProcessMac?: string[];
+  /** Linux 自定义进程名单（默认直连，可用 { preset: 'process', to } 改道） */
+  customProcessLin?: string[];
   /** Windows BT 客户端进程名单（{ preset: 'bt' }，默认直连） */
   btProcessWin?: string[];
   /** macOS BT 客户端进程名单（{ preset: 'bt' }，默认直连） */
@@ -351,11 +351,11 @@ export interface ToolkitConfig {
   /** Linux BT 客户端进程名单（{ preset: 'bt' }，默认直连） */
   btProcessLin?: string[];
   /** Windows 下载软件进程名单（{ preset: 'download' }，默认走下载策略） */
-  processProxyWin?: string[];
+  downloadProcessWin?: string[];
   /** macOS 下载软件进程名单（{ preset: 'download' }，默认走下载策略） */
-  processProxyMac?: string[];
+  downloadProcessMac?: string[];
   /** Linux 下载软件进程名单（{ preset: 'download' }，默认走下载策略） */
-  processProxyLin?: string[];
+  downloadProcessLin?: string[];
 
   // 自定义规则入口
   /** 自定义 Rule-Provider 定义（name → { type, behavior, url, path… }） */

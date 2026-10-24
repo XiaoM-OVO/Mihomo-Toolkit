@@ -90,9 +90,9 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
     assert.ok(rerouted.includes('PROCESS-NAME,IDMan.exe,🐱 GitHub'), 'download 预设的 to 必须作用于下载软件进程');
   });
 
-  it('process 预设的 to 生效：自定义强制直连进程可整段改道', () => {
+  it('process 预设的 to 生效：自定义进程名单可整段改道', () => {
     const rules = strategyMain(withNodes({}), {
-      processDirectWin: ['CustomApp'],
+      customProcessWin: ['CustomApp'],
       routing: [{ preset: 'process', to: 'github' }]
     }).rules;
     assert.ok(rules.includes('PROCESS-NAME,CustomApp.exe,🐱 GitHub'), 'process 预设的 to 不得被静默忽略');
