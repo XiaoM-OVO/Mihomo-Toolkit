@@ -115,6 +115,74 @@ const subStaleCache = new SubStaleCacheMap(); // url -> { content, subInfo, time
 const DEFAULT_SUB_STALE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 兜底数据默认最长保留 24h
 const SUB_STALE_MAX_ENTRIES = 200;
 
+// ─── 单订阅抓取失败退避表 ────────────────────────────────────────────────────
+// subFailureBackoff: Map<url, { failures, nextRetryAt, lastError }>
+// 任一订阅失败后进入指数退避期（30s → 60s → 2m → 4m → 8m，上限 10m）：
+// 退避期内不再发起网络请求，有可用旧缓存则直接复用，否则快速失败。
+// 目的：单条订阅（域名 NXDOMAIN / 超时）不再拖慢整轮多订阅构建。
+const SUB_BACKOFF_BASE_MS = 30 * 1000;
+const SUB_BACKOFF_MAX_MS = 10 * 60 * 1000;
+const SUB_BACKOFF_MAX_ENTRIES = 200;
+const subFailureBackoff = new Map();
+
+/**
+ * 记录一次订阅抓取失败并推进指数退避
+ * @param {string} key 订阅 URL
+ * @param {any} [error] 上次错误（仅保留截断后的消息）
+ * @param {boolean} [terminal=false] 是否属于终态失效（401 / 到期 / 流量耗尽），退避期内仍需保持终态语义
+ * @returns {{ failures: number, nextRetryAt: number, lastError: string, terminal: boolean } | null}
+ */
+function recordSubFetchFailure(key, error, terminal = false) {
+  if (!key) return null;
+  const prev = subFailureBackoff.get(key);
+  const failures = (prev ? prev.failures : 0) + 1;
+  const delayMs = Math.min(SUB_BACKOFF_BASE_MS * Math.pow(2, failures - 1), SUB_BACKOFF_MAX_MS);
+
+  if (subFailureBackoff.size >= SUB_BACKOFF_MAX_ENTRIES && !subFailureBackoff.has(key)) {
+    const oldestKey = subFailureBackoff.keys().next().value;
+    subFailureBackoff.delete(oldestKey);
+  }
+
+  // 先删后插：让最近失败的键保持在 Map 末尾，淘汰时优先丢弃最久未更新的记录
+  subFailureBackoff.delete(key);
+  const entry = {
+    failures,
+    nextRetryAt: Date.now() + delayMs,
+    lastError: String((error && error.message) || error || '').slice(0, 200),
+    // 终态标记具有粘性：退避期内不再回源时，仍要按终态失效处理（清理旧缓存、淘汰 Profile）
+    terminal: terminal === true || (prev ? prev.terminal === true : false)
+  };
+  subFailureBackoff.set(key, entry);
+  return entry;
+}
+
+/**
+ * 抓取成功后清除该订阅的失败退避状态
+ * @param {string} key
+ */
+function clearSubFetchFailure(key) {
+  if (key) subFailureBackoff.delete(key);
+}
+
+/**
+ * 当前是否处于该订阅的失败退避期（仅判定时间戳，不删除记录以保留失败计数）
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isSubInFetchBackoff(key) {
+  const state = key ? subFailureBackoff.get(key) : null;
+  return !!state && Date.now() < state.nextRetryAt;
+}
+
+/**
+ * 读取订阅失败退避状态（供监控/日志使用）
+ * @param {string} key
+ * @returns {{ failures: number, nextRetryAt: number, lastError: string } | null}
+ */
+function getSubFetchBackoff(key) {
+  return key ? subFailureBackoff.get(key) || null : null;
+}
+
 function pruneSubStaleCache(maxAgeMs = DEFAULT_SUB_STALE_MAX_AGE_MS) {
   const now = Date.now();
   for (const [k, v] of subStaleCache) {
@@ -433,5 +501,10 @@ module.exports = {
   resolveProxyUrl,
   subStaleCache,
   SubStaleCacheMap,
-  pruneSubStaleCache
+  pruneSubStaleCache,
+  subFailureBackoff,
+  recordSubFetchFailure,
+  clearSubFetchFailure,
+  isSubInFetchBackoff,
+  getSubFetchBackoff
 };

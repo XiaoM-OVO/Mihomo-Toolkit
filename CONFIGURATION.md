@@ -430,6 +430,7 @@ routing:
   - 针对国内 CDN 加速的订阅链接，直连毫秒级迅速完成；
   - 一旦直连发生 DNS 污染、超时（`fetchTimeout`）或连接重置，立即无缝无损回退到代理端口重试；
   - 辅以 `fetchRetry`（失败重试次数，默认 2 次）与 `fetchStaleTtl`（断网时复用上次成功缓存的小时数，默认 24h），实现极致的高可用。
+  - **单订阅失败退避**：多订阅场景下，失败订阅会独立进入 30s → 60s → 2m → 4m → 8m（上限 10m）指数退避；退避期内优先复用其旧缓存、无旧缓存则快速失败，不会拖慢其他订阅。显式 `?refresh=1` 会绕过退避以主动探测恢复，后台预热/定时刷新仍遵守退避。
 
 ---
 
@@ -766,8 +767,8 @@ subscriptions:
 | `outputMode` | `string` | `'config'` | `any` | `override` | **交付形态**：`config` (完整配置) \| `nodes` (仅纯净 proxies 节点) \| `report` (审计报告 JSON)。 |
 | `output` | `string` | `'./dist/config.yaml'` | `local` | `override` | CLI 运行模式下最终文件的输出落地路径。 |
 | `enableCache` | `boolean` | `true` | `any` | `override` | 常驻服务模式下，是否启用内存构建缓存（根据完整配置结构指纹隔离）。 |
-| `cacheTtl` | `number` | `300` | `any` | `override` | **新鲜缓存有效时间**（秒）：此窗口内请求秒级命中 Fresh 缓存。 |
-| `cacheStaleMaxAge` | `number` | `86400` | `any` | `override` | **SWR 陈旧缓存最大容忍秒数**（默认 24h）：在此窗口内返回已有快照并异步重构。 |
+| `cacheTtl` | `number` | `300` | `any` | `override` | **新鲜缓存有效时间**（秒）：此窗口内请求秒级命中 Fresh 缓存。存在失败订阅的降级缓存会强制收紧为最多 60s，到期后转 Stale 并后台重试。 |
+| `cacheStaleMaxAge` | `number` | `86400` | `any` | `override` | **SWR 陈旧缓存最大容忍秒数**（默认 24h）：在此窗口内返回已有快照并异步重构；仅当全部订阅终态失效时才淘汰快照。 |
 | `redactLevel` | `string` | `'partial'`| `local` | `override` | **日志脱敏档位**：`off` (本地开发完整展示) \| `partial` (生产推荐屏蔽凭据) \| `full` (隐藏全部IP与域名)。 |
 | `enableChineseConvert`| `boolean`| `false` | `any` | `override` | 是否启用节点与策略组名称的简繁中文全链路转换（需安装 `opencc-js`）。 |
 | `chineseConvertMode` | `string` | `'s2t'` | `any` | `override` | 转换方向：`s2t` (简体转繁体) \| `t2s` (繁体转简体)。 |

@@ -15,6 +15,7 @@ const { startServer, mapCacheStatusToHeader } = require('../../src/targets/serve
 const { profileCache } = require('../../src/io/cache');
 const { buildProfile, _internal } = require('../../src/pipeline/engine');
 const { createLogger } = require('../../src/core/logger');
+const { subFailureBackoff } = require('../../src/io/fetcher');
 
 const silentLogger = createLogger({ tag: 'Server', level: 'silent', colors: false });
 
@@ -75,6 +76,7 @@ describe('【Server】HTTP 服务端 SWR 与后台防重叠刷新 (server-swr)',
     _internal.normalFlights.clear();
     _internal.forceFlights.clear();
     _internal.revalidateBackoffs.clear();
+    subFailureBackoff.clear();
   });
 
   afterEach(() => {

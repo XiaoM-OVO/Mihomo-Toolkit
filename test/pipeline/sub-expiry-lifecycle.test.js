@@ -1,8 +1,13 @@
-const { test, describe } = require('node:test');
+const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildProfile } = require('../../src/index.js');
-const { subStaleCache, SubStaleCacheMap } = require('../../src/io/fetcher.js');
+const { subStaleCache, SubStaleCacheMap, subFailureBackoff } = require('../../src/io/fetcher.js');
 const { profileCache } = require('../../src/io/cache.js');
+
+// 单订阅失败退避是进程级内存状态，测试之间必须隔离，避免上一用例的失败影响下一用例的回源计数
+beforeEach(() => {
+  subFailureBackoff.clear();
+});
 
 // 合法节点内容（Base64 编码，含 2 个节点；使用域名服务器避免触发假IP清洗规则）
 const VALID_SUB_CONTENT = Buffer.from(`

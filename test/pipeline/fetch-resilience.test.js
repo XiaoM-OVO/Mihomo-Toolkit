@@ -1,6 +1,14 @@
-﻿const { test, describe } = require('node:test');
+﻿﻿const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildProfile } = require('../../src/index.js');
+const { profileCache } = require('../../src/io/cache.js');
+const { subFailureBackoff } = require('../../src/io/fetcher.js');
+
+// 单订阅失败退避是进程级内存状态，测试之间必须隔离
+beforeEach(() => {
+  subFailureBackoff.clear();
+  profileCache.clear();
+});
 
 // 合法订阅内容（Base64 编码，含 2 个节点；使用域名服务器避免触发假IP清洗规则）
 const SUB_CONTENT = Buffer.from(`
@@ -178,7 +186,7 @@ describe('【Pipeline】订阅抓取容灾与重试降级 (fetch-resilience)', (
     }
   });
 
-  test('构建不完整时不写入缓存：失败订阅再次请求会重新拉取', async () => {
+  test('部分构建失败发布降级缓存：短新鲜期内不回源，显式强制刷新才重新拉取', async () => {
     let fetchCount = 0;
     globalThis.fetch = async () => {
       fetchCount++;
@@ -193,8 +201,17 @@ describe('【Pipeline】订阅抓取容灾与重试降级 (fetch-resilience)', (
         minorNodeThreshold: 1
       };
       await buildProfile(cfg, { mode: 'config', production: true });
+      const key = [...profileCache.cacheMap.keys()][0];
+      assert.ok(key, '仍有可用订阅时必须发布缓存');
+      assert.equal(profileCache.cacheMap.get(key).meta.degraded, true, '部分失败必须标记为降级缓存');
+      assert.equal(profileCache.cacheMap.get(key).meta.usableSubCount, 1);
+
       await buildProfile(cfg, { mode: 'config', production: true });
-      assert.equal(fetchCount, 2, '构建不完整时不应写入缓存，第二次应重新拉取');
+      assert.equal(fetchCount, 1, '降级缓存新鲜期内不应重新拉取');
+
+      // 显式强制刷新绕过缓存与单订阅退避，用于主动探测订阅恢复
+      await buildProfile(cfg, { mode: 'config', production: true, forceRefresh: true });
+      assert.equal(fetchCount, 2, '显式强制刷新必须重新回源');
     } finally {
       restoreFetch();
     }

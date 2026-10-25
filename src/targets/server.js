@@ -249,12 +249,20 @@ function startServer(options = {}) {
     lastBuildAt: 0,
     lastBuildOk: false,
     hasFailedSub: false,
-    hasTerminalFailure: false
+    hasTerminalFailure: false,
+    degraded: false,
+    usableSubCount: 0,
+    failedSubCount: 0,
+    staleSubCount: 0
   };
   const recordBuildHealth = (outcome = {}) => {
     buildHealth.lastBuildAt = Date.now();
     buildHealth.hasFailedSub = outcome.hasFailedSub === true;
     buildHealth.hasTerminalFailure = outcome.hasTerminalFailure === true;
+    buildHealth.degraded = outcome.degraded === true;
+    buildHealth.usableSubCount = Number.isFinite(outcome.usableSubCount) ? outcome.usableSubCount : 0;
+    buildHealth.failedSubCount = Array.isArray(outcome.failedTags) ? outcome.failedTags.length : 0;
+    buildHealth.staleSubCount = Array.isArray(outcome.staleTags) ? outcome.staleTags.length : 0;
     buildHealth.lastBuildOk = !buildHealth.hasFailedSub && !buildHealth.hasTerminalFailure;
   };
 
@@ -293,16 +301,20 @@ function startServer(options = {}) {
       });
 
       if (triggerName === 'Warmup') {
-        if (published && !hasFailedSub) {
+        if (published && hasFailedSub) {
+          serverLogger.warn('⚠️ 初始缓存预热完成，但部分订阅不可用，已发布降级缓存');
+        } else if (published) {
           serverLogger.info('✨ 初始缓存预热完成');
         } else {
-          serverLogger.warn('⚠️ 初始缓存预热结束，但因部分订阅不可用或写入被拦截，未发布新缓存');
+          serverLogger.warn('⚠️ 初始缓存预热结束，但因全部订阅不可用或写入被拦截，未发布新缓存');
         }
       } else {
-        if (published && !hasFailedSub) {
+        if (published && hasFailedSub) {
+          serverLogger.warn('⚠️ 后台定时更新完成，部分订阅不可用，已发布降级缓存');
+        } else if (published) {
           serverLogger.info('✅ 后台定时更新完成，新缓存已就绪');
         } else {
-          serverLogger.warn('⚠️ 后台定时更新结束，但因部分订阅不可用或写入被拦截，未发布新缓存 (保留旧缓存)');
+          serverLogger.warn('⚠️ 后台定时更新结束，但因全部订阅不可用或写入被拦截，未发布新缓存 (保留旧缓存)');
         }
       }
       return true;
@@ -345,6 +357,10 @@ function startServer(options = {}) {
           enabled: enabledSubs,
           lastBuildAt: buildHealth.lastBuildAt ? new Date(buildHealth.lastBuildAt).toISOString() : null,
           lastBuildOk: buildHealth.lastBuildOk,
+          degraded: buildHealth.degraded,
+          usableSubCount: buildHealth.usableSubCount,
+          failedSubCount: buildHealth.failedSubCount,
+          staleSubCount: buildHealth.staleSubCount,
           hasFailedSub: buildHealth.hasFailedSub,
           hasTerminalFailure: buildHealth.hasTerminalFailure
         }

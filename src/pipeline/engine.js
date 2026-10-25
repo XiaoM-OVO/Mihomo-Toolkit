@@ -148,8 +148,8 @@ const forceFlights = new Map();
 
 // ─── 后台刷新失败退避表 ──────────────────────────────────────────────────────
 // revalidateBackoffs: Map<cacheKey, { until: number, failures: number }>
-// 仅针对后台 Revalidate 构建任务（options.isRevalidating: true），当其抛出异常或
-// 因 hasFailedSub 未成功发布时记录退避，防止连续回源风暴。
+// 仅针对后台 Revalidate 构建任务（options.isRevalidating: true），当其未能发布新缓存时
+// 记录退避，防止连续回源风暴。单订阅级失败退避由 IO 层独立维护。
 const revalidateBackoffs = new Map();
 const BACKOFF_MAX_ENTRIES = 200;
 const INITIAL_BACKOFF_MS = 10000; // 首次失败退避 10 秒
@@ -245,7 +245,9 @@ async function executeBuildPipeline({
     collectedSubInfos,
     hasFailedSub,
     hasTerminalFailure,
-    perSubCounts
+    perSubCounts,
+    subStatuses = [],
+    usableSubCount = 0
   } = await processSubscriptionSources({
     subscriptions: userConfig.subscriptions,
     url: options.url,
@@ -255,6 +257,27 @@ async function executeBuildPipeline({
     dashboard,
     outputMode
   });
+
+  // 逐订阅健康快照：仅保留标识用于监控/日志，严禁携带订阅 URL
+  const failedTags = subStatuses
+    .filter(s => s && (s.status === 'failed' || s.status === 'terminal'))
+    .map(s => s.tag)
+    .filter(Boolean);
+  const staleTags = subStatuses
+    .filter(s => s && s.status === 'stale')
+    .map(s => s.tag)
+    .filter(Boolean);
+  // 降级交付：只要有订阅非 ok（失败 / 终态失效 / 旧缓存兜底），本次结果即为降级结果
+  const degraded = hasFailedSub === true;
+  // 只有产出可用内容（ok + stale）时才允许写入 Profile 缓存；全部失败时保留旧缓存
+  const canPublish = enableCache && !!cacheKey && usableSubCount > 0;
+  const cacheMeta = {
+    generation,
+    degraded,
+    failedTags,
+    staleTags,
+    usableSubCount
+  };
 
   // 4.1 资源配额二次校验：节点总量与单订阅节点量
   const nodeLimitErr = validateRequestLimits({
@@ -296,10 +319,10 @@ async function executeBuildPipeline({
       outputData: { proxies: cleanProxies }
     };
     let published = false;
-    if (enableCache && cacheKey && !hasFailedSub) {
-      published = profileCache.set(cacheKey, nodesResult, { generation }) === true;
+    if (canPublish) {
+      published = profileCache.set(cacheKey, nodesResult, cacheMeta) === true;
     }
-    return { result: nodesResult, hasFailedSub, hasTerminalFailure, published };
+    return { result: nodesResult, hasFailedSub, hasTerminalFailure, published, usableSubCount, degraded, failedTags, staleTags };
   }
 
   // ─── 🛑 Checkpoint 2: 交付审计报告 (report 模式早退截断) ───
@@ -312,10 +335,10 @@ async function executeBuildPipeline({
       report: reportData
     };
     let published = false;
-    if (enableCache && cacheKey && !hasFailedSub) {
-      published = profileCache.set(cacheKey, reportResult, { generation }) === true;
+    if (canPublish) {
+      published = profileCache.set(cacheKey, reportResult, cacheMeta) === true;
     }
-    return { result: reportResult, hasFailedSub, hasTerminalFailure, published };
+    return { result: reportResult, hasFailedSub, hasTerminalFailure, published, usableSubCount, degraded, failedTags, staleTags };
   }
 
   // ─── 🛑 Checkpoint 3: 交付完整配置 (config 模式跑完全程) ───
@@ -338,13 +361,13 @@ async function executeBuildPipeline({
     userInfo
   };
 
-  // 写入 LRU 缓存 (严格代际防护与 hasFailedSub 保护)
+  // 写入 LRU 缓存 (严格代际防护；仅当有可用订阅时才发布，全部失败时保留旧快照)
   let published = false;
-  if (enableCache && cacheKey && !hasFailedSub) {
-    published = profileCache.set(cacheKey, configResult, { generation }) === true;
+  if (canPublish) {
+    published = profileCache.set(cacheKey, configResult, cacheMeta) === true;
   }
 
-  return { result: configResult, hasFailedSub, hasTerminalFailure, published };
+  return { result: configResult, hasFailedSub, hasTerminalFailure, published, usableSubCount, degraded, failedTags, staleTags };
 }
 
 /**
@@ -359,10 +382,11 @@ async function launchSingleFlightBuild(ctx) {
   // 统一的构建执行器：分配 generation，处理终态失效淘汰（单一职责点并带代次保护）
   const runBuildTask = async (taskGeneration) => {
     const outcome = await executeBuildPipeline({ ...ctx, generation: taskGeneration });
-    // 终态失效保护（单一职责点）：若本次构建发生终态失效（401、已到期、流量耗尽），
-    // 原 Profile 快照已被污染失效，必须物理淘汰 profileCache 中的条目。
+    // 终态失效保护（单一职责点）：仅当本次构建「可用订阅为 0 且全部订阅均为终态失效」时，
+    // 原 Profile 快照才真正失去可交付内容，必须物理淘汰 profileCache 中的条目。
+    // 部分订阅终态失效但仍有健康订阅时，保留并覆盖为降级快照，避免一条 401 拖垮多订阅缓存。
     // 代际保护：若较新的构建已经成功发布了更高代际的缓存，禁止较旧的失败任务误删新缓存。
-    if (outcome.hasTerminalFailure && cacheKey) {
+    if (outcome.hasTerminalFailure && outcome.usableSubCount === 0 && cacheKey) {
       profileCache.delete(cacheKey, taskGeneration);
     }
     return outcome;
@@ -378,7 +402,11 @@ async function launchSingleFlightBuild(ctx) {
             options.onBuildOutcome({
               published: outcome.published === true,
               hasFailedSub: outcome.hasFailedSub === true,
-              hasTerminalFailure: outcome.hasTerminalFailure === true
+              hasTerminalFailure: outcome.hasTerminalFailure === true,
+              usableSubCount: outcome.usableSubCount,
+              degraded: outcome.degraded === true,
+              failedTags: outcome.failedTags,
+              staleTags: outcome.staleTags
             });
           } catch (_) {}
         }
@@ -392,11 +420,12 @@ async function launchSingleFlightBuild(ctx) {
   const flightPromise = (async () => {
     try {
       const outcome = await runBuildTask(generation);
-      // 成功发布新缓存后清除退避状态（仅由成功写入缓存触发）
-      if (outcome.published && !outcome.hasFailedSub) {
+      // 成功发布新缓存后清除退避状态：降级发布（仍有可用订阅）同样视为有效发布，
+      // 单订阅级失败退避已在 IO 层独立控制，不会再造成回源风暴。
+      if (outcome.published) {
         clearRevalidateFailure(cacheKey);
       } else if (isRevalidating) {
-        // 仅在后台 Revalidate 模式下：若构建完成但未能发布（如 hasFailedSub 或 Generation 拒绝），记录退避
+        // 仅在后台 Revalidate 模式下：若构建完成但未能发布（无可用订阅或 Generation 拒绝），记录退避
         recordRevalidateFailure(cacheKey);
       }
       return outcome;
@@ -422,7 +451,7 @@ async function launchSingleFlightBuild(ctx) {
     normalFlights.set(cacheKey, flightPromise);
   }
 
-  // 统一解包：向当前调用方安全分发 outcome 元数据（仅 published、hasFailedSub 与 hasTerminalFailure），
+  // 统一解包：向当前调用方安全分发 outcome 元数据（published / 健康度 / 降级订阅标识），
   // 并严格只返回纯净的 result 业务产物，杜绝内部元数据泄漏到客户端交付结果
   const finalOutcome = await flightPromise;
 
@@ -431,7 +460,11 @@ async function launchSingleFlightBuild(ctx) {
       options.onBuildOutcome({
         published: finalOutcome.published,
         hasFailedSub: finalOutcome.hasFailedSub,
-        hasTerminalFailure: finalOutcome.hasTerminalFailure === true
+        hasTerminalFailure: finalOutcome.hasTerminalFailure === true,
+        usableSubCount: finalOutcome.usableSubCount,
+        degraded: finalOutcome.degraded === true,
+        failedTags: finalOutcome.failedTags,
+        staleTags: finalOutcome.staleTags
       });
     } catch (_) {}
   }
@@ -531,15 +564,37 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
 
       // Case 1: Fresh 绝对新鲜（优先返回，即使后台有强制刷新在跑也不阻塞，直接秒回）
       if (cacheEntry.status === 'fresh') {
-        logger.info(`⚡ 命中本地内存缓存 (${cacheEntry.remainingSec}s 后过期)，直接响应缓存数据`);
-        notifyCacheStatus('fresh', { remainingSec: cacheEntry.remainingSec, cacheKey });
+        if (cacheEntry.degraded) {
+          logger.warn(`⚠️ 命中降级内存缓存 (${cacheEntry.remainingSec}s 后转入后台刷新，失败订阅 ${cacheEntry.failedTags.length} 个)，直接响应缓存数据`);
+        } else {
+          logger.info(`⚡ 命中本地内存缓存 (${cacheEntry.remainingSec}s 后过期)，直接响应缓存数据`);
+        }
+        notifyCacheStatus('fresh', {
+          remainingSec: cacheEntry.remainingSec,
+          cacheKey,
+          degraded: cacheEntry.degraded,
+          failedTags: cacheEntry.failedTags,
+          staleTags: cacheEntry.staleTags,
+          usableSubCount: cacheEntry.usableSubCount
+        });
         return cacheEntry.result;
       }
 
       // Case 2: Stale 陈旧可用（优先返回旧快照，不阻塞客户端，后台静默启动 Revalidate）
       if (cacheEntry.status === 'stale') {
-        logger.info(`⚡ 命中陈旧内存快照 (SWR，${cacheEntry.remainingSec}s 后彻底失效)，优先快速返回旧数据`);
-        notifyCacheStatus('stale', { remainingSec: cacheEntry.remainingSec, cacheKey });
+        if (cacheEntry.degraded) {
+          logger.warn(`⚠️ 命中降级陈旧快照 (SWR，${cacheEntry.remainingSec}s 后彻底失效，失败订阅 ${cacheEntry.failedTags.length} 个)，已启动后台更新`);
+        } else {
+          logger.info(`⚡ 命中陈旧内存快照 (SWR，${cacheEntry.remainingSec}s 后彻底失效)，优先快速返回旧数据`);
+        }
+        notifyCacheStatus('stale', {
+          remainingSec: cacheEntry.remainingSec,
+          cacheKey,
+          degraded: cacheEntry.degraded,
+          failedTags: cacheEntry.failedTags,
+          staleTags: cacheEntry.staleTags,
+          usableSubCount: cacheEntry.usableSubCount
+        });
         // 启动后台静默更新
         triggerBackgroundRevalidate(userConfig, options, logger, cacheKey);
         // 立即返回陈旧快照
@@ -562,7 +617,11 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
         options.onBuildOutcome({
           published: finalOutcome.published === true,
           hasFailedSub: finalOutcome.hasFailedSub === true,
-          hasTerminalFailure: finalOutcome.hasTerminalFailure === true
+          hasTerminalFailure: finalOutcome.hasTerminalFailure === true,
+          usableSubCount: finalOutcome.usableSubCount,
+          degraded: finalOutcome.degraded === true,
+          failedTags: finalOutcome.failedTags,
+          staleTags: finalOutcome.staleTags
         });
       } catch (_) {}
     }

@@ -149,21 +149,28 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 
 常驻服务提供基于 LRU 的 Profile 内存缓存，采用参考 [RFC 5861](https://www.rfc-editor.org/rfc/rfc5861.html) 的 `stale-while-revalidate` (SWR) 机制：
 
-1. **三态缓存模型**：
+1. **缓存状态模型**：
    - **Fresh (`HIT`)**：缓存年龄 `age <= cacheTtl`（默认 300s），直接返回缓存，零构建开销。
    - **Stale (`STALE`)**：超出 `cacheTtl` 但未超过 `cacheStaleMaxAge`（默认 24h），优先返回已有快照，同时异步触发后台 Revalidate。
+   - **Degraded（降级）**：本次结果存在失败/终态失效订阅但仍有可用节点时，照常发布缓存并标记 `degraded`；其新鲜期强制收紧到 60s，到期后转入 Stale 触发后台重试，避免部分失败结果被长时间冻结。
    - **Miss (`MISS`)**：无缓存或超过最大可用年龄，执行完整构建。
    - **Bypass (`BYPASS`)**：禁用缓存或有效强制刷新时旁路直通。
-2. **并发合并 (Single-Flight) 与代际保护**：
+2. **多订阅独立容灾与退避**：
+   - 单条订阅失败不会阻塞整体缓存写入；仅当**所有**已评估订阅均终态失效（401 / 到期 / 流量耗尽）时才淘汰 Profile 快照。
+   - 失败订阅按 30s → 60s → 2m → 4m → 8m（上限 10m）独立指数退避；退避期内优先复用其旧缓存，无旧缓存则快速失败，不再拖慢整轮构建。
+   - 显式 `?refresh=1` 会绕过单订阅退避以主动探测恢复；后台预热/定时刷新仍遵守退避。
+3. **并发合并 (Single-Flight) 与代际保护**：
    - 合并同一缓存键下的并发构建请求，避免重复抓取与计算。
    - 单调递增 Generation 代际检查，防止较早启动的慢任务覆盖新代际的成功缓存。
-   - 后台刷新遇到异常时保留原有快照，并采用指数退避（10s ~ 60s）限制重试频率。
-3. **后台自动预热与定时刷新**：
+   - 后台刷新未成功发布（无可用订阅）时采用指数退避（10s ~ 60s）限制重试频率，成功发布后立即清除。
+4. **后台自动预热与定时刷新**：
    - `enableWarmup: true`：服务启动后异步构建本地配置，提前就绪缓存。
    - `autoRefreshInterval: 3600`：每隔 1 小时自动触发后台定时刷新（带防重叠锁）。
-4. **强制穿透与冷却防护**：
+5. **强制穿透与冷却防护**：
    - 请求携带 `?refresh=1` 或 `?force=1` 时可强制回源刷新。
    - `refreshCooldown: 15`：默认 15 秒冷却时间，防范恶意频繁回源击穿源站。
+
+> `/healthz` 的 `subscriptions` 字段会聚合输出 `degraded`、`usableSubCount`、`failedSubCount`、`staleSubCount` 等状态，便于监控部分订阅失效。
 
 *注：该缓存仅保存在进程内存中，服务重启不持久化。*
 </details>

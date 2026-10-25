@@ -8,6 +8,7 @@ const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildProfile, safeErrorMessage, _internal } = require('../../src/pipeline/engine');
 const { profileCache } = require('../../src/io/cache');
+const { subFailureBackoff } = require('../../src/io/fetcher');
 
 const originalFetch = globalThis.fetch;
 function restoreFetch() {
@@ -52,6 +53,7 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
     _internal.normalFlights.clear();
     _internal.forceFlights.clear();
     _internal.revalidateBackoffs.clear();
+    subFailureBackoff.clear();
   });
 
   afterEach(() => {
@@ -185,7 +187,7 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
       assert.ok(profileCache.has(key));
     });
 
-    it('status:stale - hasFailedSub 发生时旧快照完好保留并进入指数退避 [SWR-5]', async () => {
+    it('status:stale - 部分订阅失败时发布降级缓存，不再阻塞整体写入或触发整体退避 [SWR-5]', async () => {
       let isSecondRun = false;
       globalThis.fetch = async (url) => {
         if (isSecondRun && url.includes('sub2')) {
@@ -208,6 +210,7 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
 
       await buildProfile(config);
       const key = [...profileCache.cacheMap.keys()][0];
+      assert.equal(profileCache.cacheMap.get(key).meta.degraded, false);
 
       profileCache.cacheMap.get(key).timestamp -= 1500;
       isSecondRun = true;
@@ -219,8 +222,15 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
         try { await _internal.forceFlights.get(key); } catch (_) {}
       }
 
+      // 健康订阅仍可用：降级结果照常发布，旧 Profile 快照被降级快照替换
       assert.ok(profileCache.has(key));
-      assert.equal(_internal.isInRevalidateBackoff(key), true);
+      const meta = profileCache.cacheMap.get(key).meta;
+      assert.equal(meta.degraded, true);
+      assert.equal(meta.usableSubCount, 1);
+      assert.deepEqual(meta.failedTags, ['T2']);
+      // 单订阅失败走独立退避，不再让整个 Profile 进入退避
+      assert.equal(_internal.isInRevalidateBackoff(key), false);
+      assert.equal(subFailureBackoff.get('http://93.184.216.34/sub2')?.failures, 1);
     });
   });
 
@@ -478,6 +488,202 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
       assert.equal(safeErrorMessage({ foo: 'bar' }), '{"foo":"bar"}');
       assert.equal(safeErrorMessage(null), 'null');
       assert.equal(safeErrorMessage(undefined), 'undefined');
+    });
+  });
+
+  describe('degraded-cache - 部分失败降级与单订阅退避', () => {
+    const baseConfig = (extra = {}) => ({
+      logLevel: 'silent',
+      cacheTtl: 300,
+      fetchRetry: 0,
+      enableNodeRename: false,
+      minorNodeThreshold: 1,
+      subscriptions: [
+        { url: 'http://93.184.216.34/good', tag: 'T1' },
+        { url: 'http://93.184.216.34/bad', tag: 'T2' }
+      ],
+      ...extra
+    });
+
+    it('partial-failure - 冷启动部分失败仍发布降级缓存，新鲜期内持续命中 [SWR-15]', async () => {
+      const fetched = [];
+      globalThis.fetch = async (u) => {
+        fetched.push(String(u));
+        if (String(u).includes('/bad')) return new Response('Not Found', { status: 404 });
+        return new Response(SUB_CONTENT_V1, { status: 200 });
+      };
+
+      const config = baseConfig();
+      let outcome;
+      let status;
+      await buildProfile(config, {
+        onBuildOutcome: (o) => { outcome = o; },
+        onCacheStatus: (s) => { status = s; }
+      });
+
+      assert.equal(status, 'miss');
+      assert.equal(outcome.published, true, '仍有可用订阅时必须发布缓存');
+      assert.equal(outcome.degraded, true);
+      assert.equal(outcome.hasFailedSub, true);
+      assert.equal(outcome.hasTerminalFailure, false);
+      assert.equal(outcome.usableSubCount, 1);
+      assert.deepEqual(outcome.failedTags, ['T2']);
+
+      const key = [...profileCache.cacheMap.keys()][0];
+      assert.equal(profileCache.cacheMap.get(key).meta.degraded, true);
+      assert.equal(profileCache.cacheMap.get(key).meta.usableSubCount, 1);
+
+      const before = fetched.length;
+      status = null;
+      await buildProfile(config, { onCacheStatus: (s) => { status = s; } });
+      assert.equal(status, 'fresh');
+      assert.equal(fetched.length, before, '降级缓存新鲜期内不得回源');
+    });
+
+    it('partial-failure - 降级新鲜期收紧到 60s，恢复后升级为健康 Fresh [SWR-16]', async () => {
+      let badDown = true;
+      globalThis.fetch = async (u) => {
+        if (badDown && String(u).includes('/bad')) return new Response('Not Found', { status: 404 });
+        return new Response(SUB_CONTENT_V1, { status: 200 });
+      };
+
+      const config = baseConfig();
+      await buildProfile(config);
+      const key = [...profileCache.cacheMap.keys()][0];
+
+      // cacheTtl=300s，但降级条目的新鲜期只保留 60s
+      profileCache.cacheMap.get(key).timestamp -= 61 * 1000;
+      let status;
+      await buildProfile(config, { onCacheStatus: (s) => { status = s; } });
+      assert.equal(status, 'stale', '降级缓存超过 60s 必须转入 Stale 并触发后台刷新');
+
+      if (_internal.forceFlights.has(key)) {
+        try { await _internal.forceFlights.get(key); } catch (_) {}
+      }
+
+      badDown = false;
+      let outcome;
+      const res = await buildProfile(config, {
+        forceRefresh: true,
+        onBuildOutcome: (o) => { outcome = o; }
+      });
+      assert.equal(outcome.degraded, false, '全部订阅恢复后必须升级为健康结果');
+      assert.equal(outcome.usableSubCount, 2);
+      assert.equal(profileCache.cacheMap.get(key).meta.degraded, false);
+      assert.match(res.yamlStr, /香港 01/);
+    });
+
+    it('mixed-terminal - 单条订阅 401 仅降级，不得删除多订阅健康缓存 [SWR-17]', async () => {
+      globalThis.fetch = async () => new Response(SUB_CONTENT_V1, { status: 200 });
+      const config = baseConfig();
+      await buildProfile(config);
+      const key = [...profileCache.cacheMap.keys()][0];
+      assert.equal(profileCache.cacheMap.get(key).meta.degraded, false);
+
+      globalThis.fetch = async (u) => String(u).includes('/bad')
+        ? new Response('Unauthorized', { status: 401 })
+        : new Response(SUB_CONTENT_V1, { status: 200 });
+
+      let outcome;
+      await buildProfile(config, { forceRefresh: true, onBuildOutcome: (o) => { outcome = o; } });
+
+      assert.equal(outcome.published, true);
+      assert.equal(outcome.degraded, true);
+      assert.equal(outcome.hasTerminalFailure, false, '仍有健康订阅时不得判定整体终态失效');
+      assert.equal(outcome.usableSubCount, 1);
+      assert.deepEqual(outcome.failedTags, ['T2']);
+      assert.ok(profileCache.has(key), '单条 401 不得淘汰多订阅健康缓存');
+      assert.equal(profileCache.cacheMap.get(key).meta.degraded, true);
+
+      let status;
+      const res = await buildProfile(config, { onCacheStatus: (s) => { status = s; } });
+      assert.equal(status, 'fresh');
+      assert.match(res.yamlStr, /香港 01/);
+    });
+
+    it('all-terminal - 全部订阅 401 时 fail-closed 并淘汰 Profile 缓存 [SWR-18]', async () => {
+      globalThis.fetch = async () => new Response(SUB_CONTENT_V1, { status: 200 });
+      const config = baseConfig();
+      await buildProfile(config);
+      const key = [...profileCache.cacheMap.keys()][0];
+      assert.ok(profileCache.has(key));
+
+      globalThis.fetch = async () => new Response('Unauthorized', { status: 401 });
+      let outcome;
+      await buildProfile(config, { forceRefresh: true, onBuildOutcome: (o) => { outcome = o; } });
+
+      assert.equal(outcome.published, false);
+      assert.equal(outcome.usableSubCount, 0);
+      assert.equal(outcome.hasTerminalFailure, true);
+      assert.equal(profileCache.has(key), false, '全部终态失效时必须淘汰旧 Profile 快照');
+    });
+
+    it('stale-fallback - 单订阅回退旧缓存时标记为降级交付 [SWR-19]', async () => {
+      const url = 'http://93.184.216.34/solo';
+      globalThis.fetch = async () => new Response(SUB_CONTENT_V1, { status: 200 });
+      const config = {
+        logLevel: 'silent',
+        cacheTtl: 300,
+        fetchRetry: 0,
+        enableNodeRename: false,
+        minorNodeThreshold: 1,
+        subscriptions: [{ url, tag: 'Solo' }]
+      };
+      await buildProfile(config);
+      const key = [...profileCache.cacheMap.keys()][0];
+
+      globalThis.fetch = async () => { throw new TypeError('Network unreachable'); };
+      let outcome;
+      const res = await buildProfile(config, { forceRefresh: true, onBuildOutcome: (o) => { outcome = o; } });
+
+      assert.equal(outcome.degraded, true);
+      assert.equal(outcome.hasFailedSub, true);
+      assert.equal(outcome.hasTerminalFailure, false);
+      assert.equal(outcome.usableSubCount, 1);
+      assert.deepEqual(outcome.staleTags, ['Solo']);
+      assert.match(res.yamlStr, /香港 01/, '旧缓存内容仍可交付');
+      assert.equal(profileCache.cacheMap.get(key).meta.degraded, true);
+    });
+
+    it('sub-backoff - 退避期跳过网络，显式强制刷新可探测恢复，成功后清除退避 [SWR-20]', async () => {
+      const url = 'http://93.184.216.34/backoff';
+      let calls = 0;
+      globalThis.fetch = async () => {
+        calls++;
+        throw new TypeError('Network unreachable');
+      };
+
+      const config = {
+        logLevel: 'silent',
+        cacheTtl: 300,
+        fetchRetry: 0,
+        enableNodeRename: false,
+        minorNodeThreshold: 1,
+        subscriptions: [{ url, tag: 'B1' }]
+      };
+
+      let outcome;
+      await buildProfile(config, { onBuildOutcome: (o) => { outcome = o; } });
+      assert.equal(calls, 1, '首次构建应真实回源一次');
+      assert.equal(outcome.published, false);
+      assert.equal(outcome.usableSubCount, 0);
+      assert.equal(subFailureBackoff.get(url)?.failures, 1);
+
+      // 退避期内普通请求：跳过网络、快速失败，且失败计数不再累加
+      await buildProfile(config, { onBuildOutcome: (o) => { outcome = o; } });
+      assert.equal(calls, 1, '退避期内不得回源');
+      assert.equal(subFailureBackoff.get(url)?.failures, 1, '跳过网络不得累加失败次数');
+
+      // 显式强制刷新绕过退避，用于主动探测恢复
+      globalThis.fetch = async () => {
+        calls++;
+        return new Response(SUB_CONTENT_V1, { status: 200 });
+      };
+      await buildProfile(config, { forceRefresh: true, onBuildOutcome: (o) => { outcome = o; } });
+      assert.equal(calls, 2, '显式强制刷新必须绕过单订阅退避');
+      assert.equal(outcome.published, true);
+      assert.equal(outcome.degraded, false);
+      assert.equal(subFailureBackoff.has(url), false, '抓取成功后必须清除退避状态');
     });
   });
 });

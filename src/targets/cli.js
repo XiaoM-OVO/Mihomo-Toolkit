@@ -129,7 +129,14 @@ function run(argv = process.argv) {
         const violations = result.invariantViolations || [];
         const hasFailedSub = !!buildOutcome?.hasFailedSub;
         const hasTerminal = !!buildOutcome?.hasTerminalFailure;
-        const subState = hasTerminal ? '❌ 全部订阅不可用' : (hasFailedSub ? '⚠️ 部分订阅不可用' : '✅ 连通正常');
+        const usableSubCount = typeof buildOutcome?.usableSubCount === 'number'
+          ? buildOutcome.usableSubCount
+          : null;
+        // 以「可用订阅数」为准判定整体可用性：部分订阅终态失效但仍有健康订阅时，不再误报全部不可用
+        const allUnusable = usableSubCount !== null ? usableSubCount === 0 : hasTerminal;
+        const subState = allUnusable
+          ? '❌ 全部订阅不可用'
+          : (hasFailedSub ? '⚠️ 部分订阅不可用' : '✅ 连通正常');
         const lines = [
           '🧪 诊断模式 (--dry-run)：不写入任何磁盘产物',
           '├── 配置语法: ✅ 通过',

@@ -16,7 +16,7 @@ const { parseContent, parseSubscriptionInfo, isExpiredNow, isQuotaExhausted } = 
 const { hasOnlyPlaceholderNodes } = require('../core/notice');
 const { markTrustedSynthetic, markTrustedProxyMetadata, sanitizeExternalProxies } = require('../core/node-trust');
 const { redactUrl } = require('../io/ssrf');
-const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache } = require('../io/fetcher');
+const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache, isSubInFetchBackoff, recordSubFetchFailure, clearSubFetchFailure, getSubFetchBackoff } = require('../io/fetcher');
 const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
@@ -133,6 +133,36 @@ function evaluateStaleFallback(err, { subKey, initialStale, staleMaxAgeMs }) {
   }
 
   return { isTerminal, terminalReason, fallbackRejectReason, allowFallback, stale };
+}
+
+/**
+ * 判定退避期内的订阅是否可直接复用旧缓存（不发起网络请求）。
+ *
+ * 旧缓存已过期时按终态处理并安全淘汰，避免退避期把死数据无限续命。
+ *
+ * @param {string} subKey
+ * @param {object|null} initialStale 请求发起时捕获的旧条目快照
+ * @param {number} staleMaxAgeMs
+ * @returns {{ state: object, stale: object|null, usable: boolean, expired: boolean } | null}
+ */
+function resolveBackoffStale(subKey, initialStale, staleMaxAgeMs) {
+  const state = getSubFetchBackoff(subKey);
+  if (!state) return null;
+
+  const stale = subStaleCache.get(subKey);
+  const staleInfo = stale ? parseSubscriptionInfo(stale.subInfo) : null;
+  const expired = !!(staleInfo && isExpiredNow(staleInfo.expire));
+
+  if (expired) {
+    if (typeof subStaleCache.deleteIfMatch === 'function') {
+      subStaleCache.deleteIfMatch(subKey, initialStale);
+    } else if (initialStale && subStaleCache.get(subKey) === initialStale) {
+      subStaleCache.delete(subKey);
+    }
+  }
+
+  const usable = !!stale && !expired && (Date.now() - stale.timestamp < staleMaxAgeMs);
+  return { state, stale, usable, expired };
 }
 
 /** 格式化控制面沙箱告警，去除内部枚举 ID 并以分级树形分支展示 */
@@ -409,6 +439,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   const fetchRetry = typeof userConfig.fetchRetry === 'number' ? userConfig.fetchRetry : 2;
   const fetchTimeoutSec = typeof userConfig.fetchTimeout === 'number' ? userConfig.fetchTimeout : 15;
   const staleMaxAgeMs = (typeof userConfig.fetchStaleTtl === 'number' ? userConfig.fetchStaleTtl : 24) * 60 * 60 * 1000;
+  // 用户显式强制刷新（非后台 Revalidate）时绕过单订阅退避，便于主动探测订阅是否恢复；
+  // 后台定时刷新/预热仍遵守退避，避免死订阅反复拖慢整轮构建。
+  const bypassSubBackoff = !!options.forceRefresh && !options.isRevalidating;
   const securityLimits = (userConfig.security && typeof userConfig.security === 'object') ? userConfig.security : {};
   const maxSubscriptionBytes = typeof securityLimits.maxSubscriptionBytes === 'number'
     ? securityLimits.maxSubscriptionBytes
@@ -420,6 +453,10 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   let hasFailedSub = false;
   let hasTerminalFailure = false;
   const collectedSubInfos = [];
+  /** 每个已评估订阅的可用性快照：ok | stale | failed | terminal | disabled */
+  let subStatuses = [];
+  /** 产出可用内容的订阅数（ok + stale）；为 0 时上层不得写入 Profile 缓存 */
+  let usableSubCount = 0;
   /** 单订阅节点数统计，用于资源配额校验 (perSubscriptionMaxNodes) */
   const perSubCounts = {};
 
@@ -477,10 +514,11 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   if (subscriptions && Array.isArray(subscriptions) && subscriptions.length > 0) {
     const fetchTasks = subscriptions.map(async (sub) => {
       if (!isSubEnabled(sub)) {
-        return { sub, rawResult: null, error: null, disabled: true };
+        return { sub, rawResult: null, error: null, disabled: true, terminal: false };
       }
       const isDirectNode = isDirectNodeSub(sub);
-      if (!sub.url && !sub.uri && !isDirectNode) return { sub, rawResult: null, error: null };
+      if (!sub.url && !sub.uri && !isDirectNode) return { sub, rawResult: null, error: null, skipped: true, terminal: false };
+      let isTerminal = false;
       try {
         let rawResult;
         if (isDirectNode) {
@@ -496,6 +534,21 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           if (!/^https?:\/\//i.test(sub.url) && fs.existsSync(localSubPath) && fs.statSync(localSubPath).isFile()) {
             logger.debug(`📄 读取本地订阅文件: ${sub.url}`);
             rawResult = { content: fs.readFileSync(localSubPath, 'utf-8'), subInfo: null };
+          } else if (!bypassSubBackoff && isSubInFetchBackoff(subKey)) {
+            // 退避期内不再发起网络请求：有可用旧缓存直接复用，否则快速失败
+            const backoff = resolveBackoffStale(subKey, initialStale, staleMaxAgeMs);
+            if (backoff && backoff.usable) {
+              logger.warn(`⏳ 订阅处于失败退避期，直接复用上次成功数据: ${redactUrl(sub.url, showFullUrl)}`);
+              rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true };
+            } else {
+              if (backoff && (backoff.expired || backoff.state.terminal)) isTerminal = true;
+              const nextRetryAt = backoff ? backoff.state.nextRetryAt : Date.now() + 30000;
+              const retryInSec = Math.max(1, Math.ceil((nextRetryAt - Date.now()) / 1000));
+              const skipErr = new Error(`Subscription fetch skipped (failure backoff, retry in ${retryInSec}s)`);
+              skipErr.isBackoff = true;
+              skipErr.retryable = false;
+              throw skipErr;
+            }
           } else {
             try {
               rawResult = await fetchNodes(sub.url, {
@@ -510,11 +563,14 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
               // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
               validateFetchedSubscription(rawResult);
+              clearSubFetchFailure(subKey);
             } catch (e) {
               const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs });
 
               // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号
-              if (decision.isTerminal) hasTerminalFailure = true;
+              if (decision.isTerminal) isTerminal = true;
+              // 失败退避：记录失败次数与终态语义，供后续构建在退避期内快速跳过网络
+              if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
 
               if (decision.allowFallback) {
                 logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
@@ -532,24 +588,25 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
             }
           }
         }
-        return { sub, rawResult, error: null };
+        return { sub, rawResult, error: null, terminal: isTerminal };
       } catch (e) {
-        hasFailedSub = true;
-        return { sub, rawResult: null, error: e };
+        return { sub, rawResult: null, error: e, terminal: isTerminal };
       }
     });
 
     const fetchedResults = await Promise.all(fetchTasks);
     const subSummaries = [];
 
-    for (const { sub, rawResult, error, disabled } of fetchedResults) {
+    for (const { sub, rawResult, error, disabled, skipped, terminal } of fetchedResults) {
       const isDirect = isDirectNodeSub(sub) || Boolean(sub?.uri);
       const subType = resolveSubType(sub);
       if (disabled) {
         const tag = sub.tag || (sub.url ? redactUrl(sub.url, showFullUrl) : (sub.name || '自建'));
         subSummaries.push({ disabled: true, tag, type: subType });
+        subStatuses.push({ tag, status: 'disabled', nodeCount: 0 });
         continue;
       }
+      if (skipped) continue;
       if (!rawResult && !error) continue;
       try {
         if (error) throw error;
@@ -669,6 +726,11 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
         const nodeCount = subProxies.length;
         perSubCounts[isDirect ? `direct:${sub.tag || effectiveTag}` : String(sub.url)] = nodeCount;
+        subStatuses.push({
+          tag: sub.tag || effectiveTag,
+          status: rawResult.stale ? 'stale' : 'ok',
+          nodeCount
+        });
         subSummaries.push({
           type: subType,
           nameHint: isDirect ? (subProxies[0] ? subProxies[0].name : '未知') : '',
@@ -705,6 +767,12 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           recordSubInfo(e.subInfo, sub.tag);
         }
 
+        subStatuses.push({
+          tag: effectiveTag,
+          status: terminal ? 'terminal' : 'failed',
+          nodeCount: 0
+        });
+
         subSummaries.push({
           type: subType,
           nameHint: '',
@@ -715,6 +783,15 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         });
       }
     }
+
+    // 根据逐订阅状态推导整体健康度：
+    // - hasFailedSub: 任一订阅非 ok（stale 也算降级失败，但仍有可用内容）
+    // - hasTerminalFailure: 可用订阅为 0，且所有已评估订阅均为终态失效
+    usableSubCount = subStatuses.filter(s => s.status === 'ok' || s.status === 'stale').length;
+    const evaluatedStatuses = subStatuses.filter(s => s.status !== 'disabled');
+    const terminalCount = evaluatedStatuses.filter(s => s.status === 'terminal').length;
+    hasFailedSub = subStatuses.some(s => s.status === 'stale' || s.status === 'failed' || s.status === 'terminal');
+    hasTerminalFailure = usableSubCount === 0 && terminalCount > 0 && terminalCount === evaluatedStatuses.length;
 
     if (subSummaries.length > 0 && logger) {
       const lines = [`📡 订阅源抓取与解析完成 (${subSummaries.length} 个源):`];
@@ -765,6 +842,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     let isTerminal = false;
     let fallbackRejectReason = '';
     let fetchError = null;
+    let subStatus = 'ok';
     const localFilePath = path.resolve(process.cwd(), url);
     if (!/^https?:\/\//i.test(url) && !/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
       if (fs.existsSync(localFilePath) && fs.statSync(localFilePath).isFile()) {
@@ -781,51 +859,76 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       const initialStale = (typeof subStaleCache.getSnapshot === 'function')
         ? subStaleCache.getSnapshot(subKey)
         : subStaleCache.get(subKey);
-      try {
-        rawResult = await fetchNodes(url, {
-          showFullUrl, debug, logger,
-          proxyUrl: effectiveProxyUrl,
-          strategy: effectiveStrategy,
-          retry: fetchRetry,
-          timeoutMs: fetchTimeoutSec * 1000,
-          maxBytes: maxSubscriptionBytes
-        });
 
-        // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
-        validateFetchedSubscription(rawResult);
-      } catch (e) {
-        fetchError = e;
-        const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs });
-        isTerminal = decision.isTerminal;
-        fallbackRejectReason = decision.fallbackRejectReason;
-
-        // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号
-        if (isTerminal) hasTerminalFailure = true;
-
-        if (decision.allowFallback) {
-          logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
-          rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true };
-          hasFailedSub = true;
+      if (!bypassSubBackoff && isSubInFetchBackoff(subKey)) {
+        // 退避期内不再发起网络请求：有可用旧缓存直接复用，否则快速失败
+        const backoff = resolveBackoffStale(subKey, initialStale, staleMaxAgeMs);
+        if (backoff && backoff.usable) {
+          logger.warn(`⏳ 订阅处于失败退避期，直接复用上次成功数据: ${redactUrl(url, showFullUrl)}`);
+          rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true };
+          subStatus = 'stale';
         } else {
-          hasFailedSub = true;
-          if (e?.subInfo) {
-            recordSubInfo(e.subInfo, '');
+          if (backoff && (backoff.expired || backoff.state.terminal)) {
+            isTerminal = true;
+            subStatus = 'terminal';
+            fallbackRejectReason = '旧缓存已过期';
           }
-          if (fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
-            logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(url, showFullUrl)}]: ${fallbackRejectReason}`);
-          }
-          // 单 URL 模式下若因终态失效拒绝，构造空骨架以交付并保留元数据，与多订阅模式保持一致
-          if (isTerminal) {
-            rawResult = { content: '', subInfo: e?.subInfo || null };
+          const nextRetryAt = backoff ? backoff.state.nextRetryAt : Date.now() + 30000;
+          const retryInSec = Math.max(1, Math.ceil((nextRetryAt - Date.now()) / 1000));
+          const skipErr = new Error(`Subscription fetch skipped (failure backoff, retry in ${retryInSec}s)`);
+          skipErr.isBackoff = true;
+          skipErr.retryable = false;
+          throw skipErr;
+        }
+      } else {
+        try {
+          rawResult = await fetchNodes(url, {
+            showFullUrl, debug, logger,
+            proxyUrl: effectiveProxyUrl,
+            strategy: effectiveStrategy,
+            retry: fetchRetry,
+            timeoutMs: fetchTimeoutSec * 1000,
+            maxBytes: maxSubscriptionBytes
+          });
+
+          // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
+          validateFetchedSubscription(rawResult);
+          clearSubFetchFailure(subKey);
+        } catch (e) {
+          fetchError = e;
+          const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs });
+          isTerminal = decision.isTerminal;
+          fallbackRejectReason = decision.fallbackRejectReason;
+
+          // 失败退避：记录失败次数与终态语义，供后续构建在退避期内快速跳过网络
+          if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
+
+          if (decision.allowFallback) {
+            logger.warn(`⚠️ 订阅拉取失败，降级使用上次成功数据: ${e.message}`);
+            rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true };
+            subStatus = 'stale';
           } else {
-            throw e;
+            if (e?.subInfo) {
+              recordSubInfo(e.subInfo, '');
+            }
+            if (fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
+              logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(url, showFullUrl)}]: ${fallbackRejectReason}`);
+            }
+            // 单 URL 模式下若因终态失效拒绝，构造空骨架以交付并保留元数据，与多订阅模式保持一致
+            if (isTerminal) {
+              subStatus = 'terminal';
+              rawResult = { content: '', subInfo: e?.subInfo || null };
+            } else {
+              subStatus = 'failed';
+              throw e;
+            }
           }
         }
-      }
 
-      if (rawResult && !rawResult.stale && !isTerminal) {
-        subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
-        pruneSubStaleCache(staleMaxAgeMs);
+        if (rawResult && !rawResult.stale && !isTerminal) {
+          subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
+          pruneSubStaleCache(staleMaxAgeMs);
+        }
       }
     }
     if (rawResult && !isTerminal) {
@@ -855,6 +958,15 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     mergeDnsAssets(dnsAssets, assets);
     perSubCounts[String(url)] = singleProxies.length;
 
+    let singleTag = '订阅';
+    if (/^https?:\/\//i.test(url)) {
+      try { singleTag = new URL(url).hostname; } catch {}
+    }
+    subStatuses = [{ tag: singleTag, status: subStatus, nodeCount: singleProxies.length }];
+    usableSubCount = (subStatus === 'ok' || subStatus === 'stale') ? 1 : 0;
+    hasFailedSub = subStatus !== 'ok';
+    hasTerminalFailure = subStatus === 'terminal';
+
     const nodeCount = sourceSkeleton.proxies.length;
     logger.info(`📡 节点解析完成: ${nodeCount} 个节点`);
     if (enableDashboard) {
@@ -879,7 +991,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     collectedSubInfos,
     hasFailedSub,
     hasTerminalFailure,
-    perSubCounts
+    perSubCounts,
+    subStatuses,
+    usableSubCount
   };
 }
 

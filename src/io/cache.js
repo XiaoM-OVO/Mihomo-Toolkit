@@ -15,6 +15,12 @@
 const { GenerationSource, isSuperseded } = require('./generation');
 
 /**
+ * 降级条目（存在订阅失败但仍可交付）的新鲜期上限。
+ * 避免 VPS 上 cacheTtl=86400 时，一次部分失败的构建结果被当成绝对新鲜数据冻结一整天。
+ */
+const DEGRADED_FRESH_TTL_MS = 60 * 1000;
+
+/**
  * 安全解析正整数或零的持续时间参数（秒）
  * 严格防御 JavaScript 隐式类型转换陷阱（如 null ➔ 0, '' ➔ 0, false ➔ 0, true ➔ 1）
  * @param {any} val 输入配置值
@@ -117,28 +123,55 @@ class ProfileCache {
   }
 
   /**
-   * SWR 三态查询方法
+   * SWR 三态查询方法（降级条目新鲜期自动收紧到 60s）
    * @param {string} key
    * @param {object} durations
    * @param {number} durations.freshTtlMs 新鲜期 (毫秒)
    * @param {number} durations.staleMaxAgeMs 最大可用总寿命 (毫秒)
-   * @returns {{ status: 'fresh' | 'stale' | 'miss', result: any, remainingSec: number, entryCreatedAt: number, generation: number }}
+   * @returns {{ status: 'fresh' | 'stale' | 'miss', result: any, remainingSec: number, entryCreatedAt: number, generation: number, degraded: boolean, failedTags: string[], staleTags: string[], usableSubCount: number }}
    */
   getWithStatus(key, durations = {}) {
     if (!key || !this.cacheMap.has(key)) {
       this._misses++;
-      return { status: 'miss', result: null, remainingSec: 0, entryCreatedAt: 0, generation: 0 };
+      return {
+        status: 'miss',
+        result: null,
+        remainingSec: 0,
+        entryCreatedAt: 0,
+        generation: 0,
+        degraded: false,
+        failedTags: [],
+        staleTags: [],
+        usableSubCount: 0
+      };
     }
 
     const entry = this.cacheMap.get(key);
     const now = Date.now();
     const totalAgeMs = now - entry.timestamp;
     const { freshTtlMs = 300000, staleMaxAgeMs = 86400000 } = durations;
+    const meta = entry.meta || {};
+    const degraded = meta.degraded === true;
+    // 降级条目不允许长时间保持 Fresh，到期后转入 Stale 并触发后台 Revalidate
+    const effectiveFreshTtlMs = degraded ? Math.min(freshTtlMs, DEGRADED_FRESH_TTL_MS) : freshTtlMs;
+    const metaView = {
+      degraded,
+      failedTags: Array.isArray(meta.failedTags) ? meta.failedTags : [],
+      staleTags: Array.isArray(meta.staleTags) ? meta.staleTags : [],
+      usableSubCount: Number.isFinite(meta.usableSubCount) ? meta.usableSubCount : 0
+    };
 
     // 1. 超过最大总年龄：进入淘汰/不可用区间 (Miss)
     if (totalAgeMs > staleMaxAgeMs) {
       this._misses++;
-      return { status: 'miss', result: null, remainingSec: 0, entryCreatedAt: entry.timestamp, generation: entry.generation };
+      return {
+        status: 'miss',
+        result: null,
+        remainingSec: 0,
+        entryCreatedAt: entry.timestamp,
+        generation: entry.generation,
+        ...metaView
+      };
     }
 
     this._hits++;
@@ -149,15 +182,16 @@ class ProfileCache {
 
     // 2. 状态判定：
     // 当 freshTtlMs === 0 时，立即进入 Stale
-    // 否则在 totalAgeMs <= freshTtlMs 区间内为 Fresh
-    if (freshTtlMs > 0 && totalAgeMs <= freshTtlMs) {
-      const remainingSec = Math.max(0, Math.round((freshTtlMs - totalAgeMs) / 1000));
+    // 否则在 totalAgeMs <= effectiveFreshTtlMs 区间内为 Fresh
+    if (effectiveFreshTtlMs > 0 && totalAgeMs <= effectiveFreshTtlMs) {
+      const remainingSec = Math.max(0, Math.round((effectiveFreshTtlMs - totalAgeMs) / 1000));
       return {
         status: 'fresh',
         result: entry.result,
         remainingSec,
         entryCreatedAt: entry.timestamp,
-        generation: entry.generation
+        generation: entry.generation,
+        ...metaView
       };
     }
 
@@ -168,7 +202,8 @@ class ProfileCache {
       result: entry.result,
       remainingSec,
       entryCreatedAt: entry.timestamp,
-      generation: entry.generation
+      generation: entry.generation,
+      ...metaView
     };
   }
 
@@ -178,6 +213,10 @@ class ProfileCache {
    * @param {any} result 纯净构建结果
    * @param {object} [meta={}]
    * @param {number} [meta.generation=0] 构建任务启动时持有的代际 ID，用于防老覆盖新
+   * @param {boolean} [meta.degraded=false] 本次结果是否包含失败订阅（降级交付）
+   * @param {string[]} [meta.failedTags=[]] 失败/终态失效订阅标识（仅用于监控，不含 URL）
+   * @param {string[]} [meta.staleTags=[]] 使用旧缓存兜底的订阅标识
+   * @param {number} [meta.usableSubCount=0] 产出可用内容的订阅数
    * @returns {boolean} 是否实际写入成功
    */
   set(key, result, meta = {}) {
@@ -205,7 +244,13 @@ class ProfileCache {
     this.cacheMap.set(key, {
       timestamp: Date.now(),
       generation: taskGeneration || this.nextGeneration(),
-      result
+      result,
+      meta: {
+        degraded: meta.degraded === true,
+        failedTags: Array.isArray(meta.failedTags) ? meta.failedTags.slice(0, 20) : [],
+        staleTags: Array.isArray(meta.staleTags) ? meta.staleTags.slice(0, 20) : [],
+        usableSubCount: Number.isFinite(meta.usableSubCount) ? meta.usableSubCount : 0
+      }
     });
 
     return true;
