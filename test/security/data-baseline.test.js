@@ -62,7 +62,7 @@ const LEGACY_REMOTE_DENIED = [
 describe('【Security】数据层基线与字段注册表防漂移 (data-baseline)', () => {
   describe('field-registry - 字段注册表与默认配置自洽', () => {
     it('registry - 默认值 golden 基线与注册表一一对应', () => {
-      // 基线已不含退役字段：批次 3 起分流开关与分类清单全部移除（迁移对照表见 ROADMAP 10.7）。
+      // 基线已不含退役字段：批次 3 起分流开关与分类清单全部移除（迁移对照表见 docs/history/m3-spec.md 10.7）。
       // 若 golden 重新混入旧字段，下面的逐字段比对会直接失败。
       for (const [key, expected] of Object.entries(GOLDEN)) {
         assert.deepStrictEqual(DEFAULT_CONFIG[key], expected, `默认值 ${key} 与 golden 基线不一致`);

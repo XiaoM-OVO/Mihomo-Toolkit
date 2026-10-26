@@ -2,18 +2,20 @@
 
 > 用途：说明出厂默认产物包含什么、改动一个条目会影响多少产物，作为默认值变更的对照基准。
 > 落地位置：规则顺序在 `src/data/default-routing.js`，字段默认值在 `src/data/field-registry.js`；
-> 本文的 59 条顺序由 `test/pipeline/routing-expansion.test.js` 的等价用例守护。
-> 基线允许变更，但必须显式说明影响（`ROADMAP.md` 10.8 / 10.9）。
+> 本文的 59 条展开顺序由 `test/pipeline/routing-expansion.test.js` 的等价用例守护。
+> 基线允许变更，但必须显式说明影响（`docs/history/m3-spec.md` 10.8 / 10.9）。
 
 ## 一、基线规模
 
 数据来自 `test/fixtures/default-output.scenario.js` 的 6 节点固定样本；真实节点信息更多，组与节点数量会相应变化，下表的规则与 provider 数量不受影响。
 
+> 下表的「路由规则 55」是**最终产物**（空池规则已被 DAG 剪除）；`routing` 表的展开期顺序为 59 条，见第三节。
+
 | 指标 | 数值 |
 | :--- | :--- |
-| 策略组 | 32 |
-| 路由规则 | 59 |
-| Rule-Provider | 42 |
+| 策略组 | 31 |
+| 路由规则 | 55 |
+| Rule-Provider | 40 |
 
 ## 二、条目增减对产物的影响
 

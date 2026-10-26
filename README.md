@@ -7,11 +7,11 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
 [![Version](https://img.shields.io/badge/Version-v4.0.0--alpha-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-692%20Passed-brightgreen)](test/)
+[![Tests](https://img.shields.io/badge/Tests-713%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底** 」
 
-> ⚠️ **开发中版本 · `v4.0.0-alpha`**：本项目当前处于下一代统一内核构建阶段（Milestone 1 与 2 生产级稳固与债务清零已闭环，进行中 Milestone 3 拓扑 DSL 重构），接口与配置可能微调，暂不建议直接用于生产环境。开发进展与演进规划请参阅 [开发路线图 (ROADMAP.md)](ROADMAP.md)。
+> ⚠️ **开发中版本 · `v4.0.0-alpha`**：本项目当前处于下一代统一内核构建阶段（Milestone 1–3 已闭环，Milestone 4 发版收尾准备中），接口与配置可能微调，暂不建议直接用于生产环境。开发进展与演进规划请参阅 [开发路线图 (ROADMAP.md)](ROADMAP.md)。
 
 </div>
 
@@ -82,8 +82,13 @@ Options:
   -m, --mode <mode>    交付输出模式: "config" (默认), "nodes" (纯节点), 或 "report" (审计报告)
   -c, --config <path>  指定自定义 YAML/JSON 配置文件
   -r, --report <path>  在生成配置的同时，顺手将审计报告另存为指定 JSON 文件
+  --dry-run            诊断模式：完整校验配置语法、订阅连通性与 DNS 不变式，绝不落盘
+  --validate           同 --dry-run（仅校验不落盘）
   --prod               生产环境模式 (开启严格安全锁，强制禁止敏感凭据明文打印)
   --debug              开启详细调试日志 (展示 fetch 过程及中间状态)
+  -q, --quiet          关闭日志输出（同 --silent）
+  --silent             关闭全部日志输出
+  --log-level <level>  显式日志级别: silent | error | warn | info | debug
   -h, --help           显示帮助信息
 ```
 
@@ -312,7 +317,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 | **Layer 7: Data** | `src/data/` | 只读运行基础基线（字段注册表 SSOT、不可变安全基线、清洗规则词库） |
 | **Layer 8: Infra** | `src/infra/` | 基础设施无状态基元（IP/CIDR 校验、FQDN 判定、订阅元信息流量换算纯函数） |
 
-> 📖 **完整文件树与拓扑推演**：关于全仓 91 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
+> 📖 **完整文件树与拓扑推演**：关于全仓 92 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
 
 ---
 
@@ -325,7 +330,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 - 🔵 **Milestone 3 (v4.0.0-alpha)**：已闭环 —— 声明式策略拓扑 DSL 收口（`groups` + `routing` 两表、方向限定）、配置解耦与直连建连期 IP Pinning；
 - 🟣 **Milestone 4 (v4.0-GA)**：正式发版 —— main 合流、默认产物基线锁定与迁移说明（不再扩展新功能面）。
 
-> 📋 **详细任务跟踪**：41 项审查排查出的技术债务明细见 [技术债务跟踪表](docs/debt.md)，里程碑规划见 [开发路线图](ROADMAP.md)；历史决策与实施记录见 [docs/ 索引](docs/README.md)。
+> 📋 **详细任务跟踪**：47 项审查排查出的技术债务明细见 [技术债务归档](docs/history/debt-resolved.md)，里程碑规划见 [开发路线图](ROADMAP.md)；历史决策与实施记录见 [docs/ 索引](docs/README.md)。
 
 ---
 

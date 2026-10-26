@@ -120,7 +120,7 @@ function assertNoRemovedFields(config) {
     );
   }
   for (const key of hinted) parts.push(`已删除字段 \`${key}\`：${REMOVED_FIELD_HINTS[key]}`);
-  throw new Error(`[Config] ${parts.join('；')}，迁移对照见 ROADMAP.md 10.7`);
+  throw new Error(`[Config] ${parts.join('；')}，迁移对照见 docs/history/m3-spec.md 10.7`);
 }
 
 /**

@@ -1,6 +1,6 @@
-# 📖 Mihomo-Toolkit-Next 配置全景字典与参数指南 (CONFIGURATION.md)
+# 📖 Mihomo-Toolkit 配置全景字典与参数指南 (CONFIGURATION.md)
 
-> **版本适用**：`Mihomo-Toolkit-Next` (v4.0.0-alpha 统一内核)  
+> **版本适用**：`Mihomo-Toolkit` (v4.0.0-alpha 统一内核)  
 > **数据权威**：本项目所有参数名称、默认值与安全策略以 [`src/data/field-registry.js`](src/data/field-registry.js)（单一真理来源 SSOT）为准。测试套件严格校验代码读取、类型定义与本文档的一致性，杜绝“隐形参数”与“空承诺字段”。
 
 ---
@@ -74,7 +74,7 @@ subscriptions → 清洗/重命名 → groups（组怎么长）+ pools（可选�
 ### 1.1 扁平化声明与零心智负担
 
 在传统的代理配置工具中，配置项往往层层嵌套（如 `dns.servers[0].params.tls...`），导致用户排查问题和手写配置极其困难。
-`Mihomo-Toolkit-Next` 采用**完全扁平化的根级声明规范**：
+`Mihomo-Toolkit` 采用**完全扁平化的根级声明规范**：
 - 无论底层属于策略组引擎、DNS 模块、节点清洗层还是网络抓取层，所有对外公开的配置属性均平铺在顶层。
 - 引擎内部的流水线（Pipeline）会根据各模块职责，自动将扁平参数分发投影到底层各子系统。
 
@@ -636,7 +636,7 @@ routing:
   - preset: final
 ```
 
-> 从旧版开关（`enableAI` / `enableStreaming` / `aiServices` …）迁移：对照表见 `ROADMAP.md` 第 10.7 节。旧字段已从 schema 删除，配置里再写会在解析期直接报「已删除字段」并指出新写法。
+> 从旧版开关（`enableAI` / `enableStreaming` / `aiServices` …）迁移：对照表见 [M3.B 规格归档](docs/history/m3-spec.md) 的 10.7 节。旧字段已从 schema 删除，配置里再写会在解析期直接报「已删除字段」并指出新写法。
 
 ---
 

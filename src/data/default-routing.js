@@ -15,7 +15,7 @@
  *   1. 顺序必须与 `DEFAULTS.md` 第三节的默认规则逐条等价
  *      （由 `test/pipeline/routing-expansion.test.js` 守护）；
  *   2. 预设只引用分类注册表，不写死服务清单——新增服务仍然只改 `src/data/catalog/services/`；
- *   3. 默认值本身就是配置：觉得默认不合理，直接改这张表并按 ROADMAP 10.8 第 1 条
+ *   3. 默认值本身就是配置：觉得默认不合理，直接改这张表并按 docs/history/m3-spec.md 10.8 第 1 条
  *      更新基线、在提交信息里说明变了什么/为什么。
  */
 

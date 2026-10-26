@@ -160,6 +160,7 @@ src/
 ├── 5. io/                        # 📡 Layer 5: 外部世界通信层 (唯一允许副作用的底层)
 │   ├── fetcher.js                # HTTP 请求调度与 Stale 容灾兜底缓存
 │   ├── cache.js                  # 内存级 LRU-TTL 缓存管理器
+│   ├── generation.js             # 缓存代际时序原语 (GenerationSource / 单飞与超限抛错)
 │   ├── ssrf.js                   # SSRF 深度校验、私网拦截与防探测
 │   ├── pinned-agent.js           # 直连建连期 IP Pinning (undici Agent)
 │   ├── dns-resolver.js           # 异步 DNS 批量解析器 (用于 Fission 裂变)
