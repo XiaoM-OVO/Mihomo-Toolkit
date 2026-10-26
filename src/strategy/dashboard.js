@@ -80,11 +80,22 @@ function generateInfoNodes(subInfo, tag, options = {}) {
     const d = new Date(expire * 1000);
     const dateStr = d.toISOString().split('T')[0];
     const now = new Date();
-    expireDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
-    if (expired || expireDays <= 0) {
-      const expiredDays = Math.max(1, Math.floor((now - d) / (1000 * 60 * 60 * 24)));
+    const remainingMs = d.getTime() - now.getTime();
+    // 剩余天数按「完整 24 小时」向下取整
+    expireDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+    if (expired || remainingMs <= 0) {
+      const expiredDays = Math.max(1, Math.floor(-remainingMs / (1000 * 60 * 60 * 24)));
       nodes.push(markTrustedSynthetic({
         name: `🛑 ${tagPrefix}套餐到期：${dateStr} (已失效 ${expiredDays} 天)`,
+        type: 'direct',
+        server: '1.0.0.1',
+        port: 80,
+        isSyntheticInfo: true
+      }));
+    } else if (expireDays <= 0) {
+      // 尚未过期但不足 1 整天：不能与「已失效」混淆
+      nodes.push(markTrustedSynthetic({
+        name: `⚠️ ${tagPrefix}即将到期：${dateStr} (不足 1 天，请及时续费)`,
         type: 'direct',
         server: '1.0.0.1',
         port: 80,
@@ -239,7 +250,9 @@ function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, 
     const d = new Date(globalExpire * 1000);
     const dateStr = d.toISOString().split('T')[0];
     const now = new Date();
-    const days = Math.ceil((d - now) / 86400000);
+    const remainingMs = d.getTime() - now.getTime();
+    // 与单订阅看板保持一致：按完整 24 小时向下取整，避免 1.x 天被显示成 2 天
+    const days = Math.floor(remainingMs / 86400000);
 
     let expireLabel = '临近到期';
     if (expireAggregation === 'max') expireLabel = '最晚到期';
@@ -247,9 +260,12 @@ function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, 
 
     let expireIcon = '⌛';
     let expireDesc = `(余 ${days} 天)`;
-    if (days <= 0) {
+    if (remainingMs <= 0) {
       expireIcon = '🛑';
-      expireDesc = `(已失效 ${Math.max(1, Math.floor((now - d) / 86400000))} 天)`;
+      expireDesc = `(已失效 ${Math.max(1, Math.floor(-remainingMs / 86400000))} 天)`;
+    } else if (days <= 0) {
+      expireIcon = '⚠️';
+      expireDesc = '(不足 1 天)';
     } else if (days <= 3) {
       expireIcon = '⚠️';
       expireDesc = `(仅剩 ${days} 天)`;

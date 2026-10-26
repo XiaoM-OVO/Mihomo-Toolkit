@@ -632,9 +632,12 @@ function buildInfoNodes(flow, cfg, logger) {
   // 3.3 到期时间节点
   let expireDays = -1
   if (expireMs > 0 && !hideExpire) {
-    expireDays = Math.ceil((expireMs - nowMs) / (1000 * 3600 * 24))
+    // 按完整 24 小时向下取整
+    expireDays = Math.floor((expireMs - nowMs) / (1000 * 3600 * 24))
     const dateStr = formatDateUtc8(expireMs)
-    if (expireDays <= 3) {
+    if (expireDays <= 0) {
+      nodes.push(createSyntheticProxy(`⚠️ ${tag}即将到期：${dateStr} (不足 1 天，请及时续费)`))
+    } else if (expireDays <= 3) {
       nodes.push(createSyntheticProxy(`⚠️ ${tag}即将到期：${dateStr} (仅剩 ${expireDays} 天，请及时续费)`))
     } else {
       nodes.push(createSyntheticProxy(`📅 ${tag}套餐到期：${dateStr} (余 ${expireDays} 天)`))
