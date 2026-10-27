@@ -201,7 +201,9 @@ function aggregateSubscriptions(collectedSubInfos = [], { expireAggregation = 'm
 
   if (logger) {
     expiredSubs.forEach(s => {
-      logger.warn(`↩️ 订阅${s.tag ? ` [${s.tag}]` : ''}已失效，跳过其流量聚合`);
+      logger.warn(s.tag
+        ? `↩️ 订阅 [${s.tag}] 已失效，跳过其流量聚合`
+        : '↩️ 订阅已失效，跳过其流量聚合');
     });
   }
 
