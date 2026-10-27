@@ -28,7 +28,7 @@ const { parseSocksUri } = require('./socks');
 const { parseHttpUri } = require('./http');
 
 // 订阅元信息解析
-const { parseSubscriptionInfo, isExpiredNow, isQuotaExhausted } = require('../../infra/sub-info');
+const { parseSubscriptionInfo, evaluateExpiry, normalizeTimeZone, formatDateInZone, isExpiredNow, isQuotaExhausted } = require('../../infra/sub-info');
 
 // 注册所有内置协议解析器
 registerParser('vless', parseVlessUri);
@@ -183,6 +183,9 @@ module.exports = {
 
   // 订阅元信息
   parseSubscriptionInfo,
+  evaluateExpiry,
+  normalizeTimeZone,
+  formatDateInZone,
   isExpiredNow,
   isQuotaExhausted
 };

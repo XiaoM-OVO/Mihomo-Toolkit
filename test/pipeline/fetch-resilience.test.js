@@ -43,7 +43,7 @@ function baseConfig(url, extra = {}) {
   };
 }
 
-describe('【Pipeline】订阅抓取容灾与重试降级 (fetch-resilience)', () => {
+describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', () => {
   test('重试：5xx 连续失败后成功，节点不丢失', async () => {
     let fetchCount = 0;
     globalThis.fetch = async () => {
@@ -285,7 +285,7 @@ describe('【Pipeline】订阅抓取容灾与重试降级 (fetch-resilience)', (
     }
   });
 
-  test('纯 URI 节点或 proxy: false 时不触发抓取代理探测与警告', async () => {
+  test('纯 URI 节点或 proxy: false 时不触发拉取代理探测与警告', async () => {
     const logs = [];
     const mockLogger = {
       debug: (msg) => logs.push({ level: 'debug', msg }),
@@ -306,7 +306,7 @@ describe('【Pipeline】订阅抓取容灾与重试降级 (fetch-resilience)', (
     };
 
     await buildProfile(cfg, { mode: 'config', production: true, noCache: true, logger: mockLogger });
-    const hasProxyWarn = logs.some(l => l.msg.includes('抓取代理') || l.msg.includes('61234'));
+    const hasProxyWarn = logs.some(l => l.msg.includes('拉取代理') || l.msg.includes('61234'));
     assert.equal(hasProxyWarn, false, '纯 URI 节点不应执行代理连通性探测');
   });
 });

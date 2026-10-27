@@ -477,7 +477,7 @@ function operator(proxies, targetPlatform, userConfig = {}) {
         // 1. 优先读 builder 注入的 _subTag 字段（full 模式，符号无关）
         if (proxy && proxy._subTag) return proxy._subTag;
 
-        // 2. 关键词强制抓取（split 场景：用户配置 airportTag 关键词列表）
+        // 2. 关键词强制拉取（split 场景：用户配置 airportTag 关键词列表）
         if (CONFIG.airportTag) {
             const tags = CONFIG.airportTag.split(",").map(t => t.trim()).filter(Boolean);
             for (const t of tags) {

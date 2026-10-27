@@ -5,11 +5,11 @@
  * 职责：
  * 1. 多订阅流量与到期时间多维度聚合计算 (min / max / first)
  * 2. 识别/提取机场自带重置周期与日期
- * 3. 合成彩色状态看板虚拟节点 (流量告急、到期预警、重置倒计时、抓取失败)
+ * 3. 合成彩色状态看板虚拟节点 (流量告急、到期预警、重置倒计时、拉取失败)
  * 4. 契合客户端 2 列网格布局的全局配对汇总节点
  */
 
-const { parseSubscriptionInfo, isExpiredNow } = require('../infra/sub-info');
+const { parseSubscriptionInfo, evaluateExpiry, formatDateInZone } = require('../infra/sub-info');
 const { isNoticeNode } = require('../core/notice');
 const { markTrustedSynthetic, isTrustedSynthetic, getTrustedProxyMetadata } = require('../core/node-trust');
 
@@ -52,10 +52,12 @@ function generateInfoNodes(subInfo, tag, options = {}) {
   if (!subInfo) return { nodes: [], expireDays: -1 };
   const { upload, download, total, expire } = parseSubscriptionInfo(subInfo);
   const isStale = !!options.isStale;
+  const cutoffHours = (typeof options.cutoffHours === 'number' && options.cutoffHours > 0) ? options.cutoffHours : 0;
+  const timeZone = options.timeZone || '';
   const tagPrefix = tag ? `[${tag}] ` : '';
 
   const nodes = [];
-  const expired = isExpiredNow(expire);
+  const { known, expired, cutoffExpired, expireDays } = evaluateExpiry(expire, cutoffHours);
 
   // 1. 流量状态节点（仅在未过期且总流量 > 0 时生成）
   if (!expired && total > 0) {
@@ -75,23 +77,28 @@ function generateInfoNodes(subInfo, tag, options = {}) {
   }
 
   // 2. 到期状态节点
-  let expireDays = -1;
-  if (expire > 0) {
-    const d = new Date(expire * 1000);
-    const dateStr = d.toISOString().split('T')[0];
-    const now = new Date();
-    const remainingMs = d.getTime() - now.getTime();
-    // 剩余天数按「完整 24 小时」向下取整
-    expireDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
-    if (expired || remainingMs <= 0) {
-      const expiredDays = Math.max(1, Math.floor(-remainingMs / (1000 * 60 * 60 * 24)));
-      nodes.push(markTrustedSynthetic({
-        name: `🛑 ${tagPrefix}套餐到期：${dateStr} (已失效 ${expiredDays} 天)`,
-        type: 'direct',
-        server: '1.0.0.1',
-        port: 80,
-        isSyntheticInfo: true
-      }));
+  if (known) {
+    const dateStr = formatDateInZone(expire, timeZone);
+    if (expired) {
+      if (cutoffExpired) {
+        // 主动跳过（提前停用）：尚未到到期时刻，但已按 expireCutoffHours 停用
+        nodes.push(markTrustedSynthetic({
+          name: `🛑 ${tagPrefix}到期日：${dateStr} (已停用)`,
+          type: 'direct',
+          server: '1.0.0.1',
+          port: 80,
+          isSyntheticInfo: true
+        }));
+      } else {
+        // 真过期：不再计算失效天数，口径更干净
+        nodes.push(markTrustedSynthetic({
+          name: `🛑 ${tagPrefix}到期日：${dateStr} (已失效)`,
+          type: 'direct',
+          server: '1.0.0.1',
+          port: 80,
+          isSyntheticInfo: true
+        }));
+      }
     } else if (expireDays <= 0) {
       // 尚未过期但不足 1 整天：不能与「已失效」混淆
       nodes.push(markTrustedSynthetic({
@@ -111,7 +118,7 @@ function generateInfoNodes(subInfo, tag, options = {}) {
       }));
     } else {
       nodes.push(markTrustedSynthetic({
-        name: `📅 ${tagPrefix}套餐到期：${dateStr} (余 ${expireDays} 天)`,
+        name: `📅 ${tagPrefix}到期日：${dateStr} (余 ${expireDays} 天)`,
         type: 'direct',
         server: '1.0.0.1',
         port: 80,
@@ -123,7 +130,7 @@ function generateInfoNodes(subInfo, tag, options = {}) {
   // 3. 容灾降级标记（命中 stale 缓存时）
   if (isStale) {
     nodes.push(markTrustedSynthetic({
-      name: `🔄 ${tagPrefix}抓取异常 · 启用缓存兜底`,
+      name: `🔄 ${tagPrefix}拉取异常 · 已启用缓存兜底`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
@@ -194,7 +201,7 @@ function aggregateSubscriptions(collectedSubInfos = [], { expireAggregation = 'm
 
   if (logger) {
     expiredSubs.forEach(s => {
-      logger.warn(`↩️ 订阅${s.tag ? ` [${s.tag}]` : ''}已过期，跳过其流量聚合`);
+      logger.warn(`↩️ 订阅${s.tag ? ` [${s.tag}]` : ''}已失效，跳过其流量聚合`);
     });
   }
 
@@ -226,7 +233,7 @@ function aggregateSubscriptions(collectedSubInfos = [], { expireAggregation = 'm
 /**
  * 构建多订阅全局流量与到期汇总节点（双列网格高颜值展示）
  */
-function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, globalExpire, expireAggregation = 'min' }) {
+function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, globalExpire, expireAggregation = 'min', cutoffHours = 0, timeZone = '' }) {
   if (globalTotal <= 0 && globalExpire <= 0) return [];
 
   const topNodes = [];
@@ -247,22 +254,20 @@ function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, 
   }
 
   if (globalExpire > 0) {
-    const d = new Date(globalExpire * 1000);
-    const dateStr = d.toISOString().split('T')[0];
-    const now = new Date();
-    const remainingMs = d.getTime() - now.getTime();
-    // 与单订阅看板保持一致：按完整 24 小时向下取整，避免 1.x 天被显示成 2 天
-    const days = Math.floor(remainingMs / 86400000);
+    const dateStr = formatDateInZone(globalExpire, timeZone);
+    const { expired, cutoffExpired, expireDays: days } = evaluateExpiry(globalExpire, cutoffHours);
 
-    let expireLabel = '临近到期';
+    let expireLabel = '最早到期';
     if (expireAggregation === 'max') expireLabel = '最晚到期';
     else if (expireAggregation === 'first') expireLabel = '首项到期';
 
     let expireIcon = '⌛';
     let expireDesc = `(余 ${days} 天)`;
-    if (remainingMs <= 0) {
+    if (expired) {
+      // 主动跳过或真过期：统一收敛为「到期日」，避免「最早到期 + 已停用」语义打架
       expireIcon = '🛑';
-      expireDesc = `(已失效 ${Math.max(1, Math.floor(-remainingMs / 86400000))} 天)`;
+      expireLabel = '到期日';
+      expireDesc = cutoffExpired ? '(已停用)' : '(已失效)';
     } else if (days <= 0) {
       expireIcon = '⚠️';
       expireDesc = '(不足 1 天)';
@@ -285,13 +290,30 @@ function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, 
 
 /**
  * 构建拉取失败的占位节点
+ *
+ * @param {string} effectiveTag 订阅标识
+ * @param {string} [errorMsg] 原始错误或管道层给出的中文终态原因（已为中文时原样透传）
  */
 function createFetchErrorNode(effectiveTag, errorMsg = '') {
-  let shortMsg = errorMsg || '抓取失败';
+  // 退避期并非一次失败事件，单独渲染，避免「拉取失败：暂缓拉取」的自相矛盾
+  if (/fetch skipped/i.test(errorMsg)) {
+    return markTrustedSynthetic({
+      name: `⏳ [${effectiveTag}] 暂缓拉取 · 退避中`,
+      type: 'direct',
+      server: '1.0.0.1',
+      port: 80,
+      isSyntheticInfo: true
+    });
+  }
+
+  let shortMsg = errorMsg || '拉取失败';
   if (/fetch failed/i.test(errorMsg)) shortMsg = '网络连接失败';
   else if (/timeout/i.test(errorMsg)) shortMsg = '拉取超时';
   else if (/HTTP Error: (\d+)/i.test(errorMsg)) shortMsg = `HTTP ${errorMsg.match(/HTTP Error: (\d+)/i)[1]}`;
   else if (/no nodes/i.test(errorMsg)) shortMsg = '未解析到有效节点';
+  else if (/placeholder/i.test(errorMsg)) shortMsg = '仅返回占位/续费节点';
+  else if (/expired/i.test(errorMsg)) shortMsg = '订阅已失效';
+  else if (/quota exhausted/i.test(errorMsg)) shortMsg = '流量已耗尽';
 
   return markTrustedSynthetic({
     name: `❌ [${effectiveTag}] 拉取失败：${shortMsg}`,

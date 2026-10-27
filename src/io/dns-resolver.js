@@ -17,7 +17,7 @@ try {
 
 const { isPrivateIp, isPrivateIPv6 } = require('./ssrf');
 
-// 本地回环代理分发器（与订阅抓取共用同一套回环校验与实例缓存）；环境缺失时为 null
+// 本地回环代理分发器（与订阅拉取共用同一套回环校验与实例缓存）；环境缺失时为 null
 let resolveLocalProxyDispatcher = null;
 try { ({ resolveLocalProxyDispatcher } = require('./fetch-proxy')); } catch {}
 
@@ -73,7 +73,7 @@ function looksLikeDomain(server) {
  * 消除了被墙上游把整个查询拖满两轮超时的串行卡顿。
  *
  * 代理语义：传入 proxyUrl 时经本地回环代理转发，令 DoH 结果反映代理侧网络视图
- * （与代理模式下的订阅抓取保持一致）。代理不可用时该路归一为空结果，由竞速逻辑统一容错。
+ * （与代理模式下的订阅拉取保持一致）。代理不可用时该路归一为空结果，由竞速逻辑统一容错。
  * @param {string} domain
  * @param {string} type "A" | "AAAA"
  * @param {number} [timeoutMs=3000]

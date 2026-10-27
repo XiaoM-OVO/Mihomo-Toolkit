@@ -165,7 +165,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
    - 失败订阅按 30s → 60s → 2m → 4m → 8m（上限 10m）独立指数退避；退避期内优先复用其旧缓存，无旧缓存则快速失败，不再拖慢整轮构建。
    - 显式 `?refresh=1` 会绕过单订阅退避以主动探测恢复；后台预热/定时刷新仍遵守退避。
 3. **并发合并 (Single-Flight) 与代际保护**：
-   - 合并同一缓存键下的并发构建请求，避免重复抓取与计算。
+   - 合并同一缓存键下的并发构建请求，避免重复拉取与计算。
    - 单调递增 Generation 代际检查，防止较早启动的慢任务覆盖新代际的成功缓存。
    - 后台刷新未成功发布（无可用订阅）时采用指数退避（10s ~ 60s）限制重试频率，成功发布后立即清除。
 4. **后台自动预热与定时刷新**：
@@ -223,11 +223,13 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 outputMode: "config"            # config (完整配置) | nodes (纯节点) | report (审计报告)
 output: "./dist/config.yaml"    # 输出路径
 
-# 2. 抓取与容灾
-fetchProxyPort: 7890            # 抓取代理端口（留空直连）
+# 2. 拉取与容灾
+fetchProxyPort: 7890            # 拉取代理端口（留空直连）
 fetchProxyStrategy: "auto"      # direct (直连) | proxy (代理) | auto (失败自动走代理重试)；同时决定节点裂变 DoH 兜底的出口
 fetchRetry: 2                   # 失败重试次数 (5xx/超时重试，4xx快速失败)
 fetchStaleTtl: 24               # 网络故障时复用旧缓存兜底时长 (小时)
+expireCutoffHours: 24           # 到期前 N 小时判定已停用 (默认 24，即到期时刻前 24h；0=关闭)
+timezone: "local"               # 看板日期时区 (IANA 名称如 Asia/Shanghai；local=跟随系统)
 
 # 3. 订阅清单 (支持多订阅并发聚合)
 subscriptions:
@@ -312,7 +314,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 | **Layer 2: Pipeline** | `src/pipeline/` | 交付流水线总调度编排（生命周期早退、按 `outputMode` 截断、并发单飞） |
 | **Layer 3: Strategy** | `src/strategy/` | 策略拓扑与规则组装（地区折叠、DAG 空组剪枝、Fake-IP/DNS 与内核优化） |
 | **Layer 4: Core** | `src/core/` | 纯计算核心算法（物理网络指纹去重、属性打标、意图重命名、简繁四路同步） |
-| **Layer 5: IO** | `src/io/` | 外部世界通信边界（唯一允许副作用底层：HTTP 抓取、SSRF 拦截、多协议解析） |
+| **Layer 5: IO** | `src/io/` | 外部世界通信边界（唯一允许副作用底层：HTTP 拉取、SSRF 拦截、多协议解析） |
 | **Layer 6: Config** | `src/config/` | 配置装载与合并（`resolveConfig` 求解器、服务编目 SSOT、配置片段挂载） |
 | **Layer 7: Data** | `src/data/` | 只读运行基础基线（字段注册表 SSOT、不可变安全基线、清洗规则词库） |
 | **Layer 8: Infra** | `src/infra/` | 基础设施无状态基元（IP/CIDR 校验、FQDN 判定、订阅元信息流量换算纯函数） |
@@ -346,7 +348,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 <details>
 <summary><b>Q: 为什么我拉取订阅时偶尔报错 403 / 502，但节点没有消失？</b></summary>
 
-这是本系统的 **Stale 容灾兜底机制**在生效。当远程订阅网络抖动或超时时，系统会自动重试；若依然失败，会自动激活最近一次成功抓取的本地缓存快照（默认保留 24h），并在控制台打印告警，保障订阅抖动时节点配置持续可用。
+这是本系统的 **Stale 容灾兜底机制**在生效。当远程订阅网络抖动或超时时，系统会自动重试；若依然失败，会自动激活最近一次成功拉取的本地缓存快照（默认保留 24h），并在控制台打印告警，保障订阅抖动时节点配置持续可用。
 </details>
 
 <details>

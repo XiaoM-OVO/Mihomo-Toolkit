@@ -84,7 +84,9 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
           'blockKeywords', 'blockServers',
           'nodeIpVersion',
           'routing', 'trafficDirection',
-          'enableIsolation', 'pools'
+          'enableIsolation', 'pools',
+          'expireCutoffHours',
+          'timezone'
         ].sort(),
         '出现了未登记的默认字段：新增字段必须先在 field-registry.js 声明'
       );

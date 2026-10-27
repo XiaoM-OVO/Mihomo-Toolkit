@@ -4,7 +4,7 @@
  * -----------------------------------------------------------------------------
  * 职责：
  * 1. 唯一掌握流水线生命周期的总调度器
- * 2. 调度 IO 抓取 ➔ 调度 nodes 清洗 ➔ 根据交付目标 (Checkpoint) 截断刹车
+ * 2. 调度 IO 拉取 ➔ 调度 nodes 清洗 ➔ 根据交付目标 (Checkpoint) 截断刹车
  * 3. 内存级 Profile SWR 缓存状态机、Single-Flight 任务合并与时序代际保护
  */
 
@@ -238,7 +238,7 @@ async function executeBuildPipeline({
     throw new Error('[Security] redactLevel=off 不允许在生产环境使用！');
   }
 
-  // 4. Step 1: 订阅抓取与预处理网关 (IO 阶段)
+  // 4. Step 1: 订阅拉取与预处理网关 (IO 阶段)
   const {
     sourceSkeleton,
     dnsAssets,

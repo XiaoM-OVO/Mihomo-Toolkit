@@ -74,7 +74,7 @@
   早期实现中的 `customGroups`、组内 `rules`、服务清单字段等写法已被 10.12 收口取代，逐条明细见 [M3 前期完成记录](docs/history/m3-early-completions.md)。
 
 - ✅ **安全进阶防御（已完成）**：
-  - 直连抓取在建连阶段固定已校验 IP（`src/io/pinned-agent.js` 的 `connect.lookup`），消除请求前校验与建连解析之间的 DNS Rebinding (TOCTOU) 窗口。代理模式因解析发生在代理侧，本机无法固定 IP，残余风险保留并需由代理侧 ACL 兜底（见 `src/io/ssrf.js` 文件头）。
+  - 直连拉取在建连阶段固定已校验 IP（`src/io/pinned-agent.js` 的 `connect.lookup`），消除请求前校验与建连解析之间的 DNS Rebinding (TOCTOU) 窗口。代理模式因解析发生在代理侧，本机无法固定 IP，残余风险保留并需由代理侧 ACL 兜底（见 `src/io/ssrf.js` 文件头）。
 
 
 #### 📦 M3.B 规格（已归档）

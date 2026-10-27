@@ -88,7 +88,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   // 3. 域名多 IP 节点裂变 (I/O 解析域名 -> Core 纯函数裂变)
   if (config.enableFission) {
     const beforeFission = currentProxies.length;
-    // DoH 兜底与订阅抓取保持同一出口策略：仅当选择 proxy/auto 出口时经本地回环代理
+    // DoH 兜底与订阅拉取保持同一出口策略：仅当选择 proxy/auto 出口时经本地回环代理
     const proxyStrategy = config.fetchProxyStrategy || 'direct';
     const dohProxyUrl = (proxyStrategy === 'proxy' || proxyStrategy === 'auto') ? resolveProxyUrl(config) : '';
     const domainIpsMap = await resolveProxiesDomains(currentProxies, { ...config, dohProxyUrl });

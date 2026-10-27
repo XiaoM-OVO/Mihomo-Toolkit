@@ -21,7 +21,7 @@
   - [2.4 DAG 级联空组剪枝与豁免机制 (`exemptGroups`)](#24-dag-级联空组剪枝与豁免机制-exemptgroups)
   - [2.5 策略组视觉呈现矩阵 (`groupIconMode` 与 `groupIcons`)](#25-策略组视觉呈现矩阵-groupiconmode-与-groupicons)
   - [2.6 节点池与隔离机制 (`pools` / `enableIsolation`)](#26-节点池与隔离机制-pools--enableisolation)
-  - [2.7 网络抓取策略与容灾重试 (`fetchProxyStrategy` / `fetchProxyPort`)](#27-网络抓取策略与容灾重试-fetchproxystrategy--fetchproxyport)
+  - [2.7 网络拉取策略与容灾重试 (`fetchProxyStrategy` / `fetchProxyPort`)](#27-网络拉取策略与容灾重试-fetchproxystrategy--fetchproxyport)
   - [2.8 动态扩展服务编目 (`customServices` 与 `servicesConfigFile`)](#28-动态扩展服务编目-customservices-与-servicesconfigfile)
   - [2.9 域名多 IP 节点裂变增殖 (`enableFission`)](#29-域名多-ip-节点裂变增殖-enablefission)
   - [2.10 流量方向 (`trafficDirection`)](#210-流量方向-trafficdirection)
@@ -75,7 +75,7 @@ subscriptions → 清洗/重命名 → groups（组怎么长）+ pools（可选�
 
 在传统的代理配置工具中，配置项往往层层嵌套（如 `dns.servers[0].params.tls...`），导致用户排查问题和手写配置极其困难。
 `Mihomo-Toolkit` 采用**完全扁平化的根级声明规范**：
-- 无论底层属于策略组引擎、DNS 模块、节点清洗层还是网络抓取层，所有对外公开的配置属性均平铺在顶层。
+- 无论底层属于策略组引擎、DNS 模块、节点清洗层还是网络拉取层，所有对外公开的配置属性均平铺在顶层。
 - 引擎内部的流水线（Pipeline）会根据各模块职责，自动将扁平参数分发投影到底层各子系统。
 
 ### 1.2 信任分级边界 (Trust Boundary)
@@ -420,12 +420,12 @@ routing:
 
 ---
 
-### 2.7 网络抓取策略与容灾重试 (`fetchProxyStrategy` / `fetchProxyPort`)
+### 2.7 网络拉取策略与容灾重试 (`fetchProxyStrategy` / `fetchProxyPort`)
 
 当拉取远程订阅或执行节点裂变 DoH 解析时，本机的网络出口策略由 `fetchProxyStrategy` 裁决：
 
 - `direct`（直连模式）：严格通过本机网卡与本地 DNS 解析直连拉取；建连阶段固定已校验 IP（IP Pinning），消除校验与建连之间的 DNS Rebinding 窗口。若解析失败或网络不通直接报错（Fail-Closed）。
-- `proxy`（强制代理模式）：严格通过 `fetchProxyPort`（如 7890）指定的本地 HTTP/SOCKS 代理抓取目标。
+- `proxy`（强制代理模式）：严格通过 `fetchProxyPort`（如 7890）指定的本地 HTTP/SOCKS 代理拉取目标。
 - `auto`（**默认智能容灾模式**）：**先直连，失败自动切代理**。
   - 针对国内 CDN 加速的订阅链接，直连毫秒级迅速完成；
   - 一旦直连发生 DNS 污染、超时（`fetchTimeout`）或连接重置，立即无缝无损回退到代理端口重试；
@@ -737,12 +737,14 @@ routing:
 | 参数名 | 类型 | 运行兜底 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
 | `subscriptions` | `object[]` | `[]` | `any` | `override` | **订阅清单**：支持 URL、单节点 URI 或结构化对象，详见下方示例。 |
-| `fetchProxyPort` | `number` | `undefined` | `local` | `override` | 本机抓取代理端口（如 `7890`）。留空表示直连拉取。 |
-| `fetchProxyStrategy`| `string` | `'auto'` | `local` | `override` | 抓取策略：`direct` (直连) \| `proxy` (代理) \| `auto` (失败自动走代理重试)。 |
+| `fetchProxyPort` | `number` | `undefined` | `local` | `override` | 本机拉取代理端口（如 `7890`）。留空表示直连拉取。 |
+| `fetchProxyStrategy`| `string` | `'auto'` | `local` | `override` | 拉取策略：`direct` (直连) \| `proxy` (代理) \| `auto` (失败自动走代理重试)。 |
 | `fetchRetry` | `number` | `2` | `any` | `override` | 单次拉取失败自动重试次数（超时/网络抖动/5xx 重试，4xx 快速失败）。 |
 | `fetchTimeout` | `number` | `15` | `any` | `override` | 单次订阅请求超时时间（秒）。 |
 | `fetchStaleTtl` | `number` | `24` | `any` | `override` | 订阅拉取发生故障时，容灾复用上一次成功缓存内容的小时数（设为 `0` 关闭）。 |
+| `expireCutoffHours` | `number` | `24` | `any` | `override` | 到期前 N 小时判定订阅已停用并主动截断（默认 `24`，即到期时刻前 24 小时停用，避免到期当天继续下发已死节点；`0` 关闭提前截断）。停用后看板显示 `🛑 到期日 (已停用)`，真正过期后显示 `(已失效)`。 |
 | `expireAggregation` | `string` | `'min'` | `any` | `override` | 多订阅聚合时到期时间的计算方式：`min` (最早到期预警，推荐) \| `max` \| `first`。 |
+| `timezone` | `string` | `'local'` | `any` | `override` | 看板到期日期的展示时区：IANA 名称（如 `Asia/Shanghai`）或 `local`（跟随运行环境）。非法名称会告警并回退 `local`。 |
 
 ```yaml
 # 订阅声明示例
@@ -757,6 +759,22 @@ subscriptions:
       - "🤖 ChatGPT"
       - "📍 手动选择"
 ```
+
+#### 12.1 订阅状态与看板文案对照
+
+> 看板日期按 `timezone` 展示；状态由 `expireCutoffHours` 判定。单订阅与全局看板共用同一套口径。
+
+| 状态 | 判定 | 看板节点（单订阅） | 全局看板 | 日志/汇总 |
+| :--- | :--- | :--- | :--- | :--- |
+| 正常 | 距到期 > 3 天 | `📅 [tag] 到期日：DATE (余 N 天)` | `⌛ [全局] 最早到期：DATE (余 N 天)` | — |
+| 即将到期 | 1 ~ 3 天 | `⚠️ [tag] 即将到期：DATE (仅剩 N 天，请及时续费)` | `⚠️ [全局] 最早到期：DATE (仅剩 N 天)` | — |
+| 临近到期 | 不足 1 天 | `⚠️ [tag] 即将到期：DATE (不足 1 天，请及时续费)` | `⚠️ [全局] 最早到期：DATE (不足 1 天)` | — |
+| 已停用（主动截断） | 距到期 ≤ `expireCutoffHours` | `🛑 [tag] 到期日：DATE (已停用)` | `🛑 [全局] 到期日：DATE (已停用)` | `🛑 [tag]: 已停用` |
+| 已失效（真过期） | 已过到期时刻 | `🛑 [tag] 到期日：DATE (已失效)` | `🛑 [全局] 到期日：DATE (已失效)` | `🛑 [tag]: 已失效` |
+| 缓存兜底 | 拉取异常且旧缓存可用 | `🔄 [tag] 拉取异常 · 已启用缓存兜底` | — | `⚠️ ... 拉取异常，已启用缓存兜底` |
+| 拉取失败 | 非终态异常且无可用缓存 | `❌ [tag] 拉取失败：原因` | — | `❌ [tag]: 拉取失败 (原因)` |
+| 已禁用 | `enabled: false` | 无节点 | — | `⏸️ [tag] 配置禁用 · 跳过拉取` |
+| 暂缓拉取 | 处于失败退避期 | `⏳ [tag] 暂缓拉取 · 退避中` | — | `⏳ [tag] 暂缓拉取 · 退避中` |
 
 ---
 
@@ -810,7 +828,7 @@ subscriptions:
 outputMode: "config"
 output: "./dist/config.yaml"
 
-# 抓取容灾
+# 拉取容灾
 fetchProxyPort: 7890
 fetchProxyStrategy: "auto"
 

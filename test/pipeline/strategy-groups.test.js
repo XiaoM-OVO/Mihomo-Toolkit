@@ -120,7 +120,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     const rawConfig = {
       proxies: [
         markTrustedSynthetic({ name: '🏷️ [机场A] 剩余流量：100 GB / 500 GB (20.0%)', type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
-        markTrustedSynthetic({ name: '📅 [机场A] 套餐到期：2026-12-31 (余 120 天)', type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
+        markTrustedSynthetic({ name: '📅 [机场A] 到期日：2026-12-31 (余 120 天)', type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }),
         { name: '🇭🇰 香港 01', type: 'ss', server: 'hk.node.com', port: 443, cipher: 'aes-128-gcm', password: 'p1' }
       ]
     };
@@ -134,7 +134,7 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(dashboardGroup !== undefined, '应生成「📊 订阅与状态看板」策略组');
     assert.ok(dashboardGroup.proxies.length >= 2, '看板组应包含合成信息节点');
     assert.ok(!manualGroup.proxies.some(p => p.includes('剩余流量')), '手动选择组不应包含流量假节点');
-    assert.ok(!manualGroup.proxies.some(p => p.includes('套餐到期')), '手动选择组不应包含到期假节点');
+    assert.ok(!manualGroup.proxies.some(p => p.includes('到期日')), '手动选择组不应包含到期假节点');
 
     // 2. enableDashboard: false ➔ 不生成看板策略组，且假节点被丢弃
     const resultDisabled = strategyMain(rawConfig, { enableDashboard: false, minorNodeThreshold: 1 });

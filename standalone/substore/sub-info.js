@@ -15,16 +15,16 @@
  * │  infoPrefix      前缀文字（默认自动取当前订阅名，如 MySub）
  * │  infoPrefixWrap  前缀包裹符号，如 [] / () / 【】 / (())；设为 '' 表示不包裹
  * │  hideExpire      隐藏到期日信息节点（设为 true 或直接加 #hideExpire）
- * │  noFlow          跳过向上游网络抓取流量信息（仅依赖 Sub-Store 现有数据/自定义链接）
+ * │  noFlow          跳过向上游网络拉取流量信息（仅依赖 Sub-Store 现有数据/自定义链接）
  * │  keepStaleNodes  未获取到流量信息时，是否保留上一轮的旧信息节点（默认 false 清理）
  * │  resetDay        每月固定重置流量日期（1 - 31 的整数）
  * │  startDate       重置周期起始日期（格式：YYYY-MM-DD，与 cycleDays 搭配）
  * │  cycleDays       重置周期天数（正整数，如 30）
  * │  lowFlowBytes    自定义流量告急字节阈值（正整数，默认 5368709120 即 5GB）
  * │  lowFlowRatio    自定义流量告急比例阈值（0 - 1 之间的小数，默认 0.05 即 5%）
- * │  insecure        抓取流量头时忽略证书校验（默认 false）
- * │  flowUrl         自定义抓取流量头目标 URL（覆盖原订阅 URL）
- * │  flowUserAgent   自定义抓取流量使用的 User-Agent
+ * │  insecure        拉取流量头时忽略证书校验（默认 false）
+ * │  flowUrl         自定义拉取流量头目标 URL（覆盖原订阅 URL）
+ * │  flowUserAgent   自定义拉取流量使用的 User-Agent
  * └────────────────────────────────────────────────────────────────────────────────────
  * 
  * ┌─ 输出信息节点预览（不可连通的伪节点，仅供客户端展示）
@@ -531,7 +531,7 @@ async function obtainFlowData(cfg, logger) {
   let customFlowHeader = null
   const ua = mergedArgs.flowUserAgent || 'Clash.meta; mihomo; Sub-Store'
 
-  // 2.2 向上游订阅链接抓取流量头（首参传订阅 cleanUrl，第 4 参传 flowUrl，对齐官方实现）
+  // 2.2 向上游订阅链接拉取流量头（首参传订阅 cleanUrl，第 4 参传 flowUrl，对齐官方实现）
   if (!noFlow && (cleanUrl || mergedArgs.flowUrl)) {
     mainFlowHeader = await fetchRawFlowHeaders(
       cleanUrl,

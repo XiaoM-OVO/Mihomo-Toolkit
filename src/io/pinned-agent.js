@@ -124,7 +124,7 @@ function createPinnedLookup(options = {}) {
   };
 }
 
-/** 进程级共享 Agent：复用连接池，避免每次抓取重复建连 */
+/** 进程级共享 Agent：复用连接池，避免每次拉取重复建连 */
 let sharedAgent = null;
 
 /**

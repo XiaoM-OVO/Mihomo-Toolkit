@@ -35,7 +35,7 @@ Mihomo-Toolkit 是一个面向 Mihomo (Clash.Meta) 的代理节点清洗、重�
 ┌───────────────────────────▼────────────────────────────┐
 │ 2. Pipeline (流程编排层)                               │
 │    • engine.js (总调度与生命周期)                      │
-│    • ingestion.js (抓取清洗)   • envelope.js (数据包装)│
+│    • ingestion.js (拉取清洗)   • envelope.js (数据包装)│
 │    • nodes.js (纯节点产物)     • strategy.js (策略组)  │
 │    • config.js (全量配置装配)  • report.js (审计数据)  │
 └─────────────┬────────────────────────────┬─────────────┘
@@ -107,7 +107,7 @@ src/
 │
 ├── 2. pipeline/                  # 🚀 Layer 2: 交付流水线编排调度层 (与交付形态 1:1 映射)
 │   ├── engine.js                 # 全流程总调度引擎 (生命周期早退与 Checkpoint 截断)
-│   ├── ingestion.js              # 订阅并发抓取与安全网关 (净化/资产闭包/Stale回退)
+│   ├── ingestion.js              # 订阅并发拉取与安全网关 (净化/资产闭包/Stale回退)
 │   ├── direct-node.js            # 骨架直连兜底节点声明与生成器
 │   ├── nodes.js                  # 纯净节点清洗流水线 (去重/打标/重命名)
 │   ├── strategy.js               # 策略拓扑与分流规则组装
@@ -321,7 +321,7 @@ src/
 - **单订阅失败退避**：
   失败订阅按 30s → 60s → 2m → 4m → 8m（上限 10m）独立退避；退避期内优先复用其旧缓存，无旧缓存则快速失败，不再拖慢整轮构建；显式强制刷新绕过退避用于主动探测恢复，成功后清除退避状态。
 - **Single-Flight 并发合并**：
-  并发发起的相同缓存键请求会共享同一个构建 Promise，避免瞬时并发导致重复抓取上游。
+  并发发起的相同缓存键请求会共享同一个构建 Promise，避免瞬时并发导致重复拉取上游。
 - **监控可见性**：
   `/healthz` 的 `subscriptions` 聚合输出 `degraded` / `usableSubCount` / `failedSubCount` / `staleSubCount`，不暴露逐条订阅 URL 与上游错误细节。
 

@@ -1,11 +1,11 @@
 /**
  * -----------------------------------------------------------------------------
- * Mihomo-Toolkit: 订阅抓取与网络容灾调度层
+ * Mihomo-Toolkit: 订阅拉取与网络容灾调度层
  * -----------------------------------------------------------------------------
  * 职责：
- * 1. 提供带有 SSRF 防护、超时与自动重定向保护的安全 HTTP 抓取 (safeFetchText)
+ * 1. 提供带有 SSRF 防护、超时与自动重定向保护的安全 HTTP 拉取 (safeFetchText)
  * 2. 支持 本地代理调度、三态策略 (direct/proxy/auto) 与按订阅粒度覆盖
- * 3. 抓取重试策略：仅重试网络抖动/超时/5xx，快速失败 4xx 确定性错误
+ * 3. 拉取重试策略：仅重试网络抖动/超时/5xx，快速失败 4xx 确定性错误
  * 4. Stale 兜底容灾缓存：网络故障时复用上次有效内容，保障下游节点不掉线
  *
  * SSRF 语义：每跳重定向与每次重试/回退都重新校验。
@@ -45,7 +45,7 @@ function currentFetchImpl() {
   return undiciFetch || nativeFetch;
 }
 
-// 订阅抓取容灾：保留每个订阅最近一次成功抓取的内容，抓取失败时降级复用
+// 订阅拉取容灾：保留每个订阅最近一次成功拉取的内容，拉取失败时降级复用
 /**
  * 订阅容灾缓存增强类：支持单调递增版本号、版本快照与基于快照的安全淘汰
  */
@@ -115,7 +115,7 @@ const subStaleCache = new SubStaleCacheMap(); // url -> { content, subInfo, time
 const DEFAULT_SUB_STALE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 兜底数据默认最长保留 24h
 const SUB_STALE_MAX_ENTRIES = 200;
 
-// ─── 单订阅抓取失败退避表 ────────────────────────────────────────────────────
+// ─── 单订阅拉取失败退避表 ────────────────────────────────────────────────────
 // subFailureBackoff: Map<url, { failures, nextRetryAt, lastError }>
 // 任一订阅失败后进入指数退避期（30s → 60s → 2m → 4m → 8m，上限 10m）：
 // 退避期内不再发起网络请求，有可用旧缓存则直接复用，否则快速失败。
@@ -126,7 +126,7 @@ const SUB_BACKOFF_MAX_ENTRIES = 200;
 const subFailureBackoff = new Map();
 
 /**
- * 记录一次订阅抓取失败并推进指数退避
+ * 记录一次订阅拉取失败并推进指数退避
  * @param {string} key 订阅 URL
  * @param {any} [error] 上次错误（仅保留截断后的消息）
  * @param {boolean} [terminal=false] 是否属于终态失效（401 / 到期 / 流量耗尽），退避期内仍需保持终态语义
@@ -157,7 +157,7 @@ function recordSubFetchFailure(key, error, terminal = false) {
 }
 
 /**
- * 抓取成功后清除该订阅的失败退避状态
+ * 拉取成功后清除该订阅的失败退避状态
  * @param {string} key
  */
 function clearSubFetchFailure(key) {
@@ -263,7 +263,7 @@ async function readBodyWithLimit(res, maxBytes = 0) {
 }
 
 /**
- * 带有全套安全校验的文本抓取
+ * 带有全套安全校验的文本拉取
  */
 async function safeFetchText(url, options = {}) {
   const { maxRedirects = 5, timeoutMs = 15000, showFullUrl = false, proxyUrl = '', maxBytes = 0 } = options;
@@ -352,7 +352,7 @@ async function safeFetchText(url, options = {}) {
 }
 
 /**
- * 解析订阅抓取方式：每订阅显式 proxy 覆盖全局策略，未显式时遵循全局三态
+ * 解析订阅拉取方式：每订阅显式 proxy 覆盖全局策略，未显式时遵循全局三态
  */
 function resolveFetchPlan({ strategy, perSubProxy }) {
   if (perSubProxy === true) return { mode: 'proxy' };
@@ -443,7 +443,7 @@ function formatBytes(bytes = 0) {
 }
 
 /**
- * 节点抓取主调度（带重试与自动降级）
+ * 节点拉取主调度（带重试与自动降级）
  */
 async function fetchNodes(url, options = {}) {
   const { showFullUrl = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, retry = 2, timeoutMs = 15000, maxBytes = 0 } = options;

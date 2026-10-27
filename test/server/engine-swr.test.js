@@ -61,7 +61,7 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
   });
 
   describe('state-flow - SWR 缓存状态流转与回调通知', () => {
-    it('status:fresh - Fresh 命中直接返回同一缓存对象，不触发网络抓取 [SWR-1]', async () => {
+    it('status:fresh - Fresh 命中直接返回同一缓存对象，不触发网络拉取 [SWR-1]', async () => {
       let fetchCount = 0;
       globalThis.fetch = async () => {
         fetchCount++;
@@ -137,7 +137,7 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
         await _internal.forceFlights.get(key);
       }
 
-      assert.equal(fetchCount, 2, '后台 Revalidate 执行了实际网络抓取');
+      assert.equal(fetchCount, 2, '后台 Revalidate 执行了实际网络拉取');
 
       // 下一次请求应该拿到后台更新后的新缓存
       let nextStatus;
@@ -683,7 +683,7 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
       assert.equal(calls, 2, '显式强制刷新必须绕过单订阅退避');
       assert.equal(outcome.published, true);
       assert.equal(outcome.degraded, false);
-      assert.equal(subFailureBackoff.has(url), false, '抓取成功后必须清除退避状态');
+      assert.equal(subFailureBackoff.has(url), false, '拉取成功后必须清除退避状态');
     });
   });
 });

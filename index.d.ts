@@ -27,7 +27,7 @@ export interface SubscriptionConfig {
   uri?: string;
   /** 是否启用该订阅项（默认为 true，设为 false 临时停用） */
   enabled?: boolean;
-  /** 抓取代理开关：true 走代理，false 强制直连，省略则继承全局 fetchProxyStrategy */
+  /** 拉取代理开关：true 走代理，false 强制直连，省略则继承全局 fetchProxyStrategy */
   proxy?: boolean;
   /** 自定义请求头（如 User-Agent、Authorization 等） */
   headers?: Record<string, string>;
@@ -406,9 +406,9 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   cacheTtl?: number;
   /** SWR 陈旧缓存最大容忍时间（秒，默认 86400 即 24 小时）；超过 freshTtl 但未超此窗口时返回旧快照并异步重构，超期则同步重构 */
   cacheStaleMaxAge?: number;
-  /** 本地订阅抓取代理端口（如 7890） */
+  /** 本地订阅拉取代理端口（如 7890） */
   fetchProxyPort?: number;
-  /** 本地订阅抓取代理策略：direct (直连) | proxy (代理) | auto (自动重试) */
+  /** 本地订阅拉取代理策略：direct (直连) | proxy (代理) | auto (自动重试) */
   fetchProxyStrategy?: ProxyStrategy;
   /** 订阅拉取失败自动重试次数（默认 2，即最多尝试 3 次；超时/网络抖动/5xx 会重试，4xx 不重试） */
   fetchRetry?: number;
@@ -416,6 +416,13 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   fetchTimeout?: number;
   /** 上次成功内容兜底保留小时数（默认 24；设为 0 关闭"失败复用旧数据"降级） */
   fetchStaleTtl?: number;
+  /** 到期前 N 小时判定订阅已停用（默认 24，即到期时刻前 24h 停用；设为 0 关闭提前截断） */
+  expireCutoffHours?: number;
+  /**
+   * 看板到期日期的展示时区：IANA 名称（如 `Asia/Shanghai`）或 `local`（跟随运行环境，默认）。
+   * 非法名称会告警并回退 `local`。
+   */
+  timezone?: string;
   /** 多订阅到期时间聚合策略：min (临近到期优先预警，默认) | max (最晚到期) | first (首个订阅优先) */
   expireAggregation?: 'min' | 'max' | 'first';
   /** 请求与资源配额（服务端/常驻模式主要用于防御滥用） */
@@ -536,7 +543,7 @@ export interface BuildOptions {
   debug?: boolean;
   /** 生产环境模式（严格禁止 redactLevel=off） */
   production?: boolean;
-  /** 强制跳过内存缓存，实时抓取远端 */
+  /** 强制跳过内存缓存，实时拉取远端 */
   noCache?: boolean;
   /** 导出统计报告路径 */
   report?: string;
@@ -567,7 +574,7 @@ export interface BuildResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 端到端全流程构建函数：负责订阅抓取、安全校验、节点清洗与策略组组装
+ * 端到端全流程构建函数：负责订阅拉取、安全校验、节点清洗与策略组组装
  * @param userConfig 用户配置对象或 YAML 解析后的配置
  * @param options CLI 或运行时覆盖参数
  */
@@ -622,7 +629,7 @@ export interface RequestLimits {
 }
 
 /**
- * 安全 HTTP 抓取选项
+ * 安全 HTTP 拉取选项
  */
 export interface SafeFetchOptions {
   /** 最大重定向跳数（默认 5，每一跳都会重新做 SSRF 校验） */
@@ -644,7 +651,7 @@ export interface SafeFetchResult {
 }
 
 /**
- * 带 SSRF 防护、超时、限长与手动重定向校验的文本抓取
+ * 带 SSRF 防护、超时、限长与手动重定向校验的文本拉取
  */
 export function safeFetchText(url: string, options?: SafeFetchOptions): Promise<SafeFetchResult>;
 

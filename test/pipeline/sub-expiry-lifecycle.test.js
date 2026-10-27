@@ -165,6 +165,45 @@ describe('【Pipeline】多订阅生命周期与容灾鉴权/过期防护 (sub-e
     }
   });
 
+  test('旧缓存进入提前停用窗口：断网时看板显示 🛑 已停用，而非 ❌ 拉取失败', async () => {
+    subStaleCache.clear();
+    profileCache.clear();
+    try {
+      const url = 'http://93.184.216.34/sub-stale-cutoff';
+      const cfg = {
+        subscriptions: [{ url, tag: 'StaleCutoffSub', retry: 0 }],
+        minorNodeThreshold: 1
+      };
+
+      // 1. 建立有效旧缓存
+      globalThis.fetch = async () => new Response(VALID_SUB_CONTENT, { status: 200 });
+      const r1 = await buildProfile(cfg, { mode: 'config', noCache: true });
+      assert.ok(r1.yamlStr.includes('香港'));
+      assert.ok(subStaleCache.has(url));
+
+      // 2. 模拟时间推进：旧缓存的到期时刻落入默认 24h 提前停用窗口
+      const expireSoon = Math.floor(Date.now() / 1000) + 9 * 3600;
+      subStaleCache.set(url, {
+        content: VALID_SUB_CONTENT,
+        subInfo: `upload=100; download=200; total=1000000; expire=${expireSoon}`,
+        timestamp: Date.now()
+      });
+
+      // 3. 随后机场网络中断：旧缓存虽在 fetchStaleTtl 内，但已属提前停用终态
+      globalThis.fetch = async () => { throw new TypeError('Network error'); };
+      let outcome = null;
+      const r2 = await buildProfile(cfg, { mode: 'config', noCache: true, onBuildOutcome: (o) => { outcome = o; } });
+
+      assert.ok(!r2.yamlStr.includes('香港'), '进入提前停用窗口的旧缓存不得继续下发');
+      assert.match(r2.yamlStr, /已停用/, '看板应显示 🛑 已停用');
+      assert.ok(!r2.yamlStr.includes('拉取失败'), '不得出现误导性的拉取失败提示');
+      assert.equal(subStaleCache.has(url), false, '提前停用的旧缓存应物理淘汰');
+      assert.equal(outcome.hasTerminalFailure, true, '旧缓存提前停用应上报终态失效');
+    } finally {
+      restoreFetch();
+    }
+  });
+
   test('本次成功响应确认已到期：不作为健康订阅写入缓存，拒绝容灾并物理淘汰', async () => {
     subStaleCache.clear();
     profileCache.clear();
@@ -189,6 +228,63 @@ describe('【Pipeline】多订阅生命周期与容灾鉴权/过期防护 (sub-e
       const r2 = await buildProfile(cfg, { mode: 'config', noCache: true });
       assert.ok(!r2.yamlStr.includes('香港'), '本次响应已过期，不输出旧节点');
       assert.equal(subStaleCache.has(url), false, '本次确认到期必须清除 subStaleCache，不得缓存死数据');
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('到期日当天（剩余不足 24h）：默认提前截断，不下发死节点且看板显示「已停用」', async () => {
+    subStaleCache.clear();
+    profileCache.clear();
+    try {
+      const url = 'http://93.184.216.34/sub-cutoff-expire';
+      const cfg = {
+        subscriptions: [{ url, tag: 'CutoffSub', retry: 0 }],
+        minorNodeThreshold: 1
+      };
+      // 剩余 9 小时到期：按默认 expireCutoffHours=24 应提前停用
+      const expireToday = Math.floor(Date.now() / 1000) + 9 * 3600;
+      globalThis.fetch = async () => new Response(VALID_SUB_CONTENT, {
+        status: 200,
+        headers: { 'subscription-userinfo': `upload=100; download=200; total=1000000; expire=${expireToday}` }
+      });
+
+      let outcome = null;
+      const res = await buildProfile(cfg, { mode: 'config', noCache: true, onBuildOutcome: (o) => { outcome = o; } });
+
+      assert.ok(!res.yamlStr.includes('香港'), '提前截断后不得继续下发即将失效的节点');
+      assert.match(res.yamlStr, /已停用/, '看板应显示已停用');
+      assert.ok(!res.yamlStr.includes('拉取失败'), '不得出现误导性的拉取失败提示');
+      assert.equal(outcome.hasTerminalFailure, true, '全部订阅被提前截断应上报终态失效');
+      assert.equal(subStaleCache.has(url), false, '提前截断的订阅不得写入容灾缓存');
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('expireCutoffHours=0：关闭提前截断，到期当天仍正常下发节点', async () => {
+    subStaleCache.clear();
+    profileCache.clear();
+    try {
+      const url = 'http://93.184.216.34/sub-cutoff-off';
+      const cfg = {
+        subscriptions: [{ url, tag: 'NoCutoffSub', retry: 0 }],
+        minorNodeThreshold: 1,
+        expireCutoffHours: 0
+      };
+      const expireToday = Math.floor(Date.now() / 1000) + 9 * 3600;
+      globalThis.fetch = async () => new Response(VALID_SUB_CONTENT, {
+        status: 200,
+        headers: { 'subscription-userinfo': `upload=100; download=200; total=1000000; expire=${expireToday}` }
+      });
+
+      let outcome = null;
+      const res = await buildProfile(cfg, { mode: 'config', noCache: true, onBuildOutcome: (o) => { outcome = o; } });
+
+      assert.ok(res.yamlStr.includes('香港'), '关闭提前截断后，未真正到期应继续下发节点');
+      assert.ok(!res.yamlStr.includes('已停用'));
+      assert.equal(outcome.hasTerminalFailure, false);
+      assert.ok(subStaleCache.has(url), '关闭提前截断时应正常写入容灾缓存');
     } finally {
       restoreFetch();
     }
@@ -262,7 +358,7 @@ describe('【Pipeline】多订阅生命周期与容灾鉴权/过期防护 (sub-e
         minorNodeThreshold: 1
       };
 
-      // 1. 上次成功抓取时的旧缓存（已用流量达到甚至超过 total，但未过期）
+      // 1. 上次成功拉取时的旧缓存（已用流量达到甚至超过 total，但未过期）
       // 模拟上个计费周期流量用尽，之后可能已经重置
       globalThis.fetch = async () => new Response(VALID_SUB_CONTENT, {
         status: 200,

@@ -84,7 +84,7 @@ describe('【Server】构建缓存键生成与防脏读 (cache-key)', () => {
     assert.equal(viaOptionsMode, nodes, 'options.mode 应正确参与缓存键计算');
   });
 
-  it('buildProfileCacheKey - 仅生效订阅参与，订阅抓取参数变化必须改变键', () => {
+  it('buildProfileCacheKey - 仅生效订阅参与，订阅拉取参数变化必须改变键', () => {
     const enabled = { subscriptions: [{ url: 'https://sub.example.com/a', retry: 1 }] };
     const retryChanged = { subscriptions: [{ url: 'https://sub.example.com/a', retry: 3 }] };
     const proxyChanged = { subscriptions: [{ url: 'https://sub.example.com/a', retry: 1, proxy: 'http://127.0.0.1:7890' }] };
