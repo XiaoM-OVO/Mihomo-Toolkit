@@ -1,6 +1,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { generateInfoNodes, buildGlobalDashboardNodes } = require('../../src/strategy/dashboard');
+const { generateInfoNodes, buildGlobalDashboardNodes, sortDashboardNodes } = require('../../src/strategy/dashboard');
+const { markTrustedSynthetic } = require('../../src/core/node-trust');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -112,5 +113,28 @@ describe('【Dashboard】到期剩余天数展示语义', () => {
     const shNode = generateInfoNodes(`expire=${expire}`, 'T', { timeZone: 'Asia/Shanghai' }).nodes.find(n => n.name.includes('到期日'));
     assert.match(utcNode.name, /2026-10-31/);
     assert.match(shNode.name, /2026-11-01/);
+  });
+
+  test('看板节点按「到期 + 流量」成对排列，状态类节点统一置底', () => {
+    const active = generateInfoNodes(
+      `upload=0; download=0; total=10737418240; expire=${expireIn(60 * DAY_MS)}`,
+      'IK'
+    ).nodes;
+    const expired = generateInfoNodes(`expire=${expireIn(-2 * DAY_MS)}`, 'LX').nodes;
+    const reset = markTrustedSynthetic({
+      name: '🔄 [FN] 距离重置剩余：4 天',
+      type: 'direct',
+      server: '1.0.0.1',
+      port: 80,
+      isSyntheticInfo: true
+    });
+    const realNode = { name: 'DIRECT', type: 'direct', server: '1.0.0.1', port: 80 };
+
+    const names = sortDashboardNodes([...expired, reset, ...active, realNode]).map(n => n.name);
+    assert.match(names[0], /到期日/, '第一列应为到期时间');
+    assert.match(names[1], /剩余流量/, '第二列应为剩余流量');
+    assert.match(names[2], /已失效/, '失效订阅应置底');
+    assert.match(names[3], /距离重置/, '重置倒计时应置底');
+    assert.equal(names[4], 'DIRECT', '真实节点保持在最后');
   });
 });

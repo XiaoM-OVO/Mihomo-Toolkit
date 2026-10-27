@@ -326,12 +326,60 @@ function createFetchErrorNode(effectiveTag, errorMsg = '') {
   });
 }
 
+/**
+ * 提取节点名中的标签段（第一个方括号），无标签返回空串
+ */
+function extractNodeTag(name = '') {
+  const match = /\[([^\]]+)\]/.exec(name);
+  return match ? match[1] : '';
+}
+
+/**
+ * 重排看板节点：按「到期（时间）+ 流量」成对排列，状态类节点统一置底。
+ *
+ * 客户端按 2 列网格渲染，逐节点顺序即左→右、上→下；只有成对输出才能避免
+ * 失效订阅（只有到期节点）或重置倒计时把后续节点挤到错位的列里。
+ */
+function sortDashboardNodes(nodes = []) {
+  const groups = new Map();
+  const rest = [];
+
+  for (const node of nodes) {
+    if (!node || !isTrustedSynthetic(node) || !node.isSyntheticInfo) {
+      rest.push(node);
+      continue;
+    }
+    const name = node.name || '';
+    const tag = extractNodeTag(name);
+    if (!groups.has(tag)) groups.set(tag, { time: [], traffic: [], status: [] });
+    const bucket = groups.get(tag);
+    if (/已失效|已停用/.test(name)) bucket.status.push(node);
+    else if (name.includes('到期')) bucket.time.push(node);
+    else if (/剩余流量|流量告急/.test(name)) bucket.traffic.push(node);
+    else bucket.status.push(node);
+  }
+
+  const tags = [...groups.keys()].sort((a, b) => (a === '全局' ? -1 : b === '全局' ? 1 : 0));
+  const pairs = [];
+  const tail = [];
+  for (const tag of tags) {
+    const bucket = groups.get(tag);
+    while (bucket.time.length > 0 && bucket.traffic.length > 0) {
+      pairs.push(bucket.time.shift(), bucket.traffic.shift());
+    }
+    tail.push(...bucket.time, ...bucket.traffic, ...bucket.status);
+  }
+
+  return [...pairs, ...tail, ...rest];
+}
+
 module.exports = {
   filterRawInfoNodes,
   extractResetText,
   aggregateSubscriptions,
   buildGlobalDashboardNodes,
   createFetchErrorNode,
+  sortDashboardNodes,
   formatBytes,
   calcResetDays,
   generateInfoNodes

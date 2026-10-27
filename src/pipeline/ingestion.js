@@ -464,6 +464,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   const extractResetText = dsh.extractResetText || (() => '');
   const filterRawInfoNodes = dsh.filterRawInfoNodes || ((p) => p);
   const generateInfoNodes = dsh.generateInfoNodes || (() => ({ nodes: [], expireDays: -1 }));
+  const sortDashboardNodes = dsh.sortDashboardNodes || (nodes => nodes);
   const createFetchErrorNode = dsh.createFetchErrorNode || ((tag, msg) => markTrustedSynthetic({ name: `❌ [${tag}] 拉取失败：${msg}`, type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }));
 
   /**
@@ -1087,6 +1088,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   } else {
     throw new Error('No URL or subscriptions provided.');
   }
+
+  // 2 列网格对齐：看板节点按「到期 + 流量」成对排列，状态类节点统一置底
+  sourceSkeleton.proxies = sortDashboardNodes(sourceSkeleton.proxies);
 
   return {
     sourceSkeleton,
