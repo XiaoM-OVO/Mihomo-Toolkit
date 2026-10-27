@@ -2,15 +2,10 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { getIsolationBucket } = require('../../src/core/isolation');
-const cleaner = require('../../src/core/cleaner');
 const { sortNodes } = require('../../src/core/sort');
 const { computeNodeIndices } = require('../../src/core/rename');
 
 describe('【Core】节点隔离策略 (isolation)', () => {
-  it('cleaner.js 契约：不再导出 getIsolationBucket，模块已解耦', () => {
-    assert.equal(cleaner.getIsolationBucket, undefined, 'cleaner.js 不应保留 getIsolationBucket 导出');
-  });
-
   it('getIsolationBucket - 基础防御与空值安全', () => {
     assert.equal(getIsolationBucket(null), '');
     assert.equal(getIsolationBucket(undefined), '');

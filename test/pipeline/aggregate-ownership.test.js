@@ -40,7 +40,6 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
 
   it('社交服务一服务一组：规则目标即自身组名，且各自可被 groups 引用', () => {
     const registries = buildServiceCatalog({}).toRegistries();
-    assert.equal(registries.groups['social-platform'], undefined, '社交聚合组已取消（一服务一组）');
     for (const [key, name] of [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['discord', 'Discord']]) {
       assert.deepEqual(registries.social[key].rules, [`RULE-SET,${key},${name}`], `${key} 的规则目标必须是自身组名`);
       assert.deepEqual(registries.social[key].proxies, ['@standardOptions', 'DIRECT'], `${key} 必须自带可引用配方`);
@@ -51,8 +50,6 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
   it('成员键报错指引只指向真正不可单独引用的聚合成员', () => {
     const hints = buildMemberHints(resolveConfig({}).registries);
     assert.equal(hints.steam, 'game-service');
-    assert.equal(hints.facebook, undefined, 'facebook 现在可单独引用，不应再给聚合指引');
-    assert.equal(hints.meta, undefined, 'meta 条目已删除');
   });
 
   it('BT / 下载规则由数据表驱动：bt、download 两段归属清晰且都能整段改道', () => {

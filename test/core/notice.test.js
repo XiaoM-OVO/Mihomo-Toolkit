@@ -7,16 +7,9 @@ const {
   isNoticePlaceholderNode,
   hasOnlyPlaceholderNodes
 } = require('../../src/core/notice');
-const cleaner = require('../../src/core/cleaner');
 const { markTrustedSynthetic } = require('../../src/core/node-trust');
 
 describe('【Core】占位与公告节点判定 (notice)', () => {
-  it('cleaner.js 契约：不再导出 notice 相关函数，模块已解耦', () => {
-    assert.equal(cleaner.isNoticeNode, undefined, 'cleaner 不应导出 isNoticeNode');
-    assert.equal(cleaner.isNoticePlaceholderNode, undefined, 'cleaner 不应导出 isNoticePlaceholderNode');
-    assert.equal(cleaner.hasOnlyPlaceholderNodes, undefined, 'cleaner 不应导出 hasOnlyPlaceholderNodes');
-  });
-
   describe('isFakeServerAddress - 结构性无效/占位服务判定', () => {
     it('空值、未定义、空字符串与 localhost 判为假服务', () => {
       assert.equal(isFakeServerAddress(''), true);

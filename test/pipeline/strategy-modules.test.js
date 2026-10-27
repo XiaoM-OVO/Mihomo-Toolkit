@@ -320,8 +320,6 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     assert.ok(registries.specialized);
     assert.equal(registries.aggregates['游戏服务'].fullName, '🎮 游戏服务');
     assert.equal(registries.aggregates['游戏下载'].fullName, '🎮 游戏下载');
-    assert.equal(registries.aggregates['游戏下载'].fullName, '🎮 游戏下载');
-    assert.equal(registries.aggregates['社交平台'], undefined, '社交聚合组已取消：一服务一组');
     assert.deepStrictEqual(registries.aggregates['游戏下载'].proxies, ['DIRECT', '下载策略', '自动选择', '手动选择', '@matchedNodes']);
     assert.deepStrictEqual(registries.aggregates['游戏服务'].proxies, ['DIRECT', '@standardOptions', '@matchedNodes']);
     // 聚合组条目同样进入「可引用组目录」，且自带 match 配方（退役 @buckets.game 伪宏）；

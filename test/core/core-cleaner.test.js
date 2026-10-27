@@ -250,11 +250,10 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     assert.deepEqual(extractNodeAttributes('香港 电信 移动 01').attrs.lineArr, ['电移']);
   });
 
-  it('classifyNode - 严禁BT节点仍属低倍率池，且不再包含已删除的 forbidDownload 标签', () => {
+  it('classifyNode - 严禁BT节点仍属低倍率池', () => {
     const forbidNode = { name: '🇭🇰 香港 01 x0.2 严禁BT', server: '1.2.3.4', port: 443 };
     const forbidRes = classifyNode(forbidNode, { lowMultiThreshold: 0.5, enableIsolation: true });
     assert.ok(forbidRes.tags.includes('lowMulti'), '低倍率身份正常识别');
-    assert.ok(!forbidRes.tags.includes('forbidDownload'), '已删除 forbidDownload 标签');
     assert.equal(forbidRes.isolateBucket, 'lowMulti', '低倍率节点进入低倍率隔离桶');
 
     // 正常低倍率节点

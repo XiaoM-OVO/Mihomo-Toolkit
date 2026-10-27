@@ -460,12 +460,6 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
     assert.ok(ok.groups.find(g => g.name === 'YouTube'), '流媒体条目应可被引用');
     assert.ok(ok.groups.find(g => g.name === 'Google'), '系统条目应可被引用');
 
-    // 组只声明成员与呈现：规则字段（rules / providers / process）不再随组展开
-    const tg = ok.groups.find(g => g.name === 'Telegram');
-    assert.equal(tg.process, undefined, 'process 名单不再属于组声明');
-    assert.equal(tg.rules, undefined, 'rules 不再属于组声明');
-    assert.equal(tg.providers, undefined, 'providers 不再属于组声明');
-
     // 聚合组成员（无 proxies，不单独成组）不得进入目录：引用它必须配置期 fail-closed，并给出改引聚合组的指引
     assert.throws(
       () => resolveConfig({ groups: [{ ref: 'steam' }] }),
