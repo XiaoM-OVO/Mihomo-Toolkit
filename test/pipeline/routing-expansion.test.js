@@ -220,6 +220,36 @@ describe('routing 展开引擎：条目语义', () => {
     assert.ok(after.indexOf('DOMAIN-SUFFIX,corp.example,DIRECT') > quicIndex(after), '写在 quic 之后就后匹配');
   });
 
+  it('AND / OR 逻辑规则的 to 覆写只替换末尾目标，不破坏括号结构', () => {
+    const { config, registries } = pair();
+    const { rules, targets } = expandRouting(config, registries, {
+      routing: [
+        { rule: 'AND,((NETWORK,UDP),(DST-PORT,443),(GEOSITE,geolocation-!cn)),REJECT-DROP', to: 'DIRECT' },
+        { rule: 'OR,((DOMAIN,a.example),(DOMAIN,b.example)),REJECT', to: '中国分流' }
+      ]
+    });
+    assert.ok(
+      rules.includes('AND,((NETWORK,UDP),(DST-PORT,443),(GEOSITE,geolocation-!cn)),DIRECT'),
+      'AND 规则改道后子表达式必须完整保留'
+    );
+    assert.ok(
+      rules.includes('OR,((DOMAIN,a.example),(DOMAIN,b.example)),中国分流'),
+      'OR 规则改道后子表达式必须完整保留'
+    );
+    assert.ok(targets.includes('中国分流'), '逻辑规则的目标应被收集');
+    assert.ok(!targets.includes('DIRECT'), '内置目标不得被当作组收集');
+  });
+
+  it('AND 规则缺少目标且未提供 to 时 fail-closed', () => {
+    const { config, registries } = pair();
+    assert.throws(
+      () => expandRouting(config, registries, {
+        routing: [{ rule: 'AND,((NETWORK,UDP),(DST-PORT,443))' }]
+      }),
+      /缺少目标/
+    );
+  });
+
   it('未知预设 / 未知服务 / 缺目标都是 fail-closed', () => {
     const { config, registries } = pair();
     assert.throws(() => expandRouting(config, registries, { routing: [{ preset: 'nope' }] }), /未知预设/);

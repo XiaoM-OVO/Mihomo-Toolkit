@@ -41,17 +41,39 @@ function dedupe(list) {
 const ROUTING_ENTRY_KEYS = new Set(['preset', 'service', 'rule', 'to', 'disabled', 'direction']);
 
 /**
- * 取一条规则的目标字段（`AND,((…)),目标` 单独处理）
+ * 按顶层逗号切分规则串（忽略括号内的逗号）
+ *
+ * 逻辑规则（`AND,((…),(…)),目标`）的子表达式本身含逗号，直接 `split(',')` 会把
+ * 括号与目标一起切碎；括号深度为 0 的逗号才是规则字段分隔符。
+ *
+ * @param {string} rule 原始规则文本
+ * @returns {string[]}
+ */
+function splitTopLevel(rule) {
+  const parts = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of String(rule)) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  parts.push(current.trim());
+  return parts;
+}
+
+/**
+ * 取一条规则的目标字段（AND / OR / NOT 等逻辑规则同样适用）
  * @param {string} rule 原始规则文本
  * @returns {string|null}
  */
 function ruleTargetOf(rule) {
-  const text = String(rule).trim();
-  if (text.startsWith('AND,')) {
-    const matched = text.match(/^AND,\(\(.*\)\),([^,]+)$/);
-    return matched ? matched[1].trim() : null;
-  }
-  const parts = text.split(',').map(p => p.trim());
+  const parts = splitTopLevel(rule);
   if (parts.length < 2) return null;
   const last = parts[parts.length - 1];
   if (last.toLowerCase() === 'no-resolve') {
@@ -89,20 +111,26 @@ function resolveTo(to, ctx) {
 
 /**
  * 把一条规则的「目标字段」替换为指定目标（保留 `no-resolve`）
- * @param {string} rule 形如 `RULE-SET,x,目标` / `DOMAIN-SUFFIX,a.b,目标,no-resolve`
+ * @param {string} rule 形如 `RULE-SET,x,目标` / `DOMAIN-SUFFIX,a.b,目标,no-resolve` /
+ *   `AND,((NETWORK,UDP),(DST-PORT,443)),目标`
  * @param {string} target 新目标
  * @returns {string}
  */
 function retarget(rule, target) {
-  const parts = String(rule).split(',').map(p => p.trim());
+  const text = String(rule).trim();
+  // 顶层切分：逻辑规则的子表达式含逗号，不能被当作字段分隔符
+  const parts = splitTopLevel(text);
   const noResolve = parts.length > 2 && parts[parts.length - 1].toLowerCase() === 'no-resolve';
-  const head = noResolve ? parts.slice(0, -1) : parts;
-  if (head.length === 2) return [head[0], head[1], target].join(',') + (noResolve ? ',no-resolve' : '');
-  if (head.length >= 3) {
-    const rebuilt = [...head.slice(0, 2), target];
-    return rebuilt.join(',') + (noResolve ? ',no-resolve' : '');
+  if (noResolve) parts.pop();
+  if (parts.length === 2) {
+    parts.push(target);
+  } else if (parts.length >= 3) {
+    // 目标永远位于最后一个顶层字段（AND/OR/NOT 的括号表达式整体算一个字段）
+    parts[parts.length - 1] = target;
+  } else {
+    return text;
   }
-  return String(rule);
+  return parts.join(',') + (noResolve ? ',no-resolve' : '');
 }
 
 function createContext(userConfig, registries, options) {
@@ -513,7 +541,7 @@ function validateRoutingEntry(ctx, entry, idx) {
       if (shorthand) {
         throw new Error(`${path}: 规则集简写缺少目标 \`to\`：${base}`);
       }
-      if (base.split(',').filter(Boolean).length < 3) {
+      if (splitTopLevel(base).length < 3) {
         throw new Error(`${path}: 规则缺少目标且未提供 \`to\`：${base}`);
       }
     }
