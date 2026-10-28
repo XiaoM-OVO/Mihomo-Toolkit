@@ -915,7 +915,7 @@
       "path": "./ruleset/steam.mrs",
       "proxy": "DIRECT",
       "type": "http",
-      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs"
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam.mrs"
     },
     "steam-cn": {
       "behavior": "domain",

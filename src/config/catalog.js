@@ -165,9 +165,14 @@ function resolveServiceRuleEntries(s, cat, key, catDefaults) {
     });
   } else if (Array.isArray(s.rules)) {
     if (!s.provider && !s.providerPath) {
-      const ruleSetItem = s.rules.find(r => r && r.type === 'RULE-SET' && r.path);
-      if (ruleSetItem) {
-        providerPath = `geosite/${ruleSetItem.path}`;
+      // 多 RULE-SET 条目（如 steam = steam-cn + steam）必须优先取与服务键同名的规则集作为主 Provider；
+      // 按数组顺序取首项会把主服务指向伴随规则集（steam@cn），导致海外域名漏匹配。
+      const ruleSetItems = s.rules.filter(
+        r => r && String(r.type).toUpperCase() === 'RULE-SET' && r.path
+      );
+      const own = ruleSetItems.find(r => r.value === key) || ruleSetItems[0];
+      if (own) {
+        providerPath = `geosite/${own.path}`;
       }
     }
     for (const r of s.rules) {

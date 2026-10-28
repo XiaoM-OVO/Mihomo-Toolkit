@@ -330,8 +330,11 @@ describe('【Pipeline】策略模块与规则生成 (strategy-modules)', () => {
     const gameServiceRules = registries.aggregates['游戏服务'].rules;
     assert.ok(gameServiceRules.includes('RULE-SET,steam,游戏服务'), '聚合组条目必须随组交付成员分流规则');
     assert.ok(gameServiceRules.includes('DOMAIN-SUFFIX,epicgames.com,游戏服务'), '成员规则的目标组名应指向聚合组');
+    // steam 含两条 RULE-SET（steam-cn 下载伴随规则 + steam 本体），主 Provider 必须指向本体而非 steam@cn
+    assert.equal(registries.game.steam.provider, 'geosite/steam');
+    assert.equal(registries.game['steam-cn'].provider, 'geosite/steam@cn');
     assert.deepStrictEqual(registries.aggregates['游戏服务'].providers, {
-      steam: 'geosite/steam@cn',
+      steam: 'geosite/steam',
       epic: 'geosite/epicgames',
       riot: 'geosite/riot',
       blizzard: 'geosite/blizzard',
