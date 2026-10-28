@@ -41,7 +41,16 @@ function getTransportHost(proxy) {
   const upgradeHost = proxy['httpupgrade-opts']?.headers?.Host || proxy['httpupgrade-opts']?.headers?.host;
   if (upgradeHost) return String(upgradeHost);
 
-  // 3. h2 传输层 host 数组或字符串
+  // 3. http 传输层 Host 头 (http-opts.headers.Host 为字符串数组)
+  const httpHost = proxy['http-opts']?.headers?.Host ?? proxy['http-opts']?.headers?.host;
+  if (Array.isArray(httpHost)) {
+    const first = httpHost.find(h => h);
+    if (first) return String(first);
+  } else if (httpHost) {
+    return String(httpHost);
+  }
+
+  // 4. h2 传输层 host 数组或字符串
   const h2Host = proxy['h2-opts']?.host;
   if (Array.isArray(h2Host) && h2Host.length > 0 && h2Host[0]) {
     return String(h2Host[0]);
@@ -50,7 +59,7 @@ function getTransportHost(proxy) {
     return h2Host;
   }
 
-  // 4. 顶层 host 字段
+  // 5. 顶层 host 字段
   if (proxy.host) return String(proxy.host);
 
   return '';
@@ -75,6 +84,15 @@ function getTransportPath(proxy) {
 
   // httpupgrade 路径
   if (proxy['httpupgrade-opts']?.path) return String(proxy['httpupgrade-opts'].path);
+
+  // http 传输层路径 (http-opts.path 为字符串数组，保留全部路径避免去重误合并)
+  const httpPath = proxy['http-opts']?.path;
+  if (Array.isArray(httpPath)) {
+    const paths = httpPath.filter(Boolean).map(String);
+    if (paths.length > 0) return paths.join(',');
+  } else if (httpPath) {
+    return String(httpPath);
+  }
 
   return '';
 }
@@ -140,8 +158,20 @@ function injectTransportHost(proxy, host) {
     }
   }
 
-  // 4. h2 / http 传输层补齐 host 数组
-  if (network === 'h2' || network === 'http') {
+  // 4. http 传输层补齐 Host 头 (http-opts.headers.Host 为字符串数组)
+  if (network === 'http' || proxy['http-opts']) {
+    const httpOpts = proxy['http-opts'] || {};
+    const headers = httpOpts.headers || {};
+    if (!headers.Host && !headers.host) {
+      proxy['http-opts'] = {
+        ...httpOpts,
+        headers: { ...headers, Host: [host] }
+      };
+    }
+  }
+
+  // 5. h2 传输层补齐 host 数组
+  if (network === 'h2') {
     const h2Opts = proxy['h2-opts'] || {};
     const hosts = h2Opts.host;
     if (!hosts || (Array.isArray(hosts) && hosts.length === 0)) {
@@ -166,6 +196,11 @@ function getTransportType(proxy) {
   const network = String(proxy.network || '').toLowerCase();
   if (network && network !== 'tcp') {
     return network.toUpperCase();
+  }
+
+  // VMess TCP + HTTP 混淆 (http-opts) 同样视为 HTTP 传输层
+  if (proxy['http-opts'] && typeof proxy['http-opts'] === 'object') {
+    return 'HTTP';
   }
 
   const type = String(proxy.type || '').toLowerCase();

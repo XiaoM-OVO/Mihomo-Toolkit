@@ -34,7 +34,13 @@ describe('【Core】传输协议与属性提取 (transport)', () => {
     const h2ProxyStr = { 'h2-opts': { host: 'h2-single.com' } };
     assert.equal(getTransportHost(h2ProxyStr), 'h2-single.com');
 
-    // 5. 顶层 host 兜底
+    // 5. http 传输层 Host 提取 (数组与字符串)
+    const httpProxyArr = { 'http-opts': { headers: { Host: ['http.com'] } } };
+    assert.equal(getTransportHost(httpProxyArr), 'http.com');
+    const httpProxyStr = { 'http-opts': { headers: { host: 'http-single.com' } } };
+    assert.equal(getTransportHost(httpProxyStr), 'http-single.com');
+
+    // 6. 顶层 host 兜底
     assert.equal(getTransportHost({ host: 'generic.com' }), 'generic.com');
   });
 
@@ -43,6 +49,8 @@ describe('【Core】传输协议与属性提取 (transport)', () => {
     assert.equal(getTransportPath({ 'grpc-opts': { 'grpc-service-name': 'my-grpc-service' } }), 'my-grpc-service');
     assert.equal(getTransportPath({ 'h2-opts': { path: '/h2-path' } }), '/h2-path');
     assert.equal(getTransportPath({ 'httpupgrade-opts': { path: '/upgrade-path' } }), '/upgrade-path');
+    assert.equal(getTransportPath({ 'http-opts': { path: ['/http-path'] } }), '/http-path');
+    assert.equal(getTransportPath({ 'http-opts': { path: ['/p1', '/p2'] } }), '/p1,/p2');
     assert.equal(getTransportPath({}), '');
   });
 
@@ -72,7 +80,20 @@ describe('【Core】传输协议与属性提取 (transport)', () => {
     assert.equal(h2Node.servername, 'origin.domain.com');
     assert.deepEqual(h2Node['h2-opts'].host, ['origin.domain.com']);
 
-    // 4. 不覆写已存在的 Host / SNI
+    // 4. http 补全 http-opts.headers.Host (数组)，且不得误写 h2-opts
+    const httpNode = { type: 'vmess', network: 'http', server: '1.1.1.1' };
+    injectTransportHost(httpNode, 'origin.domain.com');
+    assert.equal(httpNode.servername, 'origin.domain.com');
+    assert.deepEqual(httpNode['http-opts'].headers.Host, ['origin.domain.com']);
+    assert.equal(httpNode['h2-opts'], undefined);
+
+    // 5. tcp + 既有 http-opts (VMess HTTP 混淆) 同样补全 Host
+    const obfsNode = { type: 'vmess', network: 'tcp', server: '1.1.1.1', 'http-opts': { path: ['/'] } };
+    injectTransportHost(obfsNode, 'origin.domain.com');
+    assert.deepEqual(obfsNode['http-opts'].headers.Host, ['origin.domain.com']);
+    assert.deepEqual(obfsNode['http-opts'].path, ['/']);
+
+    // 6. 不覆写已存在的 Host / SNI
     const customWsNode = {
       type: 'vless',
       network: 'ws',
@@ -90,6 +111,8 @@ describe('【Core】传输协议与属性提取 (transport)', () => {
     assert.equal(getTransportType({ network: 'grpc' }), 'GRPC');
     assert.equal(getTransportType({ network: 'h2' }), 'H2');
     assert.equal(getTransportType({ network: 'httpupgrade' }), 'HTTPUPGRADE');
+    assert.equal(getTransportType({ network: 'http' }), 'HTTP');
+    assert.equal(getTransportType({ network: 'tcp', type: 'vmess', 'http-opts': { path: ['/'] } }), 'HTTP');
     assert.equal(getTransportType({ network: 'tcp' }), '');
     assert.equal(getTransportType({ type: 'hysteria2' }), 'QUIC');
     assert.equal(getTransportType({ type: 'tuic' }), 'QUIC');
@@ -111,6 +134,15 @@ describe('【Core】传输协议与属性提取 (transport)', () => {
     const realNodeA = { server: '1.2.3.4', port: 443, type: 'vless', 'reality-opts': { 'public-key': 'key-1' } };
     const realNodeB = { server: '1.2.3.4', port: 443, type: 'vless', 'reality-opts': { 'public-key': 'key-2' } };
     assert.notEqual(getNodeFingerprint(realNodeA), getNodeFingerprint(realNodeB));
+
+    // Http (http-opts): Host 不同应视为不同节点
+    const httpNodeA = { server: '1.2.3.4', port: 80, type: 'vmess', network: 'http', 'http-opts': { headers: { Host: ['a.com'] }, path: ['/'] } };
+    const httpNodeB = { server: '1.2.3.4', port: 80, type: 'vmess', network: 'http', 'http-opts': { headers: { Host: ['b.com'] }, path: ['/'] } };
+    assert.notEqual(getNodeFingerprint(httpNodeA), getNodeFingerprint(httpNodeB));
+
+    // Http (http-opts): Path 不同应视为不同节点
+    const httpNodeC = { server: '1.2.3.4', port: 80, type: 'vmess', network: 'http', 'http-opts': { headers: { Host: ['a.com'] }, path: ['/p1'] } };
+    assert.notEqual(getNodeFingerprint(httpNodeA), getNodeFingerprint(httpNodeC));
 
     const deduped = dedupeNodes([h2NodeA, h2NodeB, upNodeA, upNodeB, realNodeA, realNodeB]);
     assert.equal(deduped.length, 6);
