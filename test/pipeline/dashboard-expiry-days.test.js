@@ -109,8 +109,11 @@ describe('【Dashboard】到期剩余天数展示语义', () => {
   test('timezone：日期按指定时区显示，凌晨到期不再被 UTC 截断到前一天', () => {
     // 2026-11-01 00:30 (UTC+8) == 2026-10-31 16:30 UTC
     const expire = Math.floor(new Date('2026-10-31T16:30:00Z').getTime() / 1000);
-    const utcNode = generateInfoNodes(`expire=${expire}`, 'T', { timeZone: 'UTC' }).nodes.find(n => n.name.includes('到期日'));
-    const shNode = generateInfoNodes(`expire=${expire}`, 'T', { timeZone: 'Asia/Shanghai' }).nodes.find(n => n.name.includes('到期日'));
+    // 到期文案随剩余天数切换「到期日 / 即将到期」，断言不应依赖运行日期
+    const findExpireNode = nodes => nodes.find(n => /到期日|即将到期/.test(n.name));
+    const utcNode = findExpireNode(generateInfoNodes(`expire=${expire}`, 'T', { timeZone: 'UTC' }).nodes);
+    const shNode = findExpireNode(generateInfoNodes(`expire=${expire}`, 'T', { timeZone: 'Asia/Shanghai' }).nodes);
+    assert.ok(utcNode && shNode, '应生成到期看板');
     assert.match(utcNode.name, /2026-10-31/);
     assert.match(shNode.name, /2026-11-01/);
   });
