@@ -8,7 +8,7 @@ const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildProfile, safeErrorMessage, _internal } = require('../../src/pipeline/engine');
 const { profileCache } = require('../../src/io/cache');
-const { subFailureBackoff } = require('../../src/io/fetcher');
+const { subFailureBackoff, subStaleCache } = require('../../src/io/fetcher');
 
 const originalFetch = globalThis.fetch;
 function restoreFetch() {
@@ -52,8 +52,11 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
     profileCache.clear();
     _internal.normalFlights.clear();
     _internal.forceFlights.clear();
+    _internal.fetchOnlyFlights.clear();
     _internal.revalidateBackoffs.clear();
     subFailureBackoff.clear();
+    // 原始订阅快照 (L1) 是进程级共享状态，必须与 Profile 快照一同隔离
+    subStaleCache.clear();
   });
 
   afterEach(() => {

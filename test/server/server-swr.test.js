@@ -15,7 +15,7 @@ const { startServer, mapCacheStatusToHeader } = require('../../src/targets/serve
 const { profileCache } = require('../../src/io/cache');
 const { buildProfile, _internal } = require('../../src/pipeline/engine');
 const { createLogger } = require('../../src/core/logger');
-const { subFailureBackoff } = require('../../src/io/fetcher');
+const { subFailureBackoff, subStaleCache } = require('../../src/io/fetcher');
 
 const silentLogger = createLogger({ tag: 'Server', level: 'silent', colors: false });
 
@@ -75,8 +75,10 @@ describe('【Server】HTTP 服务端 SWR 与后台防重叠刷新 (server-swr)',
     profileCache.clear();
     _internal.normalFlights.clear();
     _internal.forceFlights.clear();
+    _internal.fetchOnlyFlights.clear();
     _internal.revalidateBackoffs.clear();
     subFailureBackoff.clear();
+    subStaleCache.clear();
   });
 
   afterEach(() => {
@@ -318,7 +320,7 @@ subscriptions:
 
         const combinedLog = logs.join('\n');
         assert.ok(!combinedLog.includes('初始缓存预热完成'), '未成功发布时严禁声称预热完成');
-        assert.match(combinedLog, /未发布新缓存/);
+        assert.match(combinedLog, /订阅快照预热完成，但部分订阅不可用/, '预热失败订阅应如实报告部分不可用');
       } finally {
         server.close();
         fs.rmSync(dir, { recursive: true, force: true });

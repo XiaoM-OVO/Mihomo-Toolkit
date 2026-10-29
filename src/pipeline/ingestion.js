@@ -17,6 +17,7 @@ const { hasOnlyPlaceholderNodes } = require('../core/notice');
 const { markTrustedSynthetic, markTrustedProxyMetadata, sanitizeExternalProxies } = require('../core/node-trust');
 const { redactUrl } = require('../io/ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache, isSubInFetchBackoff, recordSubFetchFailure, clearSubFetchFailure, getSubFetchBackoff } = require('../io/fetcher');
+const { normalizeCacheDurations } = require('../io/cache');
 const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
@@ -485,6 +486,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   const fetchRetry = typeof userConfig.fetchRetry === 'number' ? userConfig.fetchRetry : 2;
   const fetchTimeoutSec = typeof userConfig.fetchTimeout === 'number' ? userConfig.fetchTimeout : 15;
   const staleMaxAgeMs = (typeof userConfig.fetchStaleTtl === 'number' ? userConfig.fetchStaleTtl : 24) * 60 * 60 * 1000;
+  // 原始订阅快照（L1）的新鲜期复用 cacheTtl：与 Profile 快照（L2，按 Host 隔离）共用同一时间口径，
+  // 不额外引入配置字段。L1 只与订阅 URL 相关，因此预热写入的内容可被任意 Host 的首次请求复用。
+  const { freshTtlMs: subFreshTtlMs } = normalizeCacheDurations(userConfig);
   // 到期前 N 小时判定已停用的小时数：默认 24（到期时刻前 24h 停用），显式 0 表示关闭提前截断
   const expireCutoffHours = (typeof userConfig.expireCutoffHours === 'number' && userConfig.expireCutoffHours >= 0)
     ? userConfig.expireCutoffHours
@@ -616,47 +620,61 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
               throw skipErr;
             }
           } else {
-            try {
-              rawResult = await fetchNodes(sub.url, {
-                showFullUrl, debug, logger,
-                proxyUrl: effectiveProxyUrl,
-                strategy: effectiveStrategy,
-                perSubProxy: isProxyAvailable ? sub.proxy : false,
-                retry: typeof sub.retry === 'number' ? sub.retry : fetchRetry,
-                timeoutMs: fetchTimeoutSec * 1000,
-                maxBytes: maxSubscriptionBytes
-              });
+            // L1 原始订阅快照命中：新鲜期内直接复用，跳过网络请求。
+            // 该层与订阅 URL 绑定、不含 subDomain，因此预热（fetchOnly）写入的内容
+            // 可被任意 Host 的首次请求直接复用，无需再向订阅上游回源。
+            // 强制刷新（?refresh=1 / 预热 / 定时轮询 / SWR revalidate）一律绕过 L1，
+            // 保证「主动与后台更新」总是真实回源，只有用户请求的缓存 Miss 才复用快照。
+            const freshSnapshot = (!options.noCache && !options.forceRefresh)
+              ? subStaleCache.getFresh(subKey, subFreshTtlMs)
+              : null;
+            if (freshSnapshot) {
+              logger.debug(`⚡ 复用新鲜原始订阅快照（免回源）: ${redactUrl(sub.url, showFullUrl)}`);
+              rawResult = { content: freshSnapshot.content, subInfo: freshSnapshot.subInfo, cached: true, lastSuccessAt: freshSnapshot.timestamp };
+            } else {
+              try {
+                rawResult = await fetchNodes(sub.url, {
+                  showFullUrl, debug, logger,
+                  proxyUrl: effectiveProxyUrl,
+                  strategy: effectiveStrategy,
+                  perSubProxy: isProxyAvailable ? sub.proxy : false,
+                  retry: typeof sub.retry === 'number' ? sub.retry : fetchRetry,
+                  timeoutMs: fetchTimeoutSec * 1000,
+                  maxBytes: maxSubscriptionBytes
+                });
 
-              // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
-              validateFetchedSubscription(rawResult, expireCutoffHours);
-              clearSubFetchFailure(subKey);
-            } catch (e) {
-              const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs, cutoffHours: expireCutoffHours, timeZone: displayTimeZone });
+                // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
+                validateFetchedSubscription(rawResult, expireCutoffHours);
+                clearSubFetchFailure(subKey);
+              } catch (e) {
+                const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs, cutoffHours: expireCutoffHours, timeZone: displayTimeZone });
 
-              // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号
-              if (decision.isTerminal) {
-                isTerminal = true;
-                terminalKind = decision.terminalKind;
-                terminalReason = decision.terminalReason;
-                // 旧缓存命中终态时错误对象无 subInfo，须从决策快照取，用于渲染 🛑 看板
-                terminalSubInfo = e?.subInfo || decision.stale?.subInfo || null;
-              }
-              // 失败退避：记录失败次数与终态语义，供后续构建在退避期内快速跳过网络
-              if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
-
-              if (decision.allowFallback) {
-                logger.warn(`⚠️ ${sub.tag ? `[${sub.tag}] ` : ''}拉取异常，已启用缓存兜底: ${e.message}`);
-                rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
-              } else {
-                if (decision.fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
-                  logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(sub.url, showFullUrl)}]: ${decision.fallbackRejectReason}`);
+                // 只要确认终态失效，无论旧缓存是否存在均必须上报终态信号
+                if (decision.isTerminal) {
+                  isTerminal = true;
+                  terminalKind = decision.terminalKind;
+                  terminalReason = decision.terminalReason;
+                  // 旧缓存命中终态时错误对象无 subInfo，须从决策快照取，用于渲染 🛑 看板
+                  terminalSubInfo = e?.subInfo || decision.stale?.subInfo || null;
                 }
-                throw e;
+                // 失败退避：记录失败次数与终态语义，供后续构建在退避期内快速跳过网络
+                if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
+
+                if (decision.allowFallback) {
+                  logger.warn(`⚠️ ${sub.tag ? `[${sub.tag}] ` : ''}拉取异常，已启用缓存兜底: ${e.message}`);
+                  rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
+                } else {
+                  if (decision.fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
+                    logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(sub.url, showFullUrl)}]: ${decision.fallbackRejectReason}`);
+                  }
+                  throw e;
+                }
               }
-            }
-            if (rawResult && !rawResult.stale) {
-              subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
-              pruneSubStaleCache(staleMaxAgeMs);
+              // 仅真实拉取成功才刷新 L1 时间戳；命中快照（cached）不得回写，否则新鲜期会被无限续期
+              if (rawResult && !rawResult.stale && !rawResult.cached) {
+                subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
+                pruneSubStaleCache(staleMaxAgeMs);
+              }
             }
           }
         }
@@ -985,57 +1003,67 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           throw skipErr;
         }
       } else {
-        try {
-          rawResult = await fetchNodes(url, {
-            showFullUrl, debug, logger,
-            proxyUrl: effectiveProxyUrl,
-            strategy: effectiveStrategy,
-            retry: fetchRetry,
-            timeoutMs: fetchTimeoutSec * 1000,
-            maxBytes: maxSubscriptionBytes
-          });
+        // L1 原始订阅快照命中：新鲜期内直接复用，跳过网络请求（与多订阅路径同语义）
+        const freshSnapshot = (!options.noCache && !options.forceRefresh)
+          ? subStaleCache.getFresh(subKey, subFreshTtlMs)
+          : null;
+        if (freshSnapshot) {
+          logger.debug(`⚡ 复用新鲜原始订阅快照（免回源）: ${redactUrl(url, showFullUrl)}`);
+          rawResult = { content: freshSnapshot.content, subInfo: freshSnapshot.subInfo, cached: true, lastSuccessAt: freshSnapshot.timestamp };
+        } else {
+          try {
+            rawResult = await fetchNodes(url, {
+              showFullUrl, debug, logger,
+              proxyUrl: effectiveProxyUrl,
+              strategy: effectiveStrategy,
+              retry: fetchRetry,
+              timeoutMs: fetchTimeoutSec * 1000,
+              maxBytes: maxSubscriptionBytes
+            });
 
-          // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
-          validateFetchedSubscription(rawResult, expireCutoffHours);
-          clearSubFetchFailure(subKey);
-        } catch (e) {
-          fetchError = e;
-          const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs, cutoffHours: expireCutoffHours, timeZone: displayTimeZone });
-          isTerminal = decision.isTerminal;
-          terminalKind = decision.terminalKind;
-          terminalReason = decision.terminalReason;
-          terminalSubInfo = e?.subInfo || decision.stale?.subInfo || null;
-          fallbackRejectReason = decision.fallbackRejectReason;
+            // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
+            validateFetchedSubscription(rawResult, expireCutoffHours);
+            clearSubFetchFailure(subKey);
+          } catch (e) {
+            fetchError = e;
+            const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs, cutoffHours: expireCutoffHours, timeZone: displayTimeZone });
+            isTerminal = decision.isTerminal;
+            terminalKind = decision.terminalKind;
+            terminalReason = decision.terminalReason;
+            terminalSubInfo = e?.subInfo || decision.stale?.subInfo || null;
+            fallbackRejectReason = decision.fallbackRejectReason;
 
-          // 失败退避：记录失败次数与终态语义，供后续构建在退避期内快速跳过网络
-          if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
+            // 失败退避：记录失败次数与终态语义，供后续构建在退避期内快速跳过网络
+            if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
 
-          if (decision.allowFallback) {
-            logger.warn(`⚠️ 订阅拉取异常，已启用缓存兜底: ${e.message}`);
-            rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
-            subStatus = 'stale';
-          } else {
-            if (e?.subInfo) {
-              recordSubInfo(e.subInfo, '');
-            }
-            if (fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
-              logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(url, showFullUrl)}]: ${fallbackRejectReason}`);
-            }
-            // 单 URL 模式下若因终态失效拒绝，构造空骨架以交付并保留元数据，与多订阅模式保持一致
-            if (isTerminal) {
-              subStatus = 'terminal';
-              // 旧缓存命中终态时无 e.subInfo，须带上决策快照，供看板渲染 🛑
-              rawResult = { content: '', subInfo: terminalSubInfo };
+            if (decision.allowFallback) {
+              logger.warn(`⚠️ 订阅拉取异常，已启用缓存兜底: ${e.message}`);
+              rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
+              subStatus = 'stale';
             } else {
-              subStatus = 'failed';
-              throw e;
+              if (e?.subInfo) {
+                recordSubInfo(e.subInfo, '');
+              }
+              if (fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
+                logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(url, showFullUrl)}]: ${fallbackRejectReason}`);
+              }
+              // 单 URL 模式下若因终态失效拒绝，构造空骨架以交付并保留元数据，与多订阅模式保持一致
+              if (isTerminal) {
+                subStatus = 'terminal';
+                // 旧缓存命中终态时无 e.subInfo，须带上决策快照，供看板渲染 🛑
+                rawResult = { content: '', subInfo: terminalSubInfo };
+              } else {
+                subStatus = 'failed';
+                throw e;
+              }
             }
           }
-        }
 
-        if (rawResult && !rawResult.stale && !isTerminal) {
-          subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
-          pruneSubStaleCache(staleMaxAgeMs);
+          // 仅真实拉取成功才刷新 L1 时间戳；命中快照（cached）不得回写，否则新鲜期会被无限续期
+          if (rawResult && !rawResult.stale && !isTerminal && !rawResult.cached) {
+            subStaleCache.set(subKey, { content: rawResult.content, subInfo: rawResult.subInfo, timestamp: Date.now() });
+            pruneSubStaleCache(staleMaxAgeMs);
+          }
         }
       }
     }

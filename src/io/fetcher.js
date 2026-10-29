@@ -88,6 +88,26 @@ class SubStaleCacheMap extends Map {
   }
 
   /**
+   * 获取仍处于新鲜期内的条目（按条目自身 timestamp 判定）。
+   *
+   * 语义：本表是「原始订阅内容」的快照层（L1），key 为订阅 URL，与客户端 Host 无关，
+   * 因此不同请求（不同 subDomain / 缓存键）可以共享同一份新鲜内容，避免重复回源。
+   * 只有拉取成功才会写入 timestamp，命中后不回写，确保新鲜期不会被无谓延长。
+   *
+   * @param {string} key 订阅 URL
+   * @param {number} ttlMs 新鲜期（毫秒），<=0 视为禁用
+   * @returns {object|null} 命中的条目；未命中/过期返回 null
+   */
+  getFresh(key, ttlMs) {
+    if (!key || !this.has(key)) return null;
+    const ttl = Number(ttlMs);
+    if (!Number.isFinite(ttl) || ttl <= 0) return null;
+    const entry = this.get(key);
+    if (!entry || !Number.isFinite(entry.timestamp)) return null;
+    return (Date.now() - entry.timestamp < ttl) ? entry : null;
+  }
+
+  /**
    * 安全淘汰：严格要求传入 getSnapshot(key) 捕获的有效快照对象 { entry, version }，
    * 仅当当前条目对象引用与版本号均严格一致时才执行淘汰，杜绝非快照或落后版本误删
    * @param {string} key

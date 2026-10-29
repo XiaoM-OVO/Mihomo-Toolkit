@@ -201,8 +201,9 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
    - 单调递增 Generation 代际检查，防止较早启动的慢任务覆盖新代际的成功缓存。
    - 后台刷新未成功发布（无可用订阅）时采用指数退避（10s ~ 60s）限制重试频率，成功发布后立即清除。
 4. **后台自动预热与定时刷新**：
-   - `enableWarmup: true`：服务启动后异步构建本地配置，提前就绪缓存。
-   - `autoRefreshInterval: 3600`：每隔 1 小时自动触发后台定时刷新（带防重叠锁）。
+   - `enableWarmup: true`：服务启动后异步**只拉取并缓存原始订阅内容**（L1 快照，按订阅 URL 共享）。此时尚无客户端 Host，`subDomain` 无法确定，组装出的产物必然作废，因此预热不组装、不发布产物；客户端首次请求会命中新鲜 L1，只做一次按该 Host 的组装。
+   - `autoRefreshInterval: 3600`：每隔 1 小时自动触发后台定时刷新（带防重叠锁，完整构建并按当前配置发布）。
+   - **L1 原始订阅快照**的新鲜期复用 `cacheTtl`（默认 300s）；`?refresh=1` 与 `noCache` 会同时绕过 L1。
 5. **强制穿透与冷却防护**：
    - 请求携带 `?refresh=1` 或 `?force=1` 时可强制回源刷新。
    - `refreshCooldown: 15`：默认 15 秒冷却时间，防范恶意频繁回源击穿源站。

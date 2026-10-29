@@ -287,11 +287,15 @@ function startServer(options = {}) {
       if (logMessage) serverLogger.info(logMessage);
       let published = false;
       let hasFailedSub = false;
+      const isWarmup = triggerName === 'Warmup';
 
       const currentConfig = await getOrReloadConfig();
       await buildProfile(currentConfig, {
         production: true,
         forceRefresh: true,
+        // 预热只做「原始订阅快照」（L1）：此时尚无客户端 Host，subDomain 无法确定，
+        // 组装出的 Profile 缓存键与真实请求键必然不同，构建产物必然作废。
+        fetchOnly: isWarmup,
         logger: taskLogger,
         onBuildOutcome: (outcome) => {
           published = !!outcome?.published;
@@ -300,13 +304,11 @@ function startServer(options = {}) {
         }
       });
 
-      if (triggerName === 'Warmup') {
-        if (published && hasFailedSub) {
-          serverLogger.warn('⚠️ 初始缓存预热完成，但部分订阅不可用，已发布降级缓存');
-        } else if (published) {
-          serverLogger.info('✨ 初始缓存预热完成');
+      if (isWarmup) {
+        if (hasFailedSub) {
+          serverLogger.warn('⚠️ 订阅快照预热完成，但部分订阅不可用；首次请求将按客户端 Host 组装产物');
         } else {
-          serverLogger.warn('⚠️ 初始缓存预热结束，但因全部订阅不可用或写入被拦截，未发布新缓存');
+          serverLogger.info('✨ 订阅快照预热完成（原始内容已缓存，首次请求将按客户端 Host 组装产物）');
         }
       } else {
         if (published && hasFailedSub) {

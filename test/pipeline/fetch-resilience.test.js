@@ -2,11 +2,12 @@
 const assert = require('node:assert/strict');
 const { buildProfile } = require('../../src/index.js');
 const { profileCache } = require('../../src/io/cache.js');
-const { subFailureBackoff } = require('../../src/io/fetcher.js');
+const { subFailureBackoff, subStaleCache } = require('../../src/io/fetcher.js');
 
-// 单订阅失败退避是进程级内存状态，测试之间必须隔离
+// 单订阅失败退避与原始订阅快照 (L1) 都是进程级内存状态，测试之间必须隔离
 beforeEach(() => {
   subFailureBackoff.clear();
+  subStaleCache.clear();
   profileCache.clear();
 });
 
@@ -343,5 +344,55 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
     await buildProfile(cfg, { mode: 'config', production: true, noCache: true, logger: mockLogger });
     const hasProxyWarn = logs.some(l => l.msg.includes('拉取代理') || l.msg.includes('61234'));
     assert.equal(hasProxyWarn, false, '纯 URI 节点不应执行代理连通性探测');
+  });
+
+  test('L1 快照复用：不同 Host 的构建在新鲜期内不再重复回源', async () => {
+    let fetchCount = 0;
+    globalThis.fetch = async () => {
+      fetchCount++;
+      return new Response(SUB_CONTENT, { status: 200 });
+    };
+    try {
+      const url = 'http://93.184.216.34/l1-shared';
+      // 客户端 A 的 Host：写入 L1 原始快照 + 对应 L2 产物
+      await buildProfile(baseConfig(url, { global: { subDomain: ['a.example.com'] } }), { mode: 'config', production: true });
+      assert.equal(fetchCount, 1);
+
+      // 客户端 B 的 Host：L2 缓存键不同必然 Miss，但 L1 仍在新鲜期，应免回源
+      const res = await buildProfile(baseConfig(url, { global: { subDomain: ['b.example.com'] } }), { mode: 'config', production: true });
+      assert.equal(fetchCount, 1, '新鲜期内应复用 L1 原始订阅快照，不重复回源');
+      assert.ok(res.yamlStr.includes('香港'));
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('fetchOnly 预热：仅写 L1 原始快照，不组装产物也不发布 Profile 缓存', async () => {
+    let fetchCount = 0;
+    let warmOutcome = null;
+    globalThis.fetch = async () => {
+      fetchCount++;
+      return new Response(SUB_CONTENT, { status: 200 });
+    };
+    try {
+      const url = 'http://93.184.216.34/fetch-only';
+      const warm = await buildProfile(baseConfig(url), {
+        mode: 'config',
+        production: true,
+        forceRefresh: true,
+        fetchOnly: true,
+        onBuildOutcome: (outcome) => { warmOutcome = outcome; }
+      });
+      assert.equal(fetchCount, 1, '预热应真实拉取一次');
+      assert.equal(warm.yamlStr, '', '仅拉取模式不得产出可交付配置');
+      assert.equal(warmOutcome.published, false, '仅拉取模式不得写入 Profile 缓存');
+
+      // 后续真实请求（不同 Host）应直接复用 L1，只做组装、不再回源
+      const res = await buildProfile(baseConfig(url, { global: { subDomain: ['c.example.com'] } }), { mode: 'config', production: true });
+      assert.equal(fetchCount, 1, '预热写入的 L1 快照应被首次请求复用');
+      assert.ok(res.yamlStr.includes('香港'));
+    } finally {
+      restoreFetch();
+    }
   });
 });

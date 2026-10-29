@@ -143,8 +143,12 @@ function getCacheKey(userConfig = {}, options = {}) {
 // 严格区分普通构建任务与强制构建任务：
 // normalFlights: Map<cacheKey, Promise<object>>  普通构建单飞表
 // forceFlights:  Map<cacheKey, Promise<object>>  强制穿透构建单飞表
+// fetchOnlyFlights: Map<cacheKey, Promise<object>> 仅拉取原始快照（启动预热）单飞表
+//   预热不组装产物，其结果不能交付给客户端请求；因此必须与上面两张表隔离，
+//   否则客户端请求会误复用预热任务、拿到空产物。
 const normalFlights = new Map();
 const forceFlights = new Map();
+const fetchOnlyFlights = new Map();
 
 // ─── 后台刷新失败退避表 ──────────────────────────────────────────────────────
 // revalidateBackoffs: Map<cacheKey, { until: number, failures: number }>
@@ -296,6 +300,27 @@ async function executeBuildPipeline({
   });
   if (nodeLimitErr) throw nodeLimitErr;
 
+  // ─── 🛑 Checkpoint 0: 仅拉取原始订阅快照（启动预热专用早退截断） ───
+  // 预热阶段本机尚不知道客户端会用哪个 Host 访问，subDomain 无法确定，
+  // 此时组装出的 Profile 缓存键与真实请求键必然不同，构建产物必然作废。
+  // 因此这里只保留 processSubscriptionSources 刚写入的原始订阅快照（L1，按订阅 URL 共享），
+  // 既不组装产物也不写 Profile 缓存（L2，按 Host 隔离）；客户端首次带 Host 请求时
+  // 会直接命中新鲜的 L1 内容，跳过网络拉取，只做一次按该 Host 的组装。
+  if (options.fetchOnly === true) {
+    ioLogger.debug('📦 订阅快照预热模式：仅缓存原始订阅内容，跳过节点清洗与产物组装');
+    return {
+      result: { yamlStr: '', proxies: [], meta: null },
+      hasFailedSub,
+      hasTerminalFailure,
+      published: false,
+      usableSubCount,
+      degraded,
+      failedTags,
+      staleTags,
+      fetchOnly: true
+    };
+  }
+
   // 5. Step 2: 节点标准化清洗与打标 (Core 纯算法阶段)
   const nodeConfig = { ...userConfig };
 
@@ -432,6 +457,10 @@ async function launchSingleFlightBuild(ctx) {
 
   // 构建开始前分配 generation
   const generation = profileCache.nextGeneration();
+  // 仅拉取模式使用独立单飞表：其结果不可交付，绝不能被客户端请求复用
+  const flightTable = options.fetchOnly === true
+    ? fetchOnlyFlights
+    : (isForce ? forceFlights : normalFlights);
 
   const flightPromise = (async () => {
     try {
@@ -453,19 +482,11 @@ async function launchSingleFlightBuild(ctx) {
       throw err;
     } finally {
       // 任务完成清理，校验当前记录仍指向自身才删除，防止新任务被误删
-      if (isForce) {
-        if (forceFlights.get(cacheKey) === flightPromise) forceFlights.delete(cacheKey);
-      } else {
-        if (normalFlights.get(cacheKey) === flightPromise) normalFlights.delete(cacheKey);
-      }
+      if (flightTable.get(cacheKey) === flightPromise) flightTable.delete(cacheKey);
     }
   })();
 
-  if (isForce) {
-    forceFlights.set(cacheKey, flightPromise);
-  } else {
-    normalFlights.set(cacheKey, flightPromise);
-  }
+  flightTable.set(cacheKey, flightPromise);
 
   // 统一解包：向当前调用方安全分发 outcome 元数据（published / 健康度 / 降级订阅标识），
   // 并严格只返回纯净的 result 业务产物，杜绝内部元数据泄漏到客户端交付结果
@@ -572,7 +593,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   // ─── 缓存三态判定与分流 (Fresh / Stale 优先裁决) ──────────────────────────
   if (enableCache && cacheKey) {
     if (isForce) {
-      logger.info('🔄 触发强制刷新 (forceRefresh=true)，绕过本地缓存直接拉取并构建');
+      logger.info(options.fetchOnly === true
+        ? '🔥 启动预热：拉取原始订阅快照并写入快照缓存（客户端首次请求时按 Host 组装产物）'
+        : '🔄 触发强制刷新 (forceRefresh=true)，绕过本地缓存直接拉取并构建');
       notifyCacheStatus('force', { cacheKey });
     } else {
       const durations = normalizeCacheDurations(userConfig);
@@ -689,6 +712,7 @@ module.exports = {
   _internal: {
     normalFlights,
     forceFlights,
+    fetchOnlyFlights,
     revalidateBackoffs,
     recordRevalidateFailure,
     clearRevalidateFailure,
