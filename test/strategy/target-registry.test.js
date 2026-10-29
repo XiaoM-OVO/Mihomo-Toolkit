@@ -55,7 +55,7 @@ describe('【Strategy】目标注册表 (TargetRegistry)', () => {
 
   it('池依赖组可被识别：池为空 / 未激活时规则按设计跳过', () => {
     const registry = build();
-    assert.equal(registry.isPoolDependent('下载策略'), true);
+    assert.equal(registry.isPoolDependent('下载策略'), false, '下载策略不再依赖池，始终作为正常业务组存在');
     assert.equal(registry.isPoolDependent('高倍率优选'), true);
     assert.equal(registry.isPoolDependent('自动选择'), false);
     assert.equal(registry.isPoolDependent('DIRECT'), false);

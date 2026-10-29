@@ -25,7 +25,6 @@ describe('【Strategy】策略组身份表 (Group Identity)', () => {
       '自动选择',
       '手动选择',
       '故障转移',
-      '下载策略',
       '负载均衡-轮询',
       '漏网之鱼',
       '家宽优选',
@@ -54,7 +53,7 @@ describe('【Strategy】策略组身份表 (Group Identity)', () => {
 
   it('池依赖口径由身份表声明，不再维护第二份名单', () => {
     assert.deepEqual(poolDependentGroupNames().sort(), [
-      '下载策略',
+
       '负载均衡-轮询',
       '低倍率节点',
       '家宽优选',

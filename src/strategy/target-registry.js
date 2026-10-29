@@ -12,7 +12,7 @@
  *   - `name`           规范目标名
  *   - `aliases`        可命中的写法（原始名 + 去装饰名，ref 键单独登记）
  *   - `refKey`         来自 `registries.groups` 的目录键（用于 `disabled` 结算），否则为 null
- *   - `source`         来源类别：builtin / skeleton / pool / hashLb / region / continent / user / directory / service
+ *   - `source`         来源类别：builtin / skeleton / download / pool / hashLb / region / continent / user / directory / service
  *   - `materializable` 是否会被物化成真实策略组（内核内置目标为 false）
  *   - `skeleton`       是否骨架常驻组
  *   - `poolDependent`  池为空 / 未激活时不建组，指向它的规则按设计跳过
@@ -27,6 +27,8 @@ const {
 } = require('../core/shared/regions');
 const { POOL_NAMES, GATED_POOL_NAMES } = require('../data/default-pools');
 const {
+  GROUP_KEYS,
+  groupName,
   skeletonGroupNames,
   poolDependentGroupNames
 } = require('../data/catalog/identity');
@@ -121,6 +123,9 @@ function createTargetRegistry({
       poolDependent: POOL_DEPENDENT_GROUP_NAMES.includes(name)
     });
   }
+
+  // 下载策略已从骨架组身份表移出，但仍是可解析的内置业务组
+  register(groupName(GROUP_KEYS.download), 'download');
 
   // 池：解析失败时退回内置池名，避免在剪枝阶段重复抛出配置期错误
   let poolDefs = [];

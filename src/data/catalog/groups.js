@@ -8,7 +8,7 @@
 'use strict';
 
 const { GROUP_KEYS, groupName } = require('./identity');
-const { POOL_NAMES } = require('../default-pools');
+const { REGEX_FORBID_DL_STR } = require('../cleaner-rules');
 
 const SPECIAL_SERVICES = Object.freeze({
   crypto: {
@@ -96,7 +96,7 @@ const DOWNLOAD_GROUPS = Object.freeze([
     name: groupName(GROUP_KEYS.download),
     type: 'select',
     hidden: false,
-    proxies: ['DIRECT', groupName(GROUP_KEYS.roundRobin), groupName(GROUP_KEYS.auto), `@pool:${POOL_NAMES.lowMulti}`]
+    proxies: ['DIRECT', groupName(GROUP_KEYS.roundRobin), '@standardOptions']
   },
   {
     name: groupName(GROUP_KEYS.roundRobin),
@@ -105,7 +105,13 @@ const DOWNLOAD_GROUPS = Object.freeze([
     interval: 300,
     lazy: true,
     hidden: true,
-    proxies: [`@pool:${POOL_NAMES.lowMulti}`]
+    match: {
+      tags: ['lowMulti']
+    },
+    exclude: {
+      pattern: `/${REGEX_FORBID_DL_STR}/i`
+    },
+    proxies: ['@matchedNodes']
   }
 ]);
 
@@ -134,7 +140,6 @@ const SKELETON_GROUP_DEFS = Object.freeze({
         groupName(GROUP_KEYS.auto),
         groupName(GROUP_KEYS.manual),
         groupName(GROUP_KEYS.fallback),
-        '@downloadGroup',
         'DIRECT'
       ])
     }),
@@ -147,8 +152,7 @@ const SKELETON_GROUP_DEFS = Object.freeze({
         '@defaultProxy',
         groupName(GROUP_KEYS.auto),
         groupName(GROUP_KEYS.manual),
-        groupName(GROUP_KEYS.fallback),
-        '@downloadGroup'
+        groupName(GROUP_KEYS.fallback)
       ])
     })
   })

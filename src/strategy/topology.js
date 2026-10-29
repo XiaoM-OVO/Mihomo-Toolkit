@@ -605,8 +605,6 @@ function buildProxyTopology({
     return buildSelect(def.name, members, def.hidden === true);
   };
 
-  const lowMultiPool = activePool(POOL_NAMES.lowMulti);
-
   // 内置池按声明顺序物化，装配层不再手工决定先后
   poolDefs
     .filter(def => def.builtin && def.group === 'always')
@@ -637,13 +635,13 @@ function buildProxyTopology({
     nonCnRegions: engineContext.nonCnRegions,
     poolMembers: allPoolMembers,
     cnCoreGroups: CN_CORE_PROXY_GROUPS.filter(name => activeRegionGroups.includes(name)),
-    downloadGroup: lowMultiPool ? [groupName(GROUP_KEYS.download)] : [],
+    downloadGroup: isReferenced(GROUP_KEYS.download) ? [groupName(GROUP_KEYS.download)] : [],
     logger
   });
 
   // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 data/catalog/groups.js，
-  // 拓扑只负责「低倍率池非空时装配」；成员由 `@pool:低倍率节点` 展开。
-  if (lowMultiPool) {
+  // 下载策略被规则引用时装配；轮询组由低倍率成员裁剪决定是否保留（空组由 prune 剪除）。
+  if (isReferenced(GROUP_KEYS.download)) {
     const { evaluatedGroups } = evaluateCustomTopology({
       groups: DOWNLOAD_GROUPS,
       existingGroups: finalGroups,

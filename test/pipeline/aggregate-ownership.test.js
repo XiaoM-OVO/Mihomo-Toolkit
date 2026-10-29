@@ -95,7 +95,7 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
     assert.ok(rules.includes('PROCESS-NAME,CustomApp.exe,🐱 GitHub'), 'process 预设的 to 不得被静默忽略');
   });
 
-  it('低倍率池纯粹按倍率圈定节点，下载组与轮询出口直接按池展开', () => {
+  it('低倍率池纯粹按倍率圈定节点，轮询出口排除禁止下载，下载策略作为正常业务组引用轮询出口', () => {
     const node = (name, server) => ({ name, type: 'ss', server, port: 443, cipher: 'aes-128-gcm', password: 'p' });
     const out = strategyMain({
       proxies: [
@@ -115,16 +115,17 @@ describe('【Pipeline】聚合归属与下载规则数据化 (aggregate-ownershi
     assert.ok(pool.proxies.some(n => n.includes('香港 02')), '严禁BT低倍率节点同样按倍率进入低倍率池');
     assert.ok(policy, '低倍率池非空时必须生成下载策略');
     assert.ok(exit, '低倍率池非空时必须生成轮询出口');
-    assert.ok(policy.proxies.some(n => n.includes('香港 01')), '下载策略展开低倍率成员');
-    assert.ok(policy.proxies.some(n => n.includes('香港 02')), '下载策略展开低倍率成员');
-    assert.ok(exit.proxies.some(n => n.includes('香港 01')), '轮询出口展开低倍率成员');
-    assert.ok(exit.proxies.some(n => n.includes('香港 02')), '轮询出口展开低倍率成员');
+    assert.ok(policy.proxies.includes('DIRECT'), '下载策略首位为 DIRECT 直连');
+    assert.ok(policy.proxies.includes('🔄 负载均衡-轮询'), '下载策略引用轮询出口');
+    assert.ok(exit.proxies.some(n => n.includes('香港 01')), '轮询出口展开可用低倍率成员');
+    assert.equal(exit.proxies.some(n => n.includes('香港 02')), false, '轮询出口按正则排除严禁BT低倍率节点');
   });
 
-  it('低倍率池为空时不生成下载组，指向它的下载规则同步剪除', () => {
+  it('低倍率池为空时依然生成下载策略，指向它的下载规则保留，但轮询出口被裁剪', () => {
     const node = (name, server) => ({ name, type: 'ss', server, port: 443, cipher: 'aes-128-gcm', password: 'p' });
     const out = strategyMain({ proxies: [node('🇯🇵 日本 01', 'jp1.node.com')] }, {});
-    assert.equal(out['proxy-groups'].some(g => g.name === '⏬ 下载策略'), false, '空池不应生成空壳组');
-    assert.equal(out.rules.some(r => r.includes('⏬ 下载策略')), false, '空组不该留下悬空规则');
+    assert.equal(out['proxy-groups'].some(g => g.name === '⏬ 下载策略'), true, '下载策略作为正常业务组应保留');
+    assert.equal(out['proxy-groups'].some(g => g.name === '🔄 负载均衡-轮询'), false, '空轮询组应被剪除');
+    assert.equal(out.rules.some(r => r.includes('⏬ 下载策略')), true, '下载策略保留时规则不得被剪除');
   });
 });

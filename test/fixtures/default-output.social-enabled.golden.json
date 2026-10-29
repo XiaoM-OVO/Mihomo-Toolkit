@@ -168,6 +168,21 @@
       "url": "https://cp.cloudflare.com/generate_204"
     },
     {
+      "hidden": false,
+      "name": "⏬ 下载策略",
+      "proxies": [
+        "DIRECT",
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点"
+      ],
+      "type": "select"
+    },
+    {
       "name": "🤖 ChatGPT",
       "proxies": [
         "🇺🇸 美国节点",
@@ -398,6 +413,7 @@
       "name": "🎮 游戏下载",
       "proxies": [
         "DIRECT",
+        "⏬ 下载策略",
         "🚀 自动选择",
         "📍 手动选择",
         "🎮 游戏专线 01"
@@ -718,6 +734,24 @@
       "proxy": "DIRECT",
       "type": "http",
       "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/disney.mrs"
+    },
+    "download-android": {
+      "behavior": "domain",
+      "format": "mrs",
+      "interval": 86400,
+      "path": "./ruleset/download-android.mrs",
+      "proxy": "DIRECT",
+      "type": "http",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-android-app-download.mrs"
+    },
+    "download-games": {
+      "behavior": "domain",
+      "format": "mrs",
+      "interval": 86400,
+      "path": "./ruleset/download-games.mrs",
+      "proxy": "DIRECT",
+      "type": "http",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-game-platforms-download.mrs"
     },
     "download-games-cn": {
       "behavior": "domain",
@@ -1052,7 +1086,11 @@
     "PROCESS-NAME,BitComet.exe,DIRECT",
     "PROCESS-NAME,uTorrent.exe,DIRECT",
     "PROCESS-NAME,aria2c.exe,DIRECT",
+    "PROCESS-NAME,IDMan.exe,⏬ 下载策略",
+    "PROCESS-NAME,fdm.exe,⏬ 下载策略",
     "RULE-SET,download-games-cn,DIRECT",
+    "RULE-SET,download-games,⏬ 下载策略",
+    "RULE-SET,download-android,⏬ 下载策略",
     "RULE-SET,non-cn,🚀 自动选择",
     "RULE-SET,cn-domain,DIRECT",
     "RULE-SET,cn-ip,DIRECT,no-resolve",

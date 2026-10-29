@@ -499,7 +499,7 @@ const RECIPE_DIMENSIONS = {
     validate: assertPattern,
     compile: (val) => {
       const fn = compilePatternMatcher(val);
-      return fn ? (item) => fn(item.proxy?.name || item.rawName) : null;
+      return fn ? (item) => Boolean(fn(item.proxy?.name) || fn(item.rawName)) : null;
     }
   },
   protocol: {

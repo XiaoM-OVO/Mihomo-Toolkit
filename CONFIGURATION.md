@@ -215,7 +215,7 @@ match:
 | `@ea` | `@东亚` | 当前活跃地区组中归属于**东亚**的所有策略组 |
 | `@domesticGroup` | `@domestic` | 若开启中国分流则展开为 `['中国分流']`，否则展开为 `['DIRECT']` |
 | `@cnCoreGroups` | `@cnCore` | 当前活跃的中国大中华核心地区策略组（大陆 / 香港 / 澳门 / 台湾，按此顺序） |
-| `@downloadGroup` | - | 低倍率池有成员时展开为 `['下载策略']`，否则为空 |
+| `@downloadGroup` | - | 下载策略被规则引用时展开为 `['下载策略']`，否则为空 |
 | `@preferredRegions` | `@preferred` | 将当前策略组 `preferredRegions`（地区 id 列表，如 `['us','jp']`）展开为对应地区策略组名（如 `['美国节点','日本节点']`） |
 | `@nonCnRegions` | `@noncn` | 当前活跃地区组中剔除中国大中华核心区（大陆/香港/中国/未知识别）后的纯海外地区组 |
 | `@defaultProxy` | `@proxy` | 根据 `defaultProxyMode` 计算出的默认代理组（`自动选择` / `手动选择` / `DIRECT`） |
@@ -377,7 +377,7 @@ groupIcons:
 | `家宽优选` | 带 `residential` 标签 | `enableIsolation: true` 时启用，成员从地区池剔除 |
 | `高倍率优选` | 倍率 > `highMultiThreshold`（默认 2.5） | 同上 |
 | `实验节点` | 带 `experimental` 标签（测试/实验/备用/测速等字样） | 同上 |
-| `低倍率节点` | 带 `lowMulti` 标签 | 恒在，`hidden: true`；「`⏬ 下载策略`」与「`🔄 负载均衡-轮询`」通过 `@pool:低倍率节点` 展开它 |
+| `低倍率节点` | 带 `lowMulti` 标签 | 恒在，`hidden: true`；「`🔄 负载均衡-轮询`」通过 `match: tags lowMulti` 取成员 |
 
 `enableIsolation` 是**隔离总开关**：打开后三个隔离池启用，成员从主力地区池与全量标准池中剔除（防止自动测速跑分或看 4K 时榨干高倍率流量配额）；关闭时三类节点照常留在地区池。
 
@@ -401,14 +401,14 @@ routing:
   - { service: youtube, to: '@pool:低延迟节点' }
 ```
 
-`groups[].proxies` 里也可以用 `@pool:<池名>`：`select` 组把池成员逐个展开，`load-balance` 组同样展开（下载出口就是这么写的）。出厂的两个下载相关组是**声明组**，定义在 `src/data/catalog/groups.js`：
+`groups[].proxies` 里也可以用 `@pool:<池名>`：`select` 组把池成员逐个展开，`load-balance` 组同样展开。出厂的两个下载相关组是**声明组**，定义在 `src/data/catalog/groups.js`：
 
 | 组名 | 类型 | 成员 |
 | :--- | :--- | :--- |
-| `⏬ 下载策略` | `select` | `DIRECT` / `🔄 负载均衡-轮询` / `🚀 自动选择` / `低倍率节点` |
-| `🔄 负载均衡-轮询` | `load-balance`（`round-robin`） | `@pool:低倍率节点` |
+| `⏬ 下载策略` | `select` | `DIRECT` / `🔄 负载均衡-轮询`（有低倍率成员时）/ `@standardOptions` |
+| `🔄 负载均衡-轮询` | `load-balance`（`round-robin`） | `match: tags lowMulti` + `@matchedNodes`，排除下载禁用名单 |
 
-低倍率池非空时它们才装配（避免空壳）；池为空则整组与指向它们的下载规则一起跳过。
+下载策略在**被规则引用时**装配，与低倍率池是否为空无关（池空时仅保留 `DIRECT` 与标准选项，默认直连）；轮询组由成员裁剪决定，空组直接剪除。
 
 > [!IMPORTANT]
 > **池名始终是合法路由目标，建不建组由「是否启用 / 是否有成员」决定：**
@@ -631,7 +631,7 @@ routing:
   - service: telegram
   - preset: system
   - preset: bt              # BT 客户端进程 + 追踪器，默认直连
-  - preset: download        # 下载软件进程 + 游戏 / 安卓下载规则集 → 下载策略（低倍率池）
+  - preset: download        # 下载软件进程 + 游戏 / 安卓下载规则集 → 下载策略
   - preset: domestic
   - preset: final
 ```

@@ -272,6 +272,7 @@ module.exports = {
   REGEX_AD_TYPO,
   REGEX_AD_PROMO,
   REGEX_AD_PRICE,
+  REGEX_FORBID_DL_STR,
   REGEX_CLEANUP,
   // 入口与落地
   ENTRY_CITIES,

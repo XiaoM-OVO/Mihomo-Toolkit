@@ -259,7 +259,11 @@ describe('【Strategy】多维特征事实与策略分流解耦 (feature-policy-
       '低倍率组内该节点数量必须为 1，严禁因 featurePools + 低倍率桶两条路径重复入组'
     );
     assert.ok(downloadGroup, '应存在下载策略组');
-    assert.ok(downloadGroup.proxies.includes(nodeName), '下载策略按声明展开低倍率成员');
+    assert.ok(downloadGroup.proxies.includes('DIRECT'), '下载策略首位为 DIRECT');
+    // 下载策略不再直接包含物理节点，而是引用轮询组
+    const rrGroup = groups.find(g => g.name.includes('负载均衡-轮询'));
+    assert.ok(rrGroup, '低倍率池非空时应存在轮询组');
+    assert.ok(rrGroup.proxies.includes(nodeName), '轮询组应包含低倍率节点');
 
     // 3. 实验节点组唯一性
     assert.ok(expGroup, '应存在实验节点组');
