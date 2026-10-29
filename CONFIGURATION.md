@@ -430,7 +430,9 @@ routing:
   - 针对国内 CDN 加速的订阅链接，直连毫秒级迅速完成；
   - 一旦直连发生 DNS 污染、超时（`fetchTimeout`）或连接重置，立即无缝无损回退到代理端口重试；
   - 辅以 `fetchRetry`（失败重试次数，默认 2 次）与 `fetchStaleTtl`（断网时复用上次成功缓存的小时数，默认 24h），实现极致的高可用。
-  - **单订阅失败退避**：多订阅场景下，失败订阅会独立进入 30s → 60s → 2m → 4m → 8m（上限 10m）指数退避；退避期内优先复用其旧缓存、无旧缓存则快速失败，不会拖慢其他订阅。显式 `?refresh=1` 会绕过退避以主动探测恢复，后台预热/定时刷新仍遵守退避。
+  - **重试边界**：`fetchRetry` 仅对瞬时失败（超时、连接重置、408/429/5xx）生效；确定性失败（DNS `NXDOMAIN`/`ENOTFOUND`、SSRF 策略拒绝、其余 4xx）不消耗重试次数。DNS 解析失败在 `direct` 模式下立即失败，在 `auto` 模式下不再重试直连、直接转入代理回退。
+  - **auto 的 fallback 边界**：SSRF 预检的**策略拒绝**（私网/回环/元数据/非法协议）属于安全策略拒绝，**不触发**代理 fallback（代理模式下本机无法约束实际出口，需由代理侧 ACL 兜底）；只有「本机解析无法证明目标安全」的 DNS 失败才会触发代理回退。
+  - **单订阅失败退避**：多订阅场景下，失败订阅会独立进入 30s → 60s → 2m → 4m → 8m（上限 10m）指数退避；退避期内优先复用其旧缓存、无旧缓存则快速失败，不会拖慢其他订阅。后台预热、定时刷新与 SWR 后台 revalidate 均遵守退避；仅用户显式 `?refresh=1` 会绕过退避以主动探测恢复。
 
 ---
 
@@ -739,7 +741,7 @@ routing:
 | `subscriptions` | `object[]` | `[]` | `any` | `override` | **订阅清单**：支持 URL、单节点 URI 或结构化对象，详见下方示例。 |
 | `fetchProxyPort` | `number` | `undefined` | `local` | `override` | 本机拉取代理端口（如 `7890`）。留空表示直连拉取。 |
 | `fetchProxyStrategy`| `string` | `'auto'` | `local` | `override` | 拉取策略：`direct` (直连) \| `proxy` (代理) \| `auto` (失败自动走代理重试)。 |
-| `fetchRetry` | `number` | `2` | `any` | `override` | 单次拉取失败自动重试次数（超时/网络抖动/5xx 重试，4xx 快速失败）。 |
+| `fetchRetry` | `number` | `2` | `any` | `override` | 单次拉取失败自动重试次数（超时/网络抖动/5xx 重试；DNS `NXDOMAIN`/`ENOTFOUND`、SSRF 策略拒绝与其余 4xx 快速失败不重试）。 |
 | `fetchTimeout` | `number` | `15` | `any` | `override` | 单次订阅请求超时时间（秒）。 |
 | `fetchStaleTtl` | `number` | `24` | `any` | `override` | 订阅拉取发生故障时，容灾复用上一次成功缓存内容的小时数（设为 `0` 关闭）。 |
 | `expireCutoffHours` | `number` | `24` | `any` | `override` | 到期前 N 小时判定订阅已停用并主动截断（默认 `24`，即到期时刻前 24 小时停用，避免到期当天继续下发已死节点；`0` 关闭提前截断）。停用后看板显示 `🛑 到期日 (已停用)`，真正过期后显示 `(已失效)`。 |

@@ -5,7 +5,7 @@
  * 职责：
  * 1. 提供带有 SSRF 防护、超时与自动重定向保护的安全 HTTP 拉取 (safeFetchText)
  * 2. 支持 本地代理调度、三态策略 (direct/proxy/auto) 与按订阅粒度覆盖
- * 3. 拉取重试策略：仅重试网络抖动/超时/5xx，快速失败 4xx 确定性错误
+ * 3. 拉取重试策略：仅重试网络抖动/超时/5xx，快速失败 4xx、SSRF 策略拒绝与 DNS 域名不存在
  * 4. Stale 兜底容灾缓存：网络故障时复用上次有效内容，保障下游节点不掉线
  *
  * SSRF 语义：每跳重定向与每次重试/回退都重新校验。
@@ -342,6 +342,8 @@ async function safeFetchText(url, options = {}) {
     if (blocked) {
       const e = new Error(blocked.message);
       e.ssrfBlocked = blocked.ssrfBlocked;
+      // 保留确定性 DNS 标记：上层据此跳过同模式重试（仍允许 auto 回退代理）
+      if (blocked.dnsDeterministic === true) e.dnsDeterministic = true;
       if (blocked.ssrfBlocked === 'policy') e.retryable = false;
       throw e;
     }
@@ -470,10 +472,12 @@ async function fetchNodes(url, options = {}) {
         return await doFetch(p);
       } catch (err) {
         lastErr = err;
-        if (err && err.retryable === false) throw err;
+        // 确定性失败不消耗重试次数：4xx / SSRF 策略拒绝 -> retryable=false；
+        // DNS 域名不存在 -> dnsDeterministic（仍保留 auto 代理回退能力）。
+        if (err && (err.retryable === false || err.dnsDeterministic === true)) throw err;
         if (i < attempts - 1) {
           const via = (p && proxyUrl) ? ` (经代理 ${proxyUrl.replace('http://', '')})` : '';
-          if (logger) logger.warn(`🔄 订阅拉取失败，第 ${i + 1}/${attempts - 1} 次重试${via}: ${err.message}`);
+          if (logger) logger.debug(`🔄 订阅拉取失败，第 ${i + 1}/${attempts - 1} 次重试${via}: ${err.message}`);
           await new Promise((r) => { setTimeout(r, 500 * (i + 1)); });
         }
       }

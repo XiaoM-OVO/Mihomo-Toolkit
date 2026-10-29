@@ -123,6 +123,41 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
     }
   });
 
+  test('DNS 确定性失败（ENOTFOUND）直连不重试：不发起 HTTP 请求', async () => {
+    const dnsPromises = require('node:dns').promises;
+    const origin = { r4: dnsPromises.resolve4, r6: dnsPromises.resolve6, lookup: dnsPromises.lookup };
+    let resolveCalls = 0;
+    let fetchCount = 0;
+    try {
+      const notFound = () => {
+        resolveCalls++;
+        throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+      };
+      dnsPromises.resolve4 = async () => notFound();
+      dnsPromises.resolve6 = async () => notFound();
+      dnsPromises.lookup = async () => { throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }); };
+      globalThis.fetch = async () => { fetchCount++; return new Response(SUB_CONTENT, { status: 200 }); };
+
+      const cfg = {
+        subscriptions: [
+          { uri: 'vless://11111111-2222-3333-4444-555555555555@us.domain.com:443?security=tls#🇺🇸 美国 01', tag: 'OK' },
+          { url: 'http://nxdomain.example/sub-dns-fail', tag: 'Fail', retry: 2, proxy: false }
+        ],
+        minorNodeThreshold: 1
+      };
+      await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
+      assert.equal(fetchCount, 0, 'SSRF 预检拒绝后不得发起 HTTP 请求');
+      // 每次 validateUrlSsrf 会触发 A/AAAA 两路解析（各调用一次 resolve4/resolve6），共 4 次；
+      // 若按 retry=2 重试则会放大到 12 次
+      assert.ok(resolveCalls <= 4, `确定性 DNS 失败不应消耗重试次数 (实际解析调用 ${resolveCalls} 次)`);
+    } finally {
+      dnsPromises.resolve4 = origin.r4;
+      dnsPromises.resolve6 = origin.r6;
+      dnsPromises.lookup = origin.lookup;
+      restoreFetch();
+    }
+  });
+
   test('全局 fetchRetry / fetchTimeout 配置生效', async () => {
     let fetchCount = 0;
     globalThis.fetch = async () => {

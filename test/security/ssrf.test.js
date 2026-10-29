@@ -187,6 +187,23 @@ describe('【Security】SSRF fail-closed 与分模式严格度 (ssrf-strict)', (
     );
   });
 
+  it('确定性 DNS 失败标记：NXDOMAIN/无记录 -> dnsDeterministic，瞬时失败不标记', async () => {
+    await assert.rejects(
+      async () => { await validateUrlSsrf('http://nxdomain-det.example/sub', { resolve: failingResolver }); },
+      (err) => err.dnsDeterministic === true && err.retryable === undefined
+    );
+    await assert.rejects(
+      async () => { await validateUrlSsrf('http://no-record-det.example/sub', { resolve: staticResolver([], []) }); },
+      (err) => err.dnsDeterministic === true
+    );
+    // 超时类瞬时错误不得被标记为确定性，仍需保留重试机会
+    const timeoutResolver = async () => { throw new Error('DNS timeout'); };
+    await assert.rejects(
+      async () => { await validateUrlSsrf('http://dns-timeout-det.example/sub', { resolve: timeoutResolver }); },
+      (err) => err.dnsDeterministic === undefined && err.retryable === undefined
+    );
+  });
+
   it('strict - c-ares 整体失败时回退 OS 解析器 (getaddrinfo)，可解析则放行', async () => {
     const origin = { r4: dnsPromises.resolve4, r6: dnsPromises.resolve6, lookup: dnsPromises.lookup };
     try {

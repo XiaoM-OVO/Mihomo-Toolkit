@@ -820,7 +820,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       } catch (e) {
         const subId = isDirect ? (sub.name || sub.tag || 'direct-node') : redactUrl(sub.url, showFullUrl);
         const expiryTerminal = EXPIRY_TERMINAL_KINDS.includes(terminalKind);
-        logger.error(expiryTerminal
+        // 逐源明细仅在 debug 输出；info 级由下方「订阅源拉取与解析完成」汇总树保留每源一行
+        logger.debug(expiryTerminal
           ? `🛑 [${subId}] ${terminalReason}`
           : `❌ [${subId}] 订阅拉取异常: ${terminalReason || e.message}`);
 
@@ -850,6 +851,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         else if (/no nodes/i.test(shortMsg)) shortMsg = '未解析到有效节点';
         else if (/expired/i.test(shortMsg)) shortMsg = '订阅已失效';
         else if (/quota exhausted/i.test(shortMsg)) shortMsg = '流量已耗尽';
+        else if (/SSRF 预检失败/i.test(shortMsg)) shortMsg = /解析失败|DNS/i.test(shortMsg) ? 'DNS 解析失败' : 'SSRF 策略拦截';
+        else if (/failure backoff/i.test(shortMsg)) shortMsg = '拉取退避中';
 
         if (e?.subInfo) {
           recordSubInfo(e.subInfo, sub.tag);
@@ -861,6 +864,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           nodeCount: 0
         });
 
+        const backoffState = sub.url && /^https?:\/\//i.test(sub.url) ? getSubFetchBackoff(sub.url) : null;
+        const retryInSec = backoffState ? Math.max(1, Math.ceil((backoffState.nextRetryAt - Date.now()) / 1000)) : 0;
         subSummaries.push({
           type: subType,
           nameHint: '',
@@ -868,7 +873,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           total: 0,
           failed: true,
           terminalKind,
-          failReason: shortMsg
+          failReason: shortMsg,
+          retryInSec
         });
       }
     }
@@ -893,7 +899,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           const expiryLabel = { expired: '已失效', 'stale-expired': '已失效', cutoff: '已停用', 'stale-cutoff': '已停用' }[s.terminalKind];
           lines.push(expiryLabel
             ? `${branch} 🛑 [${s.tag}]: ${expiryLabel}`
-            : `${branch} ❌ [${s.tag}]: 拉取失败 (${s.failReason})`);
+            : `${branch} ❌ [${s.tag}]: 拉取失败 (${s.failReason})${s.retryInSec > 0 ? `，退避 ${s.retryInSec}s` : ''}`);
         } else {
           const icon = s.type === 'uri' ? '📌' : '🌐';
           const details = [];

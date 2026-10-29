@@ -73,10 +73,12 @@ function withTimeout(promise, ms) {
  * 此处回退到与实际建连一致的解析路径；结果仍交由调用方逐地址做私网/回环拦截。
  * 解析失败返回空结果（fail-closed 判定留给调用方）。
  * @param {string} host
- * @returns {Promise<{ v4: string[], v6: string[] }>}
+ * @returns {Promise<{ v4: string[], v6: string[], error: Error|null }>}
  */
 async function lookupViaOsResolver(host) {
-  if (!dns || typeof dns.lookup !== 'function') return { v4: [], v6: [] };
+  if (!dns || typeof dns.lookup !== 'function') {
+    return { v4: [], v6: [], error: new Error('DNS module unavailable') };
+  }
   try {
     const all = await dns.lookup(host, { all: true, verbatim: true });
     const v4 = [];
@@ -85,10 +87,18 @@ async function lookupViaOsResolver(host) {
       if (entry.family === 4) v4.push(entry.address);
       else if (entry.family === 6) v6.push(entry.address);
     }
-    return { v4, v6 };
-  } catch {
-    return { v4: [], v6: [] };
+    return { v4, v6, error: null };
+  } catch (error) {
+    return { v4: [], v6: [], error };
   }
+}
+
+/**
+ * 判定 DNS 失败是否属于确定性（域名确实不存在），而非瞬时（超时/服务器不可达）。
+ * 仅确定性失败可跳过重试；瞬时失败仍需按 fetchRetry 重试。
+ */
+function isDnsNotFound(err) {
+  return /ENOTFOUND|ENODATA|NXDOMAIN|NOTFOUND/i.test(String((err && (err.code || err.message)) || ''));
 }
 
 /**
@@ -120,7 +130,10 @@ function defaultResolver(host, family) {
       v6 = viaOs.v6;
       // 两条路径均无记录 → 无法证明目标安全，向上传播
       if (v4.length === 0 && v6.length === 0) {
-        throw new Error(`DNS resolution failed: ${host}`);
+        const err = new Error(`DNS resolution failed: ${host}`);
+        // OS 解析器是实际建连路径：明确返回「域名不存在」时属确定性失败，供上层跳过重试
+        if (isDnsNotFound(viaOs.error)) err.code = 'ENOTFOUND';
+        throw err;
       }
     }
 
@@ -150,7 +163,12 @@ async function resolveCandidates(host, options = {}) {
   const [r4, r6] = await Promise.allSettled([resolveFn(host, 4), resolveFn(host, 6)]);
   const v4 = r4.status === 'fulfilled' && Array.isArray(r4.value) ? r4.value : [];
   const v6 = r6.status === 'fulfilled' && Array.isArray(r6.value) ? r6.value : [];
-  return { ok: v4.length > 0 || v6.length > 0, v4, v6 };
+  const ok = v4.length > 0 || v6.length > 0;
+  // 全部候选为空时才讨论确定性：仅当所有拒绝原因都是「域名不存在」才算确定性失败；
+  // 出现超时/服务器不可达（瞬时错误）时仍保留重试机会。
+  const reasons = [r4, r6].filter(r => r.status === 'rejected').map(r => r.reason);
+  const deterministic = !ok && reasons.every(isDnsNotFound);
+  return { ok, v4, v6, deterministic };
 }
 
 /** 构造确定性策略拦截错误（协议 / 回环 / 私网 / 元数据字面量） */
@@ -163,11 +181,12 @@ function policyBlocked(message) {
 }
 
 /** 构造「无法证明目标安全」错误（DNS 失败 / 超时 / 无记录） */
-function unverifiedBlocked(message) {
+function unverifiedBlocked(message, deterministic = false) {
   const err = new Error(message);
   err.ssrfBlocked = 'unverified';
-  // 刻意不设 retryable=false：允许 auto 模式在直连解析失败后回退代理
-  // （存在「仅代理侧可解析」的合法场景，见 fetcher.fetchNodes）。
+  // 确定性失败（域名确实不存在）标记：上层跳过同模式重试，但仍不设 retryable=false，
+  // 以便 auto 模式在直连解析失败后回退代理（存在「仅代理侧可解析」的合法场景）。
+  if (deterministic) err.dnsDeterministic = true;
   return err;
 }
 
@@ -223,11 +242,12 @@ async function validateUrlSsrf(urlStr, options = {}) {
   }
 
   // 3. 域名：解析全部候选地址后逐一检查
-  const { ok, v4, v6 } = await resolveCandidates(host, options);
+  const { ok, v4, v6, deterministic } = await resolveCandidates(host, options);
   if (!ok) {
     if (strict) {
       throw unverifiedBlocked(
-        `SSRF 预检失败: ${host} 域名解析失败（已拒绝连接）`
+        `SSRF 预检失败: ${host} 域名解析失败（已拒绝连接）`,
+        deterministic
       );
     }
     // 代理模式：本地解析结果不构成保证，交由代理侧策略兜底（残余风险见文件头注释）
