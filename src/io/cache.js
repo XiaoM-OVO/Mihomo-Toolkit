@@ -154,6 +154,11 @@ class ProfileCache {
     const degraded = meta.degraded === true;
     // 降级条目不允许长时间保持 Fresh，到期后转入 Stale 并触发后台 Revalidate
     const effectiveFreshTtlMs = degraded ? Math.min(freshTtlMs, DEGRADED_FRESH_TTL_MS) : freshTtlMs;
+    // 快照寿命不得超过最弱输入的 LKG 到期时刻，避免「快照还有剩余时间、输入已失效」的空窗
+    const validUntil = Number.isFinite(meta.validUntil) && meta.validUntil > 0 ? meta.validUntil : 0;
+    const effectiveDeadline = validUntil > 0
+      ? Math.min(entry.timestamp + staleMaxAgeMs, validUntil)
+      : entry.timestamp + staleMaxAgeMs;
     const metaView = {
       degraded,
       failedTags: Array.isArray(meta.failedTags) ? meta.failedTags : [],
@@ -161,8 +166,8 @@ class ProfileCache {
       usableSubCount: Number.isFinite(meta.usableSubCount) ? meta.usableSubCount : 0
     };
 
-    // 1. 超过最大总年龄：进入淘汰/不可用区间 (Miss)
-    if (totalAgeMs > staleMaxAgeMs) {
+    // 1. 超过最大总年龄，或最弱输入已到期：进入淘汰/不可用区间 (Miss)
+    if (now > effectiveDeadline) {
       this._misses++;
       return {
         status: 'miss',
@@ -195,8 +200,8 @@ class ProfileCache {
       };
     }
 
-    // 3. 超过新鲜期但在最大总年龄内：Stale
-    const remainingSec = Math.max(0, Math.round((staleMaxAgeMs - totalAgeMs) / 1000));
+    // 3. 超过新鲜期但未到快照总失效时刻：Stale
+    const remainingSec = Math.max(0, Math.round((effectiveDeadline - now) / 1000));
     return {
       status: 'stale',
       result: entry.result,
@@ -217,6 +222,7 @@ class ProfileCache {
    * @param {string[]} [meta.failedTags=[]] 失败/终态失效订阅标识（仅用于监控，不含 URL）
    * @param {string[]} [meta.staleTags=[]] 使用旧缓存兜底的订阅标识
    * @param {number} [meta.usableSubCount=0] 产出可用内容的订阅数
+   * @param {number} [meta.validUntil=0] 快照的绝对失效时刻 (ms)；由最弱输入（各订阅 LKG 到期时间的最小值）推导，0 表示不额外限制
    * @returns {boolean} 是否实际写入成功
    */
   set(key, result, meta = {}) {
@@ -249,7 +255,8 @@ class ProfileCache {
         degraded: meta.degraded === true,
         failedTags: Array.isArray(meta.failedTags) ? meta.failedTags.slice(0, 20) : [],
         staleTags: Array.isArray(meta.staleTags) ? meta.staleTags.slice(0, 20) : [],
-        usableSubCount: Number.isFinite(meta.usableSubCount) ? meta.usableSubCount : 0
+        usableSubCount: Number.isFinite(meta.usableSubCount) ? meta.usableSubCount : 0,
+        validUntil: Number.isFinite(meta.validUntil) && meta.validUntil > 0 ? meta.validUntil : 0
       }
     });
 

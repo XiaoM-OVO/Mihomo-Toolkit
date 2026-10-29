@@ -271,12 +271,21 @@ async function executeBuildPipeline({
   const degraded = hasFailedSub === true;
   // 只有产出可用内容（ok + stale）时才允许写入 Profile 缓存；全部失败时保留旧缓存
   const canPublish = enableCache && !!cacheKey && usableSubCount > 0;
+  // 单一时钟：快照寿命不得超过「旧缓存兜底输入」的 LKG 到期时刻。
+  // 只有 stale 输入存在这个约束：其内容来自上一次成功拉取，最多还能用到 lastSuccessAt + fetchStaleTtl。
+  // 这里取所有 stale 输入的最小值，避免出现「快照还剩 19h、输入早已失效」的空窗。
+  const inputDeadlines = subStatuses
+    .filter(s => s && s.status === 'stale')
+    .map(s => s.validUntil)
+    .filter(v => Number.isFinite(v) && v > 0);
+  const validUntil = inputDeadlines.length > 0 ? Math.min(...inputDeadlines) : 0;
   const cacheMeta = {
     generation,
     degraded,
     failedTags,
     staleTags,
-    usableSubCount
+    usableSubCount,
+    validUntil
   };
 
   // 4.1 资源配额二次校验：节点总量与单订阅节点量

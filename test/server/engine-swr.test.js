@@ -187,7 +187,41 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
       assert.ok(profileCache.has(key));
     });
 
-    it('status:stale - 部分订阅失败时发布降级缓存，不再阻塞整体写入或触发整体退避 [SWR-5]', async () => {
+    it('status:miss - 部分订阅失败时发布降级缓存，不阻塞整体写入或触发整体退避 [SWR-5]', async () => {
+      globalThis.fetch = async (url) => {
+        if (url.includes('sub2')) {
+          return new Response('Not Found', { status: 404 });
+        }
+        return new Response(SUB_CONTENT_V1, { status: 200 });
+      };
+
+      const config = {
+        logLevel: 'silent',
+        cacheTtl: 1,
+        fetchStaleTtl: 0,
+        enableNodeRename: false,
+        minorNodeThreshold: 1,
+        subscriptions: [
+          { url: 'http://93.184.216.34/sub1', tag: 'T1' },
+          { url: 'http://93.184.216.34/sub2', tag: 'T2', retry: 0 }
+        ]
+      };
+
+      const r = await buildProfile(config);
+      assert.match(r.yamlStr, /香港 01/);
+
+      // 冷启动无旧快照可保留：健康订阅仍可用，降级结果照常发布
+      const key = [...profileCache.cacheMap.keys()][0];
+      const meta = profileCache.cacheMap.get(key).meta;
+      assert.equal(meta.degraded, true);
+      assert.equal(meta.usableSubCount, 1);
+      assert.deepEqual(meta.failedTags, ['T2']);
+      // 单订阅失败走独立退避，不触发 Profile 级退避
+      assert.equal(_internal.isInRevalidateBackoff(key), false);
+      assert.equal(subFailureBackoff.get('http://93.184.216.34/sub2')?.failures, 1);
+    });
+
+    it('status:stale - 部分订阅失败时照常发布降级缓存，由输入 LKG 到期兜底 [SWR-5b]', async () => {
       let isSecondRun = false;
       globalThis.fetch = async (url) => {
         if (isSecondRun && url.includes('sub2')) {
@@ -222,13 +256,12 @@ describe('【Server】Pipeline 引擎 SWR 与并发任务控制 (engine-swr)', (
         try { await _internal.forceFlights.get(key); } catch (_) {}
       }
 
-      // 健康订阅仍可用：降级结果照常发布，旧 Profile 快照被降级快照替换
-      assert.ok(profileCache.has(key));
+      // 单一时钟策略：T2 已无 LKG 可复用，重建结果正常发布（节点减少即真实可用量）
       const meta = profileCache.cacheMap.get(key).meta;
       assert.equal(meta.degraded, true);
       assert.equal(meta.usableSubCount, 1);
       assert.deepEqual(meta.failedTags, ['T2']);
-      // 单订阅失败走独立退避，不再让整个 Profile 进入退避
+      // 单订阅失败走独立退避，不触发 Profile 级退避
       assert.equal(_internal.isInRevalidateBackoff(key), false);
       assert.equal(subFailureBackoff.get('http://93.184.216.34/sub2')?.failures, 1);
     });

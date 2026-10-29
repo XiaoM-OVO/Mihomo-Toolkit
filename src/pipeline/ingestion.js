@@ -598,7 +598,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
             const backoff = resolveBackoffStale(subKey, initialStale, staleMaxAgeMs, expireCutoffHours, displayTimeZone);
             if (backoff && backoff.usable) {
               logger.warn(`⏳ 订阅暂缓拉取（失败退避中），复用上次成功数据: ${redactUrl(sub.url, showFullUrl)}`);
-              rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true };
+              rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true, lastSuccessAt: backoff.stale.timestamp };
             } else {
               if (backoff && (backoff.expired || backoff.state.terminal)) {
                 isTerminal = true;
@@ -646,7 +646,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
               if (decision.allowFallback) {
                 logger.warn(`⚠️ ${sub.tag ? `[${sub.tag}] ` : ''}拉取异常，已启用缓存兜底: ${e.message}`);
-                rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true };
+                rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
               } else {
                 if (decision.fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
                   logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(sub.url, showFullUrl)}]: ${decision.fallbackRejectReason}`);
@@ -798,10 +798,15 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
         const nodeCount = subProxies.length;
         perSubCounts[isDirect ? `direct:${sub.tag || effectiveTag}` : String(sub.url)] = nodeCount;
+        // 单一时钟：输入的有效期 = 最后一次成功拉取时刻 + fetchStaleTtl
+        // 对 sticky 的 stale 数据，lastSuccessAt 保持为真实成功时刻，不随复用而刷新
+        const lastSuccessAt = Number.isFinite(rawResult.lastSuccessAt) ? rawResult.lastSuccessAt : Date.now();
         subStatuses.push({
           tag: sub.tag || effectiveTag,
           status: rawResult.stale ? 'stale' : 'ok',
-          nodeCount
+          nodeCount,
+          lastSuccessAt,
+          validUntil: lastSuccessAt + staleMaxAgeMs
         });
         subSummaries.push({
           type: subType,
@@ -957,7 +962,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         const backoff = resolveBackoffStale(subKey, initialStale, staleMaxAgeMs, expireCutoffHours, displayTimeZone);
         if (backoff && backoff.usable) {
           logger.warn(`⏳ 订阅暂缓拉取（失败退避中），复用上次成功数据: ${redactUrl(url, showFullUrl)}`);
-          rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true };
+          rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true, lastSuccessAt: backoff.stale.timestamp };
           subStatus = 'stale';
         } else {
           if (backoff && (backoff.expired || backoff.state.terminal)) {
@@ -1000,7 +1005,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
           if (decision.allowFallback) {
             logger.warn(`⚠️ 订阅拉取异常，已启用缓存兜底: ${e.message}`);
-            rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true };
+            rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
             subStatus = 'stale';
           } else {
             if (e?.subInfo) {

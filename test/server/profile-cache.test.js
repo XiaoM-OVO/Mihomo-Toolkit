@@ -65,6 +65,29 @@ describe('【Server】Profile 内存缓存与 SWR 状态机 (profile-cache)', ()
       assert.equal(r3.result, null);
     });
 
+    it('getWithStatus - 快照有效期不晚于最弱输入的 validUntil', () => {
+      const cache = new ProfileCache({ maxEntries: 10 });
+      cache.set('profile-weak-input', { data: 'ok' }, { validUntil: Date.now() + 1000 });
+
+      const durations = {
+        freshTtlMs: 0,          // 立即入 Stale，便于观察剩余时长
+        staleMaxAgeMs: 600000   // 快照自身允许 10 分钟
+      };
+
+      // 1. 剩余时长应按输入到期时间裁剪，而不是快照自身的 10 分钟
+      const r1 = cache.getWithStatus('profile-weak-input', durations);
+      assert.equal(r1.status, 'stale');
+      assert.ok(r1.remainingSec <= 1, `remainingSec 应被裁剪为输入剩余时长，实际 ${r1.remainingSec}`);
+
+      // 2. 输入到期后即使快照自身仍在寿命内，也必须转为 Miss（到期即失效，不降级硬撑）
+      const entry = cache.cacheMap.get('profile-weak-input');
+      entry.timestamp -= 2000;
+      entry.meta.validUntil = entry.timestamp + 1000;
+      const r2 = cache.getWithStatus('profile-weak-input', durations);
+      assert.equal(r2.status, 'miss');
+      assert.equal(cache.has('profile-weak-input'), true, 'Miss 仅表示不可用，不得物理删除');
+    });
+
     it('getWithStatus - freshTtlMs 为 0 时写入立即进入 Stale', () => {
       const cache = new ProfileCache({ maxEntries: 10 });
       cache.set('profile-zero', { data: 123 });

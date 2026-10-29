@@ -786,7 +786,7 @@ subscriptions:
 | `output` | `string` | `'./dist/config.yaml'` | `local` | `override` | CLI 运行模式下最终文件的输出落地路径。 |
 | `enableCache` | `boolean` | `true` | `any` | `override` | 常驻服务模式下，是否启用内存构建缓存（根据完整配置结构指纹隔离）。 |
 | `cacheTtl` | `number` | `300` | `any` | `override` | **新鲜缓存有效时间**（秒）：此窗口内请求秒级命中 Fresh 缓存。存在失败订阅的降级缓存会强制收紧为最多 60s，到期后转 Stale 并后台重试。 |
-| `cacheStaleMaxAge` | `number` | `86400` | `any` | `override` | **SWR 陈旧缓存最大容忍秒数**（默认 24h）：在此窗口内返回已有快照并异步重构；仅当全部订阅终态失效时才淘汰快照。 |
+| `cacheStaleMaxAge` | `number` | `86400` | `any` | `override` | **SWR 陈旧缓存最大容忍秒数**（默认 24h）：在此窗口内返回已有快照并异步重构；仅当全部订阅终态失效时才淘汰快照。快照实际失效时刻还会与各 stale 输入 `lastSuccessAt + fetchStaleTtl` 取最小值，输入到期即失效，不会出现「快照剩余时间大于输入剩余时间」。 |
 | `redactLevel` | `string` | `'partial'`| `local` | `override` | **日志脱敏档位**：`off` (本地开发完整展示) \| `partial` (生产推荐屏蔽凭据) \| `full` (隐藏全部IP与域名)。 |
 | `enableChineseConvert`| `boolean`| `false` | `any` | `override` | 是否启用节点与策略组名称的简繁中文全链路转换（需安装 `opencc-js`）。 |
 | `chineseConvertMode` | `string` | `'s2t'` | `any` | `override` | 转换方向：`s2t` (简体转繁体) \| `t2s` (繁体转简体)。 |
