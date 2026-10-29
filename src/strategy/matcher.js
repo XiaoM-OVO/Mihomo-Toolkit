@@ -9,7 +9,7 @@
  */
 
 const { isRegionInContinent } = require('../core/shared/regions');
-const { isKnownMacro } = require('./macros');
+const { isKnownMacro, formatMacroHints } = require('./macros');
 
 /** 声明式策略组允许的 Mihomo 原生组类型（单一真相源，供拓扑引擎与校验器共用） */
 const SUPPORTED_GROUP_TYPES = new Set(['select', 'url-test', 'fallback', 'load-balance']);
@@ -627,7 +627,7 @@ function validateGroups(groups) {
         if (token.startsWith('@') && !isKnownMacro(token)) {
           throw new Error(
             `[groups] 策略组 ${groupName}.proxies[${pIdx}]: 未知宏「${token}」，` +
-            '可用宏见 CONFIGURATION.md 动态拓扑宏变量清单'
+            `可用宏: ${formatMacroHints()}（完整别名与含义见 CONFIGURATION.md）`
           );
         }
       });

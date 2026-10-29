@@ -64,6 +64,20 @@ for (const def of MACRO_DEFS) {
 /** 全部合法宏别名（小写）。校验器据此判定「未知宏」并 fail-closed。 */
 const MACRO_ALIASES = new Set(MACRO_RESOLVERS.keys());
 
+/** 每个宏的规范写法（各定义组的首个别名），供错误提示内联「可用宏」清单 */
+const MACRO_PRIMARY_ALIASES = Object.freeze(MACRO_DEFS.map(def => def.aliases[0]));
+
+/**
+ * 可用宏清单文本（错误提示专用）
+ *
+ * 只列规范写法：别名与中文写法同样可用，全部列出会让报错淹没成一堵墙；
+ * 完整别名与求值口径仍以 CONFIGURATION.md 的宏变量清单为准。
+ * @returns {string}
+ */
+function formatMacroHints() {
+  return MACRO_PRIMARY_ALIASES.join(' / ');
+}
+
 /**
  * 判定某个 token 是否为已登记宏。
  * @param {string} token
@@ -88,6 +102,8 @@ function resolveMacro(token, ctx = {}) {
 
 module.exports = {
   MACRO_ALIASES,
+  MACRO_PRIMARY_ALIASES,
   isKnownMacro,
-  resolveMacro
+  resolveMacro,
+  formatMacroHints
 };

@@ -25,7 +25,7 @@ const {
   getHashLbGroupNames,
   CONTINENT_DEFS
 } = require('../core/shared/regions');
-const { POOL_NAMES } = require('../data/default-pools');
+const { POOL_NAMES, GATED_POOL_NAMES } = require('../data/default-pools');
 const {
   skeletonGroupNames,
   poolDependentGroupNames
@@ -207,8 +207,15 @@ function createTargetRegistry({
       }
       const def = poolDefs.find(item => item.name === poolName);
       if (!def) {
-        const builtin = poolDefs.filter(item => item.builtin).map(item => item.name);
-        throw new Error(`routing: 节点池「${poolName}」不存在（当前可用内置池: ${builtin.join(' / ') || '无'}；自定义池见 pools）`);
+        const available = poolDefs.filter(item => item.builtin).map(item => item.name).join(' / ') || '无';
+        // 已知但被门控的池：用户不是拼错了名字，而是没开开关，报出开关而不是让他翻文档
+        if (GATED_POOL_NAMES.includes(poolName)) {
+          throw new Error(
+            `routing: 节点池「${poolName}」未启用：内置隔离池需开启 \`enableIsolation: true\` 才生效` +
+            `（当前可用内置池: ${available}）`
+          );
+        }
+        throw new Error(`routing: 节点池「${poolName}」不存在（当前可用内置池: ${available}；自定义池见 pools）`);
       }
       return def.name;
     }

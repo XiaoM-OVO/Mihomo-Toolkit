@@ -39,13 +39,17 @@ describe('【Strategy】目标注册表 (TargetRegistry)', () => {
     assert.equal(registry.resolve('负载均衡-哈希 (香港)'), '负载均衡-哈希 (香港)');
   });
 
-  it('`@pool:` 只接受当前生效的池；未知池给出可用内置池清单', () => {
+  it('`@pool:` 只接受当前生效的池；未启用的内置池与未知池分别给出提示', () => {
     const on = build({ config: { enableIsolation: true } });
     assert.equal(on.resolve('@pool:家宽优选'), '家宽优选');
     assert.throws(() => on.resolve('@pool:不存在'), /节点池「不存在」不存在/);
 
     const off = build({ config: {} });
-    assert.throws(() => off.resolve('@pool:家宽优选'), /节点池「家宽优选」不存在/, '关闭隔离后该池不生效');
+    assert.throws(
+      () => off.resolve('@pool:家宽优选'),
+      /节点池「家宽优选」未启用.*enableIsolation: true/,
+      '关闭隔离后该池不生效，且提示指向开关而不是报「不存在」'
+    );
     assert.equal(off.resolve('家宽优选'), '家宽优选', '池名仍可作为目标，缺席由剪枝层按设计跳过');
   });
 

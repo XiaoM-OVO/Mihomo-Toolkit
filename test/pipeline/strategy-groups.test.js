@@ -422,6 +422,12 @@ describe('【Pipeline】策略组与分流拓扑构建 (strategy-groups)', () =>
       /proxies\[0\]: 未知宏/,
       '未知宏必须在配置期 fail-closed（禁止运行期静默跳过）'
     );
+    // 报错内联可用宏清单，用户不必再翻文档才知道能写什么
+    assert.throws(
+      () => validateGroups([{ name: '未知宏组', proxies: ['@bogusMacro'] }]),
+      /可用宏: @matchednodes .*\/ @asia/,
+      '未知宏报错应列出可用宏'
+    );
     // 已登记宏不得误报
     validateGroups([{ name: '合法宏组', proxies: ['@matchedNodes', '@preferredRegions', 'DIRECT'] }]);
   });

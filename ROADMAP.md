@@ -120,9 +120,9 @@ M3.B 的设计不变量、两表 DSL 契约、迁移对照与验收标准（10.1
   - `@pool:` 不再被误报为「未知宏」，`matcher` 已放行、由求值期校验池存在性；
   - `groups[].proxies` 与 `routing[].to` 的未知池已统一为装载期 fail-closed（见[实现路径收敛记录](docs/history/implementation-convergence.md)第 5 条）。
 - **剩余缺口**：
-  - 已知但未启用的内置池在 `routing` 被报成「不存在」，应改为「池未启用（`enableIsolation: false`）」并给出开关提示；
-  - 宏报错目前只指向文档，可内联「可用宏」清单（`MACRO_ALIASES` 现成）；
-  - 「已启用但暂无成员」仍属合法运行时跳过，但应在 `--explain` 里可见，而不是静默。
+  - ✅ **已闭环**：`routing` 的 `@pool:` 命中被门控的内置池时报「未启用」并直接给出开关（`enableIsolation: true`），真拼错才报「不存在」；
+  - ✅ **已闭环**：两处未知宏报错内联规范宏清单（`formatMacroHints()`），完整别名与求值口径仍指向 CONFIGURATION.md；
+  - 「已启用但暂无成员」仍属合法运行时跳过，但应在 `--explain` 里可见，而不是静默（随 `--explain` 一并处理）。
 
 ---
 

@@ -46,7 +46,7 @@ describe('【Pipeline】隔离池由 enableIsolation 门控（家宽 / 高倍率
   it('`@pool:` 指向未启用的内置池时 fail-closed（显式要池就必须存在）', () => {
     assert.throws(
       () => buildDefaultOutput(withRule('@pool:实验节点')),
-      /节点池「实验节点」不存在/
+      /节点池「实验节点」未启用.*enableIsolation: true/
     );
   });
 

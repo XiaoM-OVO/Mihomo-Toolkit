@@ -12,7 +12,7 @@
  */
 
 const { filterNodes, SUPPORTED_GROUP_TYPES } = require('./matcher');
-const { resolveMacro } = require('./macros');
+const { resolveMacro, formatMacroHints } = require('./macros');
 const { stripGroupDecoration } = require('./presentation');
 const { FIELDS_BY_KEY } = require('../data');
 const { GROUP_KEYS, groupName } = require('../data/catalog/identity');
@@ -172,7 +172,9 @@ function resolveGroupProxies({
 
     // 2. 未命中任何已知宏的 `@` 符号：配置错误，fail-closed（禁止退化为字面组名或静默跳过）
     if (token.startsWith('@')) {
-      throw new Error(`[groups] 未知宏「${token}」，可用宏见 CONFIGURATION.md 动态拓扑宏变量清单`);
+      throw new Error(
+        `[groups] 未知宏「${token}」，可用宏: ${formatMacroHints()}（完整别名与含义见 CONFIGURATION.md）`
+      );
     }
 
     // 3. 非宏 token：按「物理节点 / 已知组 / 内置目标」归一化

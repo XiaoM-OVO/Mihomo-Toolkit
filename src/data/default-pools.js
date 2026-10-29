@@ -67,6 +67,16 @@ const BUILTIN_POOL_DEFS = Object.freeze([
   }
 ]);
 
+/**
+ * 受 `enableIsolation` 门控的内置池名
+ *
+ * 未开启隔离时这些池不参与求值，引用它们的 `@pool:<池名>` 报「未启用」而非「不存在」，
+ * 以便把用户直接引向开关而不是让他去翻配置找拼写错误。
+ */
+const GATED_POOL_NAMES = Object.freeze(
+  BUILTIN_POOL_DEFS.filter(def => def.gated === true).map(def => def.name)
+);
+
 /** 隔离归组判定优先级：家宽 > 高倍率 > 低倍率 > 实验（只影响「归组」展示，不参与拓扑决策） */
 const ISOLATION_PRIORITY = Object.freeze(['residential', 'highMulti', 'lowMulti', 'experimental']);
 
@@ -112,6 +122,7 @@ function buildDefaultPools(userConfig = {}) {
 
 module.exports = {
   POOL_NAMES,
+  GATED_POOL_NAMES,
   POOL_SORT_ORDER,
   buildDefaultPools
 };
