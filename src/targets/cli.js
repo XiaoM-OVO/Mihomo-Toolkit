@@ -14,6 +14,7 @@ const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
 const { createLogger } = require('../core/logger');
 const { isTrustedSynthetic } = require('../core/node-trust');
+const { runListCommand } = require('./list');
 const pkg = require('../../package.json');
 
 function run(argv = process.argv) {
@@ -34,7 +35,32 @@ function run(argv = process.argv) {
     .option('--silent', 'Suppress all logging output')
     .option('--log-level <level>', 'Explicit log level: silent | error | warn | info | debug');
 
+  // 只读查询命令：list 反射当前配置下可引用的对象，不触发构建流水线
+  let listRequest = null;
+  program
+    .command('list [domain]')
+    .description('列出当前配置下可引用的对象（域: refs | presets | macros | pools | services）')
+    .option('--json', '以 JSON 输出，便于脚本消费')
+    .action((domain, listOptions) => {
+      // 配置文件路径沿用根命令的 -c：commander 默认由父命令消费该选项，
+      // 子命令再定义一份只会让用户写法与解析结果不一致。
+      listRequest = {
+        domain,
+        config: program.opts().config,
+        json: listOptions.json === true
+      };
+    });
+
+  // 根命令保留「只有选项、不指定子命令」的原有用法：没有根 action 时，
+  // commander 一旦发现存在子命令就会对这类调用直接打印帮助并退出。
+  program.action(() => {});
+
   program.parse(argv);
+
+  if (listRequest) {
+    return runListCommand(listRequest);
+  }
+
   const options = program.opts();
 
   // 模式归一化

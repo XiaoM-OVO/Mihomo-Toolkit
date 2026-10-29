@@ -10,7 +10,7 @@
 - **当前版本**：`v4.0.0-alpha`
 - **真实开发完成度**：**约 80%**
 - **当前待办**：
-  1. **可发现性改进**：`list` 子命令、`--explain` 激活摘要、错误消息内联可用选项。
+  1. **可发现性改进**：`list` 子命令（✅ 已落地）、错误消息内联可用选项（✅ 已落地）、`--explain` 激活摘要（待做）。
   2. **默认值复审**：确认默认分流顺序、组名与展示仍合理，结论写入文档。
 
 ---
@@ -97,15 +97,16 @@ M3.B 的设计不变量、两表 DSL 契约、迁移对照与验收标准（10.1
 
 ---
 
-## 🔎 候选改进：可发现性与可解释性（未排期，来源：外部评审）
+## 🔎 可发现性与可解释性改进（来源：外部评审）
 
-> 三件事都不改变产物语义，只解决「不知道有什么 / 不知道为什么不生效」。按成本从低到高，建议顺序 3 → 1 → 2。
+> 三件事都不改变产物语义，只解决「不知道有什么 / 不知道为什么不生效」。按成本从低到高，顺序 3 → 1 → 2；3 与 1 已闭环，2 待做。
 
-### 1. `list` 子命令（低成本，高收益）
+### 1. `list` 子命令（✅ 已落地）
 
-- `list refs / presets / macros / pools / services`，反射现有结构：`registries.groups`、`PRESET_DEFINITIONS`、`MACRO_ALIASES`、`resolvePoolDefinitions()`。
-- 前置约束：先定输出契约（人类可读 + `--json`），内部字段名不得直接固化成用户 API；`refs` 需标注「聚合组 / 可独立引用」，`services` 需标注「聚合成员不可单独 ref」。
-- 未启用池、隐藏池、恒在池都要能区分展示，避免 `list` 与 `--explain` 口径不一致。
+- 已实现 `list refs / presets / macros / pools / services`（`src/targets/list.js`），数据全部反射现有单一真相源：`registries.groups`、`PRESET_DEFINITIONS`、`MACRO_GROUPS`、`BUILTIN_POOL_DEFS` + `resolvePoolDefinitions()`、分类注册表 / `specialized` / `aggregates` / `ADS_GROUPS`。
+- 输出契约：人类可读树形文本 + `--json` 的 `{ domain, configLoaded, count, items }`；内部字段先映射成用户语义（`aggregate` / `standalone`、`direct` / `aggregate-member`、`always` / `onDemand`）再输出，不直接把内部字段名固化成用户 API。
+- `refs` 标注「聚合组 / 可独立引用」，`services` 标注聚合成员不可单独 ref 并给出应改引的聚合组。
+- 未启用池（`status: inactive` + `gate: enableIsolation`）、隐藏池（`hidden`）、恒在池（`activation: always`）分别展示，与 `@pool:` 报错口径一致。
 
 ### 2. `--explain` 激活摘要（中高成本）
 

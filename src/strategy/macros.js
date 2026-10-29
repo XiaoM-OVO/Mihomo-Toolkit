@@ -68,6 +68,18 @@ const MACRO_ALIASES = new Set(MACRO_RESOLVERS.keys());
 const MACRO_PRIMARY_ALIASES = Object.freeze(MACRO_DEFS.map(def => def.aliases[0]));
 
 /**
+ * 宏分组投影：规范写法 + 全部别名（含规范写法本身）。
+ *
+ * 供 `list macros` 一类只读展示复用同一份定义，避免消费方自行按集合顺序猜分组。
+ */
+const MACRO_GROUPS = Object.freeze(
+  MACRO_DEFS.map(def => Object.freeze({
+    macro: def.aliases[0],
+    aliases: Object.freeze([...def.aliases])
+  }))
+);
+
+/**
  * 可用宏清单文本（错误提示专用）
  *
  * 只列规范写法：别名与中文写法同样可用，全部列出会让报错淹没成一堵墙；
@@ -103,6 +115,7 @@ function resolveMacro(token, ctx = {}) {
 module.exports = {
   MACRO_ALIASES,
   MACRO_PRIMARY_ALIASES,
+  MACRO_GROUPS,
   isKnownMacro,
   resolveMacro,
   formatMacroHints

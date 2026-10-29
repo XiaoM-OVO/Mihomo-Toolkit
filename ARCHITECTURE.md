@@ -103,6 +103,7 @@ src/
 │
 ├── 1. targets/                   # 🔌 Layer 1: 宿主环境终端适配器 (轻量交互层)
 │   ├── cli.js                    # 命令行工具适配器 (mihomo-toolkit)
+│   ├── list.js                   # `list` 子命令：只读反射可引用组 / 预设 / 宏 / 池 / 服务
 │   └── server.js                 # 常驻 HTTP 订阅服务 (/sub, /healthz, Token鉴权)
 │
 ├── 2. pipeline/                  # 🚀 Layer 2: 交付流水线编排调度层 (与交付形态 1:1 映射)

@@ -74,6 +74,10 @@ npm install
 
 ```text
 Usage: mihomo-toolkit [options]
+       mihomo-toolkit list [domain] [--json]
+
+Commands:
+  list [domain]        只读列出当前配置下可引用的对象（域: refs | presets | macros | pools | services）
 
 Options:
   -V, --version        输出版本号
@@ -90,6 +94,10 @@ Options:
   --silent             关闭全部日志输出
   --log-level <level>  显式日志级别: silent | error | warn | info | debug
   -h, --help           显示帮助信息
+
+List options:
+  --json               以 JSON 输出 list 结果，便于脚本消费
+  -c, --config <path>  同主命令；refs / pools / services 按该配置投影
 ```
 
 #### 常用命令范例
@@ -106,7 +114,21 @@ node src/targets/cli.js -u "https://airport.com/sub" -m nodes -o nodes.yaml
 
 # 场景 4：生成分流配置的同时，顺手导出一份健康质检报告
 node src/targets/cli.js -u "https://airport.com/sub" -r report.json
+
+# 场景 5：查询当前配置下可引用的组 / 预设 / 宏 / 池 / 服务
+node src/targets/cli.js list refs
+node src/targets/cli.js list services -c config.yaml
+
+# 场景 6：结构化输出，交给脚本消费
+node src/targets/cli.js list pools --json -c config.yaml
 ```
+
+`list` 的 `--json` 输出契约固定为 `{ domain, configLoaded, count, items }`（`configLoaded` 表示是否通过 `-c` 加载了用户配置；`presets` / `macros` 是静态事实，不随配置变化）。各域字段：
+- `refs`：`ref` / `name` / `type` / `kind`（`aggregate` 聚合组、`standalone` 可独立引用）/ `hidden` / `status`（`active` / `disabled`）
+- `presets`：`preset` / `label` / `kind` / `registry`
+- `macros`：`macro` / `aliases`
+- `pools`：`pool` / `status`（`active` / `inactive`）/ `activation`（`always` 恒在、`onDemand` 按需）/ `hidden` / `isolate` / `builtin` / `gate`（未启用时给出开关名）/ `match`
+- `services`：`service` / `name` / `category` / `hidden` / `refStatus`（`direct` 可独立引用、`aggregate-member` 聚合成员、`none` 仅可作 service 引用）/ `ref` / `memberOf`
 
 ---
 
@@ -319,7 +341,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 | **Layer 7: Data** | `src/data/` | 只读运行基础基线（字段注册表 SSOT、不可变安全基线、清洗规则词库） |
 | **Layer 8: Infra** | `src/infra/` | 基础设施无状态基元（IP/CIDR 校验、FQDN 判定、订阅元信息流量换算纯函数） |
 
-> 📖 **完整文件树与拓扑推演**：关于全仓 92 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
+> 📖 **完整文件树与拓扑推演**：关于全仓 93 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
 
 ---
 

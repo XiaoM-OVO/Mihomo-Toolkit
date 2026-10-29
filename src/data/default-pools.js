@@ -122,6 +122,7 @@ function buildDefaultPools(userConfig = {}) {
 
 module.exports = {
   POOL_NAMES,
+  BUILTIN_POOL_DEFS,
   GATED_POOL_NAMES,
   POOL_SORT_ORDER,
   buildDefaultPools
