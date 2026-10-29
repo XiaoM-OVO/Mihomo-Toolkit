@@ -28,6 +28,9 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
   const userConfig = resolveConfig(safeExtConfig, { logger: pipelineContext.logger });
   if (!userConfig.enablePipeline) return sourceSkeleton;
 
+  // 激活摘要收集器由上游（config pipeline）按需创建；未启用时为 null，产物与行为不变
+  const trace = pipelineContext.explainTrace || null;
+
   // 3.5 配置装载后统一 schema 校验：groups / routing 的结构、配方与目标合法性
   //     在清洗节点与装配之前 fail-closed，避免非法配置走到装配期才暴露。
   const registries = createServiceRegistries(userConfig);
@@ -47,7 +50,8 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
   // 4. 组装路由规则（规则先展开：组是否生成由「被规则引用」决定）
   const logger = pipelineContext.logger || userConfig.logger;
   const { rules, providers, targets } = expandRouting(userConfig, registries, {
-    disabledRefs: userConfig.disabledGroupRefs
+    disabledRefs: userConfig.disabledGroupRefs,
+    trace
   });
 
   // 5. 组装策略拓扑（ruleTargets 决定哪些内置应用组需要生成）
@@ -56,7 +60,8 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     userConfig,
     registries,
     ruleTargets: targets,
-    logger
+    logger,
+    trace
   });
   sourceSkeleton['proxy-groups'] = proxyGroups;
 
@@ -72,7 +77,8 @@ function runStrategyPipeline(sourceSkeleton = {}, userConfigOrProfile = {}, pipe
     ruleProviders: sourceSkeleton['rule-providers'],
     exemptGroups: userConfig.exemptGroups,
     userConfig,
-    logger
+    logger,
+    trace
   });
   sourceSkeleton['proxy-groups'] = pruned.proxyGroups;
   sourceSkeleton['rules'] = pruned.rules;

@@ -15,6 +15,7 @@ const { expandIncludes } = require('../config/include');
 const { createLogger } = require('../core/logger');
 const { isTrustedSynthetic } = require('../core/node-trust');
 const { runListCommand } = require('./list');
+const { buildExplainPayload, renderExplainReport } = require('./explain');
 const pkg = require('../../package.json');
 
 function run(argv = process.argv) {
@@ -33,7 +34,9 @@ function run(argv = process.argv) {
     .option('--debug', 'Enable debug output (verbose fetch logs, intermediate snapshots)')
     .option('-q, --quiet', 'Suppress logging output (same as --silent)')
     .option('--silent', 'Suppress all logging output')
-    .option('--log-level <level>', 'Explicit log level: silent | error | warn | info | debug');
+    .option('--log-level <level>', 'Explicit log level: silent | error | warn | info | debug')
+    .option('--explain', '只读激活摘要：输出组 / 规则 / 池的「激活 / 跳过 / 剪枝 / 为空」及原因（不写入任何磁盘产物）')
+    .option('--json', '与 --explain 配合：以 JSON 输出激活摘要，便于脚本与回归基线消费');
 
   // 只读查询命令：list 反射当前配置下可引用的对象，不触发构建流水线
   let listRequest = null;
@@ -44,10 +47,11 @@ function run(argv = process.argv) {
     .action((domain, listOptions) => {
       // 配置文件路径沿用根命令的 -c：commander 默认由父命令消费该选项，
       // 子命令再定义一份只会让用户写法与解析结果不一致。
+      // `--json` 同理：根命令的同名旗标可能抢先消费，这里两处都认，保证写法一致。
       listRequest = {
         domain,
         config: program.opts().config,
-        json: listOptions.json === true
+        json: listOptions.json === true || program.opts().json === true
       };
     });
 
@@ -66,8 +70,12 @@ function run(argv = process.argv) {
   // 模式归一化
   const mode = normalizeOutputMode(options.mode);
 
-  // 诊断模式：--dry-run 与 --validate 等价，仅校验不落盘
-  const dryRun = Boolean(options.dryRun || options.validate);
+  // 诊断模式：--dry-run 与 --validate 等价，仅校验不落盘；
+  // --explain 同样只读（ROADMAP：默认只读不产出），只是在诊断之上多给一份激活摘要
+  const dryRun = Boolean(options.dryRun || options.validate || options.explain);
+  const explain = options.explain === true;
+  // JSON 模式下 stdout 必须只承载结构化摘要
+  const explainJson = explain && options.json === true;
 
   // 1. 预读取配置文件（探测 logLevel 并修正时序，避免在静默/告警级别下泄露启动标头）
   let userConfig = {};
@@ -110,6 +118,10 @@ function run(argv = process.argv) {
   } else if (userConfig.logLevel) {
     effectiveLevel = String(userConfig.logLevel).toLowerCase();
   }
+  // --explain --json：stdout 必须只承载 JSON，常规日志一律降级（错误仍走 stderr）
+  if (explainJson) {
+    effectiveLevel = 'error';
+  }
 
   const logger = createLogger({
     tag: 'CLI',
@@ -119,6 +131,14 @@ function run(argv = process.argv) {
   const VALID_MODES = ['config', 'nodes', 'report'];
   if (!VALID_MODES.includes(mode)) {
     logger.error(`❌ 非法交付模式「${options.mode}」，可选模式: ${VALID_MODES.join(', ')}`);
+    process.exit(1);
+  }
+  if (options.json === true && !explain) {
+    logger.error('❌ --json 仅与 --explain 配合使用（list 子命令的 --json 请写在 list 之后）');
+    process.exit(1);
+  }
+  if (explain && mode !== 'config') {
+    logger.error('❌ --explain 仅支持 config 交付模式（组 / 规则 / 池的激活摘要只在完整配置构建中存在）');
     process.exit(1);
   }
 
@@ -164,7 +184,9 @@ function run(argv = process.argv) {
           ? '❌ 全部订阅不可用'
           : (hasFailedSub ? '⚠️ 部分订阅不可用' : '✅ 连通正常');
         const lines = [
-          '🧪 诊断模式 (--dry-run)：不写入任何磁盘产物',
+          explain
+            ? '🧪 诊断模式 (--explain)：只输出激活摘要，不写入任何磁盘产物'
+            : '🧪 诊断模式 (--dry-run)：不写入任何磁盘产物',
           '├── 配置语法: ✅ 通过',
           `├── 订阅连通性: ${subState}`
         ];
@@ -172,7 +194,17 @@ function run(argv = process.argv) {
           lines.push(`├── 节点规模: 总计 ${meta.stats.total} ➔ 有效交付 ${meta.stats.outputCount}`);
         }
         lines.push(`└── DNS 不变式: ${violations.length === 0 ? '✅ 无违规' : `❌ ${violations.length} 项违规`}`);
-        logger.info(lines.join('\n'));
+
+        if (explainJson) {
+          // JSON 模式：stdout 只承载结构化摘要，诊断文本改走 stderr 之外（等级已降为 error，默认不输出）
+          console.log(JSON.stringify(buildExplainPayload(result.explain || []), null, 2));
+        } else {
+          logger.info(lines.join('\n'));
+          if (explain) {
+            // 摘要与 logLevel 解耦：--explain 的产物就是这份摘要，不能被 --silent / warn 级日志吞掉
+            console.log(renderExplainReport(result.explain || []));
+          }
+        }
 
         if (violations.length > 0 && logger.isLevelEnabled('warn')) {
           const vLines = ['⚠️ DNS 不变式明细:'];

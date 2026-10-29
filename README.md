@@ -75,6 +75,7 @@ npm install
 ```text
 Usage: mihomo-toolkit [options]
        mihomo-toolkit list [domain] [--json]
+       mihomo-toolkit --explain [-c config.yaml] [--json]
 
 Commands:
   list [domain]        只读列出当前配置下可引用的对象（域: refs | presets | macros | pools | services）
@@ -88,6 +89,8 @@ Options:
   -r, --report <path>  在生成配置的同时，顺手将审计报告另存为指定 JSON 文件
   --dry-run            诊断模式：完整校验配置语法、订阅连通性与 DNS 不变式，绝不落盘
   --validate           同 --dry-run（仅校验不落盘）
+  --explain            只读激活摘要：输出组 / 规则 / 池的「激活 / 跳过 / 剪枝 / 为空」及原因，不落盘
+  --json               与 --explain 配合：以 JSON 输出摘要（固定契约，可用于回归基线）
   --prod               生产环境模式 (开启严格安全锁，强制禁止敏感凭据明文打印)
   --debug              开启详细调试日志 (展示 fetch 过程及中间状态)
   -q, --quiet          关闭日志输出（同 --silent）
@@ -119,7 +122,11 @@ node src/targets/cli.js -u "https://airport.com/sub" -r report.json
 node src/targets/cli.js list refs
 node src/targets/cli.js list services -c config.yaml
 
-# 场景 6：结构化输出，交给脚本消费
+# 场景 6：排查「配了不生效 / 被剪了不知道」——只读激活摘要（不落盘）
+node src/targets/cli.js --explain -c config.yaml
+node src/targets/cli.js --explain --json -c config.yaml > explain.json
+
+# 场景 7：结构化输出，交给脚本消费
 node src/targets/cli.js list pools --json -c config.yaml
 ```
 
@@ -129,6 +136,8 @@ node src/targets/cli.js list pools --json -c config.yaml
 - `macros`：`macro` / `aliases`
 - `pools`：`pool` / `status`（`active` / `inactive`）/ `activation`（`always` 恒在、`onDemand` 按需）/ `hidden` / `isolate` / `builtin` / `gate`（未启用时给出开关名）/ `match`
 - `services`：`service` / `name` / `category` / `hidden` / `refStatus`（`direct` 可独立引用、`aggregate-member` 聚合成员、`none` 仅可作 service 引用）/ `ref` / `memberOf`
+
+`--explain --json` 的输出契约固定为 `{ version, counts, records }`：`counts` 为状态 / 类型计数，`records` 每条含 `kind`（`group` / `rule` / `pool` / `provider`）、`id`、`status`（`active` 激活、`skipped` 跳过、`pruned` 剪枝、`empty` 为空）、`code`（原因码）与 `detail`（人话说明），组 / 池可附带 `members`。`code` 是回归基线断言用的稳定字段，`detail` 允许增补措辞但不改变语义。
 
 ---
 
@@ -341,7 +350,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 | **Layer 7: Data** | `src/data/` | 只读运行基础基线（字段注册表 SSOT、不可变安全基线、清洗规则词库） |
 | **Layer 8: Infra** | `src/infra/` | 基础设施无状态基元（IP/CIDR 校验、FQDN 判定、订阅元信息流量换算纯函数） |
 
-> 📖 **完整文件树与拓扑推演**：关于全仓 93 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
+> 📖 **完整文件树与拓扑推演**：关于全仓 95 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
 
 ---
 

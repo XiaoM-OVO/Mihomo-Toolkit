@@ -104,6 +104,7 @@ src/
 ├── 1. targets/                   # 🔌 Layer 1: 宿主环境终端适配器 (轻量交互层)
 │   ├── cli.js                    # 命令行工具适配器 (mihomo-toolkit)
 │   ├── list.js                   # `list` 子命令：只读反射可引用组 / 预设 / 宏 / 池 / 服务
+│   ├── explain.js                # `--explain` 激活摘要渲染（人类可读 + JSON 契约）
 │   └── server.js                 # 常驻 HTTP 订阅服务 (/sub, /healthz, Token鉴权)
 │
 ├── 2. pipeline/                  # 🚀 Layer 2: 交付流水线编排调度层 (与交付形态 1:1 映射)
@@ -128,6 +129,7 @@ src/
 │   ├── macros.js                 # 策略组引用宏符号注册与求值
 │   ├── presentation.js           # 策略组展示层装饰器 (在线图标/徽标挂载)
 │   ├── prune.js                  # 有向无环图 (DAG) 空组淘汰、悬空目标剪枝
+│   ├── explain.js                # 激活摘要收集器：routing / topology / prune 决策的只读结构化通道
 │   ├── dashboard.js              # 看板状态合成 (流量/到期/信息节点网格化)
 │   ├── registries.js             # 服务注册表管理模块 (委托 catalog)
 │   ├── dns.js                    # Fake-IP / DoH 防泄漏 DNS 方案覆写注入

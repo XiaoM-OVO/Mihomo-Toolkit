@@ -35,7 +35,8 @@ function pruneEmptyGroups({
   ruleProviders = {},
   exemptGroups = DEFAULT_EXEMPT_GROUPS,
   userConfig = null,
-  logger = null
+  logger = null,
+  trace = null
 }) {
   // 1. 构建命名空间：严格区分物理代理、内置目标与策略组，防止静默覆盖与命名歧义
   //    目标口径与 routing 共用同一张注册表（内核内置目标 / 池依赖组判定）
@@ -130,6 +131,27 @@ function pruneEmptyGroups({
   const rescuedGroupsMap = new Map();
 
   /**
+   * 剪枝决策写入激活摘要（仅 --explain 时存在 trace，其余情况零成本）
+   * @param {string} name 被淘汰的策略组名称
+   * @param {string} code 原因码：unreachable | post-cycle
+   * @param {Array<string>} [lostProxies] 剪枝前的成员快照（供追溯「为什么它没生效」）
+   */
+  function recordPrunedGroup(name, code, lostProxies = []) {
+    if (!trace) return;
+    const lost = Array.isArray(lostProxies) ? lostProxies.filter(Boolean) : [];
+    const memberText = lost.length > 0 ? `（原成员: ${lost.join(', ')}）` : '（无成员）';
+    trace.add({
+      kind: 'group',
+      id: name,
+      status: 'pruned',
+      code,
+      detail: code === 'unreachable'
+        ? `无路径抵达真实节点或拦截目标${memberText}`
+        : `破环后失去唯一通路${memberText}`
+    });
+  }
+
+  /**
    * 豁免组保活复苏辅助函数 (DRY & 可追溯性)
    * 清理失效节点引用（防内核崩溃），并记录兜底前丢失的原成员供审计调试
    * @param {string} name 策略组名称
@@ -146,6 +168,18 @@ function pruneEmptyGroups({
       if (logger && typeof logger.warn === 'function') {
         const lostInfo = lost.length > 0 ? ` (原成员: ${lost.join(', ')})` : '';
         logger.warn(`🛡️ 骨架组 [${name}] 无可用节点，已注入 DIRECT 兜底保活${lostInfo}`);
+      }
+      if (trace) {
+        trace.add({
+          kind: 'group',
+          id: name,
+          status: 'active',
+          code: 'rescue-direct',
+          members: 1,
+          detail: lost.length > 0
+            ? `骨架组无可用节点，已注入 DIRECT 兜底（原成员: ${lost.join(', ')}）`
+            : '骨架组无可用节点，已注入 DIRECT 兜底'
+        });
       }
     }
     group.proxies = ['DIRECT'];
@@ -211,6 +245,7 @@ function pruneEmptyGroups({
   for (const name of Array.from(groupMap.keys())) {
     if (!reachable.has(name)) {
       if (!isExempt(name)) {
+        recordPrunedGroup(name, 'unreachable', initialProxiesMap.get(name) || []);
         removedGroups.add(name);
         groupMap.delete(name);
         if (logger && typeof logger.debug === 'function') {
@@ -262,6 +297,15 @@ function pruneEmptyGroups({
       if (targetState === VISITING) {
         // 捕获回边 (Back-Edge)：记录破环轨迹并剪断该引用
         brokenEdges.push({ from: nodeName, to: target });
+        if (trace) {
+          trace.add({
+            kind: 'group',
+            id: nodeName,
+            status: 'pruned',
+            code: 'cycle',
+            detail: `剪断循环依赖 ${nodeName} ➔ ${target}`
+          });
+        }
         if (logger && typeof logger.warn === 'function') {
           logger.warn(`✂️ 拓扑破环: 检测到策略组循环依赖 [${nodeName}] ➔ [${target}]，已剪断该回边`);
         }
@@ -303,6 +347,7 @@ function pruneEmptyGroups({
     const hasExit = postReachable.has(name) && group.proxies.length > 0;
     if (!hasExit) {
       if (!isExempt(name)) {
+        recordPrunedGroup(name, 'post-cycle', initialProxiesMap.get(name) || []);
         removedGroups.add(name);
         groupMap.delete(name);
         if (logger && typeof logger.debug === 'function') {
@@ -357,6 +402,27 @@ function pruneEmptyGroups({
       const detail = [...orphanTargets.entries()].map(([target, count]) => `「${target}」×${count}`).join('、');
       logger.warn(`⚠️ 规则目标不存在，已跳过 ${orphanCount} 条分流规则：${detail}`);
     }
+    // 被跳过的规则按目标聚合写入摘要：日志里只有一句汇总，排查时需要知道「哪些目标、各几条」
+    if (trace) {
+      for (const [target, count] of expectedAbsent) {
+        trace.add({
+          kind: 'rule',
+          id: target,
+          status: 'skipped',
+          code: 'pool-dependent',
+          detail: `${count} 条规则指向该池依赖组（池为空或未激活）`
+        });
+      }
+      for (const [target, count] of orphanTargets) {
+        trace.add({
+          kind: 'rule',
+          id: target,
+          status: 'skipped',
+          code: 'orphan-target',
+          detail: `${count} 条规则的目标组不存在`
+        });
+      }
+    }
   }
 
   // 清理孤儿 Rule Providers：
@@ -380,6 +446,15 @@ function pruneEmptyGroups({
       // 仅当该提供者未被任何规则引用且非用户显式声明时，才作为工具生成的孤儿清理
       if (!usedProviders.has(key) && !userCustomProviders.has(key)) {
         delete providers[key];
+        if (trace) {
+          trace.add({
+            kind: 'provider',
+            id: key,
+            status: 'pruned',
+            code: 'unused',
+            detail: '未被任何规则引用，且非用户显式声明'
+          });
+        }
         if (logger && typeof logger.debug === 'function') {
           logger.debug(`🧹 孤儿清理: 剔除未被引用的规则集提供者 [${key}]`);
         }

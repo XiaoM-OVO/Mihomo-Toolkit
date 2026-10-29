@@ -11,7 +11,7 @@ const { ADS_GROUPS, DOWNLOAD_GROUPS, SKELETON_GROUP_DEFS } = require('../config/
 const { evaluateCustomTopology, evaluateGroupDefinition, DEFAULT_MODE_MAP } = require('./topology-engine');
 const { filterGroupsByDirection } = require('../config/groups');
 const { resolvePoolDefinitions, createPoolMatchers } = require('./pools');
-const { POOL_NAMES } = require('../data/default-pools');
+const { POOL_NAMES, BUILTIN_POOL_DEFS } = require('../data/default-pools');
 const {
   GROUP_KEYS,
   groupName,
@@ -217,7 +217,8 @@ function buildProxyTopology({
   userConfig = {},
   registries = {},
   ruleTargets = [],
-  logger = null
+  logger = null,
+  trace = null
 }) {
   // 声明式策略组（groups）的字段 / 配方 / 宏合法性已在装载期统一校验
   // （pipeline/config-schema.js），装配层只消费已通过校验的对象。
@@ -430,6 +431,52 @@ function buildProxyTopology({
   const highMultiPool = activePool(POOL_NAMES.highMulti);
   const experimentalPool = activePool(POOL_NAMES.experimental);
 
+  // 池状态逐条写入激活摘要：未启用 / 按需未引用 / 已启用但为空 / 已建组，四态都不得静默
+  if (trace) {
+    const activePoolNames = new Set(poolDefs.map(def => def.name));
+    for (const def of BUILTIN_POOL_DEFS) {
+      if (activePoolNames.has(def.name)) continue;
+      trace.add({
+        kind: 'pool',
+        id: def.name,
+        status: 'skipped',
+        code: def.gated === true ? 'gated' : 'not-enabled',
+        detail: def.gated === true
+          ? '未启用（需 enableIsolation: true）'
+          : '未启用（当前配置未包含该池）'
+      });
+    }
+    for (const def of poolDefs) {
+      const members = poolMembers(def).length;
+      if (!isPoolMaterialized(def)) {
+        trace.add({
+          kind: 'pool',
+          id: def.name,
+          status: 'skipped',
+          code: 'not-referenced',
+          detail: '按需池：未被分流目标或组声明引用，未建组'
+        });
+      } else if (members === 0) {
+        trace.add({
+          kind: 'pool',
+          id: def.name,
+          status: 'empty',
+          code: 'no-members',
+          detail: '已启用但暂无成员，未建组'
+        });
+      } else {
+        trace.add({
+          kind: 'pool',
+          id: def.name,
+          status: 'active',
+          code: 'materialized',
+          members,
+          detail: def.group === 'always' ? '恒在池：已建组' : '按需池：被引用后建组'
+        });
+      }
+    }
+  }
+
   const resiPrefix = residentialPool ? [POOL_NAMES.residential] : [];
   const proxyTarget = DEFAULT_MODE_MAP[userConfig.defaultProxyMode] || groupName(GROUP_KEYS.auto);
 
@@ -498,6 +545,20 @@ function buildProxyTopology({
     .map(recipe => evaluateGroupDefinition(recipe, engineContext))
     .filter(Boolean);
 
+  // 内置应用组只在「被分流规则引用」时才建组：激活与空壳都要能在摘要里看见
+  if (trace) {
+    for (const group of appGroups) {
+      const members = Array.isArray(group.proxies) ? group.proxies.length : 0;
+      trace.add({
+        kind: 'group',
+        id: group.name,
+        status: members > 0 ? 'active' : 'empty',
+        code: members > 0 ? 'rule-referenced' : 'no-members',
+        members,
+        detail: members > 0 ? '内置组：被分流规则引用后建组' : '内置组已激活但暂无成员'
+      });
+    }
+  }
 
   // 5. 核心骨架组整合
   const finalGroups = [];
@@ -676,6 +737,19 @@ function buildProxyTopology({
       poolMembers: allPoolMembers,
       logger
     });
+    if (trace) {
+      for (const group of evaluatedGroups) {
+        const members = Array.isArray(group.proxies) ? group.proxies.length : 0;
+        trace.add({
+          kind: 'group',
+          id: group.name,
+          status: members > 0 ? 'active' : 'empty',
+          code: members > 0 ? 'declared' : 'no-members',
+          members,
+          detail: members > 0 ? 'groups 显式声明' : 'groups 显式声明，但当前配方未匹配到任何成员'
+        });
+      }
+    }
     for (const eg of evaluatedGroups) {
       const idx = finalGroups.findIndex(g => stripGroupDecoration(g.name).toLowerCase() === stripGroupDecoration(eg.name).toLowerCase());
       if (idx !== -1) {

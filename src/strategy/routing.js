@@ -482,6 +482,25 @@ function routingEntryKey(entry) {
 }
 
 /**
+ * routing 条目的展示标识（`--explain` 摘要用，不参与任何判定）
+ * @param {object} entry routing 条目
+ * @returns {string}
+ */
+function routingEntryLabel(entry) {
+  if (entry.preset !== undefined && entry.preset !== null && entry.preset !== '') {
+    return `preset:${entry.preset}`;
+  }
+  if (entry.service !== undefined && entry.service !== null && entry.service !== '') {
+    return `service:${entry.service}`;
+  }
+  if (entry.rule !== undefined && entry.rule !== null && entry.rule !== '') {
+    const text = String(entry.rule).trim();
+    return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+  }
+  return '(空条目)';
+}
+
+/**
  * 校验单个 routing 条目（fail-closed）
  *
  * 无论方向与 disabled 状态如何，凡是出现在 `routing` 表里的条目都必须全量校验：
@@ -707,12 +726,42 @@ function expandRouting(userConfig = {}, registries = {}, options = {}) {
   const disabledKeys = new Set(
     [...finalState.entries()].filter(([, state]) => state.disabled).map(([key]) => key)
   );
+  // 激活摘要收集器（仅 --explain 时存在）：在「是否生成」的判定点显式记录原因，
+  // 而不是让用户从日志碎片里推断。未启用时为 null，产物与行为完全不变。
+  const trace = options.trace || null;
   for (const entry of routing) {
-    if (entry && typeof entry === 'object' && entry.disabled !== true) {
-      const key = routingEntryKey(entry);
-      if (key && disabledKeys.has(key)) continue;
+    if (!entry || typeof entry !== 'object') {
+      expandEntry(ctx, entry);
+      continue;
     }
+    const id = routingEntryLabel(entry);
+    const key = routingEntryKey(entry);
+    if (entry.disabled === true) {
+      trace?.add({ kind: 'rule', id, status: 'skipped', code: 'disabled', detail: '条目声明 disabled: true' });
+      continue;
+    }
+    if (key && disabledKeys.has(key)) {
+      trace?.add({ kind: 'rule', id, status: 'skipped', code: 'superseded', detail: '同键槽位被位置靠后的声明关闭' });
+      continue;
+    }
+    if (entry.direction !== undefined && entry.direction !== ctx.direction) {
+      trace?.add({
+        kind: 'rule',
+        id,
+        status: 'skipped',
+        code: 'direction',
+        detail: `仅 ${entry.direction} 方向生效，当前方向 ${ctx.direction}`
+      });
+      continue;
+    }
+    const before = ctx.rules.length;
     expandEntry(ctx, entry);
+    const produced = ctx.rules.length - before;
+    if (produced > 0) {
+      trace?.add({ kind: 'rule', id, status: 'active', code: 'applied', detail: `展开 ${produced} 条规则` });
+    } else {
+      trace?.add({ kind: 'rule', id, status: 'empty', code: 'no-rules', detail: '条目已生效但未产生规则' });
+    }
   }
 
   const rules = dedupe(ctx.rules);

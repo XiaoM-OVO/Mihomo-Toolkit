@@ -11,6 +11,7 @@
 
 const yaml = require('yaml');
 const { runStrategyPipeline } = require('./strategy');
+const { createExplainTrace } = require('../strategy/explain');
 const { aggregateSubscriptions } = require('../strategy/dashboard');
 const { syncChineseConvert } = require('../core/chinese-sync');
 const { resetToolkitOutputKeys, enforceOutputContract } = require('../core/security/control-plane');
@@ -26,7 +27,8 @@ const { isTrustedSynthetic } = require('../core/node-trust');
  * @param {object} [params.userConfig={}] 用户配置对象
  * @param {object} [params.dnsAssets=null] 订阅携带的 DNS 资产闭包（显式值通道，交 strategy 层消费）
  * @param {object} [params.logger] 日志记录器
- * @returns {object} { yamlStr, outputData, userInfo }
+ * @param {boolean} [params.explain=false] 是否收集激活摘要（`--explain`；只读，不改变产物）
+ * @returns {object} { yamlStr, outputData, userInfo, explain }
  */
 function runConfigPipeline({
   sourceSkeleton = { proxies: [] },
@@ -35,6 +37,7 @@ function runConfigPipeline({
   collectedSubInfos = [],
   userConfig = {},
   dnsAssets = null,
+  explain = false,
   logger
 }) {
   let outputData;
@@ -54,7 +57,13 @@ function runConfigPipeline({
   sourceSkeleton.proxies = cleanProxies;
   outputData = sourceSkeleton;
 
-  outputData = runStrategyPipeline(outputData, userConfig, { classifiedNodes, dnsAssets, logger });
+  const explainTrace = explain === true ? createExplainTrace(true) : null;
+  outputData = runStrategyPipeline(outputData, userConfig, {
+    classifiedNodes,
+    dnsAssets,
+    logger,
+    explainTrace
+  });
 
   const groups = outputData['proxy-groups'] || [];
   const proxies = outputData.proxies || [];
@@ -133,6 +142,7 @@ function runConfigPipeline({
     yamlStr,
     outputData,
     invariantViolations,
+    explain: explainTrace ? explainTrace.records : null,
     userInfo: {
       upload: agg.globalUpload,
       download: agg.globalDownload,

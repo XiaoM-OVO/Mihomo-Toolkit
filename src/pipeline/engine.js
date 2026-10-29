@@ -342,13 +342,15 @@ async function executeBuildPipeline({
   }
 
   // ─── 🛑 Checkpoint 3: 交付完整配置 (config 模式跑完全程) ───
-  const { yamlStr, outputData, userInfo, invariantViolations } = runConfigPipeline({
+  const explainEnabled = options.explain === true;
+  const { yamlStr, outputData, userInfo, invariantViolations, explain } = runConfigPipeline({
     sourceSkeleton,
     dnsAssets,
     cleanProxies,
     classifiedNodes,
     collectedSubInfos,
     userConfig,
+    explain: explainEnabled,
     logger: stratLogger
   });
 
@@ -367,7 +369,12 @@ async function executeBuildPipeline({
     published = profileCache.set(cacheKey, configResult, cacheMeta) === true;
   }
 
-  return { result: configResult, hasFailedSub, hasTerminalFailure, published, usableSubCount, degraded, failedTags, staleTags };
+  // 激活摘要只对本次调用有意义：不进缓存，避免后续命中缓存时返回过期决策
+  const delivered = explainEnabled
+    ? { ...configResult, explain: Array.isArray(explain) ? explain : [] }
+    : configResult;
+
+  return { result: delivered, hasFailedSub, hasTerminalFailure, published, usableSubCount, degraded, failedTags, staleTags };
 }
 
 /**
