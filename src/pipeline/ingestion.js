@@ -911,8 +911,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     // 仅在多订阅 (>=2 个有流量的有效源) 且启用看板时，在最顶部注入一组「全局总额」配对节点（流量 + 到期）
     const activeSubsWithTraffic = collectedSubInfos.filter(s => !s.expired && s.total > 0);
     if (enableDashboard && activeSubsWithTraffic.length > 1) {
+      // 此处仅取聚合数值用于注入全局看板；「过期订阅跳过流量聚合」告警统一由最终配置组装输出一次
       const agg = typeof dsh.aggregateSubscriptions === 'function'
-        ? dsh.aggregateSubscriptions(collectedSubInfos, { expireAggregation: userConfig.expireAggregation, logger })
+        ? dsh.aggregateSubscriptions(collectedSubInfos, { expireAggregation: userConfig.expireAggregation, logger, warnExpiredSubs: false })
         : null;
       if (agg && agg.globalTotal > 0 && typeof dsh.buildGlobalDashboardNodes === 'function') {
         const topNodes = dsh.buildGlobalDashboardNodes({

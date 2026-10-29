@@ -23,52 +23,52 @@ describe('【Security】SSRF 安全拦截与 URL 校验 (ssrf)', () => {
   it('validateUrlSsrf - 异步解析并阻止 127.0.0.1、私网网段与文件协议', async () => {
     await assert.rejects(
       async () => { await validateUrlSsrf('http://localhost:3000/sub'); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('http://127.0.0.1/sub'); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('http://192.168.0.1/sub'); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('http://10.254.1.1/sub'); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('http://100.64.1.1/sub'); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('http://169.254.169.254/sub'); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('http://[::ffff:127.0.0.1]/sub'); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('http://[::ffff:169.254.169.254]/sub'); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('file:///etc/passwd'); },
-      /SSRF blocked: illegal protocol/
+      /SSRF 预检失败: 不支持的协议/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('ftp://example.com/sub'); },
-      /SSRF blocked: illegal protocol/
+      /SSRF 预检失败: 不支持的协议/
     );
   });
 
@@ -117,14 +117,14 @@ describe('【Security】SSRF fail-closed 与分模式严格度 (ssrf-strict)', (
     // 默认即 strict，无需显式传参
     await assert.rejects(
       async () => { await validateUrlSsrf('http://dns-fail-default.example/sub', { resolve: failingResolver }); },
-      /SSRF blocked/
+      /SSRF 预检失败/
     );
   });
 
   it('strict - A/AAAA 均无记录（空结果）同样拒绝，不得视为可放行', async () => {
     await assert.rejects(
       async () => { await validateUrlSsrf('http://no-record.example/sub', { resolve: staticResolver([], []) }); },
-      /unable to verify/
+      /域名解析失败/
     );
   });
 
@@ -140,18 +140,18 @@ describe('【Security】SSRF fail-closed 与分模式严格度 (ssrf-strict)', (
       async () => {
         await validateUrlSsrf('http://mixed.example/sub', { resolve: staticResolver(['93.184.216.34', '10.0.0.5']) });
       },
-      /resolved to private IP 10\.0\.0\.5/
+      /解析到私网 IP 10\.0\.0\.5/
     );
   });
 
   it('全候选地址检查 - AAAA 结果指向私网/IPv4 映射地址时拒绝', async () => {
     await assert.rejects(
       async () => { await validateUrlSsrf('http://v6-loopback.example/sub', { resolve: staticResolver([], ['::1']) }); },
-      /private IPv6/
+      /解析到私网 IPv6/
     );
     await assert.rejects(
       async () => { await validateUrlSsrf('http://v6-mapped.example/sub', { resolve: staticResolver([], ['::ffff:10.0.0.9']) }); },
-      /private IPv6/
+      /解析到私网 IPv6/
     );
   });
 
@@ -166,11 +166,11 @@ describe('【Security】SSRF fail-closed 与分模式严格度 (ssrf-strict)', (
     // 即便解析器返回公网，也必须被前置拦截
     await assert.rejects(
       async () => { await validateUrlSsrf('http://evil.localhost/sub', { resolve: staticResolver(['93.184.216.34']) }); },
-      /illegal host/
+      /非法主机/
     );
     await assert.rejects(
       async () => { await validateUrlSsrf('http://sub.localhost/sub', { resolve: staticResolver(['93.184.216.34']), strict: false }); },
-      /illegal host/
+      /非法主机/
     );
     assert.equal(isAllowedUrl('http://evil.localhost/sub'), false);
     assert.equal(isAllowedUrl('http://sub.localhost:8080/sub'), false);
@@ -214,7 +214,7 @@ describe('【Security】SSRF fail-closed 与分模式严格度 (ssrf-strict)', (
       dnsPromises.lookup = async () => [{ address: '10.0.0.7', family: 4 }];
       await assert.rejects(
         async () => { await validateUrlSsrf('http://os-fallback-private.example/sub'); },
-        /resolved to private IP 10\.0\.0\.7/
+        /解析到私网 IP 10\.0\.0\.7/
       );
     } finally {
       dnsPromises.resolve4 = origin.r4;

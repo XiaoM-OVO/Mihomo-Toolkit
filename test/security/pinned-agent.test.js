@@ -56,7 +56,7 @@ describe('【Security】建连期 IP Pinning (pinned-agent)', () => {
 
     await assert.rejects(
       () => callLookup(lookup, 'rebind.example', { all: true }),
-      (err) => err.ssrfBlocked === 'policy' && err.retryable === false && /private IP 127\.0\.0\.1/.test(err.message)
+      (err) => err.ssrfBlocked === 'policy' && err.retryable === false && /私网 IP 127\.0\.0\.1/.test(err.message)
     );
   });
 
@@ -81,7 +81,7 @@ describe('【Security】建连期 IP Pinning (pinned-agent)', () => {
     const empty = createPinnedLookup({ resolve: async () => [] });
     await assert.rejects(
       () => callLookup(empty, 'empty.example', { all: true }),
-      (err) => err.ssrfBlocked === 'unverified' && /no usable address/.test(err.message)
+      (err) => err.ssrfBlocked === 'unverified' && /无可用地址/.test(err.message)
     );
   });
 
@@ -122,7 +122,7 @@ describe('【Security】建连期 IP Pinning (pinned-agent)', () => {
   });
 
   it('错误链提取 - 支持 cause 与 AggregateError 包装，且深度上限生效', () => {
-    const inner = policyError('SSRF blocked: rebind.example resolved to private IP 127.0.0.1');
+    const inner = policyError('SSRF 预检失败: rebind.example 解析到私网 IP 127.0.0.1');
 
     const wrapped = new Error('fetch failed', {
       cause: new AggregateError([new Error('connect ECONNREFUSED'), inner])

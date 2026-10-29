@@ -201,7 +201,7 @@ async function validateUrlSsrf(urlStr, options = {}) {
   const strict = options.strict !== false;
   const parsedUrl = new URL(urlStr);
   if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw policyBlocked(`SSRF blocked: illegal protocol ${parsedUrl.protocol}`);
+    throw policyBlocked(`SSRF 预检失败: 不支持的协议 ${parsedUrl.protocol}`);
   }
 
   let host = parsedUrl.hostname.toLowerCase();
@@ -209,16 +209,16 @@ async function validateUrlSsrf(urlStr, options = {}) {
 
   // 1. 回环 / 未指定 / localhost 子域：无需 DNS 前置拒绝
   if (isLoopbackHostName(host)) {
-    throw policyBlocked(`SSRF blocked: illegal host ${host}`);
+    throw policyBlocked(`SSRF 预检失败: 非法主机 ${host}`);
   }
 
   // 2. 字面量 IP 直判（覆盖 IPv4、IPv6 及 IPv4 映射地址）
   if (IPV4_LITERAL_REGEX.test(host)) {
-    if (isPrivateIp(host)) throw policyBlocked(`SSRF blocked: private IP ${host}`);
+    if (isPrivateIp(host)) throw policyBlocked(`SSRF 预检失败: 目标是私网 IP ${host}`);
     return true;
   }
   if (host.includes(':')) {
-    if (isPrivateIPv6(host)) throw policyBlocked(`SSRF blocked: private IPv6 ${host}`);
+    if (isPrivateIPv6(host)) throw policyBlocked(`SSRF 预检失败: 目标是私网 IPv6 ${host}`);
     return true;
   }
 
@@ -227,17 +227,17 @@ async function validateUrlSsrf(urlStr, options = {}) {
   if (!ok) {
     if (strict) {
       throw unverifiedBlocked(
-        `SSRF blocked: unable to verify ${host} (DNS resolution failed, timed out, or returned no records)`
+        `SSRF 预检失败: ${host} 域名解析失败（已拒绝连接）`
       );
     }
     // 代理模式：本地解析结果不构成保证，交由代理侧策略兜底（残余风险见文件头注释）
     return true;
   }
   for (const ip of v4) {
-    if (isPrivateIp(ip)) throw policyBlocked(`SSRF blocked: ${host} resolved to private IP ${ip}`);
+    if (isPrivateIp(ip)) throw policyBlocked(`SSRF 预检失败: ${host} 解析到私网 IP ${ip}`);
   }
   for (const ip of v6) {
-    if (isPrivateIPv6(ip)) throw policyBlocked(`SSRF blocked: ${host} resolved to private IPv6 ${ip}`);
+    if (isPrivateIPv6(ip)) throw policyBlocked(`SSRF 预检失败: ${host} 解析到私网 IPv6 ${ip}`);
   }
   return true;
 }

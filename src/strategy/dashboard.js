@@ -185,7 +185,7 @@ function extractResetText(sub = {}, subProxies = []) {
 /**
  * 汇总多订阅流量与到期时间
  */
-function aggregateSubscriptions(collectedSubInfos = [], { expireAggregation = 'min', logger } = {}) {
+function aggregateSubscriptions(collectedSubInfos = [], { expireAggregation = 'min', logger, warnExpiredSubs = true } = {}) {
   let globalUpload = 0;
   let globalDownload = 0;
   let globalTotal = 0;
@@ -199,7 +199,7 @@ function aggregateSubscriptions(collectedSubInfos = [], { expireAggregation = 'm
   const activeSubs = collectedSubInfos.filter(s => !s.expired && s.total > 0);
   const expiredSubs = collectedSubInfos.filter(s => s.expired);
 
-  if (logger) {
+  if (logger && warnExpiredSubs) {
     expiredSubs.forEach(s => {
       logger.warn(s.tag
         ? `↩️ 订阅 [${s.tag}] 已失效，跳过其流量聚合`
@@ -310,7 +310,10 @@ function createFetchErrorNode(effectiveTag, errorMsg = '') {
 
   let shortMsg = errorMsg || '拉取失败';
   if (/fetch failed/i.test(errorMsg)) shortMsg = '网络连接失败';
-  else if (/timeout/i.test(errorMsg)) shortMsg = '拉取超时';
+  else if (/SSRF 预检失败/i.test(errorMsg)) {
+    // 原始 SSRF 错误带有主机名与冗长原因，面板节点只保留可读结论
+    shortMsg = /域名解析失败/i.test(errorMsg) ? '域名解析失败' : '安全策略拦截';
+  } else if (/timeout/i.test(errorMsg)) shortMsg = '拉取超时';
   else if (/HTTP Error: (\d+)/i.test(errorMsg)) shortMsg = `HTTP ${errorMsg.match(/HTTP Error: (\d+)/i)[1]}`;
   else if (/no nodes/i.test(errorMsg)) shortMsg = '未解析到有效节点';
   else if (/placeholder/i.test(errorMsg)) shortMsg = '仅返回占位/续费节点';
