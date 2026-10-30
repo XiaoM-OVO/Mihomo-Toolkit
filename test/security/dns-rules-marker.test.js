@@ -155,12 +155,24 @@ describe('【Security】#RULES 标记的沙箱可解析性与 INV-4 口径', () 
     assert.ok(!encrypted.some(i => i.id === 'INV-3'), '加密 DoH 且键大小写不同时不得误报');
   });
 
-  test('INV-3：通配/动态匹配器不做静态推断（内核为 trie + 先到先得）', () => {
-    const proxies = [{ name: 'HK', server: 'hk.domain.com' }];
-    const wildcard = checkInvariants({
-      'default-nameserver': ['223.5.5.5'],
-      'nameserver-policy': { '+.domain.com': ['dns.airport-a.com'] }
-    }, { proxies });
-    assert.ok(!wildcard.some(i => i.id === 'INV-3'), '通配键不参与静态校验，避免误报/漏检');
+  test('INV-3：`+.` / `.` / `*.` 按内核 trie 语义参与校验，动态匹配器跳过', () => {
+    const base = { 'default-nameserver': ['223.5.5.5'] };
+    const has = (policy, nodeDomain = 'hk.domain.com') => checkInvariants(
+      { ...base, 'nameserver-policy': policy },
+      { proxies: [{ name: 'HK', server: nodeDomain }] }
+    ).some(i => i.id === 'INV-3');
+
+    assert.ok(has({ '+.domain.com': ['dns.airport-a.com'] }), '`+.` 覆盖裸域与任意层级子域');
+    assert.ok(has({ '.domain.com': ['dns.airport-a.com'] }), '`.` 覆盖任意层级子域');
+    assert.ok(has({ '*.domain.com': ['dns.airport-a.com'] }), '`*.` 覆盖严格单层子域');
+    assert.ok(!has({ '+.other.com': ['dns.airport-a.com'] }), '无关后缀不得误报');
+    assert.ok(
+      !has({ '*.domain.com': ['dns.airport-a.com'] }, 'a.b.domain.com'),
+      '`*.` 不覆盖多层子域'
+    );
+    assert.ok(
+      !has({ 'rule-set:cn-domain': ['dns.airport-a.com'] }),
+      '动态匹配器无法静态判定，跳过'
+    );
   });
 });
