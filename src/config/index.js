@@ -16,6 +16,57 @@ const { GROUP_KEYS, groupName } = require('../data/catalog/identity');
 const POOL_PREFIX = '@pool:';
 
 /**
+ * 时间字段与其历史单位：带单位字符串解析后按此单位回写，纯数字保持原语义。
+ * 秒：拉取超时、缓存窗口、测速间隔；小时：容灾保留期、到期截断；毫秒：测速容差。
+ */
+const DURATION_FIELDS = Object.freeze({
+  fetchTimeout: 's',
+  cacheTtl: 's',
+  cacheStaleMaxAge: 's',
+  testInterval: 's',
+  refreshCooldown: 's',
+  autoRefreshInterval: 's',
+  fetchStaleTtl: 'h',
+  expireCutoffHours: 'h',
+  testTolerance: 'ms'
+});
+
+const DURATION_UNIT_MS = Object.freeze({
+  ms: 1,
+  s: 1000,
+  m: 60 * 1000,
+  h: 60 * 60 * 1000,
+  d: 24 * 60 * 60 * 1000
+});
+
+/**
+ * 归一化时间字段：支持 `"15s"` / `"5m"` / `"24h"` / `"50ms"` / `"1d"`，
+ * 统一换算为该字段的历史单位数值；无法解析时 fail-closed，避免静默回退默认值。
+ * @param {object} config 合并后的配置
+ * @returns {object} 原地归一化后的配置
+ */
+function normalizeDurationFields(config) {
+  for (const [key, unit] of Object.entries(DURATION_FIELDS)) {
+    const value = config[key];
+    if (value == null || typeof value === 'number') continue;
+    if (typeof value !== 'string') {
+      throw new TypeError(`[Config] ${key}: 时间必须是数字或带单位字符串（如 "15s" / "5m" / "24h"）`);
+    }
+    const matched = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)?$/i.exec(value.trim());
+    if (!matched) {
+      throw new TypeError(`[Config] ${key}: 无法解析的时间值 "${value}"（支持 ms/s/m/h/d）`);
+    }
+    if (!matched[2]) {
+      config[key] = Number(matched[1]);
+      continue;
+    }
+    const msValue = Number(matched[1]) * DURATION_UNIT_MS[matched[2].toLowerCase()];
+    config[key] = msValue / DURATION_UNIT_MS[unit];
+  }
+  return config;
+}
+
+/**
  * 加载外部服务定义配置文件 (.js, .cjs, .yaml, .yml, .json)
  *
  * 失败即抛错（fail-closed）：文件缺失、扩展名不支持、解析异常都会带上完整路径抛出。
@@ -184,6 +235,7 @@ function resolveConfig(userConfig = {}, options = {}) {
   //   - structuredClone：先断开出厂默认的数组/对象引用，避免下游原地突变污染全局 DEFAULT_CONFIG
   //     （DEFAULT_CONFIG 由模块加载时构建一次，浅拷贝会让每次 resolveConfig 共享同一份嵌套引用）。
   const merged = deepMerge(structuredClone(DEFAULT_CONFIG), expanded || {});
+  normalizeDurationFields(merged);
 
   // 1. 处理外部服务配置文件挂载（同上，基准目录与 include 保持一致）
   const externalFile = merged.servicesConfigFile;

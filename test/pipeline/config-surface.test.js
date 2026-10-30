@@ -354,4 +354,37 @@ it('🛡️ 出厂默认不可被污染 — resolveConfig 结果与 DEFAULT_CONF
   assert.ok(!('__polluted__' in b.indexPrefixMap), '污染跨调用泄漏到后续结果');
 });
 
+it('⏱️ 时间字段支持带单位字符串，纯数字保持历史单位', () => {
+  const cfg = resolveConfig({
+    fetchTimeout: '15s',
+    cacheTtl: '5m',
+    cacheStaleMaxAge: '24h',
+    fetchStaleTtl: '24h',
+    expireCutoffHours: '24h',
+    testInterval: '5m',
+    testTolerance: '50ms',
+    refreshCooldown: '1m'
+  });
+  assert.equal(cfg.fetchTimeout, 15);
+  assert.equal(cfg.cacheTtl, 300);
+  assert.equal(cfg.cacheStaleMaxAge, 86400);
+  assert.equal(cfg.fetchStaleTtl, 24);
+  assert.equal(cfg.expireCutoffHours, 24);
+  assert.equal(cfg.testInterval, 300);
+  assert.equal(cfg.testTolerance, 50);
+  assert.equal(cfg.refreshCooldown, 60);
+
+  // 跨单位换算：90m = 1.5h；0.05s = 50ms
+  assert.equal(resolveConfig({ fetchStaleTtl: '90m' }).fetchStaleTtl, 1.5);
+  assert.equal(resolveConfig({ testTolerance: '0.05s' }).testTolerance, 50);
+
+  // 纯数字仍按该字段历史单位解释（cacheTtl=秒，fetchStaleTtl=小时）
+  assert.equal(resolveConfig({ cacheTtl: 300 }).cacheTtl, 300);
+  assert.equal(resolveConfig({ fetchStaleTtl: 24 }).fetchStaleTtl, 24);
+
+  // 非法写法 fail-closed，不静默回退默认值
+  assert.throws(() => resolveConfig({ cacheTtl: '5x' }), /无法解析的时间值/);
+  assert.throws(() => resolveConfig({ cacheTtl: true }), /时间必须是数字或带单位字符串/);
+});
+
 });
