@@ -221,11 +221,11 @@ async function executeBuildPipeline({
   const isOpenccReady = !!(chineseConvert.isAvailable && chineseConvert.isAvailable());
   if (userConfig.enableChineseConvert) {
     if (!isOpenccReady) {
-      logger.warn('⚠️ 已启用简繁转换 (enableChineseConvert=true)，但可选依赖 opencc-js 未就绪，已跳过。执行: npm install opencc-js');
+      logger.warn('⚠️ 已启用简繁转换（enableChineseConvert=true），但可选依赖 opencc-js 未就绪，已跳过；执行：npm install opencc-js');
     } else {
       const modeText = userConfig.chineseConvertMode === 's2t' ? '简体 ➔ 繁体' : '繁体 ➔ 简体';
       if (logger.isLevelEnabled('debug')) {
-        logger.debug(`🔤 简繁转换就绪: opencc-js (${modeText})`);
+        logger.debug(`🔤 简繁转换就绪：opencc-js（${modeText}）`);
       }
       const convertFn = userConfig.chineseConvertMode === 's2t'
         ? chineseConvert.toTraditional
@@ -233,7 +233,7 @@ async function executeBuildPipeline({
       userConfig = chineseConvert.deepConvertStrings(userConfig, convertFn);
     }
   } else if (logger.isLevelEnabled('debug')) {
-    logger.debug(`🔤 简繁转换插件: opencc-js ${isOpenccReady ? '已安装' : '未安装(可选)'}`);
+    logger.debug(`🔤 简繁转换插件：opencc-js ${isOpenccReady ? '已安装' : '未安装（可选）'}`);
   }
 
   const redactLevel = userConfig.redactLevel || 'partial';
@@ -307,7 +307,7 @@ async function executeBuildPipeline({
   // 既不组装产物也不写 Profile 缓存（L2，按 Host 隔离）；客户端首次带 Host 请求时
   // 会直接命中新鲜的 L1 内容，跳过网络拉取，只做一次按该 Host 的组装。
   if (options.fetchOnly === true) {
-    ioLogger.debug('📦 订阅快照预热模式：仅缓存原始订阅内容，跳过节点清洗与产物组装');
+    ioLogger.debug('🔥 预热模式：仅回源并写入 L1 原始订阅快照，跳过节点清洗与产物组装');
     return {
       result: { yamlStr: '', proxies: [], meta: null },
       hasFailedSub,
@@ -337,11 +337,11 @@ async function executeBuildPipeline({
   const stats = meta?.stats;
   if (stats) {
     const details = [];
-    if (stats.dedupeCount > 0) details.push(`去重: ${stats.dedupeCount}`);
-    if (stats.discardedCount > 0) details.push(`过滤: ${stats.discardedCount}`);
-    if (stats.fissionCount > 0) details.push(`裂变: ${stats.fissionCount}`);
-    const detailStr = details.length > 0 ? ` (${details.join(' | ')})` : '';
-    cleanLogger.info(`🧹 节点清洗完成: ${stats.total} 输入 ➔ ${cleanProxies.length} 有效${detailStr}`);
+    if (stats.dedupeCount > 0) details.push(`去重 ${stats.dedupeCount}`);
+    if (stats.discardedCount > 0) details.push(`过滤 ${stats.discardedCount}`);
+    if (stats.fissionCount > 0) details.push(`裂变 ${stats.fissionCount}`);
+    const detailStr = details.length > 0 ? `（${details.join(' · ')}）` : '';
+    cleanLogger.info(`✅ 节点清洗完成：${stats.total} 输入 ➔ ${cleanProxies.length} 有效${detailStr}`);
   }
 
   // ─── 🛑 Checkpoint 1: 交付纯净节点 (nodes 模式早退截断) ───
@@ -515,7 +515,7 @@ function triggerBackgroundRevalidate(userConfig, options, logger, cacheKey) {
   // 1. 若处于失败退避期，直接放弃本次触发，避免连续回源风暴
   if (isInRevalidateBackoff(cacheKey)) {
     if (logger.isLevelEnabled('debug')) {
-      logger.debug(`⏳ [SWR] 处于后台刷新退避期，跳过本次后台拉取 [${cacheKey}]`);
+      logger.debug(`⏳ 后台刷新退避中，跳过回源 [${cacheKey}]`);
     }
     return;
   }
@@ -523,7 +523,7 @@ function triggerBackgroundRevalidate(userConfig, options, logger, cacheKey) {
   // 2. 若已有正在进行的强制刷新，直接复用该任务，不重复开工
   if (forceFlights.has(cacheKey)) {
     if (logger.isLevelEnabled('debug')) {
-      logger.debug(`🔄 [SWR] 已有同键强制构建正在运行，复用当前任务 [${cacheKey}]`);
+      logger.debug(`⏳ 同键强制构建进行中，共享等待 [${cacheKey}]`);
     }
     return;
   }
@@ -533,7 +533,8 @@ function triggerBackgroundRevalidate(userConfig, options, logger, cacheKey) {
     ? logger.child('SWR')
     : logger;
 
-  revalidateLogger.info('🔄 [SWR] 命中陈旧快照，已在后台启动异步更新 (Revalidate)...');
+  // 陈旧缓存的「命中 + 启动刷新」由调用方统一记录 info，这里只补充内部任务标识，避免同一事件重复出现
+  revalidateLogger.debug(`🔄 后台刷新已启动 [${cacheKey}]`);
 
   launchSingleFlightBuild({
     userConfig,
@@ -544,7 +545,7 @@ function triggerBackgroundRevalidate(userConfig, options, logger, cacheKey) {
     isForce: true
   }).catch((err) => {
     // 捕获所有后台异常并使用 safeErrorMessage 安全格式化，严禁二次抛错与未捕获的 Promise rejection
-    revalidateLogger.warn(`⚠️ [SWR] 后台异步更新失败 (维持原有效缓存): ${safeErrorMessage(err)}`);
+    revalidateLogger.warn(`⚠️ 后台异步更新失败（保留当前缓存）：${safeErrorMessage(err)}`);
   });
 }
 
@@ -594,8 +595,8 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   if (enableCache && cacheKey) {
     if (isForce) {
       logger.info(options.fetchOnly === true
-        ? '🔥 启动预热：拉取原始订阅快照并写入快照缓存（客户端首次请求时按 Host 组装产物）'
-        : '🔄 触发强制刷新 (forceRefresh=true)，绕过本地缓存直接拉取并构建');
+        ? '🔥 启动预热：回源原始订阅快照并写入 L1 快照缓存（客户端首次请求时按 Host 组装产物）'
+        : '🔄 触发强制刷新，绕过 L2 缓存直接回源并构建');
       notifyCacheStatus('force', { cacheKey });
     } else {
       const durations = normalizeCacheDurations(userConfig);
@@ -604,9 +605,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       // Case 1: Fresh 绝对新鲜（优先返回，即使后台有强制刷新在跑也不阻塞，直接秒回）
       if (cacheEntry.status === 'fresh') {
         if (cacheEntry.degraded) {
-          logger.warn(`⚠️ 命中降级内存缓存 (${cacheEntry.remainingSec}s 后转入后台刷新，失败订阅 ${cacheEntry.failedTags.length} 个)，直接响应缓存数据`);
+          logger.warn(`⚠️ 命中降级缓存（L2 组装产物 · ${cacheEntry.remainingSec}s 后转入后台刷新，失败订阅 ${cacheEntry.failedTags.length} 个），直接响应缓存数据`);
         } else {
-          logger.info(`⚡ 命中本地内存缓存 (${cacheEntry.remainingSec}s 后过期)，直接响应缓存数据`);
+          logger.info(`⚡ 命中缓存（L2 组装产物 · ${cacheEntry.remainingSec}s 后过期），直接响应缓存数据`);
         }
         notifyCacheStatus('fresh', {
           remainingSec: cacheEntry.remainingSec,
@@ -622,9 +623,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       // Case 2: Stale 陈旧可用（优先返回旧快照，不阻塞客户端，后台静默启动 Revalidate）
       if (cacheEntry.status === 'stale') {
         if (cacheEntry.degraded) {
-          logger.warn(`⚠️ 命中降级陈旧快照 (SWR，${cacheEntry.remainingSec}s 后彻底失效，失败订阅 ${cacheEntry.failedTags.length} 个)，已启动后台更新`);
+          logger.warn(`⚠️ 命中降级陈旧缓存（L2 组装产物 · SWR · ${cacheEntry.remainingSec}s 后彻底失效，失败订阅 ${cacheEntry.failedTags.length} 个），已启动后台刷新`);
         } else {
-          logger.info(`⚡ 命中陈旧内存快照 (SWR，${cacheEntry.remainingSec}s 后彻底失效)，优先快速返回旧数据`);
+          logger.info(`⚡ 命中陈旧缓存（L2 组装产物 · SWR · ${cacheEntry.remainingSec}s 后彻底失效），优先快速返回旧数据`);
         }
         notifyCacheStatus('stale', {
           remainingSec: cacheEntry.remainingSec,
@@ -671,19 +672,19 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     // 强制请求：规则 3 & 4
     // 若已有正在执行的强制构建，直接共享；不得共享普通构建
     if (cacheKey && forceFlights.has(cacheKey)) {
-      logger.info('⏳ 共享当前正在执行的强制构建任务...');
+      logger.info('⏳ 同键强制构建进行中，共享等待');
       return await awaitFlightAndNotify(forceFlights.get(cacheKey));
     }
   } else {
     // 普通请求 (Miss / Expired)：规则 1 & 2
     // 优先：若已有同键强制构建正在跑，直接复用等待强制构建
     if (cacheKey && forceFlights.has(cacheKey)) {
-      logger.info('⏳ 发现同键强制构建正在运行，直接共享等待...');
+      logger.info('⏳ 同键强制构建进行中，共享等待（复用现有任务）');
       return await awaitFlightAndNotify(forceFlights.get(cacheKey));
     }
     // 其次：若已有同键普通构建正在跑，直接共享
     if (cacheKey && normalFlights.has(cacheKey)) {
-      logger.info('⏳ 发现同键普通构建正在运行，直接共享...');
+      logger.info('⏳ 同键构建进行中，共享等待');
       return await awaitFlightAndNotify(normalFlights.get(cacheKey));
     }
   }

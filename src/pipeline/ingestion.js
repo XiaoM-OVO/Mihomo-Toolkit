@@ -12,6 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { parseContent, parseSubscriptionInfo, evaluateExpiry, normalizeTimeZone, formatDateInZone, isExpiredNow, isQuotaExhausted } = require('../io/parsers');
 const { hasOnlyPlaceholderNodes } = require('../core/notice');
 const { markTrustedSynthetic, markTrustedProxyMetadata, sanitizeExternalProxies } = require('../core/node-trust');
@@ -19,6 +20,7 @@ const { redactUrl } = require('../io/ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache, isSubInFetchBackoff, recordSubFetchFailure, clearSubFetchFailure, getSubFetchBackoff } = require('../io/fetcher');
 const { normalizeCacheDurations } = require('../io/cache');
 const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
+const { createRepeatGate } = require('../core/logger');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
 const { effectiveProtectedDomains } = require('../data');
@@ -198,8 +200,12 @@ function resolveBackoffStale(subKey, initialStale, staleMaxAgeMs, cutoffHours = 
   return { state, stale, usable, expired, staleExpiry };
 }
 
-/** 格式化控制面沙箱告警，去除内部枚举 ID 并以分级树形分支展示 */
-function formatControlPlaneWarning(report) {
+/**
+ * 格式化控制面沙箱告警，去除内部枚举 ID 并以分级树形分支展示。
+ * @param {object} report partitionControlPlane 审计报告
+ * @param {number} [repeatCount=1] 同一来源 + 同一审计结果的第几次出现（1 表示首次发现）
+ */
+function formatControlPlaneWarning(report, repeatCount = 1) {
   if (!report || !Array.isArray(report.hostile) || report.hostile.length === 0) return null;
 
   const critical = [];
@@ -217,23 +223,31 @@ function formatControlPlaneWarning(report) {
   }
 
   const count = report.hostile.length;
+  // 重复检测：同一来源在缓存复用/退避复用时再次审计到相同字段。
+  // 实际剥离仍已执行，仅在日志级别降噪，因此必须保留「重复次数 + 实际剥离」信息。
+  if (repeatCount > 1) {
+    const keys = report.hostile.map(h => h.key);
+    const preview = keys.slice(0, 8).join(', ') + (keys.length > 8 ? ', …' : '');
+    return `🛡️ 控制面沙箱：订阅 [${report.tag}] 重复检测（第 ${repeatCount} 次 · 相同 ${count} 项越权字段，本次仍已实际剥离：${preview}）`;
+  }
+
   // 若剥离项极少（1~2 项）且无严重夺权风险，采用单行紧凑模式
   if (count <= 2 && critical.length === 0) {
     const keys = report.hostile.map(h => h.key).join(', ');
-    return `🛡️ 控制面沙箱: 订阅 [${report.tag}] 已安全剥离 ${count} 项配置字段 (${keys})`;
+    return `🛡️ 控制面沙箱：订阅 [${report.tag}] 首次发现并已实际剥离 ${count} 项配置字段（${keys}）`;
   }
 
   // 存在夺权威胁或多项改写时，采用树形分支结构化展示
-  const lines = [`🛡️ 控制面沙箱: 订阅 [${report.tag}] 触发越权防御，已物理剥离 ${count} 项控制字段:`];
+  const lines = [`🛡️ 控制面沙箱：订阅 [${report.tag}] 首次发现越权字段，已实际剥离 ${count} 项控制字段：`];
   const branches = [];
   if (critical.length > 0) {
-    branches.push(`🚨 夺权风险: ${critical.join(', ')}`);
+    branches.push(`🚨 夺权风险：${critical.join(', ')}`);
   }
   if (config.length > 0) {
-    branches.push(`⚙️ 配置改写: ${config.join(', ')}`);
+    branches.push(`⚙️ 配置改写：${config.join(', ')}`);
   }
   if (unknown.length > 0) {
-    branches.push(`❓ 未知字段: ${unknown.join(', ')}`);
+    branches.push(`❓ 未知字段：${unknown.join(', ')}`);
   }
 
   branches.forEach((b, idx) => {
@@ -242,6 +256,28 @@ function formatControlPlaneWarning(report) {
   });
 
   return lines.join('\n');
+}
+
+/**
+ * 本次数据来源的唯一映射：图标 + 文案。
+ * 必须把「L1 订阅快照」「订阅级容灾缓存」「L2 组装产物缓存」区分开，禁止统一说成「缓存」。
+ * 注：L2（SWR 陈旧缓存）不进入解析阶段，由 engine 单独记录，不在此处出现。
+ */
+const ORIGIN_META = {
+  fetch: { icon: '🌐', label: '回源' },
+  snapshot: { icon: '⚡', label: '复用快照' },
+  'fallback-stale': { icon: '⚠️', label: '缓存兜底' },
+  'backoff-reuse': { icon: '⏳', label: '退避跳过 · 复用缓存兜底' },
+  'backoff-skip': { icon: '⏳', label: '退避跳过 · 无可用缓存' },
+  file: { icon: '📄', label: '本地文件' },
+  uri: { icon: '📌', label: 'URI 节点' },
+  direct: { icon: '📌', label: '直连节点' },
+  terminal: { icon: '🛑', label: '终态失效' },
+  'fetch-failed': { icon: '❌', label: '回源失败' }
+};
+
+function describeOrigin(origin) {
+  return ORIGIN_META[origin] || { icon: '❓', label: '未知来源' };
 }
 
 /** 提取节点资产域名（用于专属依赖闭包识别） */
@@ -328,6 +364,25 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  *            assets: { hosts: object, policies: object, fakeIpFilters: string[] } }}
  *          hosts/policies/fakeIpFilters 为键名清单（供审计日志），assets 为实体载荷（供装配阶段合并）
  */
+
+// 控制面审计日志去重：按「订阅来源 + 同一组越权字段」隔离计数。
+// 仅用于降低缓存复用/退避复用时重复告警的噪声；安全检查与字段剥离始终执行，不因去重跳过。
+const controlPlaneAuditGate = createRepeatGate(200);
+
+/**
+ * 解析控制面审计的来源身份。
+ *
+ * 优先使用订阅 URL（sha256 摘要作为内部键，原始 URL 含凭据且绝不进入日志），
+ * 避免不同订阅复用同一显示 tag 时错误共享去重计数；URL 缺失（本地文件 / URI）时退回 tag。
+ */
+function resolveAuditSourceId({ subUrl = '', tag = '' } = {}) {
+  if (subUrl) {
+    const digest = crypto.createHash('sha256').update(String(subUrl)).digest('hex');
+    return `url:${digest.slice(0, 16)}`;
+  }
+  return tag || 'anonymous';
+}
+
 function applySubscriptionGuards(subConfig, options = {}) {
   const {
     proxies = [], subUrl = '', tag = '', logger,
@@ -348,8 +403,15 @@ function applySubscriptionGuards(subConfig, options = {}) {
   const { report } = partitionControlPlane(subConfig, { tag });
   result.strippedCount = (report.hostile && report.hostile.length) || 0;
   if (result.strippedCount > 0 && logger) {
-    const warnMsg = formatControlPlaneWarning(report);
-    if (warnMsg) logger.warn(warnMsg);
+    // 去重键 = 订阅来源 + 本次审计结果；不同订阅绝不共享同一条目。
+    const sourceId = resolveAuditSourceId({ subUrl, tag });
+    const auditSignature = report.hostile.map(h => h.key).sort().join(',');
+    const seenTimes = controlPlaneAuditGate(`${sourceId}|${auditSignature}`);
+    const warnMsg = formatControlPlaneWarning(report, seenTimes);
+    if (warnMsg) {
+      if (seenTimes > 1) logger.debug(warnMsg);
+      else logger.warn(warnMsg);
+    }
   }
 
   // 2. 资产闭包强度判定
@@ -434,13 +496,13 @@ function applySubscriptionGuards(subConfig, options = {}) {
       const tail = inherited.length > 6 ? ', …' : '';
       if (outputMode === 'nodes' && typeof logger.warn === 'function') {
         logger.warn(
-          `⚠️ 解析依赖: 订阅 [${tag}] 携带 ${inherited.length} 项节点专属 DNS 依赖 (${preview}${tail})，` +
-          `但 nodes 产物不含 dns 段，这些依赖会被丢弃 —— 若相关节点域名需靠其解析，节点将无法连接`
+          `⚠️ 解析依赖：订阅 [${tag}] 携带 ${inherited.length} 项节点专属 DNS 依赖（${preview}${tail}），` +
+          `但 nodes 产物不含 dns 段，这些依赖会被丢弃；若相关节点域名需靠其解析，节点将无法连接`
         );
       } else {
         logger.info(
-          `🛡️ 资产闭包: 订阅 [${tag}] 继承 ${inherited.length} 项节点专属 DNS 依赖 ` +
-          `(${preview}${tail})`
+          `🛡️ 资产闭包：订阅 [${tag}] 继承 ${inherited.length} 项节点专属 DNS 依赖 ` +
+          `（${preview}${tail}）`
         );
       }
     }
@@ -526,7 +588,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   const tunInterface = detectTunInterface();
 
   if (tunInterface && logger && (options.debug || userConfig.logLevel === 'debug')) {
-    logger.debug(`🛡️ 系统网络: 检测到活跃的 TUN 虚拟网卡 (${tunInterface})，流量将自动由内核接管`);
+    logger.debug(`🌐 系统网络：检测到活跃的 TUN 虚拟网卡（${tunInterface}），流量将自动由内核接管`);
   }
 
   let isProxyAvailable = true;
@@ -543,13 +605,13 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     const isReachable = await checkPortReachable(proxyPort);
     if (isReachable) {
       isProxyAvailable = true;
-      if (logger) logger.debug(`🔌 拉取代理: 127.0.0.1:${proxyPort} (已就绪 · 策略: ${proxyStrategy})`);
+      if (logger) logger.debug(`🔌 拉取代理：127.0.0.1:${proxyPort}（已就绪 · 策略 ${proxyStrategy}）`);
     } else {
       isProxyAvailable = false;
       if (tunInterface) {
-        if (logger) logger.warn(`💡 本地代理端口 127.0.0.1:${proxyPort} 未监听，已切换为系统 TUN 虚拟网卡 (${tunInterface}) 接管`);
+        if (logger) logger.warn(`🌐 本地代理端口 127.0.0.1:${proxyPort} 未监听，已切换为系统 TUN 虚拟网卡（${tunInterface}）接管`);
       } else {
-        if (logger) logger.warn(`⚠️ 本地拉取代理 127.0.0.1:${proxyPort} 连通失败 (服务未启动或端口填写有误)，已降级为直连拉取`);
+        if (logger) logger.warn(`⚠️ 本地拉取代理 127.0.0.1:${proxyPort} 连通失败（服务未启动或端口填写有误），已降级为直连`);
       }
     }
   }
@@ -585,9 +647,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
       try {
         let rawResult;
         if (isDirectNode) {
-          rawResult = { directProxies: [buildDirectProxy(sub)], subInfo: null };
+          rawResult = { directProxies: [buildDirectProxy(sub)], subInfo: null, origin: 'direct' };
         } else if (sub.uri) {
-          rawResult = { content: sub.uri, subInfo: null };
+          rawResult = { content: sub.uri, subInfo: null, origin: 'uri' };
         } else {
           const subKey = sub.url;
           const initialStale = (typeof subStaleCache.getSnapshot === 'function')
@@ -595,14 +657,14 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
             : subStaleCache.get(subKey);
           const localSubPath = path.resolve(process.cwd(), sub.url);
           if (!/^https?:\/\//i.test(sub.url) && fs.existsSync(localSubPath) && fs.statSync(localSubPath).isFile()) {
-            logger.debug(`📄 读取本地订阅文件: ${sub.url}`);
-            rawResult = { content: fs.readFileSync(localSubPath, 'utf-8'), subInfo: null };
+            logger.debug(`📄 读取本地订阅文件：${sub.url}`);
+            rawResult = { content: fs.readFileSync(localSubPath, 'utf-8'), subInfo: null, origin: 'file' };
           } else if (!bypassSubBackoff && isSubInFetchBackoff(subKey)) {
             // 退避期内不再发起网络请求：有可用旧缓存直接复用，否则快速失败
             const backoff = resolveBackoffStale(subKey, initialStale, staleMaxAgeMs, expireCutoffHours, displayTimeZone);
             if (backoff && backoff.usable) {
-              logger.warn(`⏳ 订阅暂缓拉取（失败退避中），复用上次成功数据: ${redactUrl(sub.url, showFullUrl)}`);
-              rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true, lastSuccessAt: backoff.stale.timestamp };
+              logger.warn(`⏳ ${sub.tag ? `[${sub.tag}] ` : ''}退避中跳过回源，复用缓存兜底：${redactUrl(sub.url, showFullUrl)}`);
+              rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true, lastSuccessAt: backoff.stale.timestamp, origin: 'backoff-reuse' };
             } else {
               if (backoff && (backoff.expired || backoff.state.terminal)) {
                 isTerminal = true;
@@ -629,12 +691,13 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
               ? subStaleCache.getFresh(subKey, subFreshTtlMs)
               : null;
             if (freshSnapshot) {
-              logger.debug(`⚡ 复用新鲜原始订阅快照（免回源）: ${redactUrl(sub.url, showFullUrl)}`);
-              rawResult = { content: freshSnapshot.content, subInfo: freshSnapshot.subInfo, cached: true, lastSuccessAt: freshSnapshot.timestamp };
+              logger.debug(`⚡ 复用快照：${redactUrl(sub.url, showFullUrl)}`);
+              rawResult = { content: freshSnapshot.content, subInfo: freshSnapshot.subInfo, cached: true, lastSuccessAt: freshSnapshot.timestamp, origin: 'snapshot' };
             } else {
               try {
                 rawResult = await fetchNodes(sub.url, {
                   showFullUrl, debug, logger,
+                  tag: sub.tag || '',
                   proxyUrl: effectiveProxyUrl,
                   strategy: effectiveStrategy,
                   perSubProxy: isProxyAvailable ? sub.proxy : false,
@@ -645,6 +708,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
                 // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
                 validateFetchedSubscription(rawResult, expireCutoffHours);
+                rawResult.origin = 'fetch';
                 clearSubFetchFailure(subKey);
               } catch (e) {
                 const decision = evaluateStaleFallback(e, { subKey, initialStale, staleMaxAgeMs, cutoffHours: expireCutoffHours, timeZone: displayTimeZone });
@@ -661,11 +725,11 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
                 if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
 
                 if (decision.allowFallback) {
-                  logger.warn(`⚠️ ${sub.tag ? `[${sub.tag}] ` : ''}拉取异常，已启用缓存兜底: ${e.message}`);
-                  rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
+                  logger.warn(`⚠️ ${sub.tag ? `[${sub.tag}] ` : ''}回源失败，已启用缓存兜底：${e.message}`);
+                  rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp, origin: 'fallback-stale' };
                 } else {
                   if (decision.fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
-                    logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(sub.url, showFullUrl)}]: ${decision.fallbackRejectReason}`);
+                    logger.debug(`🛡️ 兜底被拒绝 [${redactUrl(sub.url, showFullUrl)}]：${decision.fallbackRejectReason}`);
                   }
                   throw e;
                 }
@@ -730,7 +794,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
         if (isDirect) {
           const nameHint = subProxies[0] ? subProxies[0].name : '未知';
-          logger.debug(`📌 摄入单节点: ${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
+          logger.debug(`📌 摄入单节点：${nameHint}${sub.tag ? ` [${sub.tag}]` : ''}`);
         }
 
         // 记录内部属性到元数据存储（不污染 proxy 节点对象）
@@ -833,15 +897,27 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           total: nodeCount,
           filtered: filteredCount,
           synth: synthNodes.length,
-          stripped: strippedCount
+          stripped: strippedCount,
+          // 本次数据的真实来源（回源 / 复用快照 / 缓存兜底 / 退避跳过 / 本地文件 / URI / 直连节点）
+          origin: rawResult.origin || (rawResult.stale ? 'fallback-stale' : rawResult.cached ? 'snapshot' : 'fetch'),
+          // 命中 L1 原始快照表示本次未回源，汇总树需如实标注，避免被误读为重新回源
+          cached: !!rawResult.cached,
+          // 使用缓存兜底说明本轮数据来自上次成功快照，与正常回源区分开
+          stale: !!rawResult.stale
         });
       } catch (e) {
         const subId = isDirect ? (sub.name || sub.tag || 'direct-node') : redactUrl(sub.url, showFullUrl);
         const expiryTerminal = EXPIRY_TERMINAL_KINDS.includes(terminalKind);
-        // 逐源明细仅在 debug 输出；info 级由下方「订阅源拉取与解析完成」汇总树保留每源一行
+        // BackoffSkipped 是主动跳过请求，不是 FetchFailed；两者日志必须区分。
+        const isBackoffSkip = e?.isBackoff === true;
+        const backoffState = sub.url && /^https?:\/\//i.test(sub.url) ? getSubFetchBackoff(sub.url) : null;
+        const retryInSec = backoffState ? Math.max(1, Math.ceil((backoffState.nextRetryAt - Date.now()) / 1000)) : 0;
+        // 逐源明细仅在 debug 输出；info 级由下方「订阅源解析完成」汇总树保留每源一行
         logger.debug(expiryTerminal
           ? `🛑 [${subId}] ${terminalReason}`
-          : `❌ [${subId}] 订阅拉取异常: ${terminalReason || e.message}`);
+          : isBackoffSkip
+            ? `⏳ [${subId}] 退避中跳过回源（${retryInSec > 0 ? `${retryInSec}s 后重试` : '等待冷却结束'}）`
+            : `❌ [${subId}] 拉取失败：${terminalReason || e.message}`);
 
         let effectiveTag = sub.tag;
         if (!effectiveTag && sub.url && sub.url.startsWith('http')) {
@@ -882,14 +958,16 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           nodeCount: 0
         });
 
-        const backoffState = sub.url && /^https?:\/\//i.test(sub.url) ? getSubFetchBackoff(sub.url) : null;
-        const retryInSec = backoffState ? Math.max(1, Math.ceil((backoffState.nextRetryAt - Date.now()) / 1000)) : 0;
         subSummaries.push({
           type: subType,
           nameHint: '',
           tag: effectiveTag,
           total: 0,
           failed: true,
+          // 主动跳过请求（BackoffSkipped）与真实请求失败（FetchFailed）在日志上分开呈现；
+          // 两者在业务健康度上仍统一计入 failed，不改变 subStatuses 语义。
+          skipped: isBackoffSkip && !terminal,
+          origin: terminal ? 'terminal' : (isBackoffSkip ? 'backoff-skip' : 'fetch-failed'),
           terminalKind,
           failReason: shortMsg,
           retryInSec
@@ -906,30 +984,51 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     hasFailedSub = subStatuses.some(s => s.status === 'stale' || s.status === 'failed' || s.status === 'terminal');
     hasTerminalFailure = usableSubCount === 0 && terminalCount > 0 && terminalCount === evaluatedStatuses.length;
 
-    if (subSummaries.length > 0 && logger) {
-      const lines = [`📡 订阅源拉取与解析完成 (${subSummaries.length} 个源):`];
+    // 仅当「全部源都命中 L1 快照」时才把来源汇总降级为 debug：
+    // 命中快照未回源，再打一份来源清单会让每个新 Host 的首次组装都刷一遍噪声。
+    // 本地文件 / URI / direct 节点、以及缓存兜底与失败源都不属于快照复用，仍应保留汇总。
+    const allSnapshotReuse = subSummaries.length > 0 && subSummaries.every(s => s.cached);
+    if (subSummaries.length > 0 && logger && !allSnapshotReuse) {
+      // 标题只陈述「解析完成」这一既定结果：命中 L1 快照的源并未回源，
+      // 用「拉取与解析完成」会让读者误以为整轮又重新回源了一遍。
+      const lines = [`📡 订阅源解析完成（${subSummaries.length} 个源）：`];
       subSummaries.forEach((s, idx) => {
         const isLast = idx === subSummaries.length - 1;
         const branch = isLast ? '└──' : '├──';
         if (s.disabled) {
-          lines.push(`${branch} ⏸️ ${s.tag ? `[${s.tag}] ` : ''}配置禁用 · 跳过拉取`);
+          lines.push(`${branch} ⏸️ ${s.tag ? `[${s.tag}] ` : ''}：订阅已禁用（跳过回源）`);
         } else if (s.failed) {
           const expiryLabel = { expired: '已失效', 'stale-expired': '已失效', cutoff: '已停用', 'stale-cutoff': '已停用' }[s.terminalKind];
-          lines.push(expiryLabel
-            ? `${branch} 🛑 [${s.tag}]: ${expiryLabel}`
-            : `${branch} ❌ [${s.tag}]: 拉取失败 (${s.failReason})${s.retryInSec > 0 ? `，退避 ${s.retryInSec}s` : ''}`);
+          if (expiryLabel) {
+            lines.push(`${branch} 🛑 [${s.tag}]：${expiryLabel}`);
+          } else if (s.skipped) {
+            lines.push(`${branch} ⏳ [${s.tag}]：退避中跳过回源（无可用缓存${s.retryInSec > 0 ? ` · ${s.retryInSec}s 后重试` : ''}）`);
+          } else {
+            lines.push(`${branch} ❌ [${s.tag}]：拉取失败（${s.failReason}）${s.retryInSec > 0 ? ` · 退避 ${s.retryInSec}s` : ''}`);
+          }
         } else {
-          const icon = s.type === 'uri' ? '📌' : '🌐';
-          const details = [];
+          const origin = describeOrigin(s.origin);
+          const details = [`来源：${origin.label}`];
           if (s.filtered > 0) details.push(`过滤 ${s.filtered} 说明节点`);
           if (s.synth > 0) details.push(`合成 ${s.synth} 看板`);
           if (s.stripped > 0) details.push(`🛡️ 剥离 ${s.stripped} 越权`);
-          const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-          const namePart = s.type === 'uri' ? `${s.nameHint}${s.tag ? ` [${s.tag}]` : ''}` : `[${s.tag}]`;
-          lines.push(`${branch} ${icon} ${namePart}: ${s.total} 个节点${detailStr}`);
+          const detailStr = `（${details.join(' · ')}）`;
+          const singleNode = s.type === 'uri' || s.origin === 'direct';
+          const namePart = singleNode ? `${s.nameHint}${s.tag ? ` [${s.tag}]` : ''}` : `[${s.tag}]`;
+          lines.push(`${branch} ${origin.icon} ${namePart}：${s.total} 个节点${detailStr}`);
         }
       });
       logger.info(lines.join('\n'));
+    } else if (subSummaries.length > 0 && logger) {
+      // 全部源复用快照：info 级保持安静，但 debug 仍需逐订阅标明本次数据来源。
+      if (typeof logger.debug === 'function') {
+        const lines = [`📡 全部订阅源复用快照，未发起回源（${subSummaries.length} 个源）：`];
+        subSummaries.forEach((s, idx) => {
+          const branch = idx === subSummaries.length - 1 ? '└──' : '├──';
+          lines.push(`${branch} ⚡ [${s.tag}]：${s.total} 个节点（来源：复用快照）`);
+        });
+        logger.debug(lines.join('\n'));
+      }
     }
 
     // 仅在多订阅 (>=2 个有流量的有效源) 且启用看板时，在最顶部注入一组「全局总额」配对节点（流量 + 到期）
@@ -965,17 +1064,21 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     let fallbackRejectReason = '';
     let fetchError = null;
     let subStatus = 'ok';
+    // 本轮数据来源（仅用于日志，不参与业务判定）
+    let singleOrigin = 'fetch';
     const localFilePath = path.resolve(process.cwd(), url);
     if (!/^https?:\/\//i.test(url) && !/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
       if (fs.existsSync(localFilePath) && fs.statSync(localFilePath).isFile()) {
-        logger.info(`📄 读取本地配置/节点文件: ${url}`);
+        logger.info(`📄 读取本地配置/节点文件：${url}`);
         rawResult = { content: fs.readFileSync(localFilePath, 'utf-8'), subInfo: null };
+        singleOrigin = 'file';
       } else {
         throw new Error(`Subscription file not found or invalid URL: ${url}`);
       }
     } else if (/^(vless|vmess|trojan|ss):\/\//i.test(url)) {
-      logger.debug(`📌 解析 URI 节点: ${url.split('#').pop() || '未知'}`);
+      logger.debug(`📌 解析 URI 节点：${url.split('#').pop() || '未知'}`);
       rawResult = { content: url, subInfo: null };
+      singleOrigin = 'uri';
     } else {
       const subKey = url;
       const initialStale = (typeof subStaleCache.getSnapshot === 'function')
@@ -986,8 +1089,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         // 退避期内不再发起网络请求：有可用旧缓存直接复用，否则快速失败
         const backoff = resolveBackoffStale(subKey, initialStale, staleMaxAgeMs, expireCutoffHours, displayTimeZone);
         if (backoff && backoff.usable) {
-          logger.warn(`⏳ 订阅暂缓拉取（失败退避中），复用上次成功数据: ${redactUrl(url, showFullUrl)}`);
+          logger.warn(`⏳ 退避中跳过回源，复用缓存兜底：${redactUrl(url, showFullUrl)}`);
           rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true, lastSuccessAt: backoff.stale.timestamp };
+          singleOrigin = 'backoff-reuse';
           subStatus = 'stale';
         } else {
           if (backoff && (backoff.expired || backoff.state.terminal)) {
@@ -997,6 +1101,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           }
           const nextRetryAt = backoff ? backoff.state.nextRetryAt : Date.now() + 30000;
           const retryInSec = Math.max(1, Math.ceil((nextRetryAt - Date.now()) / 1000));
+          // 主动跳过请求，并非真实回源失败；在抛错前显式记录本次行为。
+          logger.warn(`⏳ ${isTerminal ? '订阅已终态失效，' : ''}退避中跳过回源（无可用缓存 · ${retryInSec}s 后重试）：${redactUrl(url, showFullUrl)}`);
           const skipErr = new Error(`Subscription fetch skipped (failure backoff, retry in ${retryInSec}s)`);
           skipErr.isBackoff = true;
           skipErr.retryable = false;
@@ -1008,12 +1114,14 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           ? subStaleCache.getFresh(subKey, subFreshTtlMs)
           : null;
         if (freshSnapshot) {
-          logger.debug(`⚡ 复用新鲜原始订阅快照（免回源）: ${redactUrl(url, showFullUrl)}`);
+          logger.debug(`⚡ 复用快照：${redactUrl(url, showFullUrl)}`);
           rawResult = { content: freshSnapshot.content, subInfo: freshSnapshot.subInfo, cached: true, lastSuccessAt: freshSnapshot.timestamp };
+          singleOrigin = 'snapshot';
         } else {
           try {
             rawResult = await fetchNodes(url, {
               showFullUrl, debug, logger,
+              tag: /^https?:\/\//i.test(url) ? redactUrl(url, showFullUrl) : '',
               proxyUrl: effectiveProxyUrl,
               strategy: effectiveStrategy,
               retry: fetchRetry,
@@ -1023,6 +1131,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
             // 校验成功响应（到期 / 流量耗尽 / 空节点 / 纯占位节点 → 抛错）
             validateFetchedSubscription(rawResult, expireCutoffHours);
+            singleOrigin = 'fetch';
             clearSubFetchFailure(subKey);
           } catch (e) {
             fetchError = e;
@@ -1037,15 +1146,16 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
             if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
 
             if (decision.allowFallback) {
-              logger.warn(`⚠️ 订阅拉取异常，已启用缓存兜底: ${e.message}`);
+              logger.warn(`⚠️ 回源失败，已启用缓存兜底：${e.message}`);
               rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
+              singleOrigin = 'fallback-stale';
               subStatus = 'stale';
             } else {
               if (e?.subInfo) {
                 recordSubInfo(e.subInfo, '');
               }
               if (fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
-                logger.debug(`🛡️ 拒绝容灾兜底 [${redactUrl(url, showFullUrl)}]: ${fallbackRejectReason}`);
+                logger.debug(`🛡️ 兜底被拒绝 [${redactUrl(url, showFullUrl)}]：${fallbackRejectReason}`);
               }
               // 单 URL 模式下若因终态失效拒绝，构造空骨架以交付并保留元数据，与多订阅模式保持一致
               if (isTerminal) {
@@ -1104,7 +1214,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     hasTerminalFailure = subStatus === 'terminal';
 
     const nodeCount = sourceSkeleton.proxies.length;
-    logger.info(`📡 节点解析完成: ${nodeCount} 个节点`);
+    // 单 URL 路径与多订阅路径使用同一句标题，保证同一阶段在不同入口下措辞一致
+    const singleSource = isTerminal ? describeOrigin('terminal') : describeOrigin(singleOrigin);
+    logger.info(`📡 订阅源解析完成：${nodeCount} 个节点（来源：${singleSource.label}）`);
     if (enableDashboard) {
       const effectiveTag = (url && url.startsWith('http')) ? new URL(url).hostname : '订阅';
       const effectiveSubInfo = rawResult?.subInfo || (fetchError?.subInfo || null);

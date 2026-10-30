@@ -45,7 +45,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     createEnvelopesBypass(currentProxies, { logger });
   } catch (bypassErr) {
     if (logger && typeof logger.debug === 'function') {
-      logger.debug(`⚠️ [Envelope 旁路] 批次处理异常: ${bypassErr?.message || bypassErr}`);
+      logger.debug(`🗑️ [Envelope 旁路] 批次处理异常：${bypassErr?.message || bypassErr}`);
     }
   }
 
@@ -67,7 +67,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     const blacklistReason = matchUserBlacklist(p, rawName, config);
     if (blacklistReason) {
       discardedCount++;
-      if (logger) logger.debug(`🗑️ [阻断] 「${rawName}」 原因: ${blacklistReason}`);
+      if (logger) logger.debug(`🗑️ [阻断] 「${rawName}」· 原因：${blacklistReason}`);
       continue;
     }
     unblockedProxies.push(p);
@@ -79,7 +79,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     const beforeDedupe = currentProxies.length;
     currentProxies = dedupeNodes(currentProxies, {
       onDuplicate: (dup, exist) => {
-        if (logger) logger.debug(`🧽 [去重] 「${dup.name}」与「${exist.name}」重复，已剔除`);
+        if (logger) logger.debug(`🗑️ [去重] 「${dup.name}」与「${exist.name}」重复，已剔除`);
       }
     });
     dedupeCount = beforeDedupe - currentProxies.length;
@@ -104,7 +104,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       const blacklistReason = matchUserBlacklist(p, rawName, config);
       if (blacklistReason) {
         discardedCount++;
-        if (logger) logger.debug(`🗑️ [阻断] 裂变节点「${rawName}」 原因: ${blacklistReason}`);
+        if (logger) logger.debug(`🗑️ [阻断] 裂变节点「${rawName}」· 原因：${blacklistReason}`);
         continue;
       }
       postFissionProxies.push(p);
@@ -121,7 +121,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   const validItems = classified.filter(item => {
     if (item.skip) {
       discardedCount++;
-      if (logger) logger.debug(`🗑️ [阻断] 「${item.rawName}」 原因: ${item.blockReason}`);
+      if (logger) logger.debug(`🗑️ [阻断] 「${item.rawName}」· 原因：${item.blockReason}`);
       return false;
     }
     if (item.isInfo) {
@@ -177,16 +177,16 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       groupName = `🌐 ${resolveGroupName(GROUP_KEYS.other)}`;
     }
 
-    const parts = [`[归组]: ${groupName}${isolationNote ? ` (${isolationNote})` : ''}`];
+    const parts = [`[归组]：${groupName}${isolationNote ? `（${isolationNote}）` : ''}`];
 
     // 仅展示命中并影响策略分流的业务池 (如 AI, 流媒体, 游戏, 家宽)，绝不重复已在节点名中呈现的协议与线路
     const activePools = (item.featurePools || []).filter(p => p !== 'unknown');
     const poolLabels = activePools.map(p => effectiveFeatureTexts[p] || p);
     if (poolLabels.length > 0) {
-      parts.push(`业务: ${poolLabels.join(' · ')}`);
+      parts.push(`业务：${poolLabels.join(' · ')}`);
     }
 
-    return `└─ ${parts.join(' | ')}`;
+    return `└─ ${parts.join(' · ')}`;
   };
 
   const resultProxies = effectiveItems.map(item => {

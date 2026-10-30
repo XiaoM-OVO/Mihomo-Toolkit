@@ -165,7 +165,7 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
     });
     assert.equal(result.length, 1);
     assert.ok(logs.length > 0);
-    assert.ok(logs.some(l => l.includes('业务:') && (l.includes('Netflix') || l.includes('流媒体'))));
+    assert.ok(logs.some(l => l.includes('业务：') && (l.includes('Netflix') || l.includes('流媒体'))));
   });
 
   it('rename - 碰撞安全：无序号或重名模板时自动追加序号防重', async () => {

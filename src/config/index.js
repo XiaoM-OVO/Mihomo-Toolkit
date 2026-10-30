@@ -59,7 +59,7 @@ function applyAdditiveFields(merged, logger) {
     }
     merged[field.key] = mergeBaseline(field.baseline, raw, normalize);
     if (rejected.length > 0) {
-      const msg = `[Config] ${field.key} 有 ${rejected.length} 个条目格式非法、已忽略（只读基线不受影响）: ${rejected.join(', ')}`;
+      const msg = `⚠️ ${field.key} 有 ${rejected.length} 个条目格式非法、已忽略（只读基线不受影响）：${rejected.join(', ')}`;
       if (logger && typeof logger.warn === 'function') {
         logger.warn(msg);
       } else if (merged.logLevel !== 'silent') {

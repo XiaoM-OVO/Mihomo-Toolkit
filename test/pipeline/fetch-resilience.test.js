@@ -28,6 +28,18 @@ proxies:
     password: test
 `.trim()).toString('base64');
 
+// 携带控制面越权字段的订阅内容（用于验证审计去重按订阅来源隔离）
+const HOSTILE_SUB_CONTENT = Buffer.from(`
+proxies:
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: hk.domain.com
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+external-controller: 127.0.0.1:9090
+`.trim()).toString('base64');
+
 const originalFetch = globalThis.fetch;
 
 function restoreFetch() {
@@ -189,9 +201,22 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
 
       // 第二次：持续网络失败 → 降级复用上次成功内容
       globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
-      const r2 = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
+      const logs = [];
+      const mockLogger = {
+        debug: (msg) => logs.push({ level: 'debug', msg }),
+        info: (msg) => logs.push({ level: 'info', msg }),
+        warn: (msg) => logs.push({ level: 'warn', msg }),
+        error: (msg) => logs.push({ level: 'error', msg }),
+        isLevelEnabled: () => true,
+        child: () => mockLogger
+      };
+      const r2 = await buildProfile(cfg, { mode: 'config', production: true, noCache: true, logger: mockLogger });
       assert.ok(r2.yamlStr.includes('香港'), '降级后节点不应丢失');
       assert.ok(r2.yamlStr.includes('日本'));
+      assert.ok(
+        logs.some(l => l.level === 'info' && l.msg.includes('缓存兜底')),
+        '缓存兜底的源应在汇总树中如实标注'
+      );
     } finally {
       restoreFetch();
     }
@@ -344,6 +369,10 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
     await buildProfile(cfg, { mode: 'config', production: true, noCache: true, logger: mockLogger });
     const hasProxyWarn = logs.some(l => l.msg.includes('拉取代理') || l.msg.includes('61234'));
     assert.equal(hasProxyWarn, false, '纯 URI 节点不应执行代理连通性探测');
+    assert.ok(
+      logs.some(l => l.level === 'info' && l.msg.includes('订阅源解析完成')),
+      '纯 URI 节点（未回源）同样应输出订阅源汇总树'
+    );
   });
 
   test('L1 快照复用：不同 Host 的构建在新鲜期内不再重复回源', async () => {
@@ -362,6 +391,44 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
       const res = await buildProfile(baseConfig(url, { global: { subDomain: ['b.example.com'] } }), { mode: 'config', production: true });
       assert.equal(fetchCount, 1, '新鲜期内应复用 L1 原始订阅快照，不重复回源');
       assert.ok(res.yamlStr.includes('香港'));
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('汇总树仅在真实回源时输出：纯快照组装不打来源清单', async () => {
+    let fetchCount = 0;
+    globalThis.fetch = async () => {
+      fetchCount++;
+      return new Response(SUB_CONTENT, { status: 200 });
+    };
+    const logs = [];
+    const mockLogger = {
+      debug: (msg) => logs.push({ level: 'debug', msg }),
+      info: (msg) => logs.push({ level: 'info', msg }),
+      warn: (msg) => logs.push({ level: 'warn', msg }),
+      error: (msg) => logs.push({ level: 'error', msg }),
+      isLevelEnabled: () => true,
+      child: () => mockLogger
+    };
+    try {
+      const url = 'http://93.184.216.34/tree-gate';
+      // 首次真实回源：应输出来源汇总树
+      await buildProfile(baseConfig(url), { mode: 'config', production: true, logger: mockLogger });
+      assert.ok(
+        logs.some(l => l.level === 'info' && l.msg.includes('订阅源解析完成')),
+        '真实回源的构建应输出来源汇总树'
+      );
+
+      // 新鲜期内不同 Host：仅组装 L1 快照，不应再输出来源汇总树
+      const before = logs.length;
+      await buildProfile(baseConfig(url, { global: { subDomain: ['gate.example.com'] } }), { mode: 'config', production: true, logger: mockLogger });
+      assert.equal(fetchCount, 1, '新鲜期内不应重复回源');
+      assert.equal(
+        logs.slice(before).some(l => l.msg.includes('订阅源解析完成')),
+        false,
+        '未回源的组装不应输出来源汇总树'
+      );
     } finally {
       restoreFetch();
     }
@@ -391,6 +458,66 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
       const res = await buildProfile(baseConfig(url, { global: { subDomain: ['c.example.com'] } }), { mode: 'config', production: true });
       assert.equal(fetchCount, 1, '预热写入的 L1 快照应被首次请求复用');
       assert.ok(res.yamlStr.includes('香港'));
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('控制面审计去重：不同 URL 相同 tag 各自首次发现，不共享计数', async () => {
+    globalThis.fetch = async () => new Response(HOSTILE_SUB_CONTENT, { status: 200 });
+    const logs = [];
+    const mockLogger = {
+      debug: (msg) => logs.push({ level: 'debug', msg }),
+      info: (msg) => logs.push({ level: 'info', msg }),
+      warn: (msg) => logs.push({ level: 'warn', msg }),
+      error: (msg) => logs.push({ level: 'error', msg }),
+      isLevelEnabled: () => true,
+      child: () => mockLogger
+    };
+    try {
+      const cfg = {
+        subscriptions: [
+          { url: 'http://93.184.216.34/audit-dup-a', tag: 'DUP', retry: 0 },
+          { url: 'http://93.184.216.34/audit-dup-b', tag: 'DUP', retry: 0 }
+        ],
+        minorNodeThreshold: 1
+      };
+      await buildProfile(cfg, { mode: 'config', production: true, noCache: true, logger: mockLogger });
+      const firstWarns = logs.filter(l => l.level === 'warn' && l.msg.includes('控制面沙箱') && l.msg.includes('首次发现'));
+      assert.equal(firstWarns.length, 2, '两个不同 URL 的订阅应各自输出「首次发现」');
+      assert.equal(
+        logs.filter(l => l.msg.includes('重复检测')).length,
+        0,
+        '相同 tag 的不同订阅不得共享去重计数'
+      );
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('控制面审计去重：同一订阅重复审计降级为 debug 并保留次数', async () => {
+    globalThis.fetch = async () => new Response(HOSTILE_SUB_CONTENT, { status: 200 });
+    const logs = [];
+    const mockLogger = {
+      debug: (msg) => logs.push({ level: 'debug', msg }),
+      info: (msg) => logs.push({ level: 'info', msg }),
+      warn: (msg) => logs.push({ level: 'warn', msg }),
+      error: (msg) => logs.push({ level: 'error', msg }),
+      isLevelEnabled: () => true,
+      child: () => mockLogger
+    };
+    try {
+      const url = 'http://93.184.216.34/audit-repeat';
+      await buildProfile(baseConfig(url, { retry: 0 }), { mode: 'config', production: true, noCache: true, logger: mockLogger });
+      await buildProfile(baseConfig(url, { retry: 0 }), { mode: 'config', production: true, noCache: true, logger: mockLogger });
+
+      const firstWarns = logs.filter(l => l.level === 'warn' && l.msg.includes('控制面沙箱') && l.msg.includes('首次发现'));
+      assert.equal(firstWarns.length, 1, '同一订阅首次审计只应 warn 一次');
+      assert.equal(
+        logs.filter(l => l.level === 'debug' && l.msg.includes('重复检测（第 2 次')).length,
+        1,
+        '同一订阅的重复审计应降级为 debug 并保留重复次数'
+      );
     } finally {
       restoreFetch();
     }

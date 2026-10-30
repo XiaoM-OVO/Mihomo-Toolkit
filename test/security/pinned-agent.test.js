@@ -122,7 +122,7 @@ describe('【Security】建连期 IP Pinning (pinned-agent)', () => {
   });
 
   it('错误链提取 - 支持 cause 与 AggregateError 包装，且深度上限生效', () => {
-    const inner = policyError('SSRF 预检失败: rebind.example 解析到私网 IP 127.0.0.1');
+    const inner = policyError('SSRF 预检失败：rebind.example 解析到私网 IP 127.0.0.1');
 
     const wrapped = new Error('fetch failed', {
       cause: new AggregateError([new Error('connect ECONNREFUSED'), inner])

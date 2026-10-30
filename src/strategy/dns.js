@@ -27,6 +27,10 @@ const {
 const { deriveFakeIpFilterAdditions } = require('../core/security/resolver-plan');
 const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
 const { FAKEIP_FILTER_BASELINE, effectiveProtectedDomains } = require('../data');
+const { createRepeatGate } = require('../core/logger');
+
+// DNS 沙箱审计去重：按「覆盖输入来源 + findings 签名」隔离计数；拦截/修正行为本身不变。
+const dnsAuditGate = createRepeatGate(100);
 
 function dedupe(arr) {
   return [...new Set(arr)];
@@ -206,13 +210,21 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   };
 
   // 8. 安全审计输出
+  //    同一份 DNS 覆盖输入在缓存复用场景会被重复审计：首次 warn，之后降为 debug 并记录重复次数。
+  //    findings 签名包含具体条目（id + note），因此不同来源/不同审计结果不会共享同一条目。
   if (findings.length > 0 && logger && typeof logger.warn === 'function') {
-    const lines = ['🛡️ DNS 净化沙箱: 已拦截或修正以下不安全解析配置:'];
-    findings.forEach((f, idx) => {
-      const isLast = idx === findings.length - 1;
-      lines.push(`${isLast ? '└──' : '├──'} [${f.id}] ${f.note || f.reason || ''}`);
-    });
-    logger.warn(lines.join('\n'));
+    const signature = findings.map(f => `${f.id}:${f.note || f.reason || ''}`).join('|');
+    const seenTimes = dnsAuditGate(`dns-overlay|${signature}`);
+    if (seenTimes > 1) {
+      logger.debug(`🛡️ DNS 净化沙箱：重复检测（第 ${seenTimes} 次 · 相同 ${findings.length} 项，本次仍已拦截或修正）`);
+    } else {
+      const lines = [`🛡️ DNS 净化沙箱：首次发现并已拦截或修正 ${findings.length} 项不安全解析配置：`];
+      findings.forEach((f, idx) => {
+        const isLast = idx === findings.length - 1;
+        lines.push(`${isLast ? '└──' : '├──'} [${f.id}] ${f.note || f.reason || ''}`);
+      });
+      logger.warn(lines.join('\n'));
+    }
   }
 
   return { findings, listen: finalListen };

@@ -99,18 +99,18 @@ function createPinnedLookup(options = {}) {
       try {
         result = await resolve(hostname);
       } catch {
-        throw unverifiedBlocked(`SSRF 预检失败: ${hostname} 域名解析失败（已拒绝连接）`);
+        throw unverifiedBlocked(`SSRF 预检失败：${hostname} 域名解析失败（已拒绝连接）`);
       }
 
       let entries = normalizeEntries(result);
       if (family) entries = entries.filter((entry) => entry.family === family);
       if (entries.length === 0) {
-        throw unverifiedBlocked(`SSRF 预检失败: ${hostname} 无可用地址（已拒绝连接）`);
+        throw unverifiedBlocked(`SSRF 预检失败：${hostname} 无可用地址（已拒绝连接）`);
       }
       // 与 ssrf.js 的全候选地址策略一致：只要存在禁止地址就拒绝整个目标
       for (const entry of entries) {
         if (isBlocked(entry.address)) {
-          throw policyBlocked(`SSRF 预检失败: ${hostname} 解析到私网 IP ${entry.address}`);
+          throw policyBlocked(`SSRF 预检失败：${hostname} 解析到私网 IP ${entry.address}`);
         }
       }
       return entries;

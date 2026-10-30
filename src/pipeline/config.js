@@ -16,6 +16,11 @@ const { aggregateSubscriptions } = require('../strategy/dashboard');
 const { syncChineseConvert } = require('../core/chinese-sync');
 const { resetToolkitOutputKeys, enforceOutputContract } = require('../core/security/control-plane');
 const { isTrustedSynthetic } = require('../core/node-trust');
+const { createRepeatGate } = require('../core/logger');
+
+// 交付契约审计去重：仅按「输出产物 + 同一组非工具字段」计数，不跨来源共享；
+// 实际剥离始终由 enforceOutputContract 执行，去重只影响日志级别。
+const deliveryContractAuditGate = createRepeatGate(100);
 
 /**
  * 装配并序列化完整 Mihomo 配置文件
@@ -50,7 +55,7 @@ function runConfigPipeline({
   //    绝不允许其携带 dns / tun / hosts / rules 等控制面字段进入产物。
   const resetKeys = resetToolkitOutputKeys(sourceSkeleton);
   if (resetKeys.length > 0 && logger && logger.isLevelEnabled && logger.isLevelEnabled('debug')) {
-    logger.debug(`🛡️ 控制面重置: 已清空输入骨架中的 ${resetKeys.length} 个工具自有键 (${resetKeys.join(', ')})`);
+    logger.debug(`🛡️ 控制面重置：已清空输入骨架中的 ${resetKeys.length} 个工具自有键（${resetKeys.join(', ')}）`);
   }
 
   // 2. 全量组装模式：注入安全 DNS、TUN、策略组拓扑与分流规则
@@ -74,17 +79,17 @@ function runConfigPipeline({
     const synthCount = proxies.filter(p => isTrustedSynthetic(p)).length;
     const regionalGroups = groups.filter(g => g.name && /节点/.test(g.name));
     const serviceGroups = groups.filter(g => g.name && !/节点/.test(g.name));
-    const lines = [`📐 拓扑策略装配完成:`];
+    const lines = ['📐 拓扑策略装配完成：'];
 
     if (isZeroNode) {
-      lines.push(`├── 🛡️ 纯分流拦截模式: 无代理节点，已清空区域组并保留拦截/直连规则`);
+      lines.push('├── ⚙️ 纯分流拦截模式：无代理节点，已清空区域组并保留拦截/直连规则');
     } else {
       if (synthCount > 0) {
-        lines.push(`├── 📊 状态看板: ${synthCount} 条目 (已合成全局总额与独立看板)`);
+        lines.push(`├── 📊 状态看板：${synthCount} 条目（已合成全局总额与独立看板）`);
       }
-      lines.push(`├── 🌏 地区拓扑: ${regionalGroups.length} 个区域组`);
+      lines.push(`├── 🌏 地区拓扑：${regionalGroups.length} 个区域组`);
     }
-    lines.push(`└── 🎯 分流服务: ${serviceGroups.length} 个规则组 (${rules.length} 条分流规则)`);
+    lines.push(`└── 🎯 分流服务：${serviceGroups.length} 个规则组（${rules.length} 条分流规则）`);
     logger.info(lines.join('\n'));
   }
 
@@ -99,8 +104,8 @@ function runConfigPipeline({
   });
   if (invariantViolations.length > 0 && logger) {
     logger.warn(
-      `⚠️ DNS 不变式自检发现 ${invariantViolations.length} 项违规: ` +
-      invariantViolations.map(v => `${v.id}(${v.detail})`).join(' | ')
+      `⚠️ DNS 不变式自检发现 ${invariantViolations.length} 项违规：` +
+      invariantViolations.map(v => `${v.id}（${v.detail}）`).join(' · ')
     );
   }
 
@@ -112,9 +117,16 @@ function runConfigPipeline({
   const { stripped } = enforceOutputContract(outputData);
   if (stripped.length > 0 && logger) {
     const preview = stripped.slice(0, 8).join(', ');
-    logger.warn(
-      `🛡️ 交付契约: 已剥离 ${stripped.length} 个非工具自有顶层字段 (${preview}${stripped.length > 8 ? ', …' : ''})`
-    );
+    const seenTimes = deliveryContractAuditGate(`contract|${[...stripped].sort().join(',')}`);
+    if (seenTimes > 1) {
+      logger.debug(
+        `🛡️ 交付契约：重复检测（第 ${seenTimes} 次 · 相同 ${stripped.length} 个非工具自有顶层字段，本次仍已实际剥离：${preview}${stripped.length > 8 ? ', …' : ''}）`
+      );
+    } else {
+      logger.warn(
+        `🛡️ 交付契约：首次发现并已实际剥离 ${stripped.length} 个非工具自有顶层字段（${preview}${stripped.length > 8 ? ', …' : ''}）`
+      );
+    }
   }
 
   // 6. YAML 序列化与标头注入

@@ -468,9 +468,11 @@ function formatBytes(bytes = 0) {
  * 节点拉取主调度（带重试与自动降级）
  */
 async function fetchNodes(url, options = {}) {
-  const { showFullUrl = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, retry = 2, timeoutMs = 15000, maxBytes = 0 } = options;
+  const { showFullUrl = false, proxyUrl = '', strategy = 'direct', perSubProxy, logger, tag = '', retry = 2, timeoutMs = 15000, maxBytes = 0 } = options;
   const { mode } = resolveFetchPlan({ strategy, perSubProxy });
   const useProxy = mode === 'proxy';
+  // 订阅标识仅用于日志归属，不参与请求行为
+  const tagPart = tag ? `[${tag}] ` : '';
 
   const doFetch = async (p) => {
     const { text: content, response: res } = await safeFetchText(url, { showFullUrl, proxyUrl: p ? proxyUrl : '', timeoutMs, maxBytes });
@@ -479,7 +481,7 @@ async function fetchNodes(url, options = {}) {
       const sizeStr = formatBytes(Buffer.byteLength(content, 'utf-8'));
       const infoTag = subInfo ? ' · 含流量信息' : '';
       const proxyTag = p && proxyUrl ? '(代理)' : '';
-      logger.debug(`🌐 拉取成功${proxyTag}: ${redactUrl(url, showFullUrl)} [${res.status} OK · ${sizeStr}${infoTag}]`);
+      logger.debug(`🌐 回源成功${proxyTag}：${tagPart}${redactUrl(url, showFullUrl)} [${res.status} OK · ${sizeStr}${infoTag}]`);
     }
     return { content, subInfo };
   };
@@ -497,7 +499,7 @@ async function fetchNodes(url, options = {}) {
         if (err && (err.retryable === false || err.dnsDeterministic === true)) throw err;
         if (i < attempts - 1) {
           const via = (p && proxyUrl) ? ` (经代理 ${proxyUrl.replace('http://', '')})` : '';
-          if (logger) logger.debug(`🔄 订阅拉取失败，第 ${i + 1}/${attempts - 1} 次重试${via}: ${err.message}`);
+          if (logger) logger.debug(`🔄 回源失败，第 ${i + 1}/${attempts - 1} 次重试${via}：${tagPart}${err.message}`);
           await new Promise((r) => { setTimeout(r, 500 * (i + 1)); });
         }
       }

@@ -167,7 +167,7 @@ function pruneEmptyGroups({
       });
       if (logger && typeof logger.warn === 'function') {
         const lostInfo = lost.length > 0 ? ` (原成员: ${lost.join(', ')})` : '';
-        logger.warn(`🛡️ 骨架组 [${name}] 无可用节点，已注入 DIRECT 兜底保活${lostInfo}`);
+        logger.warn(`⚠️ 骨架组 [${name}] 无可用节点，已注入 DIRECT 兜底保活${lostInfo}`);
       }
       if (trace) {
         trace.add({
@@ -249,7 +249,7 @@ function pruneEmptyGroups({
         removedGroups.add(name);
         groupMap.delete(name);
         if (logger && typeof logger.debug === 'function') {
-          logger.debug(`🍂 剪枝淘汰空策略组: [${name}]`);
+          logger.debug(`🗑️ 剪枝淘汰空策略组：[${name}]`);
         }
       } else {
         rescueExemptGroup(name, groupMap.get(name));
@@ -307,7 +307,7 @@ function pruneEmptyGroups({
           });
         }
         if (logger && typeof logger.warn === 'function') {
-          logger.warn(`✂️ 拓扑破环: 检测到策略组循环依赖 [${nodeName}] ➔ [${target}]，已剪断该回边`);
+          logger.warn(`✂️ 拓扑破环：检测到策略组循环依赖 [${nodeName}] ➔ [${target}]，已剪断该回边`);
         }
         continue;
       }
@@ -335,7 +335,7 @@ function pruneEmptyGroups({
   // 若破环发生，输出全局聚合诊断摘要
   if (brokenEdges.length > 0 && logger && typeof logger.warn === 'function') {
     const summary = brokenEdges.map(e => `${e.from}➔${e.to}`).join(', ');
-    logger.warn(`✂️ 拓扑破环总结: 共斩断 ${brokenEdges.length} 处循环依赖边 [${summary}]`);
+    logger.warn(`✂️ 拓扑破环总结：共斩断 ${brokenEdges.length} 处循环依赖边 [${summary}]`);
   }
 
   // 阶段 3：破环后二次可达性收敛 (Post-Break Reachability)
@@ -351,7 +351,7 @@ function pruneEmptyGroups({
         removedGroups.add(name);
         groupMap.delete(name);
         if (logger && typeof logger.debug === 'function') {
-          logger.debug(`🍂 剪枝淘汰空策略组: [${name}]`);
+          logger.debug(`🗑️ 剪枝淘汰空策略组：[${name}]`);
         }
       } else {
         rescueExemptGroup(name, group);
@@ -395,7 +395,7 @@ function pruneEmptyGroups({
     });
     if (expectedAbsent.size > 0 && logger && typeof logger.debug === 'function') {
       const detail = [...expectedAbsent.entries()].map(([target, count]) => `「${target}」×${count}`).join('、');
-      logger.debug(`🪣 节点池为空或未激活，依赖该池的规则按设计跳过：${detail}`);
+      logger.debug(`⏭️ 节点池为空或未激活，依赖该池的规则按设计跳过：${detail}`);
     }
     const orphanCount = [...orphanTargets.values()].reduce((sum, n) => sum + n, 0);
     if (orphanCount > 0 && logger && typeof logger.warn === 'function') {
@@ -456,7 +456,7 @@ function pruneEmptyGroups({
           });
         }
         if (logger && typeof logger.debug === 'function') {
-          logger.debug(`🧹 孤儿清理: 剔除未被引用的规则集提供者 [${key}]`);
+          logger.debug(`🗑️ 孤儿清理：剔除未被引用的规则集提供者 [${key}]`);
         }
       }
     });

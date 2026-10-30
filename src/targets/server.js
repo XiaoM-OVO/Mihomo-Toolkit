@@ -10,7 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const yaml = require('yaml');
 const { buildProfile, normalizeOutputMode, getProfileCacheStats } = require('../pipeline/engine');
-const { createLogger } = require('../core/logger');
+const { createLogger, createRepeatGate } = require('../core/logger');
 const { safeFetchText } = require('../io/fetcher');
 const { isAllowedUrlAsync, redactUrl } = require('../io/ssrf');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits');
@@ -19,6 +19,10 @@ const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
 const { normalizeSubDomains } = require('../infra/ip');
 const pkg = require('../../package.json');
+
+// 远程配置审计去重：按「配置来源 URL + 同一组被忽略字段」隔离计数；
+// 加固与剥离行为始终执行，去重只影响日志级别。
+const remoteConfigAuditGate = createRepeatGate(100);
 
 /** 回环地址判定（仅这些地址可视为「本机可信接入」） */
 function isLoopbackHost(host) {
@@ -124,9 +128,9 @@ function startServer(options = {}) {
     } catch (e) {
       // 启动阶段配置即损坏：fail-closed，直接拒绝带病启动
       if (options.logger && typeof options.logger.error === 'function') {
-        options.logger.error(`❌ 配置文件无法解析 ${CONFIG_PATH}: ${e.message}`);
+        options.logger.error(`❌ 配置文件无法解析：${CONFIG_PATH}：${e.message}`);
       } else {
-        console.error(`❌ [Server] 配置文件无法解析 ${CONFIG_PATH}: ${e.message}`);
+        console.error(`❌ 配置文件无法解析：${CONFIG_PATH}：${e.message}`);
       }
       throw e;
     }
@@ -191,7 +195,7 @@ function startServer(options = {}) {
 
           localConfig = parsed;
           lastConfigMtime = statNow.mtimeMs;
-          serverLogger.info(`🔄 配置文件变动检测：已平滑重载最新配置 (mtime: ${statNow.mtimeMs})`);
+          serverLogger.info(`🔄 配置文件变动，已平滑重载（mtime: ${statNow.mtimeMs}）`);
           return localConfig;
         } catch (err) {
           lastErr = err;
@@ -207,7 +211,7 @@ function startServer(options = {}) {
         lastConfigMtime = fallbackStat.mtimeMs;
       } catch (_) {}
 
-      serverLogger.error(`❌ 配置文件热重载失败 (已保留上一份有效配置): ${lastErr?.message || lastErr}`);
+      serverLogger.error(`❌ 配置文件热重载失败（保留上一份有效配置）：${lastErr?.message || lastErr}`);
       return localConfig;
     })().finally(() => {
       reloadFlight = null;
@@ -276,7 +280,7 @@ function startServer(options = {}) {
    */
   async function runGuardedBackgroundRefresh(triggerName, logMessage) {
     if (isBackgroundRefreshing) {
-      serverLogger.warn(`⏳ [${triggerName}] 发现上一轮后台刷新任务尚未结束，跳过本轮执行以避免重复开工`);
+      serverLogger.warn(`⏳ 上一轮后台刷新未结束，跳过本轮 [${triggerName}]`);
       return false;
     }
 
@@ -316,15 +320,15 @@ function startServer(options = {}) {
         } else if (published) {
           serverLogger.info('✅ 后台定时更新完成，新缓存已就绪');
         } else {
-          serverLogger.warn('⚠️ 后台定时更新结束，但因全部订阅不可用或写入被拦截，未发布新缓存 (保留旧缓存)');
+          serverLogger.warn('⚠️ 后台定时更新结束，未发布新缓存（保留旧缓存）：全部订阅不可用或写入被拦截');
         }
       }
       return true;
     } catch (err) {
       if (triggerName === 'Warmup') {
-        serverLogger.warn(`⚠️ 初始缓存预热失败 (不影响服务运行): ${err.message}`);
+        serverLogger.warn(`⚠️ 初始缓存预热失败（不影响服务运行）：${err.message}`);
       } else {
-        serverLogger.warn(`⚠️ 后台定时更新异常 (保留当前有效缓存): ${err.message}`);
+        serverLogger.warn(`⚠️ 后台定时更新异常（保留当前有效缓存）：${err.message}`);
       }
       return false;
     } finally {
@@ -405,9 +409,9 @@ function startServer(options = {}) {
         else if (reqUrl.searchParams.has('force')) safeParams.push(`force=${reqUrl.searchParams.get('force')}`);
         if (safeParams.length > 0) safeUrl += `?${safeParams.join('&')}`;
 
-        serverLogger.info(`🌐 收到订阅请求: ${safeUrl} 来自 ${clientIp}`);
+        serverLogger.info(`🌐 收到订阅请求：${safeUrl}（来自 ${clientIp}）`);
         if (localConfig.logLevel === 'debug' || reqUrl.searchParams.has('debug')) {
-          serverLogger.debug(`🔍 客户端信息: ${clientIp} | User-Agent: ${userAgent}`);
+          serverLogger.debug(`🔍 客户端信息：${clientIp} · User-Agent: ${userAgent}`);
         }
 
         const authToken = process.env.AUTH_TOKEN || localConfig.authToken;
@@ -417,7 +421,7 @@ function startServer(options = {}) {
           const bearerToken = headerAuth.startsWith('Bearer ') ? headerAuth.slice(7) : '';
           const providedToken = urlToken || bearerToken;
           if (!safeTokenEqual(providedToken, authToken)) {
-            serverLogger.warn(`🛑 拒绝未授权访问: ${safeUrl} 来自 ${clientIp}`);
+            serverLogger.warn(`🛑 拒绝未授权访问：${safeUrl}（来自 ${clientIp}）`);
             res.writeHead(401, { 'Content-Type': 'text/plain' });
             res.end('Unauthorized: Invalid or missing token. Provide ?token=xxx or Authorization: Bearer xxx');
             return;
@@ -480,7 +484,15 @@ function startServer(options = {}) {
             return;
           }
           userConfig = hardened.config;
-          hardened.strippedKeys.forEach(k => serverLogger.warn(`🛡️ 远程配置不可信: 已忽略字段 ${k}`));
+          if (hardened.strippedKeys.length > 0) {
+            const preview = hardened.strippedKeys.slice(0, 8).join(', ');
+            const seenTimes = remoteConfigAuditGate(`remote|${configUrl}|${[...hardened.strippedKeys].sort().join(',')}`);
+            if (seenTimes > 1) {
+              serverLogger.debug(`🛡️ 远程配置不可信：重复检测（第 ${seenTimes} 次 · 相同 ${hardened.strippedKeys.length} 个字段已忽略：${preview}）`);
+            } else {
+              serverLogger.warn(`🛡️ 远程配置不可信：首次发现并已忽略 ${hardened.strippedKeys.length} 个字段（${preview}）`);
+            }
+          }
         } else if (subUrls.length > 0) {
           if (!paramsAllowed) {
             rejectParams();
@@ -528,7 +540,7 @@ function startServer(options = {}) {
 
           if (refreshCooldownSec > 0 && elapsedSec < refreshCooldownSec) {
             const remainingSec = Math.ceil(refreshCooldownSec - elapsedSec);
-            serverLogger.info(`⏳ 频繁刷新拦截: 处于防爆盾冷却期中 (剩余 ${remainingSec}s)，直接响应最新缓存 <- ${clientIp}`);
+            serverLogger.info(`⏳ 刷新冷却中（剩余 ${remainingSec}s），直接返回最新缓存 <- ${clientIp}`);
             forceRefresh = false;
           } else {
             lastRefreshTimes.set(refreshKey, now);
@@ -537,7 +549,7 @@ function startServer(options = {}) {
               lastRefreshTimes.set(refreshKey, now);
             }
             forceRefresh = true;
-            serverLogger.info(`🔄 收到强制刷新请求 (?refresh=1)，绕过本地缓存向远端重新拉取 <- ${clientIp}`);
+            serverLogger.info(`🔄 收到强制刷新请求，绕过缓存直接回源 <- ${clientIp}`);
           }
         }
 
@@ -578,7 +590,12 @@ function startServer(options = {}) {
         res.end(isReport && result.report ? JSON.stringify(result.report, null, 2) : yamlStr);
       } catch (err) {
         // 仅记录日志，不回显内部错误细节（避免泄漏本地路径、上游状态等实现信息）
-        serverLogger.error(`❌ 配置构建异常: ${err.message}`);
+        if (err && err.isBackoff) {
+          // 退避期主动跳过请求，不是真实回源失败；响应语义保持不变
+          serverLogger.warn(`⏳ 配置构建因订阅退避而跳过回源（未发起网络请求）：${err.message}`);
+        } else {
+          serverLogger.error(`❌ 配置构建异常：${err.message}`);
+        }
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Server Internal Error: profile build failed. See server logs for details.');
       } finally {
@@ -605,7 +622,7 @@ function startServer(options = {}) {
   server.closeGracefully = function closeGracefully(timeoutMs = 10000) {
     if (shutdownPromise) return shutdownPromise;
     isShuttingDown = true;
-    serverLogger.info('🛑 收到停止信号，正在平滑关闭服务 (等待处理中的请求排空)...');
+    serverLogger.info('🛑 收到停止信号，平滑关闭中（等待在途请求排空）');
 
     shutdownPromise = new Promise((resolve) => {
       let resolved = false;
@@ -652,7 +669,7 @@ function startServer(options = {}) {
           doResolve();
         } else if (Date.now() - startTime >= timeoutMs) {
           const stillRefreshing = isBackgroundRefreshing ? ' (后台刷新进行中)' : '';
-          serverLogger.warn(`⚠️ 平滑退出超时 (${timeoutMs}ms)，仍有 ${activeBuilds} 个任务未结束${stillRefreshing}，强制关闭连接`);
+          serverLogger.warn(`⚠️ 平滑退出超时（${timeoutMs}ms），仍有 ${activeBuilds} 个任务未结束${stillRefreshing}，强制关闭连接`);
           if (typeof server.closeAllConnections === 'function') {
             server.closeAllConnections();
           }
@@ -670,11 +687,11 @@ function startServer(options = {}) {
   };
 
   const handleSignal = async (signal) => {
-    serverLogger.info(`🛑 捕获到 ${signal} 信号，启动平滑退出流程...`);
+    serverLogger.info(`🛑 收到 ${signal} 信号，开始平滑退出`);
     try {
       await server.closeGracefully(options.shutdownTimeoutMs || 10000);
     } catch (err) {
-      serverLogger.error(`❌ 平滑关闭过程发生异常: ${err.message}`);
+      serverLogger.error(`❌ 平滑关闭过程发生异常：${err.message}`);
     }
     if (require.main === module || options.exitOnSignal) {
       process.exit(0);
@@ -700,7 +717,7 @@ function startServer(options = {}) {
   });
 
   server.listen(PORT, HOST, () => {
-    serverLogger.info(`🛠️ Mihomo-Toolkit v${pkg.version} 服务已就绪，监听于 http://${HOST}:${PORT}`);
+    serverLogger.info(`🚀 Mihomo-Toolkit v${pkg.version} 服务已就绪，监听 http://${HOST}:${PORT}`);
     if (!BOUND_LOOPBACK) {
       if (authTokenAtStartup) {
         serverLogger.warn(`⚠️ 服务监听在非回环地址 ${HOST}，已启用 authToken 鉴权；请确认该端口不面向不可信网络开放。`);
@@ -716,15 +733,15 @@ function startServer(options = {}) {
     const enableWarmup = options.enableWarmup ?? (localConfig.enableWarmup === true || (Number(localConfig.autoRefreshInterval) > 0 && localConfig.enableWarmup !== false));
     if (enableWarmup && hasLocalSubs) {
       setImmediate(async () => {
-        await runGuardedBackgroundRefresh('Warmup', '🔥 服务已启动，正在后台静默预热初始订阅缓存...');
+        await runGuardedBackgroundRefresh('Warmup', '🔥 服务已启动，后台预热订阅快照');
       });
     }
 
     const autoRefreshIntervalSec = Number(options.autoRefreshInterval ?? localConfig.autoRefreshInterval) || 0;
     if (autoRefreshIntervalSec > 0 && hasLocalSubs) {
-      serverLogger.info(`⏰ 已启用后台自动轮询更新 (每 ${autoRefreshIntervalSec}s 静默拉取一次)`);
+      serverLogger.info(`⏰ 已启用后台自动轮询（每 ${autoRefreshIntervalSec}s 回源一次）`);
       const intervalId = setInterval(async () => {
-        await runGuardedBackgroundRefresh('Cron', `⏰ 触发后台定时静默更新 (每 ${autoRefreshIntervalSec}s)...`);
+        await runGuardedBackgroundRefresh('Cron', `⏰ 触发后台定时更新（每 ${autoRefreshIntervalSec}s）`);
       }, autoRefreshIntervalSec * 1000);
       intervalId.unref?.();
       server.on('close', () => clearInterval(intervalId));

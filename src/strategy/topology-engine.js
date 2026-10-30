@@ -173,7 +173,7 @@ function resolveGroupProxies({
     // 2. 未命中任何已知宏的 `@` 符号：配置错误，fail-closed（禁止退化为字面组名或静默跳过）
     if (token.startsWith('@')) {
       throw new Error(
-        `[groups] 未知宏「${token}」，可用宏: ${formatMacroHints()}（完整别名与含义见 CONFIGURATION.md）`
+        `[groups] 未知宏「${token}」，可用宏：${formatMacroHints()}（完整别名与含义见 CONFIGURATION.md）`
       );
     }
 
@@ -194,7 +194,7 @@ function resolveGroupProxies({
         target = stripped;
       } else if (!BUILTIN_PROXY_TARGETS.has(token.toUpperCase()) && logger && typeof logger.warn === 'function') {
         // 既非物理节点、也非已知组或内置目标：保留 token 交由 prune 兜底，但显式告警（避免静默悬空）
-        logger.warn(`⚠️ [TopologyEngine] 目标「${token}」不是物理节点、已知策略组或内置目标，可能在生成配置中悬空`);
+        logger.warn(`⚠️ 目标「${token}」不是物理节点、已知策略组或内置目标，可能在生成配置中悬空`);
       }
     }
     resolved.push(target);
@@ -425,7 +425,7 @@ function evaluateCustomTopology({
   if (hasCycle) {
     const cycleDesc = cycles.map(c => c.join(' -> ')).join(' | ');
     if (logger && typeof logger.warn === 'function') {
-      logger.warn(`⚠️ [TopologyEngine] 检测到策略组存在循环依赖: ${cycleDesc}`);
+      logger.warn(`⚠️ 检测到策略组存在循环依赖：${cycleDesc}`);
     }
     throw new Error(`[groups] 检测到策略组存在循环依赖 (Cycle Dependency): ${cycleDesc}`);
   }

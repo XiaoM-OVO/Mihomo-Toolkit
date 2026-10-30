@@ -62,7 +62,7 @@ function loadConfig(configPath) {
   }
   const absPath = path.resolve(process.cwd(), configPath);
   if (!fs.existsSync(absPath)) {
-    throw new Error(`配置文件不存在: ${absPath}`);
+    throw new Error(`配置文件不存在：${absPath}`);
   }
   const baseDir = path.dirname(absPath);
   const content = fs.readFileSync(absPath, 'utf-8');
@@ -260,15 +260,15 @@ function renderItem(domain, item) {
       return marks.join(' ');
     }
     case 'presets':
-      return `${item.preset} · ${item.label}（${item.kind}${item.registry ? `: ${item.registry}` : ''}）`;
+      return `${item.preset} · ${item.label}（${item.kind}${item.registry ? `：${item.registry}` : ''}）`;
     case 'macros': {
       const aliasText = item.aliases.filter(alias => alias !== item.macro);
-      return `${item.macro}${aliasText.length > 0 ? `（别名: ${aliasText.join(' / ')}）` : ''}`;
+      return `${item.macro}${aliasText.length > 0 ? `（别名：${aliasText.join(' / ')}）` : ''}`;
     }
     case 'pools': {
       const marks = [item.pool];
       if (item.status === 'inactive') {
-        marks.push(`· 未启用${item.gate ? `（需 ${item.gate}: true）` : ''}`);
+        marks.push(`· 未启用${item.gate ? `（需 ${item.gate}：true）` : ''}`);
       } else {
         marks.push(item.activation === 'always' ? '· 恒在' : '· 按需');
       }
@@ -314,12 +314,12 @@ function renderHuman(domain, items) {
 function runListCommand({ domain, config, json = false } = {}) {
   const available = Object.keys(DOMAIN_LABELS);
   if (!domain) {
-    console.error(`❌ 缺少 list 域，可选: ${available.join(' / ')}`);
+    console.error(`❌ 缺少 list 域，可选：${available.join(' / ')}`);
     process.exitCode = 1;
     return;
   }
   if (!available.includes(domain)) {
-    console.error(`❌ 未知 list 域「${domain}」，可选: ${available.join(' / ')}`);
+    console.error(`❌ 未知 list 域「${domain}」，可选：${available.join(' / ')}`);
     process.exitCode = 1;
     return;
   }
@@ -345,7 +345,7 @@ function runListCommand({ domain, config, json = false } = {}) {
     }
     console.log(renderHuman(domain, items));
   } catch (err) {
-    console.error(`❌ list 失败: ${err.message}`);
+    console.error(`❌ list 失败：${err.message}`);
     process.exitCode = 1;
   }
 }

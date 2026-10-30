@@ -63,12 +63,12 @@ describe('【Security】SSRF 安全拦截与 URL 校验 (ssrf)', () => {
 
     await assert.rejects(
       async () => { await validateUrlSsrf('file:///etc/passwd'); },
-      /SSRF 预检失败: 不支持的协议/
+      /SSRF 预检失败：不支持的协议/
     );
 
     await assert.rejects(
       async () => { await validateUrlSsrf('ftp://example.com/sub'); },
-      /SSRF 预检失败: 不支持的协议/
+      /SSRF 预检失败：不支持的协议/
     );
   });
 

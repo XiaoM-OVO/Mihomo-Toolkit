@@ -217,10 +217,10 @@ function createTargetRegistry({
         if (GATED_POOL_NAMES.includes(poolName)) {
           throw new Error(
             `routing: 节点池「${poolName}」未启用：内置隔离池需开启 \`enableIsolation: true\` 才生效` +
-            `（当前可用内置池: ${available}）`
+            `（当前可用内置池：${available}）`
           );
         }
-        throw new Error(`routing: 节点池「${poolName}」不存在（当前可用内置池: ${available}；自定义池见 pools）`);
+        throw new Error(`routing: 节点池「${poolName}」不存在（当前可用内置池：${available}；自定义池见 pools）`);
       }
       return def.name;
     }

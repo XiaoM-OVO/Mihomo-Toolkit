@@ -130,7 +130,7 @@ function run(argv = process.argv) {
 
   const VALID_MODES = ['config', 'nodes', 'report'];
   if (!VALID_MODES.includes(mode)) {
-    logger.error(`❌ 非法交付模式「${options.mode}」，可选模式: ${VALID_MODES.join(', ')}`);
+    logger.error(`❌ 非法交付模式「${options.mode}」，可选模式：${VALID_MODES.join(', ')}`);
     process.exit(1);
   }
   if (options.json === true && !explain) {
@@ -148,12 +148,12 @@ function run(argv = process.argv) {
         throw configLoadError;
       }
 
-      logger.info(`🛠️ Mihomo-Toolkit v${pkg.version}`);
+      logger.info(`🚀 Mihomo-Toolkit v${pkg.version}`);
       if (options.config) {
-        logger.info(`📄 已加载配置文件: ${options.config}`);
+        logger.info(`📄 已加载配置文件：${options.config}`);
       }
 
-      logger.info(`🚀 开始执行配置流水线 (交付模式: ${mode})`);
+      logger.info(`🚀 开始执行配置流水线（交付模式：${mode}）`);
       let buildOutcome = null;
       const buildOptions = {
         ...options,
@@ -185,15 +185,15 @@ function run(argv = process.argv) {
           : (hasFailedSub ? '⚠️ 部分订阅不可用' : '✅ 连通正常');
         const lines = [
           explain
-            ? '🧪 诊断模式 (--explain)：只输出激活摘要，不写入任何磁盘产物'
-            : '🧪 诊断模式 (--dry-run)：不写入任何磁盘产物',
-          '├── 配置语法: ✅ 通过',
-          `├── 订阅连通性: ${subState}`
+            ? '🧪 诊断模式（--explain）：只输出激活摘要，不写入任何磁盘产物'
+            : '🧪 诊断模式（--dry-run）：不写入任何磁盘产物',
+          '├── 配置语法：✅ 通过',
+          `├── 订阅连通性：${subState}`
         ];
         if (meta?.stats) {
-          lines.push(`├── 节点规模: 总计 ${meta.stats.total} ➔ 有效交付 ${meta.stats.outputCount}`);
+          lines.push(`├── 节点规模：总计 ${meta.stats.total} ➔ 有效交付 ${meta.stats.outputCount}`);
         }
-        lines.push(`└── DNS 不变式: ${violations.length === 0 ? '✅ 无违规' : `❌ ${violations.length} 项违规`}`);
+        lines.push(`└── DNS 不变式：${violations.length === 0 ? '✅ 无违规' : `❌ ${violations.length} 项违规`}`);
 
         if (explainJson) {
           // JSON 模式：stdout 只承载结构化摘要，诊断文本改走 stderr 之外（等级已降为 error，默认不输出）
@@ -207,7 +207,7 @@ function run(argv = process.argv) {
         }
 
         if (violations.length > 0 && logger.isLevelEnabled('warn')) {
-          const vLines = ['⚠️ DNS 不变式明细:'];
+          const vLines = ['⚠️ DNS 不变式明细：'];
           violations.forEach((v, idx) => {
             vLines.push(`${idx === violations.length - 1 ? '└──' : '├──'} [${v.id}] ${v.detail}`);
           });
@@ -228,17 +228,17 @@ function run(argv = process.argv) {
         const outPath = path.resolve(process.cwd(), targetOut);
         const reportData = result.report;
         fs.writeFileSync(outPath, JSON.stringify(reportData, null, 2), 'utf-8');
-        logger.success(`🎉 审计报告已输出至: ${outPath}`);
+        logger.success(`🎉 审计报告已输出至：${outPath}`);
 
         if (meta?.stats && logger.isLevelEnabled('info')) {
           const lines = [
-            '📊 节点清洗与健康审计概览:',
-            `├── 节点规模: 总计 ${meta.stats.total} ➔ 有效交付 ${meta.stats.outputCount}`,
-            `├── 过滤剔除: 去重 ${meta.stats.dedupeCount} | 广告/无效 ${meta.stats.discardedCount}`,
-            `└── 属性标记: 未知地区 ${meta.stats.unknownCount} | 说明节点 ${meta.stats.infoCount}`
+            '📊 节点清洗与健康审计概览：',
+            `├── 节点规模：总计 ${meta.stats.total} ➔ 有效交付 ${meta.stats.outputCount}`,
+            `├── 过滤剔除：去重 ${meta.stats.dedupeCount} · 广告/无效 ${meta.stats.discardedCount}`,
+            `└── 属性标记：未知地区 ${meta.stats.unknownCount} · 说明节点 ${meta.stats.infoCount}`
           ];
           if (meta.stats.fissionCount > 0) {
-            lines.splice(lines.length - 1, 0, `├── 🧬 裂变增殖: 产生 ${meta.stats.fissionCount} 个 IP 节点`);
+            lines.splice(lines.length - 1, 0, `├── 🧬 裂变增殖：产生 ${meta.stats.fissionCount} 个 IP 节点`);
           }
           logger.info(lines.join('\n'));
         }
@@ -254,17 +254,17 @@ function run(argv = process.argv) {
           extraReport.invariantViolations = result.invariantViolations;
         }
         fs.writeFileSync(reportPath, JSON.stringify(extraReport, null, 2), 'utf-8');
-        logger.info(`💾 审计报告已另存至: ${reportPath}`);
+        logger.info(`💾 审计报告已另存至：${reportPath}`);
 
         if (meta?.stats && logger.isLevelEnabled('info')) {
           const lines = [
-            '📊 数据清洗统计概览:',
-            `├── 节点规模: 总计 ${meta.stats.total} ➔ 最终输出 ${meta.stats.outputCount}`,
-            `├── 过滤剔除: 去重 ${meta.stats.dedupeCount} | 广告/无效 ${meta.stats.discardedCount}`,
-            `└── 属性标记: 未知地区 ${meta.stats.unknownCount} | 说明节点 ${meta.stats.infoCount}`
+            '📊 数据清洗统计概览：',
+            `├── 节点规模：总计 ${meta.stats.total} ➔ 最终输出 ${meta.stats.outputCount}`,
+            `├── 过滤剔除：去重 ${meta.stats.dedupeCount} · 广告/无效 ${meta.stats.discardedCount}`,
+            `└── 属性标记：未知地区 ${meta.stats.unknownCount} · 说明节点 ${meta.stats.infoCount}`
           ];
           if (meta.stats.fissionCount > 0) {
-            lines.splice(lines.length - 1, 0, `├── 🧬 裂变增殖: 产生 ${meta.stats.fissionCount} 个 IP 克隆节点`);
+            lines.splice(lines.length - 1, 0, `├── 🧬 裂变增殖：产生 ${meta.stats.fissionCount} 个 IP 克隆节点`);
           }
           logger.info(lines.join('\n'));
         }
@@ -276,11 +276,11 @@ function run(argv = process.argv) {
       const outPath = path.resolve(process.cwd(), targetOut);
       fs.writeFileSync(outPath, yamlStr, 'utf-8');
       const isZeroNode = mode === 'config' && (!result.proxies || result.proxies.filter(p => !isTrustedSynthetic(p)).length === 0);
-      const modeSuffix = isZeroNode ? ' (纯分流拦截模式)' : '';
+      const modeSuffix = isZeroNode ? '（纯分流拦截模式）' : '';
       logger.success(`🎉 配置文件构建成功${modeSuffix} ➔ ${outPath}`);
 
       if (result.invariantViolations && result.invariantViolations.length > 0 && logger.isLevelEnabled('warn')) {
-        const lines = [`⚠️ DNS 不变式自检发现 ${result.invariantViolations.length} 项违规:`];
+        const lines = [`⚠️ DNS 不变式自检发现 ${result.invariantViolations.length} 项违规：`];
         result.invariantViolations.forEach((v, idx) => {
           const isLast = idx === result.invariantViolations.length - 1;
           lines.push(`${isLast ? '└──' : '├──'} [${v.id}] ${v.detail}`);
@@ -288,7 +288,12 @@ function run(argv = process.argv) {
         logger.warn(lines.join('\n'));
       }
     } catch (err) {
-      logger.error(`❌ 构建异常: ${err.message}`);
+      if (err && err.isBackoff) {
+        // 退避期主动跳过请求，不是真实回源失败；退出码保持不变
+        logger.warn(`⏳ 构建因订阅退避而跳过回源（未发起网络请求）：${err.message}`);
+      } else {
+        logger.error(`❌ 构建异常：${err.message}`);
+      }
       process.exit(1);
     }
   })();

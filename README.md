@@ -388,7 +388,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 <summary><b>Q: 为什么产物里看不到订阅原本的 <code>log-level</code> / <code>mode</code> / <code>dns</code> / <code>hosts</code> 等顶层字段了？</b></summary>
 
 这是**交付契约白名单**在生效（安全设计，非 Bug）。`config` 交付形态的产物顶层键只能由本工具生成，
-订阅携带的任何控制面字段都会被剥离并在日志中报告（`🛡️ 交付契约: 已剥离 N 个非工具自有顶层字段`）。
+订阅携带的任何控制面字段都会被剥离并在日志中报告（`🛡️ 交付契约：已剥离 N 个非工具自有顶层字段`）。
 需要额外字段时请在本地 `config.yaml` 中用对应功能开关声明（如 `enableIPv6`、`logLevel`、`dnsDirect`、`hosts`），
 本地配置属于可信来源，具备完整能力。
 </details>

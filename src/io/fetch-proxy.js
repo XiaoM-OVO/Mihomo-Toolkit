@@ -17,7 +17,7 @@ function resolveLocalProxyDispatcher(proxyUrl) {
   if (!ProxyAgent) throw new Error('Proxy support unavailable (undici not loaded)');
   const pUrl = new URL(proxyUrl);
   const isLocalTrusted = pUrl.hostname === '127.0.0.1' || pUrl.hostname === 'localhost' || pUrl.hostname === '::1';
-  if (!isLocalTrusted) throw new Error(`SSRF 预检失败: 代理必须为本机地址，实际 ${pUrl.hostname}`);
+  if (!isLocalTrusted) throw new Error(`SSRF 预检失败：代理必须为本机地址，实际 ${pUrl.hostname}`);
   const cached = proxyAgentCache.get(proxyUrl);
   if (cached) return cached;
   const dispatcher = new ProxyAgent(proxyUrl);

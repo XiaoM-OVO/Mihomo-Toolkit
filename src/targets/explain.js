@@ -33,7 +33,7 @@ const STATUS_LABELS = {
 const STATUS_MARKS = {
   active: '✅',
   skipped: '⏭️',
-  pruned: '🍂',
+  pruned: '🗑️',
   empty: '🫙'
 };
 

@@ -121,7 +121,7 @@ describe('【Server】构建缓存键生成与防脏读 (cache-key)', () => {
     const sub = [{ uri }];
     const logs = [];
     const logger = createLogger({ tag: 'CACHE', level: 'info', colors: false, out: (msg) => logs.push(msg) });
-    const hits = () => logs.filter(m => m.includes('命中本地内存缓存')).length;
+    const hits = () => logs.filter(m => m.includes('命中缓存')).length;
 
     profileCache.clear();
 

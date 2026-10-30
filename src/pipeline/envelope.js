@@ -177,7 +177,7 @@ function createEnvelopesBypass(proxies, options = {}) {
     } catch (err) {
       bypassErrors++;
       if (logger && typeof logger.debug === 'function') {
-        logger.debug(`⚠️ [Envelope 旁路] 节点 [${i}] 提取异常: ${err?.message || err}`);
+        logger.debug(`🗑️ [Envelope 旁路] 节点 [${i}] 提取异常：${err?.message || err}`);
       }
     }
   }

@@ -401,7 +401,7 @@ function buildProxyTopology({
         const mainCount = list.length - lowMultiCount;
         const detailParts = [`主力: ${mainCount}`];
         if (lowMultiCount > 0) detailParts.push(`低倍率: ${lowMultiCount}`);
-        logger.debug(`📦 [${iconPrefix}${gName}] 汇入 ${list.length} 个节点 (${detailParts.join(' | ')})`);
+        logger.debug(`📦 [${iconPrefix}${gName}] 汇入 ${list.length} 个节点（${detailParts.join(' · ')}）`);
       }
     });
 

@@ -271,8 +271,30 @@ function createLogger(options = {}) {
   return new Logger(options);
 }
 
+/**
+ * 重复事件门：按「来源 + 审计结果」隔离计数，用于安全审计类日志的降噪。
+ * 仅服务于日志分级，不参与任何安全判定，调用方必须始终执行真实的检查与剥离。
+ *
+ * @param {number} [limit=200] 最大记忆条目数（超出后按插入顺序淘汰最旧键）
+ * @returns {(key: string) => number} 返回该键的出现次数（1 表示首次）
+ */
+function createRepeatGate(limit = 200) {
+  const counts = new Map();
+  return function hit(key) {
+    const next = (counts.get(key) || 0) + 1;
+    if (counts.has(key)) counts.delete(key);
+    counts.set(key, next);
+    if (counts.size > limit) {
+      const oldest = counts.keys().next().value;
+      counts.delete(oldest);
+    }
+    return next;
+  };
+}
+
 module.exports = {
   Logger,
   createLogger,
+  createRepeatGate,
   redactText
 };

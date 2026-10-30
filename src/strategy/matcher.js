@@ -626,8 +626,8 @@ function validateGroups(groups) {
         if (token.toLowerCase().startsWith('@pool:')) return;
         if (token.startsWith('@') && !isKnownMacro(token)) {
           throw new Error(
-            `[groups] 策略组 ${groupName}.proxies[${pIdx}]: 未知宏「${token}」，` +
-            `可用宏: ${formatMacroHints()}（完整别名与含义见 CONFIGURATION.md）`
+            `[groups] 策略组 ${groupName}.proxies[${pIdx}]：未知宏「${token}」，` +
+            `可用宏：${formatMacroHints()}（完整别名与含义见 CONFIGURATION.md）`
           );
         }
       });
