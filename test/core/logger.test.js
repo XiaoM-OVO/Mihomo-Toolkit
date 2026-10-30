@@ -121,6 +121,10 @@ describe('【Core】统一分级终端 Logger (logger)', () => {
     assert.ok(!redacted.includes('secret123456'));
     assert.ok(redacted.includes('token=***'));
 
+    // 已脱敏的 URL 后紧跟中文标点时必须保留正文，不能把「（来自」一起吞掉
+    const maskedWithSuffix = '收到订阅请求：/?token=***（来自 175.148.115.221）';
+    assert.equal(redactText(maskedWithSuffix), maskedWithSuffix);
+
     const authHeader = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xyz';
     assert.equal(redactText(authHeader), 'Bearer ***');
 

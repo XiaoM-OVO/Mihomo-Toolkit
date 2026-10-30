@@ -77,7 +77,7 @@ function redactText(text) {
   if (typeof text !== 'string') return text;
   return text
     // Redact query params: token, auth, password, secret, key
-    .replace(/([?&](?:token|auth|password|key|secret)=)[^&\s]+/gi, '$1***')
+    .replace(/([?&](?:token|auth|password|key|secret)=)[^&\s（）()"'<>]+/gi, '$1***')
     // Redact Authorization headers: Bearer xxx
     .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+/gi, '$1***')
     // Redact userinfo: http(s)://user:password@host

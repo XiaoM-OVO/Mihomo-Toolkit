@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const { buildProfile } = require('../../src/index.js');
 const { profileCache } = require('../../src/io/cache.js');
-const { subFailureBackoff, subStaleCache } = require('../../src/io/fetcher.js');
+const { subFailureBackoff, subStaleCache, recordSubFetchFailure } = require('../../src/io/fetcher.js');
 
 // 单订阅失败退避与原始订阅快照 (L1) 都是进程级内存状态，测试之间必须隔离
 beforeEach(() => {
@@ -518,6 +518,62 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
         1,
         '同一订阅的重复审计应降级为 debug 并保留重复次数'
       );
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('终态退避：首次失败进入 6h 级长冷却，逐次递增至 24h 封顶', () => {
+    const key = 'http://93.184.216.34/terminal-cooldown';
+    const base = 6 * 60 * 60 * 1000;
+    const first = recordSubFetchFailure(key, new Error('401'), true);
+    assert.equal(first.terminal, true);
+    assert.equal(first.terminalFailures, 1);
+    assert.ok(
+      first.delayMs >= base * 0.8 && first.delayMs <= base * 1.2,
+      `首次终态冷却应约为 6h，实际 ${first.delayMs}ms`
+    );
+
+    const second = recordSubFetchFailure(key, new Error('401'), true);
+    assert.ok(
+      second.delayMs >= base * 2 * 0.8 && second.delayMs <= base * 2 * 1.2,
+      `第二次终态冷却应约为 12h，实际 ${second.delayMs}ms`
+    );
+
+    const third = recordSubFetchFailure(key, new Error('401'), true);
+    assert.ok(third.delayMs <= 24 * 60 * 60 * 1000, '终态冷却不得超过 24h 上限');
+    assert.ok(third.delayMs >= 24 * 60 * 60 * 1000 * 0.8, '连续终态失败应接近 24h 上限');
+  });
+
+  test('终态长冷却：普通请求不回源，forceRefresh 可探测恢复并清除退避', async () => {
+    const url = 'http://93.184.216.34/terminal-recover';
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response('Unauthorized', { status: 401 });
+    };
+    try {
+      await buildProfile(baseConfig(url, { retry: 0 }), { mode: 'config', production: true, noCache: true });
+      assert.equal(calls, 1);
+      const state = subFailureBackoff.get(url);
+      assert.ok(state && state.terminal, '401 应记录为终态退避');
+      assert.ok(state.delayMs >= 6 * 60 * 60 * 1000 * 0.8, `终态冷却应约为 6h，实际 ${state.delayMs}ms`);
+
+      // 冷却期内普通请求：不发起网络 IO
+      globalThis.fetch = async () => {
+        calls++;
+        return new Response(SUB_CONTENT, { status: 200 });
+      };
+      await buildProfile(baseConfig(url, { retry: 0 }), { mode: 'config', production: true, noCache: true });
+      assert.equal(calls, 1, '终态长冷却期内不得回源');
+
+      // 显式强制刷新仍可探测恢复
+      const recovered = await buildProfile(baseConfig(url, { retry: 0 }), {
+        mode: 'config', production: true, noCache: true, forceRefresh: true
+      });
+      assert.equal(calls, 2, 'forceRefresh 必须绕过终态长冷却');
+      assert.ok(recovered.yamlStr.includes('香港'));
+      assert.equal(subFailureBackoff.has(url), false, '恢复成功后必须清除退避状态');
     } finally {
       restoreFetch();
     }

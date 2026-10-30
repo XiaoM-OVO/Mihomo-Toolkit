@@ -142,21 +142,41 @@ const SUB_STALE_MAX_ENTRIES = 200;
 // 目的：单条订阅（域名 NXDOMAIN / 超时）不再拖慢整轮多订阅构建。
 const SUB_BACKOFF_BASE_MS = 30 * 1000;
 const SUB_BACKOFF_MAX_MS = 10 * 60 * 1000;
+// 终态失效（401 / 到期 / 流量耗尽 / 旧缓存失效）改用低频探测：6h 起，12h、24h 封顶。
+// 目的：避免已失效订阅每 10 分钟反复打源，同时保留自动恢复探测能力。
+const SUB_TERMINAL_BACKOFF_BASE_MS = 6 * 60 * 60 * 1000;
+const SUB_TERMINAL_BACKOFF_MAX_MS = 24 * 60 * 60 * 1000;
 const SUB_BACKOFF_MAX_ENTRIES = 200;
 const subFailureBackoff = new Map();
+
+/** 为退避时长叠加 ±20% jitter，避免多订阅同时到期后集中探测 */
+function withJitter(ms) {
+  return Math.round(ms * (0.8 + Math.random() * 0.4));
+}
 
 /**
  * 记录一次订阅拉取失败并推进指数退避
  * @param {string} key 订阅 URL
  * @param {any} [error] 上次错误（仅保留截断后的消息）
  * @param {boolean} [terminal=false] 是否属于终态失效（401 / 到期 / 流量耗尽），退避期内仍需保持终态语义
- * @returns {{ failures: number, nextRetryAt: number, lastError: string, terminal: boolean } | null}
+ * @returns {{ failures: number, terminalFailures: number, delayMs: number, nextRetryAt: number, lastError: string, terminal: boolean } | null}
  */
 function recordSubFetchFailure(key, error, terminal = false) {
   if (!key) return null;
   const prev = subFailureBackoff.get(key);
   const failures = (prev ? prev.failures : 0) + 1;
-  const delayMs = Math.min(SUB_BACKOFF_BASE_MS * Math.pow(2, failures - 1), SUB_BACKOFF_MAX_MS);
+  const prevTerminalFailures = prev ? (prev.terminalFailures || 0) : 0;
+  const terminalFailures = terminal ? prevTerminalFailures + 1 : prevTerminalFailures;
+  // 终态标记具有粘性：一旦判定失效，后续冷却均按低频探测处理
+  const terminalState = terminal === true || (prev ? prev.terminal === true : false);
+
+  let delayMs;
+  if (terminalState) {
+    const base = SUB_TERMINAL_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, terminalFailures - 1));
+    delayMs = Math.min(withJitter(base), SUB_TERMINAL_BACKOFF_MAX_MS);
+  } else {
+    delayMs = Math.min(SUB_BACKOFF_BASE_MS * Math.pow(2, failures - 1), SUB_BACKOFF_MAX_MS);
+  }
 
   if (subFailureBackoff.size >= SUB_BACKOFF_MAX_ENTRIES && !subFailureBackoff.has(key)) {
     const oldestKey = subFailureBackoff.keys().next().value;
@@ -167,10 +187,11 @@ function recordSubFetchFailure(key, error, terminal = false) {
   subFailureBackoff.delete(key);
   const entry = {
     failures,
+    terminalFailures,
+    delayMs,
     nextRetryAt: Date.now() + delayMs,
     lastError: String((error && error.message) || error || '').slice(0, 200),
-    // 终态标记具有粘性：退避期内不再回源时，仍要按终态失效处理（清理旧缓存、淘汰 Profile）
-    terminal: terminal === true || (prev ? prev.terminal === true : false)
+    terminal: terminalState
   };
   subFailureBackoff.set(key, entry);
   return entry;
