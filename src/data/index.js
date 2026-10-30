@@ -37,7 +37,8 @@ const {
   DEFAULTLESS_FIELDS,
   REMOTE_DENIED_FIELDS,
   REMOTE_ALLOWED_FIELDS,
-  buildDefaultConfig
+  buildDefaultConfig,
+  DEFAULT_PROXY_SERVER_DNS
 } = require('./field-registry');
 
 const {
@@ -81,6 +82,7 @@ module.exports = {
   REMOTE_DENIED_FIELDS,
   REMOTE_ALLOWED_FIELDS,
   buildDefaultConfig,
+  DEFAULT_PROXY_SERVER_DNS,
   // 只读安全基线
   PROTECTED_DOMAINS,
   SKELETON_EXEMPT_GROUPS,

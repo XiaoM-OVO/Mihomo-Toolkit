@@ -22,7 +22,7 @@ const { normalizeCacheDurations } = require('../io/cache');
 const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { createRepeatGate, formatDuration } = require('../core/logger');
 const { partitionControlPlane } = require('../core/security/control-plane');
-const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
+const { sanitizeHosts, sanitizeNameserverPolicy, sanitizeDnsServerList, ROLES } = require('../core/security/dns-sanitizer');
 const { effectiveProtectedDomains } = require('../data');
 const {
   isDirectNodeSub,
@@ -396,7 +396,9 @@ function applySubscriptionGuards(subConfig, options = {}) {
     hosts: [],
     policies: [],
     fakeIpFilters: [],
-    assets: { hosts: {}, policies: {}, fakeIpFilters: [] }
+    proxyResolvers: [],
+    resolverPolicies: {},
+    assets: { hosts: {}, policies: {}, fakeIpFilters: [], proxyResolvers: [], resolverPolicies: {} }
   };
 
   if (!subConfig || typeof subConfig !== 'object') return result;
@@ -483,6 +485,31 @@ function applySubscriptionGuards(subConfig, options = {}) {
     }
   }
 
+  // 6. 节点专属解析器继承（proxy-server-nameserver）
+  //    按「该订阅的节点域名 → 该订阅的 DoH」建立 nameserver-policy 映射，
+  //    多订阅之间互不共享解析器，避免 A 的 DoH 解析 B 的节点域名。
+  //    仅允许加密 DNS（DoH/DoT/DoQ）；strict 模式仅映射白名单内的节点域名。
+  const rawProxyResolvers = (subConfig.dns && subConfig.dns['proxy-server-nameserver'])
+    || subConfig['proxy-server-nameserver'];
+  if (rawProxyResolvers) {
+    const clean = sanitizeDnsServerList(rawProxyResolvers, {
+      role: ROLES.PROXY_SERVER,
+      allowDomainProxyServer: true
+    }).servers.slice(0, 4);
+    const resolverDomains = clean.length > 0
+      ? [...extractAssetDomains(proxies, '')].filter(d => isInheritable(d))
+      : [];
+    if (resolverDomains.length > 0) {
+      result.assets.proxyResolvers = clean;
+      result.proxyResolvers = clean;
+      result.resolverPolicies = resolverDomains.reduce((acc, d) => {
+        acc[d] = clean;
+        return acc;
+      }, {});
+      result.assets.resolverPolicies = result.resolverPolicies;
+    }
+  }
+
   // 6. 继承审计：让使用者看得见「订阅为我挂载了哪些 DNS 依赖」
   //    这些资产只在 config 模式由 src/strategy/dns.js 消费；nodes 产物结构上没有 dns 段，
   //    资产会随 Checkpoint 早退被静默丢弃 —— 对「节点域名只能靠订阅私货解析」的来源，
@@ -491,7 +518,10 @@ function applySubscriptionGuards(subConfig, options = {}) {
     const inherited = [
       ...result.hosts.map(h => `hosts:${h}`),
       ...result.policies.map(p => `dns-policy:${p}`),
-      ...result.fakeIpFilters.map(f => `fake-ip-filter:${f}`)
+      ...result.fakeIpFilters.map(f => `fake-ip-filter:${f}`),
+      // 只输出数量与映射域名，绝不把含 token 的解析器 URL 写进日志
+      ...result.proxyResolvers.map((_, i) => `proxy-resolver:${i + 1}`),
+      ...Object.keys(result.resolverPolicies).map(d => `resolver-domain:${d}`)
     ];
     if (inherited.length > 0) {
       const preview = inherited.slice(0, 6).join(', ');
@@ -518,6 +548,10 @@ function mergeDnsAssets(into, from) {
   Object.assign(into.hosts, from.hosts);
   Object.assign(into.policies, from.policies);
   into.fakeIpFilters.push(...from.fakeIpFilters);
+  into.proxyResolvers = [...new Set([...into.proxyResolvers, ...from.proxyResolvers])].slice(0, 4);
+  for (const [domain, servers] of Object.entries(from.resolverPolicies || {})) {
+    into.resolverPolicies[domain] = [...new Set([...(into.resolverPolicies[domain] || []), ...servers])].slice(0, 4);
+  }
   return into;
 }
 
@@ -573,7 +607,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
   let sourceSkeleton = { proxies: [] };
   /** 订阅携带的节点专属 DNS 资产闭包累积容器（显式值通道，最终由 strategy 层消费） */
-  const dnsAssets = { hosts: {}, policies: {}, fakeIpFilters: [] };
+  const dnsAssets = { hosts: {}, policies: {}, fakeIpFilters: [], proxyResolvers: [], resolverPolicies: {} };
   let hasFailedSub = false;
   let hasTerminalFailure = false;
   const collectedSubInfos = [];

@@ -10,8 +10,8 @@
  *
  *   INV-1  default-nameserver ⊆ IP 字面量（否则解析 DNS 服务器域名时死锁）
  *   INV-2  proxy-server-nameserver ∩ fake-ip-range = ∅（否则虚拟自环）
- *   INV-3  proxy-server-nameserver ⊆ IP 字面量（否则节点解析依赖自身，鸡蛋问题）
- *   INV-4  respect-rules = true ⇒ proxy-server-nameserver ≠ ∅
+ *   INV-3  proxy-server-nameserver 禁止明文域名；加密 DoH/DoT 域名必须由纯 IP default-nameserver 引导
+ *   INV-4  respect-rules = true ⇒ proxy-server-nameserver ≠ ∅ 或所有节点域名已由 nameserver-policy 覆盖
  *   INV-5  fallback ≠ ∅ ⇒ fallback-filter 必须显式声明（否则内核默认 geoip-code=CN 生效）
  *   INV-6  direct-nameserver-follow-policy = true ⇒ direct-nameserver ≠ ∅
  *   INV-7  enhanced-mode = fake-ip ⇒ 节点域名必须进入 fake-ip-filter（防环路）
@@ -47,6 +47,10 @@ function checkInvariants(dns = {}, options = {}) {
   }
 
   // INV-2 / INV-3 节点解析层
+  const bootstrapIsPureIp = asArray(dns['default-nameserver']).every(s => {
+    const p = parseDnsServer(s);
+    return p.kind === 'ip' && (!p.scheme || p.scheme === 'plain');
+  });
   for (const s of asArray(dns['proxy-server-nameserver'])) {
     const p = parseDnsServer(s);
     if (p.isIpLiteral && p.host.includes('.')) {
@@ -55,13 +59,27 @@ function checkInvariants(dns = {}, options = {}) {
       }
     }
     if (p.kind === 'url' && !p.isIpLiteral) {
-      v.push({ id: 'INV-3', detail: `proxy-server-nameserver 含域名形式: ${s}` });
+      const encrypted = /^(https|tls|quic|h3)$/i.test(p.scheme || '');
+      // 加密 DNS 域名允许存在，但必须由纯 IP 的 default-nameserver 引导，否则构成解析死锁。
+      if (!encrypted || !bootstrapIsPureIp) {
+        v.push({ id: 'INV-3', detail: `proxy-server-nameserver 含域名形式: ${s}` });
+      }
     }
   }
 
-  // INV-4 respect-rules 依赖
+  // INV-4 respect-rules 依赖：显式空列表时必须由 nameserver-policy 覆盖全部节点域名
   if (dns['respect-rules'] === true && asArray(dns['proxy-server-nameserver']).length === 0) {
-    v.push({ id: 'INV-4', detail: 'respect-rules=true 但 proxy-server-nameserver 为空' });
+    const policyKeys = Object.keys(dns['nameserver-policy'] || {});
+    const domains = deriveFakeIpFilterAdditions(options.proxies || [], { mode: 'exact' });
+    const covered = domains.every(domain => policyKeys.some(key => {
+      if (key === domain) return true;
+      if (key.startsWith('+.') && (domain === key.slice(2) || domain.endsWith('.' + key.slice(2)))) return true;
+      if (key.startsWith('*.') && domain.endsWith(key.slice(1))) return true;
+      return false;
+    }));
+    if (!covered) {
+      v.push({ id: 'INV-4', detail: 'respect-rules=true 但 proxy-server-nameserver 为空且节点域名未被 nameserver-policy 覆盖' });
+    }
   }
 
   // INV-5 fallback 必须显式声明 filter

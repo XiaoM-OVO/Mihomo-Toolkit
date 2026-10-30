@@ -26,7 +26,7 @@ const {
 } = require('../core/security/dns-sanitizer');
 const { deriveFakeIpFilterAdditions } = require('../core/security/resolver-plan');
 const { isIPv4, isIPv6, normalizeSubDomains } = require('../infra/ip');
-const { FAKEIP_FILTER_BASELINE, effectiveProtectedDomains } = require('../data');
+const { FAKEIP_FILTER_BASELINE, effectiveProtectedDomains, DEFAULT_PROXY_SERVER_DNS } = require('../data');
 const { createRepeatGate } = require('../core/logger');
 
 // DNS 沙箱审计去重：按「覆盖输入来源 + findings 签名」隔离计数；拦截/修正行为本身不变。
@@ -78,7 +78,7 @@ const DEFAULT_SCRIPT_FILTERS = [...FAKEIP_FILTER_BASELINE];
  * @param {object} userConfig 用户配置参数
  * @param {object} [options={}] 运行期依赖注入
  * @param {object} [options.logger] 日志器（用于输出净化告警）
- * @param {object} [options.dnsAssets] 订阅携带的节点专属 DNS 资产闭包 { hosts, policies, fakeIpFilters }
+ * @param {object} [options.dnsAssets] 订阅携带的节点专属 DNS 资产闭包 { hosts, policies, fakeIpFilters, proxyResolvers }
  * @returns {{ findings: Array<object>, listen: string }} 安全审计发现与最终监听地址
  */
 function applyDnsOverlay(config, userConfig = {}, options = {}) {
@@ -139,10 +139,51 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     { role: ROLES.DEFAULT }
   ).servers;
 
+  // 节点解析器优先级：用户显式覆盖 > 订阅私有的「域名 → DoH」映射 > 出厂默认。
+  // 订阅映射只在用户未改动默认 dnsServer 时生效，避免静默夺取用户的显式配置。
+  const requestedProxyNs = serverDNS == null ? [] : (Array.isArray(serverDNS) ? serverDNS : [serverDNS]);
+  const userConfiguredProxyNs = requestedProxyNs.length > 0 && (
+    requestedProxyNs.length !== DEFAULT_PROXY_SERVER_DNS.length ||
+    !requestedProxyNs.every((v, i) => String(v) === DEFAULT_PROXY_SERVER_DNS[i])
+  );
+  const assetResolverPolicies = (options.dnsAssets && typeof options.dnsAssets.resolverPolicies === 'object')
+    ? options.dnsAssets.resolverPolicies
+    : {};
+  const useAssetResolverPolicy = !userConfiguredProxyNs && Object.keys(assetResolverPolicies).length > 0;
+  const assetProxyResolvers = Array.isArray(options.dnsAssets?.proxyResolvers)
+    ? options.dnsAssets.proxyResolvers
+    : [];
+  let proxyNsSource = 'default';
+  let proxyNsInput = DEFAULT_PROXY_SERVER_DNS;
+  if (userConfiguredProxyNs) {
+    proxyNsSource = 'user';
+    proxyNsInput = requestedProxyNs;
+  } else if (useAssetResolverPolicy) {
+    // 留空 proxy-server-nameserver，让内核按 nameserver-policy 对节点域名应用订阅私有 DoH；
+    // 这样不同订阅的解析器互不共享，不会互相解析对方的节点域名。
+    proxyNsSource = 'asset-policy';
+    proxyNsInput = [];
+  } else if (assetProxyResolvers.length > 0) {
+    proxyNsSource = 'asset';
+    proxyNsInput = assetProxyResolvers;
+  } else if (requestedProxyNs.length > 0) {
+    proxyNsInput = requestedProxyNs;
+  }
+
   const safeProxyServerNs = sanitizeDnsServerList(
-    serverDNS || ['223.5.5.5', '119.29.29.29'],
-    { role: ROLES.PROXY_SERVER }
+    proxyNsInput,
+    { role: ROLES.PROXY_SERVER, allowDomainProxyServer: true }
   ).servers;
+
+  if (proxyNsSource === 'asset-policy' && logger && typeof logger.info === 'function') {
+    // 只输出域名数量与解析器数量，绝不展示含 token 的解析器 URL
+    logger.info(
+      `🛡️ 节点解析器：继承订阅私有 DNS（${Object.keys(assetResolverPolicies).length} 个节点域名 → ` +
+      `${assetProxyResolvers.length} 项 DoH，仅用于对应订阅的节点解析）`
+    );
+  } else if (proxyNsSource === 'asset' && safeProxyServerNs.length > 0 && logger && typeof logger.info === 'function') {
+    logger.info(`🛡️ 节点解析器：继承订阅私有 DNS ${safeProxyServerNs.length} 项（仅用于节点域名解析）`);
+  }
 
   // 3.1 直连链与主解析链同样过净化沙箱：
   //     剥离 #skip-cert-verify / #proxy 等危险修饰符，拦截私网与 fake-ip 自环地址
@@ -155,11 +196,15 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   const safeMainNs = sanitizeResolverList(proxyDNS, ['https://8.8.8.8/dns-query', 'https://1.1.1.1/dns-query']);
 
   // 4. 解析器拓扑装配
+  //    订阅按域名映射时故意留空 proxy-server-nameserver：内核在留空时才会对节点域名应用
+  //    nameserver-policy，从而实现「订阅 A 的 DoH 只解析 A 的节点域名」。
   const ns = {
     'default-nameserver': safeDefaultNs.length ? safeDefaultNs : ['223.5.5.5', '1.1.1.1'],
     'direct-nameserver': safeDirectNs,
     'direct-nameserver-follow-policy': false, // Mihomo 官方推荐 false，防止直连域名 DNS 被代理规则劫持
-    'proxy-server-nameserver': safeProxyServerNs.length ? safeProxyServerNs : ['223.5.5.5', '119.29.29.29'],
+    ...(proxyNsSource === 'asset-policy'
+      ? {}
+      : { 'proxy-server-nameserver': safeProxyServerNs.length ? safeProxyServerNs : ['223.5.5.5', '119.29.29.29'] }),
     'nameserver': safeMainNs
   };
 
@@ -173,7 +218,8 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     { trustedSource: true, ...privateOpts }
   );
   if (userPolicyFindings.length > 0) findings.push(...userPolicyFindings);
-  const mergedPolicy = { ...scriptPolicy, ...assetPolicy, ...safeUserPolicy };
+  const resolverPolicy = (proxyNsSource === 'asset-policy' && !userConfiguredProxyNs) ? assetResolverPolicies : {};
+  const mergedPolicy = { ...scriptPolicy, ...assetPolicy, ...resolverPolicy, ...safeUserPolicy };
 
   // 6. Hosts 安全挂载：节点专属优选 IP + 用户自定义 Hosts
   //    用户 Hosts 同样过消毒沙箱：受保护域名（github/paypal/银行等）与内网重定向默认拒绝，

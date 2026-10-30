@@ -578,4 +578,142 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
       restoreFetch();
     }
   });
+
+  test('订阅 proxy-server-nameserver：私有 DoH 按节点域名解析器继承', async () => {
+    const content = Buffer.from(`
+dns:
+  proxy-server-nameserver:
+    - https://dns.airport-a.com/dns-query/secret-token
+proxies:
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: hk.domain.com
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    globalThis.fetch = async () => new Response(content, { status: 200 });
+    try {
+      const logs = [];
+      const mockLogger = {
+        debug: (msg) => logs.push({ level: 'debug', msg }),
+        info: (msg) => logs.push({ level: 'info', msg }),
+        warn: (msg) => logs.push({ level: 'warn', msg }),
+        error: (msg) => logs.push({ level: 'error', msg }),
+        isLevelEnabled: () => true,
+        child: () => mockLogger
+      };
+      const { yamlStr } = await buildProfile(baseConfig('http://93.184.216.34/dns-asset'), {
+        mode: 'config', production: true, noCache: true, logger: mockLogger
+      });
+      assert.ok(yamlStr.includes('dns.airport-a.com/dns-query/secret-token'), '应继承订阅的节点解析器');
+      assert.ok(
+        logs.some(l => l.level === 'info' && l.msg.includes('继承订阅私有 DNS')),
+        '继承行为必须有审计日志'
+      );
+      assert.ok(
+        !logs.some(l => l.msg.includes('secret-token')),
+        '日志不得泄露含 token 的解析器 URL'
+      );
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('订阅 proxy-server-nameserver：用户显式 dnsServer 优先于订阅值', async () => {
+    const content = Buffer.from(`
+dns:
+  proxy-server-nameserver:
+    - https://dns.airport-a.com/dns-query/secret-token
+proxies:
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: hk.domain.com
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    globalThis.fetch = async () => new Response(content, { status: 200 });
+    try {
+      const cfg = baseConfig('http://93.184.216.34/dns-override', {
+        global: { dnsServer: ['9.9.9.9'] }
+      });
+      const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
+      assert.ok(yamlStr.includes('9.9.9.9'), '用户显式配置的解析器必须生效');
+      assert.ok(!yamlStr.includes('airport-a.com'), '不得用订阅解析器覆盖用户显式配置');
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('订阅 proxy-server-nameserver：明文域名解析器被拒绝', async () => {
+    const content = Buffer.from(`
+dns:
+  proxy-server-nameserver:
+    - dns.airport-a.com
+proxies:
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: hk.domain.com
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    globalThis.fetch = async () => new Response(content, { status: 200 });
+    try {
+      const { yamlStr } = await buildProfile(baseConfig('http://93.184.216.34/dns-plain'), {
+        mode: 'config', production: true, noCache: true
+      });
+      assert.ok(!yamlStr.includes('airport-a.com'), '明文域名解析器不得进入产物');
+      assert.ok(yamlStr.includes('119.29.29.29'), '应回退到默认纯 IP 节点解析器');
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('多订阅节点解析器：按节点域名隔离，不跨订阅共享', async () => {
+    const contentA = Buffer.from(`
+dns:
+  proxy-server-nameserver:
+    - https://dns.airport-a.com/dns-query/token-a
+proxies:
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: hk.domain.com
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    const contentB = Buffer.from(`
+dns:
+  proxy-server-nameserver:
+    - https://dns.airport-b.com/dns-query/token-b
+proxies:
+  - name: "🇯🇵 日本 01"
+    type: ss
+    server: jp.domain.com
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    let index = 0;
+    globalThis.fetch = async () => new Response(index++ === 0 ? contentA : contentB, { status: 200 });
+    try {
+      const cfg = {
+        subscriptions: [
+          { url: 'http://93.184.216.34/iso-a', tag: 'A', retry: 0 },
+          { url: 'http://93.184.216.34/iso-b', tag: 'B', retry: 0 }
+        ],
+        minorNodeThreshold: 1
+      };
+      const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
+      const YAML = require('yaml');
+      const out = YAML.parse(yamlStr);
+      assert.deepEqual(out.dns['nameserver-policy']['hk.domain.com'], ['https://dns.airport-a.com/dns-query/token-a']);
+      assert.deepEqual(out.dns['nameserver-policy']['jp.domain.com'], ['https://dns.airport-b.com/dns-query/token-b']);
+      assert.equal(out.dns['proxy-server-nameserver'], undefined, '映射模式下必须留空节点解析器');
+    } finally {
+      restoreFetch();
+    }
+  });
 });

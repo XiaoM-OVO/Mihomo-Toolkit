@@ -38,6 +38,9 @@ const { GROUP_KEYS, groupName } = require('./catalog/identity');
  *   - `merge: 'additive'` 的字段必须同时给出 `baseline`（来自只读基线词典），
  *     合并结果 = 基线 ∪ 用户值，**基线不可被用户删除或替换**。
  */
+/** 节点域名解析器出厂默认值：必须保持纯 IP 形式，用于识别用户是否显式覆盖 */
+const DEFAULT_PROXY_SERVER_DNS = Object.freeze(['223.5.5.5', '119.29.29.29']);
+
 const FIELDS = [
   // ── 【1. 基础全局配置】 ───────────────────────────────────────────────────
   { key: 'enablePipeline', type: 'boolean', default: true, merge: 'override', trust: 'any',
@@ -174,7 +177,7 @@ const FIELDS = [
   { key: 'dnsProxy', type: 'string[]',
     default: ['https://8.8.8.8/dns-query', 'https://1.1.1.1/dns-query'],
     merge: 'override', trust: 'local', group: 'DNS 与 Hosts 安全面', doc: '海外代理域名解析链' },
-  { key: 'dnsServer', type: 'string[]', default: ['223.5.5.5', '119.29.29.29'],
+  { key: 'dnsServer', type: 'string[]', default: [...DEFAULT_PROXY_SERVER_DNS],
     merge: 'override', trust: 'local', group: 'DNS 与 Hosts 安全面', doc: '节点服务器域名专用解析 DNS' },
 
   // ── 【8. 安全防漏与内核覆写】 ─────────────────────────────────────────
@@ -392,6 +395,7 @@ const REMOTE_ALLOWED_FIELDS = Object.freeze(
 );
 
 module.exports = {
+  DEFAULT_PROXY_SERVER_DNS,
   FIELDS,
   FIELDS_BY_KEY,
   REMOVED_FIELDS,

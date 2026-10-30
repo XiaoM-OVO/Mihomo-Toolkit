@@ -255,6 +255,7 @@ function sanitizeDnsServer(entry, options = {}) {
     fakeIpRanges = DEFAULT_FAKEIP_GUARD_RANGES,
     trustedPrivateCidrs = [],
     allowPrivateLiteral = false,
+    allowDomainProxyServer = false,
     modifierSeverityFloor = 'low'
   } = opts;
 
@@ -352,11 +353,16 @@ function sanitizeDnsServer(entry, options = {}) {
   }
 
   if (role === ROLES.PROXY_SERVER) {
-    findings.push({
-      id: 'DNS-NODE-DOMAIN-RESOLVER', severity: 'high',
-      note: `节点解析器使用了域名 ${parsed.host}，其自身解析依赖 default-nameserver，存在死锁面`
-    });
-    return { ok: false, value: null, entry: parsed, findings, reason: 'proxy-server-must-be-ip-or-trusted' };
+    // 域名形式的节点解析器默认拒绝；仅当调用方显式声明为「可信来源」时，
+    // 且协议为加密 DNS（DoH / DoT / DoQ），才允许通过（出口仍由 default-nameserver 纯 IP 引导）。
+    const encrypted = /^(https|tls|quic|h3)$/i.test(parsed.scheme || '');
+    if (!allowDomainProxyServer || !encrypted) {
+      findings.push({
+        id: 'DNS-NODE-DOMAIN-RESOLVER', severity: 'high',
+        note: `节点解析器使用了未获信任的域名 ${parsed.host}，其自身解析依赖 default-nameserver，存在死锁面`
+      });
+      return { ok: false, value: null, entry: parsed, findings, reason: 'proxy-server-must-be-ip-or-trusted' };
+    }
   }
 
   const scheme = parsed.scheme && parsed.scheme !== 'plain' ? `${parsed.scheme}://` : '';

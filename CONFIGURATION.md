@@ -679,7 +679,7 @@ routing:
 | `dnsDefault` | `string[]` | 阿里/腾讯纯IP | `local` | `override` | **基础引导 DNS**：必须为纯 IP 格式，用于解析 DoH 域名破除递归死锁。 |
 | `dnsDirect` | `string[]` | 阿里/腾讯DoH | `local` | `override` | **国内直连域名解析链**：解析国内直连网站的 DoH 列表。 |
 | `dnsProxy` | `string[]` | Google/CF DoH | `local` | `override` | **海外代理域名解析链**：通过代理出口查询的 DoH 列表（防 DNS 污染）。 |
-| `dnsServer` | `string[]` | 阿里/腾讯纯IP | `local` | `override` | **节点服务器域名专用解析器**：直连无死锁解析订阅节点自身的 server 域名。 |
+| `dnsServer` | `string[]` | 阿里/腾讯纯IP | `local` | `override` | **节点服务器域名专用解析器**：直连无死锁解析订阅节点自身的 server 域名。未显式修改时，会把各订阅的 `proxy-server-nameserver` 按「节点域名 → 该订阅 DoH」映射进 `nameserver-policy`（仅加密 DNS），多订阅互不共享；显式配置后用户值全局优先。 |
 
 ---
 
