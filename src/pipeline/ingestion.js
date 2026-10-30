@@ -46,6 +46,9 @@ function isSubEnabled(s) {
 /** 归属「到期/停用类」的终态种类：看板渲染 🛑，其余终态仍属拉取失败 */
 const EXPIRY_TERMINAL_KINDS = ['expired', 'cutoff', 'stale-expired', 'stale-cutoff'];
 
+/** 单订阅私有解析器继承上限：映射为「域名 → 整份名单」，无上限时订阅可放大产物体积与解析并发 */
+const MAX_ASSET_RESOLVERS = 4;
+
 /**
  * 校验一次成功拉取的订阅响应：到期 / 流量耗尽 / 空节点 / 纯占位节点均视为异常并抛出带标记的错误。
  * 多订阅与单 URL 两条路径共用，保证「异常响应」判定完全一致。
@@ -518,10 +521,19 @@ function applySubscriptionGuards(subConfig, options = {}) {
   const rawProxyResolvers = (subConfig.dns && subConfig.dns['proxy-server-nameserver'])
     || subConfig['proxy-server-nameserver'];
   if (rawProxyResolvers) {
-    const clean = sanitizeDnsServerList(rawProxyResolvers, {
+    const sanitizedResolvers = sanitizeDnsServerList(rawProxyResolvers, {
       role: ROLES.PROXY_SERVER,
       allowDomainProxyServer: true
-    }).servers.slice(0, 4);
+    }).servers;
+    // 单订阅至多保留 4 条：映射是「域名 → 整份名单」，不设上限时订阅可借私有解析器放大产物体积与解析并发。
+    // 截断必须可见（debug），否则订阅塞第 5 条起会被静默丢弃。
+    const clean = sanitizedResolvers.slice(0, MAX_ASSET_RESOLVERS);
+    if (sanitizedResolvers.length > MAX_ASSET_RESOLVERS && logger && typeof logger.debug === 'function') {
+      logger.debug(
+        `🛡️ 资产闭包：订阅 [${tag}] 私有解析器 ${sanitizedResolvers.length} 条，` +
+        `超出上限仅保留前 ${MAX_ASSET_RESOLVERS} 条（丢弃 ${sanitizedResolvers.length - MAX_ASSET_RESOLVERS} 条）`
+      );
+    }
     const resolverDomains = clean.length > 0
       ? [...extractAssetDomains(proxies, '')].filter(d => isInheritable(d))
       : [];
@@ -571,7 +583,7 @@ function mergeDnsAssets(into, from) {
   Object.assign(into.hosts, from.hosts);
   Object.assign(into.policies, from.policies);
   into.fakeIpFilters.push(...from.fakeIpFilters);
-  into.proxyResolvers = [...new Set([...into.proxyResolvers, ...from.proxyResolvers])].slice(0, 4);
+  into.proxyResolvers = [...new Set([...into.proxyResolvers, ...from.proxyResolvers])].slice(0, MAX_ASSET_RESOLVERS);
   // 候选只做累积，绝不在合并阶段做域名并集；同名域名的取舍由全局冲突决议统一处理。
   into.resolverCandidates.push(...(from.resolverCandidates || []));
   return into;

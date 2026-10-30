@@ -333,10 +333,14 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     const shape = wildcard > 0
       ? `（精确 ${policyKeys.length - wildcard} · 通配 ${wildcard}）`
       : '';
-    // 只输出映射条数与解析器数量，绝不展示含 token 的解析器 URL
+    // 只输出映射条数与解析器数量，绝不展示含 token 的解析器 URL。
+    // 解析器数量按映射实际引用去重统计：assetProxyResolvers 是「合并并集 + 上限 4」，直接取长度会低报。
+    const referencedResolvers = new Set(
+      [].concat(...Object.values(assetResolverPolicies)).map(String)
+    ).size;
     logger.info(
       `🛡️ 资产闭包：注入 DNS 映射 ${policyKeys.length} 条${shape} → ` +
-      `${assetProxyResolvers.length} 项 DoH，仅解析对应订阅的节点域名`
+      `${referencedResolvers} 项加密解析器，仅解析对应订阅的节点域名`
     );
     // 内核兼容细节属于实现层，降为 debug：info 级只留业务语义
     if (typeof logger.debug === 'function') {

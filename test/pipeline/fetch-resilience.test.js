@@ -1125,6 +1125,80 @@ proxies:
     }
   });
 
+  test('单订阅私有解析器超上限：截断保留前 4 条并有 debug 说明', async () => {
+    const resolvers = [1, 2, 3, 4, 5, 6].map(i => `https://doh${i}.provider.com/dns-query`);
+    const content = Buffer.from(`
+dns:
+  proxy-server-nameserver:
+${resolvers.map(r => `    - ${r}`).join('\n')}
+proxies:
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: hk.trunc.xyz
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    globalThis.fetch = async () => new Response(content, { status: 200 });
+    const logs = [];
+    try {
+      const { yamlStr } = await buildProfile(baseConfig('http://93.184.216.34/trunc-cap'), {
+        mode: 'config', production: true, noCache: true, logger: makeLogger(logs)
+      });
+      const YAML = require('yaml');
+      const value = YAML.parse(yamlStr).dns['nameserver-policy']['hk.trunc.xyz'];
+      const list = Array.isArray(value) ? value : [value];
+      assert.equal(list.length, 4, '单订阅至多保留 4 条解析器');
+      // 节点域名映射按设计不带 #RULES（解析自身节点域名时不能绕回代理）
+      assert.ok(list.includes('https://doh1.provider.com/dns-query'));
+      assert.ok(!list.includes('https://doh5.provider.com/dns-query'), '第 5 条起应被截断');
+
+      const capLog = logs.find(l => l.level === 'debug' && l.msg.includes('超出上限'));
+      assert.ok(capLog, '截断必须可见，否则订阅条目被静默丢弃');
+      assert.ok(capLog.msg.includes('私有解析器 6 条') && capLog.msg.includes('丢弃 2 条'));
+      assert.ok(!capLog.msg.includes('dns-query'), '日志不得泄露解析器地址');
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('映射解析器数量按实际引用去重统计：跨订阅合计可超过 4', async () => {
+    const makeSub = (tag, domain, resolvers) => Buffer.from(`
+dns:
+  proxy-server-nameserver:
+${resolvers.map(r => `    - https://doh${r}.${tag}.com/dns-query`).join('\n')}
+proxies:
+  - name: "🇭🇰 香港 ${tag}"
+    type: ss
+    server: ${domain}
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    let call = 0;
+    const payloads = [
+      makeSub('a', 'hk01.aaa.xyz', [1, 2, 3, 4]),
+      makeSub('b', 'hk02.bbb.xyz', [1, 2, 3, 4])
+    ];
+    globalThis.fetch = async () => new Response(payloads[call++], { status: 200 });
+    const logs = [];
+    try {
+      await buildProfile({
+        subscriptions: [
+          { url: 'http://93.184.216.34/multi-a', tag: 'A', retry: 0 },
+          { url: 'http://93.184.216.34/multi-b', tag: 'B', retry: 0 }
+        ],
+        minorNodeThreshold: 1
+      }, { mode: 'config', production: true, noCache: true, logger: makeLogger(logs) });
+      assert.ok(
+        logs.some(l => l.level === 'info' && l.msg.includes('注入 DNS 映射') && l.msg.includes('8 项加密解析器')),
+        '并集被上限截断时不得低报实际引用的解析器数量'
+      );
+    } finally {
+      restoreFetch();
+    }
+  });
+
   test('资产闭包日志按分类计数，不逐项罗列且不泄露解析器地址', async () => {
     const content = subWithResolver({
       proxyName: '🇭🇰 香港', server: 'hk.domain.com',
