@@ -376,6 +376,18 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   const scriptPolicy = { 'rule-set:cn-domain': finalDirectPolicyNs, 'rule-set:non-cn': finalMainNs };
   const mergedPolicy = { ...scriptPolicy, ...finalAssetPolicy, ...resolverPolicy, ...finalUserPolicy };
 
+  // 订阅既用 proxy-server-nameserver 生成映射、又在自身 nameserver-policy 里声明同一域名时，
+  // 生成映射会覆盖其声明。两者同源、不构成越权，但属自相矛盾输入，debug 级透明化被覆盖的键
+  // （只输出键名，绝不输出解析器地址或 token）。
+  if (logger && typeof logger.debug === 'function') {
+    const shadowed = Object.keys(resolverPolicy).filter(key => key in finalAssetPolicy);
+    if (shadowed.length > 0) {
+      logger.debug(
+        `🛡️ 资产闭包：订阅自身声明的 ${shadowed.length} 条策略被节点解析器映射覆盖（${shadowed.join(', ')}）`
+      );
+    }
+  }
+
   // 6. Hosts 安全挂载：节点专属优选 IP + 用户自定义 Hosts
   //    用户 Hosts 同样过消毒沙箱：受保护域名（github/paypal/银行等）与内网重定向默认拒绝，
   //    确需豁免可用 trustedHostDomains 显式声明（治「远程配置写 hosts 劫持任意域名」）。

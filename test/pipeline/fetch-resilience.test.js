@@ -649,6 +649,43 @@ proxies:
     }
   });
 
+  test('订阅同时声明同一域名的 nameserver-policy 与 proxy-server-nameserver：生成映射覆盖声明并以 debug 透明化', async () => {
+    const content = Buffer.from(`
+dns:
+  proxy-server-nameserver:
+    - https://dns.airport-a.com/dns-query/token-a
+  nameserver-policy:
+    hk.domain.com: https://dns.airport-b.com/dns-query/token-b
+proxies:
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: hk.domain.com
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    globalThis.fetch = async () => new Response(content, { status: 200 });
+    const logs = [];
+    try {
+      const { yamlStr } = await buildProfile(baseConfig('http://93.184.216.34/policy-shadow'), {
+        mode: 'config', production: true, noCache: true, logger: makeLogger(logs)
+      });
+      const YAML = require('yaml');
+      const value = YAML.parse(yamlStr).dns['nameserver-policy']['hk.domain.com'];
+      const list = Array.isArray(value) ? value : [value];
+      // 节点解析器映射优先：同一订阅的自相矛盾声明不至于让节点域名落到别的 DoH
+      assert.ok(list.includes('https://dns.airport-a.com/dns-query/token-a'), '生成映射应覆盖订阅声明');
+      assert.ok(!list.includes('https://dns.airport-b.com/dns-query/token-b'), '被覆盖的声明不得残留');
+
+      const shadowLog = logs.find(l => l.level === 'debug' && l.msg.includes('被节点解析器映射覆盖'));
+      assert.ok(shadowLog, '覆盖行为必须有 debug 审计');
+      assert.ok(shadowLog.msg.includes('hk.domain.com'), '应指出被覆盖的键');
+      assert.ok(!shadowLog.msg.includes('dns-query'), '日志不得泄露解析器地址');
+    } finally {
+      restoreFetch();
+    }
+  });
+
   test('订阅 proxy-server-nameserver：用户显式 dnsServer 优先于订阅值', async () => {
     const content = Buffer.from(`
 dns:
