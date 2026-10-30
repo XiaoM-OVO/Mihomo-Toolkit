@@ -637,7 +637,7 @@ proxies:
       });
       assert.ok(yamlStr.includes('dns.airport-a.com/dns-query/secret-token'), '应继承订阅的节点解析器');
       assert.ok(
-        logs.some(l => l.level === 'info' && l.msg.includes('继承订阅私有 DNS')),
+        logs.some(l => l.level === 'info' && l.msg.includes('注入 DNS 映射')),
         '继承行为必须有审计日志'
       );
       assert.ok(
@@ -1061,14 +1061,19 @@ proxies:
     const YAML = require('yaml');
     globalThis.fetch = async () => new Response(content, { status: 200 });
     try {
+      const foldLogs = [];
       const folded = await buildProfile(
         baseConfig('http://93.184.216.34/fold-on', { retry: 0 }),
-        { mode: 'config', production: true, noCache: true }
+        { mode: 'config', production: true, noCache: true, logger: makeLogger(foldLogs) }
       );
       const dnsFolded = YAML.parse(folded.yamlStr).dns;
       assert.deepEqual(dnsFolded['nameserver-policy']['.459292.xyz'], doh, '同源同后缀应折叠');
       assert.equal(dnsFolded['nameserver-policy']['hk01.459292.xyz'], undefined, '折叠后不再保留精确键');
       assert.equal(dnsFolded['respect-rules'], false);
+      assert.ok(
+        foldLogs.some(l => l.level === 'info' && l.msg.includes('注入 DNS 映射') && l.msg.includes('通配 1')),
+        '折叠后日志应按映射条数与通配条数表述，不能把键数说成域名数'
+      );
 
       const exact = await buildProfile(
         baseConfig('http://93.184.216.34/fold-off', { global: { dnsNodePolicyFold: false }, retry: 0 }),

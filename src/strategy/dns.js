@@ -326,18 +326,30 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   ).servers;
 
   if (proxyNsSource === 'asset-policy' && logger && typeof logger.info === 'function') {
-    // 只输出域名数量与解析器数量，绝不展示含 token 的解析器 URL
+    // 折叠后键可能是 `.suffix` 通配键：按映射条数（精确/通配）表述，避免把键数说成域名数；
+    // 用「注入」点明这是继承项汇总后真正写入 dns 段的结果，与 [IO] 段的继承计数属于不同阶段。
+    const policyKeys = Object.keys(assetResolverPolicies);
+    const wildcard = policyKeys.filter(k => k.startsWith('.')).length;
+    const shape = wildcard > 0
+      ? `（精确 ${policyKeys.length - wildcard} · 通配 ${wildcard}）`
+      : '';
+    // 只输出映射条数与解析器数量，绝不展示含 token 的解析器 URL
     logger.info(
-      `🛡️ 节点解析器：继承订阅私有 DNS（${Object.keys(assetResolverPolicies).length} 个节点域名 → ` +
-      `${assetProxyResolvers.length} 项 DoH，仅用于对应订阅的节点解析；` +
-      '兼容 v1.19.13：respect-rules 关闭并显式标记 #RULES）'
+      `🛡️ 资产闭包：注入 DNS 映射 ${policyKeys.length} 条${shape} → ` +
+      `${assetProxyResolvers.length} 项 DoH，仅解析对应订阅的节点域名`
     );
+    // 内核兼容细节属于实现层，降为 debug：info 级只留业务语义
+    if (typeof logger.debug === 'function') {
+      logger.debug(
+        '🛡️ 资产闭包：v1.19.13 兼容层已启用（respect-rules 关闭，继承 RULES 的条目显式补 #RULES）'
+      );
+    }
   } else if (proxyNsSource === 'asset' && safeProxyServerNs.length > 0 && logger && typeof logger.info === 'function') {
-    logger.info(`🛡️ 节点解析器：继承订阅私有 DNS ${safeProxyServerNs.length} 项（仅用于节点域名解析）`);
+    logger.info(`🛡️ 资产闭包：注入节点解析器 ${safeProxyServerNs.length} 项（仅用于节点域名解析）`);
   }
   if (mappingFallbackReason && logger && typeof logger.warn === 'function') {
     // 脱敏告警：只说明类别与回退结果，不展示订阅 URL、DoH 地址或 token。
-    const base = '🛡️ 节点解析器：映射模式已禁用（检测到 system / dhcp:// 等无法安全注入 #RULES 的特殊 DNS 条目），' +
+    const base = '🛡️ 资产闭包：映射模式已禁用（检测到 system / dhcp:// 等无法安全注入 #RULES 的特殊 DNS 条目），' +
       '本次回退非映射配置：respect-rules 保持开启、使用非空节点解析器，且不写入订阅域名专属映射';
     const seenTimes = dnsMappingFallbackGate(`dns-mapping-fallback|${mappingFallbackReason}`);
     if (seenTimes > 1) {
