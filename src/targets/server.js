@@ -10,7 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const yaml = require('yaml');
 const { buildProfile, normalizeOutputMode, getProfileCacheStats } = require('../pipeline/engine');
-const { createLogger, createRepeatGate } = require('../core/logger');
+const { createLogger, createRepeatGate, formatDuration } = require('../core/logger');
 const { safeFetchText } = require('../io/fetcher');
 const { isAllowedUrlAsync, redactUrl } = require('../io/ssrf');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits');
@@ -540,7 +540,7 @@ function startServer(options = {}) {
 
           if (refreshCooldownSec > 0 && elapsedSec < refreshCooldownSec) {
             const remainingSec = Math.ceil(refreshCooldownSec - elapsedSec);
-            serverLogger.info(`⏳ 刷新冷却中（剩余 ${remainingSec}s），直接返回最新缓存 <- ${clientIp}`);
+            serverLogger.info(`⏳ 刷新冷却中（剩余 ${formatDuration(remainingSec * 1000)}），直接返回最新缓存 <- ${clientIp}`);
             forceRefresh = false;
           } else {
             lastRefreshTimes.set(refreshKey, now);
@@ -739,9 +739,9 @@ function startServer(options = {}) {
 
     const autoRefreshIntervalSec = Number(options.autoRefreshInterval ?? localConfig.autoRefreshInterval) || 0;
     if (autoRefreshIntervalSec > 0 && hasLocalSubs) {
-      serverLogger.info(`⏰ 已启用后台自动轮询（每 ${autoRefreshIntervalSec}s 回源一次）`);
+      serverLogger.info(`⏰ 已启用后台自动轮询（每 ${formatDuration(autoRefreshIntervalSec * 1000)} 回源一次）`);
       const intervalId = setInterval(async () => {
-        await runGuardedBackgroundRefresh('Cron', `⏰ 触发后台定时更新（每 ${autoRefreshIntervalSec}s）`);
+        await runGuardedBackgroundRefresh('Cron', `⏰ 触发后台定时更新（每 ${formatDuration(autoRefreshIntervalSec * 1000)}）`);
       }, autoRefreshIntervalSec * 1000);
       intervalId.unref?.();
       server.on('close', () => clearInterval(intervalId));

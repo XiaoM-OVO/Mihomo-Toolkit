@@ -20,7 +20,7 @@ const { redactUrl } = require('../io/ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache, isSubInFetchBackoff, recordSubFetchFailure, clearSubFetchFailure, getSubFetchBackoff } = require('../io/fetcher');
 const { normalizeCacheDurations } = require('../io/cache');
 const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
-const { createRepeatGate } = require('../core/logger');
+const { createRepeatGate, formatDuration } = require('../core/logger');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy } = require('../core/security/dns-sanitizer');
 const { effectiveProtectedDomains } = require('../data');
@@ -281,12 +281,6 @@ function describeOrigin(origin) {
 }
 
 /** 把退避时长格式化为日志可读文本（30s / 2m / 6h），避免终端长冷却时出现 21600s */
-function formatBackoffSpan(ms) {
-  const sec = Math.max(0, Math.round(ms / 1000));
-  if (sec < 60) return `${sec}s`;
-  if (sec < 3600) return `${Math.round(sec / 60)}m`;
-  return `${Math.round(sec / 3600)}h`;
-}
 
 /** 提取节点资产域名（用于专属依赖闭包识别） */
 function extractAssetDomains(proxies = [], subUrl = '') {
@@ -926,7 +920,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         logger.debug(expiryTerminal
           ? `🛑 [${subId}] ${terminalReason}`
           : isBackoffSkip
-            ? `⏳ [${subId}] 退避中跳过回源（${backoffState ? `第 ${backoffFailures} 次失败 · 退避 ${formatBackoffSpan(backoffState.delayMs)} · 剩余 ${formatBackoffSpan(backoffState.nextRetryAt - Date.now())}` : `${retryInSec}s 后重试`}）`
+            ? `⏳ [${subId}] 退避中跳过回源（${backoffState ? `第 ${backoffFailures} 次失败 · 退避 ${formatDuration(backoffState.delayMs)} · 剩余 ${formatDuration(backoffState.nextRetryAt - Date.now())}` : `${retryInSec}s 后重试`}）`
             : `❌ [${subId}] 拉取失败：${terminalReason || e.message}`);
 
         let effectiveTag = sub.tag;
@@ -1014,9 +1008,9 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           if (expiryLabel) {
             lines.push(`${branch} 🛑 [${s.tag}]：${expiryLabel}`);
           } else if (s.skipped) {
-            lines.push(`${branch} ⏳ [${s.tag}]：退避中跳过回源（无可用缓存${s.backoffFailures ? ` · 第 ${s.backoffFailures} 次失败` : ''}${s.backoffTotalSec ? ` · 退避 ${formatBackoffSpan(s.backoffTotalSec * 1000)}` : ''}${s.retryInSec > 0 ? ` · 剩余 ${formatBackoffSpan(s.retryInSec * 1000)}` : ''}）`);
+            lines.push(`${branch} ⏳ [${s.tag}]：退避中跳过回源（无可用缓存${s.backoffFailures ? ` · 第 ${s.backoffFailures} 次失败` : ''}${s.backoffTotalSec ? ` · 退避 ${formatDuration(s.backoffTotalSec * 1000)}` : ''}${s.retryInSec > 0 ? ` · 剩余 ${formatDuration(s.retryInSec * 1000)}` : ''}）`);
           } else {
-            lines.push(`${branch} ❌ [${s.tag}]：拉取失败（${s.failReason}）${s.backoffFailures ? ` · 第 ${s.backoffFailures} 次失败` : ''}${s.backoffTotalSec ? ` · 退避 ${formatBackoffSpan(s.backoffTotalSec * 1000)}` : ''}${s.retryInSec > 0 ? ` · 剩余 ${formatBackoffSpan(s.retryInSec * 1000)}` : ''}`);
+            lines.push(`${branch} ❌ [${s.tag}]：拉取失败（${s.failReason}）${s.backoffFailures ? ` · 第 ${s.backoffFailures} 次失败` : ''}${s.backoffTotalSec ? ` · 退避 ${formatDuration(s.backoffTotalSec * 1000)}` : ''}${s.retryInSec > 0 ? ` · 剩余 ${formatDuration(s.retryInSec * 1000)}` : ''}`);
           }
         } else {
           const origin = describeOrigin(s.origin);
@@ -1116,7 +1110,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           const backoffFailures = backoff ? backoff.state.failures : 1;
           const backoffTotalSec = backoff && Number.isFinite(backoff.state.delayMs) ? Math.round(backoff.state.delayMs / 1000) : 30;
           // 主动跳过请求，并非真实回源失败；在抛错前显式记录本次行为。
-          logger.warn(`⏳ ${isTerminal ? '订阅已终态失效，' : ''}退避中跳过回源（无可用缓存 · 第 ${backoffFailures} 次失败 · 退避 ${formatBackoffSpan(backoffTotalSec * 1000)} · 剩余 ${formatBackoffSpan(retryInSec * 1000)}）：${redactUrl(url, showFullUrl)}`);
+          logger.warn(`⏳ ${isTerminal ? '订阅已终态失效，' : ''}退避中跳过回源（无可用缓存 · 第 ${backoffFailures} 次失败 · 退避 ${formatDuration(backoffTotalSec * 1000)} · 剩余 ${formatDuration(retryInSec * 1000)}）：${redactUrl(url, showFullUrl)}`);
           const skipErr = new Error(`Subscription fetch skipped (failure backoff, retry in ${retryInSec}s)`);
           skipErr.isBackoff = true;
           skipErr.retryable = false;

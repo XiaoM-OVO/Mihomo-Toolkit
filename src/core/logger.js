@@ -292,9 +292,22 @@ function createRepeatGate(limit = 200) {
   };
 }
 
+/**
+ * 将毫秒时长格式化为紧凑可读文本（30s / 5m / 2h），供退避、冷却与轮询日志统一使用。
+ * @param {number} ms
+ * @returns {string}
+ */
+function formatDuration(ms) {
+  const sec = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  return `${Math.round(sec / 3600)}h`;
+}
+
 module.exports = {
   Logger,
   createLogger,
   createRepeatGate,
+  formatDuration,
   redactText
 };
