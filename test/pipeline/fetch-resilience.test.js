@@ -1037,4 +1037,74 @@ proxies:
       restoreFetch();
     }
   });
+
+  test('dnsNodePolicyFold：默认折叠为 .suffix，关闭后逐域名精确键', async () => {
+    const content = Buffer.from(`
+dns:
+  proxy-server-nameserver:
+    - https://dns.airport-a.com/dns-query/token-a
+proxies:
+  - name: "🇭🇰 香港 01"
+    type: ss
+    server: hk01.459292.xyz
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+  - name: "🇭🇰 香港 02"
+    type: ss
+    server: hk02.459292.xyz
+    port: 443
+    cipher: aes-256-gcm
+    password: test
+`.trim()).toString('base64');
+    const doh = ['https://dns.airport-a.com/dns-query/token-a'];
+    const YAML = require('yaml');
+    globalThis.fetch = async () => new Response(content, { status: 200 });
+    try {
+      const folded = await buildProfile(
+        baseConfig('http://93.184.216.34/fold-on', { retry: 0 }),
+        { mode: 'config', production: true, noCache: true }
+      );
+      const dnsFolded = YAML.parse(folded.yamlStr).dns;
+      assert.deepEqual(dnsFolded['nameserver-policy']['.459292.xyz'], doh, '同源同后缀应折叠');
+      assert.equal(dnsFolded['nameserver-policy']['hk01.459292.xyz'], undefined, '折叠后不再保留精确键');
+      assert.equal(dnsFolded['respect-rules'], false);
+
+      const exact = await buildProfile(
+        baseConfig('http://93.184.216.34/fold-off', { global: { dnsNodePolicyFold: false }, retry: 0 }),
+        { mode: 'config', production: true, noCache: true }
+      );
+      const dnsExact = YAML.parse(exact.yamlStr).dns;
+      assert.deepEqual(dnsExact['nameserver-policy']['hk01.459292.xyz'], doh);
+      assert.deepEqual(dnsExact['nameserver-policy']['hk02.459292.xyz'], doh);
+      assert.equal(dnsExact['nameserver-policy']['.459292.xyz'], undefined, '关闭后不得出现通配键');
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('资产闭包日志按分类计数，不逐项罗列且不泄露解析器地址', async () => {
+    const content = subWithResolver({
+      proxyName: '🇭🇰 香港', server: 'hk.domain.com',
+      resolver: 'https://dns.airport-a.com/dns-query/secret-token'
+    });
+    globalThis.fetch = async () => new Response(content, { status: 200 });
+    const logs = [];
+    try {
+      await buildProfile(
+        baseConfig('http://93.184.216.34/asset-log', { retry: 0 }),
+        { mode: 'config', production: true, noCache: true, logger: makeLogger(logs) }
+      );
+      const line = logs.find(l => l.level === 'info' && l.msg.includes('资产闭包'));
+      assert.ok(line, '应输出资产闭包日志');
+      assert.match(line.msg, /解析器 1/, '应按分类给出解析器计数');
+      assert.match(line.msg, /域名 1/, '应按分类给出域名计数');
+      assert.ok(!line.msg.includes('https://'), '不得输出解析器 URL');
+      assert.ok(!line.msg.includes('secret-token'), '不得输出解析器 token');
+      assert.ok(!/proxy-resolver:[0-9]/.test(line.msg), '不再逐项罗列');
+      assert.ok(!line.msg.includes('示例'), '不附带示例，避免半截列表');
+    } finally {
+      restoreFetch();
+    }
+  });
 });

@@ -679,7 +679,8 @@ routing:
 | `dnsDefault` | `string[]` | 阿里/腾讯纯IP | `local` | `override` | **基础引导 DNS**：必须为纯 IP 格式，用于解析 DoH 域名破除递归死锁。 |
 | `dnsDirect` | `string[]` | 阿里/腾讯DoH | `local` | `override` | **国内直连域名解析链**：解析国内直连网站的 DoH 列表。 |
 | `dnsProxy` | `string[]` | Google/CF DoH | `local` | `override` | **海外代理域名解析链**：通过代理出口查询的 DoH 列表（防 DNS 污染）。 |
-| `dnsServer` | `string[]` | 阿里/腾讯纯IP | `local` | `override` | **节点服务器域名专用解析器**：直连无死锁解析订阅节点自身的 server 域名。未显式修改时，会把各订阅的 `proxy-server-nameserver` 按「节点域名 → 该订阅 DoH」映射进 `nameserver-policy`（仅加密 DNS），多订阅互不共享；同名节点域名若对应不同解析器，整个域名不生成映射并回退默认 DNS；显式配置后用户值全局优先。 |
+| `dnsServer` | `string[]` | 阿里/腾讯纯IP | `local` | `override` | **节点服务器域名专用解析器**：直连无死锁解析订阅节点自身的 server 域名。未显式修改时，会把各订阅的 `proxy-server-nameserver` 按「节点域名 → 该订阅 DoH」映射进 `nameserver-policy`（仅加密 DNS），多订阅互不共享；同源同后缀的多个节点域名折叠为一条 `.suffix` 通配键（覆盖任意层级子域、不含裸域，优先取最具体后缀），跨订阅或后缀下存在冲突域名时保留精确键；同名节点域名若对应不同解析器，整个域名不生成映射并回退默认 DNS；显式配置后用户值全局优先。 |
+| `dnsNodePolicyFold` | `boolean` | `true` | `local` | `override` | **节点域名映射通配折叠**：同源同后缀的多个节点域名折叠为一条 `.suffix` 键（覆盖子域、不含裸域）；设为 `false` 则逐域名精确键，适合担心域名前置场景下通配扩大覆盖范围的用户。 |
 
 > **映射模式的内核兼容（v1.19.13）**：映射生效时 `respect-rules` 关闭，`nameserver`、`rule-set:*` 与 `nameserver-policy` 条目会显式追加 `#RULES` 出口标记（纯 IP 与裸域名改写为 `udp://IP#RULES` 形式），节点域名专属映射本身不带标记；仅 `#RULES` / `#DIRECT` / `#proxy` / `#interface` 视为已声明出口并保持原样，其余无等号片段（如误写的 `#h3`）仍追加 `RULES`。若待标记条目包含 `system` 或 `dhcp://`（无法安全携带片段），整份配置回退非映射模式：`respect-rules` 恢复开启、使用非空 `proxy-server-nameserver`、不写入任何订阅域名专属映射，并记录脱敏告警。升级内核后请重跑 `test/kernel` 契约测试，确认 `RULES` 语义未变。
 

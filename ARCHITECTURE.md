@@ -305,7 +305,7 @@ src/
   服务端接收到 `?config=<URL>` 时，基于 `field-registry.js` 中的 `trust: 'any'` 白名单进行收敛过滤，剥离本地读写字段（`include`、`output`）及特权 DNS 控制面字段；内联订阅内容（`subscriptions[].uri`）只放行解析器注册表中真实存在的节点协议 scheme，图标类字段只放行 `https` 公网地址（图标由**客户端**加载，指向内网即客户端侧探测通道）。
 - **节点资产闭包 (`pipeline/ingestion.js`)**：
   订阅自带的 `hosts` / `nameserver-policy` / `fake-ip-filter` 只继承「指向自身节点域名」的条目，且只允许向下（子域）与比 TLD 更窄的向上通配（`+.example.com`）；单 label 泛域名（`+.com`）在任何路径上都会被拒绝。
-- **节点解析器归属决议（legacy 模式）**：各订阅的 `proxy-server-nameserver` 先登记为「节点域名 → 该订阅 DoH」候选（订阅身份用 URL SHA256 短哈希，不用显示 tag），全部收集完成后再做一次全局决议；同域名同解析器集合去重合并，只要出现不同集合就整体退出映射、回退默认 DNS，不做 union、不按遍历顺序择一，输出域名排序保证订阅顺序无关。
+- **节点解析器归属决议（legacy 模式）**：各订阅的 `proxy-server-nameserver` 先登记为「节点域名 → 该订阅 DoH」候选（订阅身份用 URL SHA256 短哈希，不用显示 tag），全部收集完成后再做一次全局决议；同域名同解析器集合去重合并，只要出现不同集合就整体退出映射、回退默认 DNS，不做 union、不按遍历顺序择一，输出域名排序保证订阅顺序无关。同源、同解析器集合、且后缀下无冲突域名的多个节点域名会折叠为一条 `.suffix` 通配键（覆盖任意层级子域、不含裸域），优先取最具体的后缀；跨订阅、后缀下存在冲突域名或仅单域名时保留逐域名精确键。
 - **legacy 映射模式的内核兼容层 (`strategy/dns.js`)**：v1.19.13 的 `respect-rules: true` 是解析期开关，内核会给 `nameserver` 与 `nameserver-policy` 的每个条目隐式注入 `RULES` 出口，同时拒绝 `respect-rules: true` 与空 `proxy-server-nameserver` 共存。因此映射模式改为 `respect-rules: false`，并对原本依赖隐式注入的条目显式补齐 `#RULES`；纯 IP 与裸域名统一改写为 `udp://…` 显式协议形式，保证产物可被沙箱二次解析；只有白名单出口标记（`#RULES` / `#DIRECT` / `#proxy` / `#interface`）视为已声明出口，其余无等号片段不会被当作出口声明，仍补 `RULES`；节点域名专属映射本身不携带标记。若待标记条目中出现 `system` / `dhcp://`（无法安全携带片段），整份配置整体回退非映射模式：恢复 `respect-rules: true`、使用非空 `proxy-server-nameserver`、不写任何订阅域名专属映射，并输出脱敏告警。`RULES` 属内核实现细节，升级内核后必须重跑 `test/kernel` 契约测试。
 - **DNS 安全配置沙箱 (`dns-sanitizer.js`)**：
   强制引导 DNS 采用纯 IP 地址以避免解析死锁；剥离 DoH 中的危险修饰符；默认强制 DNS 监听本地回环地址（`127.0.0.1`）。

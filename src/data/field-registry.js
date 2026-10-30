@@ -179,6 +179,8 @@ const FIELDS = [
     merge: 'override', trust: 'local', group: 'DNS 与 Hosts 安全面', doc: '海外代理域名解析链' },
   { key: 'dnsServer', type: 'string[]', default: [...DEFAULT_PROXY_SERVER_DNS],
     merge: 'override', trust: 'local', group: 'DNS 与 Hosts 安全面', doc: '节点服务器域名专用解析 DNS' },
+  { key: 'dnsNodePolicyFold', type: 'boolean', default: true, merge: 'override', trust: 'local',
+    group: 'DNS 与 Hosts 安全面', doc: '节点域名映射是否折叠同后缀为 `.suffix` 通配键（关闭则逐域名精确键）' },
 
   // ── 【8. 安全防漏与内核覆写】 ─────────────────────────────────────────
   { key: 'enableTrafficAudit', type: 'boolean', default: true, merge: 'override', trust: 'any',

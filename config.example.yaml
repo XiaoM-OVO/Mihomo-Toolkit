@@ -334,6 +334,7 @@ testTolerance: 50                  # url-test 切换延迟容忍度（ms，防�
 # dnsDirect: ["https://223.5.5.5/dns-query", "https://120.53.53.53/dns-query"]
 # dnsProxy: ["https://8.8.8.8/dns-query", "https://1.1.1.1/dns-query"]
 # dnsServer: ["223.5.5.5", "119.29.29.29"]
+# dnsNodePolicyFold: true          # 节点域名映射折叠为 ".suffix" 通配键（false 则逐域名精确键，产物更长）
 # fakeIpFilterNodes: "smart"       # 节点域名注入 fake-ip-filter：smart 主域聚合 / exact 逐项 / off 关闭
 # fakeIpFilter:                    # 追加自定义 fake-ip-filter 条目
 #   - "+.my-internal.company"

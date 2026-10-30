@@ -75,4 +75,94 @@ describe('【Security】节点域名解析器归属决议 (node-dns-policy)', ()
     assert.deepEqual(policies, {});
     assert.deepEqual(conflicts, []);
   });
+
+  test('折叠：同源同后缀的多个节点域名合并为一条 .suffix 通配键', () => {
+    const doh = ['https://doh-a.example/dns-query'];
+    const { policies } = resolveNodeDnsPolicies([
+      candidate('sg01.459292.xyz', doh, 'url:aaa'),
+      candidate('tw06.459292.xyz', doh, 'url:aaa'),
+      candidate('us02.459292.xyz', doh, 'url:aaa')
+    ]);
+    assert.deepEqual(policies, { '.459292.xyz': doh });
+  });
+
+  test('折叠：多层域名优先使用最具体的后缀，避免通配范围放大', () => {
+    const doh = ['https://doh-a.example/dns-query'];
+    const { policies } = resolveNodeDnsPolicies([
+      candidate('a.b.example.com', doh, 'url:aaa'),
+      candidate('c.b.example.com', doh, 'url:aaa')
+    ]);
+    assert.deepEqual(policies, { '.b.example.com': doh });
+  });
+
+  test('折叠：单个域名不折叠，仍输出精确键', () => {
+    const doh = ['https://doh-a.example/dns-query'];
+    const { policies } = resolveNodeDnsPolicies([
+      candidate('hk.example.com', doh, 'url:aaa')
+    ]);
+    assert.deepEqual(policies, { 'hk.example.com': doh });
+  });
+
+  test('折叠：同后缀跨订阅不同来源时不折叠，保持精确键隔离', () => {
+    const dohA = ['https://doh-a.example/dns-query'];
+    const dohB = ['https://doh-b.example/dns-query'];
+    const { policies } = resolveNodeDnsPolicies([
+      candidate('hk.example.com', dohA, 'url:aaa'),
+      candidate('jp.example.com', dohB, 'url:bbb')
+    ]);
+    assert.deepEqual(policies, {
+      'hk.example.com': dohA,
+      'jp.example.com': dohB
+    });
+  });
+
+  test('折叠：后缀下存在冲突域名时整段不折叠', () => {
+    const doh = ['https://doh-a.example/dns-query'];
+    const { policies, conflicts } = resolveNodeDnsPolicies([
+      candidate('hk.example.com', doh, 'url:aaa'),
+      candidate('jp.example.com', doh, 'url:aaa'),
+      candidate('shared.example.com', doh, 'url:aaa'),
+      candidate('shared.example.com', ['https://doh-b.example/dns-query'], 'url:bbb')
+    ]);
+    // 折叠会把冲突域名交给本订阅解析器，违反「冲突回退默认 DNS」
+    assert.equal(policies['.example.com'], undefined);
+    assert.deepEqual(policies['hk.example.com'], doh);
+    assert.deepEqual(policies['jp.example.com'], doh);
+    assert.equal(policies['shared.example.com'], undefined);
+    assert.deepEqual(conflicts, [
+      { domain: 'shared.example.com', subscriptions: 2, distinctResolvers: 2 }
+    ]);
+  });
+
+  test('折叠开关关闭：同源同后缀仍输出逐域名精确键', () => {
+    const doh = ['https://doh-a.example/dns-query'];
+    const { policies } = resolveNodeDnsPolicies([
+      candidate('hk01.459292.xyz', doh, 'url:aaa'),
+      candidate('hk02.459292.xyz', doh, 'url:aaa')
+    ], { fold: false });
+    assert.deepEqual(policies, {
+      'hk01.459292.xyz': doh,
+      'hk02.459292.xyz': doh
+    });
+  });
+
+  test('折叠结果与订阅顺序无关', () => {
+    const dohA = ['https://doh-a.example/dns-query'];
+    const dohB = ['https://doh-b.example/dns-query'];
+    const items = [
+      candidate('sg01.459292.xyz', dohA, 'url:aaa'),
+      candidate('tw01.459292.xyz', dohA, 'url:aaa'),
+      candidate('hk.344211.cc', dohB, 'url:bbb'),
+      candidate('tw.344211.cc', dohB, 'url:bbb')
+    ];
+    const baseline = JSON.stringify(resolveNodeDnsPolicies(items));
+    for (const order of [[3, 2, 1, 0], [1, 0, 3, 2], [2, 3, 0, 1]]) {
+      assert.equal(JSON.stringify(resolveNodeDnsPolicies(order.map(i => items[i]))), baseline);
+    }
+    const { policies } = resolveNodeDnsPolicies(items);
+    assert.deepEqual(policies, {
+      '.344211.cc': dohB,
+      '.459292.xyz': dohA
+    });
+  });
 });

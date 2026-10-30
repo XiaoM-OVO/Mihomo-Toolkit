@@ -539,26 +539,25 @@ function applySubscriptionGuards(subConfig, options = {}) {
   //    资产会随 Checkpoint 早退被静默丢弃 —— 对「节点域名只能靠订阅私货解析」的来源，
   //    产物里的节点将无法连接，故此处必须显式告警而非仅 info。
   if (logger && typeof logger.info === 'function') {
-    const inherited = [
-      ...result.hosts.map(h => `hosts:${h}`),
-      ...result.policies.map(p => `dns-policy:${p}`),
-      ...result.fakeIpFilters.map(f => `fake-ip-filter:${f}`),
-      // 只输出数量与映射域名，绝不把含 token 的解析器 URL 写进日志
-      ...result.proxyResolvers.map((_, i) => `proxy-resolver:${i + 1}`),
-      ...result.resolverCandidates.map(c => `resolver-domain:${c.domain}`)
-    ];
-    if (inherited.length > 0) {
-      const preview = inherited.slice(0, 6).join(', ');
-      const tail = inherited.length > 6 ? ', …' : '';
+    // 分类计数替代逐项罗列：依赖可达数十项，全量展开会淹没日志；解析器 URL 含 token，绝不进入日志。
+    const counts = [
+      ['解析器', result.proxyResolvers.length],
+      ['域名', result.resolverCandidates.length],
+      ['策略', result.policies.length],
+      ['Hosts', result.hosts.length],
+      ['fake-ip', result.fakeIpFilters.length]
+    ].filter(([, n]) => n > 0);
+    const total = counts.reduce((sum, [, n]) => sum + n, 0);
+    if (total > 0) {
+      const breakdown = counts.map(([label, n]) => `${label} ${n}`).join(' · ');
       if (outputMode === 'nodes' && typeof logger.warn === 'function') {
         logger.warn(
-          `⚠️ 解析依赖：订阅 [${tag}] 携带 ${inherited.length} 项节点专属 DNS 依赖（${preview}${tail}），` +
+          `⚠️ 解析依赖：订阅 [${tag}] 携带 ${total} 项节点专属 DNS 依赖（${breakdown}），` +
           `但 nodes 产物不含 dns 段，这些依赖会被丢弃；若相关节点域名需靠其解析，节点将无法连接`
         );
       } else {
         logger.info(
-          `🛡️ 资产闭包：订阅 [${tag}] 继承 ${inherited.length} 项节点专属 DNS 依赖 ` +
-          `（${preview}${tail}）`
+          `🛡️ 资产闭包：订阅 [${tag}] 继承 ${total} 项节点专属 DNS 依赖（${breakdown}）`
         );
       }
     }
@@ -1318,7 +1317,10 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   //    最后才生成映射。冲突域名整体退出映射（不 union、不按顺序择一），
   //    由 DNS 装配层回退默认解析链；nodes/report 产物不含 dns 段，无需输出冲突告警。
   if (dnsAssets.resolverCandidates.length > 0) {
-    const { policies, conflicts } = resolveNodeDnsPolicies(dnsAssets.resolverCandidates);
+    const { policies, conflicts } = resolveNodeDnsPolicies(
+      dnsAssets.resolverCandidates,
+      { fold: userConfig.dnsNodePolicyFold !== false }
+    );
     dnsAssets.resolverPolicies = policies;
     dnsAssets.hasResolverCandidates = true;
     if (outputMode === 'config') logNodeDnsConflicts(conflicts, logger);

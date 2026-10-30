@@ -86,6 +86,7 @@
     "223.5.5.5",
     "119.29.29.29"
   ],
+  "dnsNodePolicyFold": true,
   "enableTrafficAudit": true,
   "overwriteTun": true,
   "overwriteDns": true,

@@ -478,6 +478,8 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   dnsProxy?: string[];
   /** 节点域名专用直连解析器（纯 IP 格式，直连无死锁） */
   dnsServer?: string[];
+  /** 节点域名映射是否折叠为 `.suffix` 通配键（默认 true，关闭则逐域名精确键） */
+  dnsNodePolicyFold?: boolean;
   /** 自定义静态 Hosts 映射（受保护域名与内网重定向默认被拒绝） */
   hosts?: Record<string, string | string[]>;
   /** 允许 hosts 豁免受保护域名清单的域名（如 "my-internal-cdn.com"） */
