@@ -366,13 +366,15 @@ function sanitizeDnsServer(entry, options = {}) {
   }
 
   const scheme = parsed.scheme && parsed.scheme !== 'plain' ? `${parsed.scheme}://` : '';
+  // URL 形式解析出的 IPv6 字面量必须重新加方括号，否则重建的 udp:// / tcp:// 地址不可解析
+  const host = parsed.isIpv6 ? `[${parsed.host}]` : parsed.host;
   const port = parsed.port ? `:${parsed.port}` : '';
   const isHttpDnsDomain = /^(https?|h3)$/i.test(parsed.scheme || '');
   const path = isHttpDnsDomain
     ? (parsed.path && parsed.path !== '/' ? parsed.path : '/dns-query')
     : '';
   const suffix = rebuildModifiers();
-  return { ok: true, value: `${scheme}${parsed.host}${port}${path}${suffix}`, entry: parsed, findings };
+  return { ok: true, value: `${scheme}${host}${port}${path}${suffix}`, entry: parsed, findings };
 }
 
 /**

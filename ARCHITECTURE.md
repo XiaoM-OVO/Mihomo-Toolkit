@@ -155,6 +155,7 @@ src/
 │   │   ├── control-plane.js      # 交付契约白名单与控制面剥离
 │   │   ├── remote-config.js      # 远程可信配置剥离 (Fail-Closed)
 │   │   ├── dns-sanitizer.js      # 节点专属 DoH/Hosts 资产闭包与净化
+│   │   ├── node-dns-policy.js    # 节点域名 → 私有 DoH 归属决议与冲突判定
 │   │   └── resolver-plan.js      # DNS 引导方案生成与 INV 不变式验证
 │   └── shared/                   # 核心共享数据与工具
 │       ├── regions.js            # 核心大区与地区代码字典
@@ -304,6 +305,8 @@ src/
   服务端接收到 `?config=<URL>` 时，基于 `field-registry.js` 中的 `trust: 'any'` 白名单进行收敛过滤，剥离本地读写字段（`include`、`output`）及特权 DNS 控制面字段；内联订阅内容（`subscriptions[].uri`）只放行解析器注册表中真实存在的节点协议 scheme，图标类字段只放行 `https` 公网地址（图标由**客户端**加载，指向内网即客户端侧探测通道）。
 - **节点资产闭包 (`pipeline/ingestion.js`)**：
   订阅自带的 `hosts` / `nameserver-policy` / `fake-ip-filter` 只继承「指向自身节点域名」的条目，且只允许向下（子域）与比 TLD 更窄的向上通配（`+.example.com`）；单 label 泛域名（`+.com`）在任何路径上都会被拒绝。
+- **节点解析器归属决议（legacy 模式）**：各订阅的 `proxy-server-nameserver` 先登记为「节点域名 → 该订阅 DoH」候选（订阅身份用 URL SHA256 短哈希，不用显示 tag），全部收集完成后再做一次全局决议；同域名同解析器集合去重合并，只要出现不同集合就整体退出映射、回退默认 DNS，不做 union、不按遍历顺序择一，输出域名排序保证订阅顺序无关。
+- **legacy 映射模式的内核兼容层 (`strategy/dns.js`)**：v1.19.13 的 `respect-rules: true` 是解析期开关，内核会给 `nameserver` 与 `nameserver-policy` 的每个条目隐式注入 `RULES` 出口，同时拒绝 `respect-rules: true` 与空 `proxy-server-nameserver` 共存。因此映射模式改为 `respect-rules: false`，并对原本依赖隐式注入的条目显式补齐 `#RULES`；纯 IP 与裸域名统一改写为 `udp://…` 显式协议形式，保证产物可被沙箱二次解析；只有白名单出口标记（`#RULES` / `#DIRECT` / `#proxy` / `#interface`）视为已声明出口，其余无等号片段不会被当作出口声明，仍补 `RULES`；节点域名专属映射本身不携带标记。若待标记条目中出现 `system` / `dhcp://`（无法安全携带片段），整份配置整体回退非映射模式：恢复 `respect-rules: true`、使用非空 `proxy-server-nameserver`、不写任何订阅域名专属映射，并输出脱敏告警。`RULES` 属内核实现细节，升级内核后必须重跑 `test/kernel` 契约测试。
 - **DNS 安全配置沙箱 (`dns-sanitizer.js`)**：
   强制引导 DNS 采用纯 IP 地址以避免解析死锁；剥离 DoH 中的危险修饰符；默认强制 DNS 监听本地回环地址（`127.0.0.1`）。
 
@@ -452,3 +455,4 @@ include:
 - 同一事件只输出一次；`warn` 仅用于「已自动处理但用户需知晓」的降级与告警。
 - 阶段结论跨入口保持同名：单 URL 与多订阅路径共用「订阅源解析完成」标题。
 - 安全审计类日志（控制面沙箱、DNS 净化沙箱、交付契约、远程配置）按「来源 + 同一组审计结果」独立计数：首次 `warn` 使用「首次发现并已实际剥离」，之后降为 `debug` 的「重复检测（第 N 次 · 相同 M 项，本次仍已实际剥离）」；去重只影响日志级别，不得跳过真实检查与字段剥离。不同订阅之间不得共享去重条目。
+- 节点解析器冲突日志按域名计数：首次 `warn` 明确「本次不写入该域名映射（回退默认 DNS）」，重复降为 `debug` 并保留次数；只输出域名与订阅数量，不得输出订阅 URL、解析器地址或 token。去重同样只影响日志级别，冲突域名每次构建都不写入映射。

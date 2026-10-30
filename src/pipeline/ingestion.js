@@ -23,6 +23,7 @@ const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { createRepeatGate, formatDuration } = require('../core/logger');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy, sanitizeDnsServerList, ROLES } = require('../core/security/dns-sanitizer');
+const { resolveNodeDnsPolicies } = require('../core/security/node-dns-policy');
 const { effectiveProtectedDomains } = require('../data');
 const {
   isDirectNodeSub,
@@ -351,6 +352,7 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
  * @param {object} [options={}]
  * @param {Array}   [options.proxies=[]] 该订阅的节点列表（用于推导资产域）
  * @param {string}  [options.subUrl=''] 订阅源地址（其 hostname 亦计入资产域）
+ * @param {string}  [options.identityUrl=''] 订阅身份种子（URL/URI，仅用于 SHA256 短哈希，不进入日志）
  * @param {string}  [options.tag=''] 订阅标识（审计用）
  * @param {object}  [options.logger] 日志器
  * @param {string}  [options.assetClosureMode='standard'] 资产闭包强度：
@@ -371,6 +373,10 @@ function matchesAssetDomain(domainOrPattern, assetDomains) {
 // 仅用于降低缓存复用/退避复用时重复告警的噪声；安全检查与字段剥离始终执行，不因去重跳过。
 const controlPlaneAuditGate = createRepeatGate(200);
 
+// 节点域名解析器冲突日志去重：按域名计数，首次 warn、重复 debug。
+// 去重只影响日志级别，冲突域名在任何一次构建中都始终不写入映射。
+const nodeDnsConflictGate = createRepeatGate(100);
+
 /**
  * 解析控制面审计的来源身份。
  *
@@ -385,9 +391,28 @@ function resolveAuditSourceId({ subUrl = '', tag = '' } = {}) {
   return tag || 'anonymous';
 }
 
+/**
+ * 输出节点域名解析器冲突告警（脱敏）。
+ *
+ * 冲突域名整体退出映射并由 DNS 装配层回退默认解析链；日志只包含域名与订阅数量，
+ * 绝不输出订阅 URL、解析器地址或 token。首次 warn，重复 debug 并保留次数。
+ */
+function logNodeDnsConflicts(conflicts = [], logger) {
+  if (!logger || !Array.isArray(conflicts)) return;
+  for (const conflict of conflicts) {
+    const seenTimes = nodeDnsConflictGate(conflict.domain);
+    const base = `🛡️ 节点解析器冲突：域名 ${conflict.domain} 来自 ${conflict.subscriptions} 个订阅且解析器不同，本次不写入该域名映射（回退默认 DNS）`;
+    if (seenTimes > 1) {
+      logger.debug(`${base}（第 ${seenTimes} 次 · 本次仍未写入映射）`);
+    } else {
+      logger.warn(base);
+    }
+  }
+}
+
 function applySubscriptionGuards(subConfig, options = {}) {
   const {
-    proxies = [], subUrl = '', tag = '', logger,
+    proxies = [], subUrl = '', identityUrl = '', tag = '', logger,
     assetClosureMode = 'standard', assetDomainAllowlist = [], protectedDomains = [],
     outputMode = 'config'
   } = options;
@@ -397,8 +422,8 @@ function applySubscriptionGuards(subConfig, options = {}) {
     policies: [],
     fakeIpFilters: [],
     proxyResolvers: [],
-    resolverPolicies: {},
-    assets: { hosts: {}, policies: {}, fakeIpFilters: [], proxyResolvers: [], resolverPolicies: {} }
+    resolverCandidates: [],
+    assets: { hosts: {}, policies: {}, fakeIpFilters: [], proxyResolvers: [], resolverCandidates: [] }
   };
 
   if (!subConfig || typeof subConfig !== 'object') return result;
@@ -486,8 +511,9 @@ function applySubscriptionGuards(subConfig, options = {}) {
   }
 
   // 6. 节点专属解析器继承（proxy-server-nameserver）
-  //    按「该订阅的节点域名 → 该订阅的 DoH」建立 nameserver-policy 映射，
-  //    多订阅之间互不共享解析器，避免 A 的 DoH 解析 B 的节点域名。
+  //    这里只登记「该订阅的节点域名 → 该订阅的 DoH」候选，不直接写最终映射。
+  //    多订阅若出现同名域名，必须由上层全局冲突决议后再生成 nameserver-policy，
+  //    避免后处理无法撤销已写入条目、或按遍历顺序静默择一。
   //    仅允许加密 DNS（DoH/DoT/DoQ）；strict 模式仅映射白名单内的节点域名。
   const rawProxyResolvers = (subConfig.dns && subConfig.dns['proxy-server-nameserver'])
     || subConfig['proxy-server-nameserver'];
@@ -500,13 +526,11 @@ function applySubscriptionGuards(subConfig, options = {}) {
       ? [...extractAssetDomains(proxies, '')].filter(d => isInheritable(d))
       : [];
     if (resolverDomains.length > 0) {
+      const sourceId = resolveAuditSourceId({ subUrl: identityUrl || subUrl, tag });
       result.assets.proxyResolvers = clean;
       result.proxyResolvers = clean;
-      result.resolverPolicies = resolverDomains.reduce((acc, d) => {
-        acc[d] = clean;
-        return acc;
-      }, {});
-      result.assets.resolverPolicies = result.resolverPolicies;
+      result.resolverCandidates = resolverDomains.map(domain => ({ domain, resolvers: clean, sourceId }));
+      result.assets.resolverCandidates = result.resolverCandidates;
     }
   }
 
@@ -521,7 +545,7 @@ function applySubscriptionGuards(subConfig, options = {}) {
       ...result.fakeIpFilters.map(f => `fake-ip-filter:${f}`),
       // 只输出数量与映射域名，绝不把含 token 的解析器 URL 写进日志
       ...result.proxyResolvers.map((_, i) => `proxy-resolver:${i + 1}`),
-      ...Object.keys(result.resolverPolicies).map(d => `resolver-domain:${d}`)
+      ...result.resolverCandidates.map(c => `resolver-domain:${c.domain}`)
     ];
     if (inherited.length > 0) {
       const preview = inherited.slice(0, 6).join(', ');
@@ -549,9 +573,8 @@ function mergeDnsAssets(into, from) {
   Object.assign(into.policies, from.policies);
   into.fakeIpFilters.push(...from.fakeIpFilters);
   into.proxyResolvers = [...new Set([...into.proxyResolvers, ...from.proxyResolvers])].slice(0, 4);
-  for (const [domain, servers] of Object.entries(from.resolverPolicies || {})) {
-    into.resolverPolicies[domain] = [...new Set([...(into.resolverPolicies[domain] || []), ...servers])].slice(0, 4);
-  }
+  // 候选只做累积，绝不在合并阶段做域名并集；同名域名的取舍由全局冲突决议统一处理。
+  into.resolverCandidates.push(...(from.resolverCandidates || []));
   return into;
 }
 
@@ -607,7 +630,10 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
   let sourceSkeleton = { proxies: [] };
   /** 订阅携带的节点专属 DNS 资产闭包累积容器（显式值通道，最终由 strategy 层消费） */
-  const dnsAssets = { hosts: {}, policies: {}, fakeIpFilters: [], proxyResolvers: [], resolverPolicies: {} };
+  const dnsAssets = {
+    hosts: {}, policies: {}, fakeIpFilters: [], proxyResolvers: [],
+    resolverCandidates: [], resolverPolicies: {}, hasResolverCandidates: false
+  };
   let hasFailedSub = false;
   let hasTerminalFailure = false;
   const collectedSubInfos = [];
@@ -903,6 +929,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         const { strippedCount, assets } = applySubscriptionGuards(subConfig, {
           proxies: subProxies,
           subUrl: sub.url,
+          identityUrl: sub.url || sub.uri || '',
           tag: sub.tag || effectiveTag,
           assetClosureMode: userConfig.assetClosure,
           assetDomainAllowlist: userConfig.assetDomainAllowlist,
@@ -1236,6 +1263,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     const { assets } = applySubscriptionGuards(rawSubConfig, {
       proxies: singleProxies,
       subUrl: /^https?:\/\//i.test(url) ? url : '',
+      identityUrl: String(url),
       tag: /^https?:\/\//i.test(url) ? redactUrl(url, showFullUrl) : String(url),
       assetClosureMode: userConfig.assetClosure,
       assetDomainAllowlist: userConfig.assetDomainAllowlist,
@@ -1285,6 +1313,16 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
 
   // 2 列网格对齐：看板节点按「到期 + 流量」成对排列，状态类节点统一置底
   sourceSkeleton.proxies = sortDashboardNodes(sourceSkeleton.proxies);
+
+  // 3. 节点域名解析器归属决议：先收集全部订阅候选，再做一次全局冲突决议，
+  //    最后才生成映射。冲突域名整体退出映射（不 union、不按顺序择一），
+  //    由 DNS 装配层回退默认解析链；nodes/report 产物不含 dns 段，无需输出冲突告警。
+  if (dnsAssets.resolverCandidates.length > 0) {
+    const { policies, conflicts } = resolveNodeDnsPolicies(dnsAssets.resolverCandidates);
+    dnsAssets.resolverPolicies = policies;
+    dnsAssets.hasResolverCandidates = true;
+    if (outputMode === 'config') logNodeDnsConflicts(conflicts, logger);
+  }
 
   return {
     sourceSkeleton,

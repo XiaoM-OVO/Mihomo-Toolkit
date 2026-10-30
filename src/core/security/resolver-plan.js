@@ -10,8 +10,8 @@
  *
  *   INV-1  default-nameserver ⊆ IP 字面量（否则解析 DNS 服务器域名时死锁）
  *   INV-2  proxy-server-nameserver ∩ fake-ip-range = ∅（否则虚拟自环）
- *   INV-3  proxy-server-nameserver 禁止明文域名；加密 DoH/DoT 域名必须由纯 IP default-nameserver 引导
- *   INV-4  respect-rules = true ⇒ proxy-server-nameserver ≠ ∅ 或所有节点域名已由 nameserver-policy 覆盖
+ *   INV-3  proxy-server-nameserver 与节点域名 nameserver-policy 的值禁止明文域名；加密 DoH/DoT 域名必须由纯 IP default-nameserver 引导
+ *   INV-4  respect-rules = true ⇒ proxy-server-nameserver ≠ ∅（v1.19.13 内核硬校验；映射模式必须显式关闭 respect-rules）
  *   INV-5  fallback ≠ ∅ ⇒ fallback-filter 必须显式声明（否则内核默认 geoip-code=CN 生效）
  *   INV-6  direct-nameserver-follow-policy = true ⇒ direct-nameserver ≠ ∅
  *   INV-7  enhanced-mode = fake-ip ⇒ 节点域名必须进入 fake-ip-filter（防环路）
@@ -34,6 +34,25 @@ function asArray(v) {
   return Array.isArray(v) ? v : [v];
 }
 
+/**
+ * 归一化 nameserver-policy 键为「小写键 → 值」，同键多次出现时保留首个。
+ * 内核按 YAML 顺序先到先得，因此首个出现的键才可能生效。
+ * 仅用于不变式校验，不参与映射生成。
+ *
+ * 注意：这里刻意只做精确键，不推断 `+.` / `.` / `*.` / 中间 `*` / 逗号多键，
+ * 也不评估 `rule-set:` / `geosite:` 动态匹配器——它们在内核里是 trie/匹配器语义，
+ * 叠加「先到先得」后静态推断会同时产生误报与漏检。
+ */
+function normalizePolicyKeys(policy) {
+  const out = new Map();
+  if (!policy || typeof policy !== 'object') return out;
+  for (const [rawKey, value] of Object.entries(policy)) {
+    const key = String(rawKey).trim().toLowerCase();
+    if (!out.has(key)) out.set(key, value);
+  }
+  return out;
+}
+
 function checkInvariants(dns = {}, options = {}) {
   const v = [];
   const fakeRanges = [dns['fake-ip-range'] || '198.18.0.1/16'];
@@ -51,6 +70,9 @@ function checkInvariants(dns = {}, options = {}) {
     const p = parseDnsServer(s);
     return p.kind === 'ip' && (!p.scheme || p.scheme === 'plain');
   });
+  // 节点域名（精确）：供 INV-3 的 legacy 映射校验与 INV-4 覆盖判定复用
+  const nodeDomains = deriveFakeIpFilterAdditions(options.proxies || [], { mode: 'exact' });
+
   for (const s of asArray(dns['proxy-server-nameserver'])) {
     const p = parseDnsServer(s);
     if (p.isIpLiteral && p.host.includes('.')) {
@@ -67,19 +89,28 @@ function checkInvariants(dns = {}, options = {}) {
     }
   }
 
-  // INV-4 respect-rules 依赖：显式空列表时必须由 nameserver-policy 覆盖全部节点域名
-  if (dns['respect-rules'] === true && asArray(dns['proxy-server-nameserver']).length === 0) {
-    const policyKeys = Object.keys(dns['nameserver-policy'] || {});
-    const domains = deriveFakeIpFilterAdditions(options.proxies || [], { mode: 'exact' });
-    const covered = domains.every(domain => policyKeys.some(key => {
-      if (key === domain) return true;
-      if (key.startsWith('+.') && (domain === key.slice(2) || domain.endsWith('.' + key.slice(2)))) return true;
-      if (key.startsWith('*.') && domain.endsWith(key.slice(1))) return true;
-      return false;
-    }));
-    if (!covered) {
-      v.push({ id: 'INV-4', detail: 'respect-rules=true 但 proxy-server-nameserver 为空且节点域名未被 nameserver-policy 覆盖' });
+  // INV-3 扩展：legacy 模式下节点专属解析器落在 nameserver-policy，
+  //            其值同样必须为加密 DNS，且由纯 IP 的 default-nameserver 引导。
+  //            只校验与节点域名精确同名的策略项：通配/动态匹配器的静态推断不可靠（见 normalizePolicyKeys）。
+  //            诊断信息不回显解析器地址，避免把 token 写进日志。
+  const nodePolicy = normalizePolicyKeys(dns['nameserver-policy']);
+  for (const domain of nodeDomains) {
+    for (const s of asArray(nodePolicy.get(String(domain).toLowerCase()))) {
+      const p = parseDnsServer(s);
+      if (p.kind === 'url' && !p.isIpLiteral) {
+        const encrypted = /^(https|tls|quic|h3)$/i.test(p.scheme || '');
+        if (!encrypted || !bootstrapIsPureIp) {
+          v.push({ id: 'INV-3', detail: `节点域名 ${domain} 的解析器未通过加密/引导校验` });
+        }
+      }
     }
+  }
+
+  // INV-4 v1.19.13 内核硬校验：respect-rules=true 时 proxy-server-nameserver 不得为空
+  //         （config/config.go 会直接拒绝启动）。legacy 映射模式因此必须关闭 respect-rules，
+  //         并以显式 #RULES 标记补齐原本隐式继承的 DNS 出口。
+  if (dns['respect-rules'] === true && asArray(dns['proxy-server-nameserver']).length === 0) {
+    v.push({ id: 'INV-4', detail: 'respect-rules=true 但 proxy-server-nameserver 为空（v1.19.13 内核会拒绝启动；映射模式应改用 respect-rules=false）' });
   }
 
   // INV-5 fallback 必须显式声明 filter
