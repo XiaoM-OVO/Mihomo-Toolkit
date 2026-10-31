@@ -22,6 +22,7 @@ const { computeMountDigest, absolutizeMountPaths } = require('../config/mounts')
 const { expandIncludes } = require('../config/include');
 const dashboard = require('../strategy/dashboard');
 const { createLogger } = require('../core/logger');
+const { ICONS, TERMS } = require('../core/log-copy');
 
 /** 合法交付形态：仅这三种，非法值必须 fail-closed，不得静默回退 config */
 const VALID_OUTPUT_MODES = Object.freeze(['config', 'nodes', 'report']);
@@ -624,9 +625,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       // Case 1: Fresh 绝对新鲜（优先返回，即使后台有强制刷新在跑也不阻塞，直接秒回）
       if (cacheEntry.status === 'fresh') {
         if (cacheEntry.degraded) {
-          logger.warn(`⚠️ 命中降级缓存（L2 组装产物 · ${cacheEntry.remainingSec}s 后转入后台刷新，失败订阅 ${cacheEntry.failedTags.length} 个），直接响应缓存数据`);
+          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级缓存（L2 组装产物 · ${cacheEntry.remainingSec}s 后转入后台刷新，失败订阅 ${cacheEntry.failedTags.length} 个），直接响应缓存数据`);
         } else {
-          logger.info(`⚡ 命中缓存（L2 组装产物 · ${cacheEntry.remainingSec}s 后过期），直接响应缓存数据`);
+          logger.info(`${ICONS.CACHE_HIT} ${TERMS.CACHE_HIT}（L2 组装产物 · ${cacheEntry.remainingSec}s 后过期），直接响应缓存数据`);
         }
         notifyCacheStatus('fresh', {
           remainingSec: cacheEntry.remainingSec,
@@ -642,9 +643,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       // Case 2: Stale 陈旧可用（优先返回旧快照，不阻塞客户端，后台静默启动 Revalidate）
       if (cacheEntry.status === 'stale') {
         if (cacheEntry.degraded) {
-          logger.warn(`⚠️ 命中降级陈旧缓存（L2 组装产物 · SWR · ${cacheEntry.remainingSec}s 后彻底失效，失败订阅 ${cacheEntry.failedTags.length} 个），已启动后台刷新`);
+          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级陈旧缓存（L2 组装产物 · SWR · ${cacheEntry.remainingSec}s 后彻底失效，失败订阅 ${cacheEntry.failedTags.length} 个），已启动后台刷新`);
         } else {
-          logger.info(`⚡ 命中陈旧缓存（L2 组装产物 · SWR · ${cacheEntry.remainingSec}s 后彻底失效），优先快速返回旧数据`);
+          logger.info(`${ICONS.CACHE_HIT} 命中陈旧缓存（L2 组装产物 · SWR · ${cacheEntry.remainingSec}s 后彻底失效），优先快速返回旧数据`);
         }
         notifyCacheStatus('stale', {
           remainingSec: cacheEntry.remainingSec,

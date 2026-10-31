@@ -20,7 +20,8 @@ const { redactUrl } = require('../io/ssrf');
 const { fetchNodes, resolveProxyUrl, checkPortReachable, detectTunInterface, subStaleCache, pruneSubStaleCache, isSubInFetchBackoff, recordSubFetchFailure, clearSubFetchFailure, getSubFetchBackoff } = require('../io/fetcher');
 const { normalizeCacheDurations } = require('../io/cache');
 const { DEFAULT_REQUEST_LIMITS } = require('../io/limits');
-const { createRepeatGate, formatDuration } = require('../core/logger');
+const { createRepeatGate } = require('../core/logger');
+const { ICONS, TERMS, formatBackoffDetail, buildSubscriptionStateLine } = require('../core/log-copy');
 const { partitionControlPlane } = require('../core/security/control-plane');
 const { sanitizeHosts, sanitizeNameserverPolicy, sanitizeDnsServerList, ROLES } = require('../core/security/dns-sanitizer');
 const { resolveNodeDnsPolicies } = require('../core/security/node-dns-policy');
@@ -268,23 +269,21 @@ function formatControlPlaneWarning(report, repeatCount = 1) {
  * 注：L2（SWR 陈旧缓存）不进入解析阶段，由 engine 单独记录，不在此处出现。
  */
 const ORIGIN_META = {
-  fetch: { icon: '🌐', label: '回源' },
-  snapshot: { icon: '⚡', label: '复用快照' },
-  'fallback-stale': { icon: '⚠️', label: '缓存兜底' },
-  'backoff-reuse': { icon: '⏳', label: '退避跳过 · 复用缓存兜底' },
-  'backoff-skip': { icon: '⏳', label: '退避跳过 · 无可用缓存' },
+  fetch: { icon: ICONS.FETCH, label: TERMS.FETCH },
+  snapshot: { icon: ICONS.SNAPSHOT, label: TERMS.SNAPSHOT },
+  'fallback-stale': { icon: ICONS.FALLBACK_STALE, label: TERMS.FALLBACK_STALE },
+  'backoff-reuse': { icon: ICONS.BACKOFF, label: TERMS.BACKOFF_REUSE },
+  'backoff-skip': { icon: ICONS.BACKOFF, label: `${TERMS.BACKOFF_SKIP} · 无可用缓存` },
   file: { icon: '📄', label: '本地文件' },
   uri: { icon: '📌', label: 'URI 节点' },
   direct: { icon: '📌', label: '直连节点' },
-  terminal: { icon: '🛑', label: '终态失效' },
-  'fetch-failed': { icon: '❌', label: '回源失败' }
+  terminal: { icon: ICONS.TERMINAL, label: TERMS.TERMINAL },
+  'fetch-failed': { icon: ICONS.FETCH_FAILED, label: TERMS.FETCH_ERROR }
 };
 
 function describeOrigin(origin) {
   return ORIGIN_META[origin] || { icon: '❓', label: '未知来源' };
 }
-
-/** 把退避时长格式化为日志可读文本（30s / 2m / 6h），避免终端长冷却时出现 21600s */
 
 /** 提取节点资产域名（用于专属依赖闭包识别） */
 function extractAssetDomains(proxies = [], subUrl = '') {
@@ -598,7 +597,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
   const filterRawInfoNodes = dsh.filterRawInfoNodes || ((p) => p);
   const generateInfoNodes = dsh.generateInfoNodes || (() => ({ nodes: [], expireDays: -1 }));
   const sortDashboardNodes = dsh.sortDashboardNodes || (nodes => nodes);
-  const createFetchErrorNode = dsh.createFetchErrorNode || ((tag, msg) => markTrustedSynthetic({ name: `❌ [${tag}] 拉取失败：${msg}`, type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }));
+  const createFetchErrorNode = dsh.createFetchErrorNode || ((tag, msg) => markTrustedSynthetic({ name: `${ICONS.FETCH_FAILED} [${tag}] ${TERMS.FETCH_FAILED}：${msg}`, type: 'direct', server: '1.0.0.1', port: 80, isSyntheticInfo: true }));
 
   /**
    * 渲染终态看板节点：到期 / 提前停用（含旧缓存命中）统一转为 🛑 套餐看板，
@@ -736,7 +735,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
             // 退避期内不再发起网络请求：有可用旧缓存直接复用，否则快速失败
             const backoff = resolveBackoffStale(subKey, initialStale, staleMaxAgeMs, expireCutoffHours, displayTimeZone);
             if (backoff && backoff.usable) {
-              logger.warn(`⏳ ${sub.tag ? `[${sub.tag}] ` : ''}退避中跳过回源，复用缓存兜底：${redactUrl(sub.url, showFullUrl)}`);
+              logger.warn(`${ICONS.BACKOFF} ${sub.tag ? `[${sub.tag}] ` : ''}${TERMS.BACKOFF_SKIP}（${TERMS.FALLBACK_STALE}）：${redactUrl(sub.url, showFullUrl)}`);
               rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true, lastSuccessAt: backoff.stale.timestamp, origin: 'backoff-reuse' };
             } else {
               if (backoff && (backoff.expired || backoff.state.terminal)) {
@@ -764,7 +763,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
               ? subStaleCache.getFresh(subKey, subFreshTtlMs)
               : null;
             if (freshSnapshot) {
-              logger.debug(`⚡ 复用快照：${redactUrl(sub.url, showFullUrl)}`);
+              logger.debug(`${ICONS.SNAPSHOT} ${TERMS.SNAPSHOT}：${redactUrl(sub.url, showFullUrl)}`);
               rawResult = { content: freshSnapshot.content, subInfo: freshSnapshot.subInfo, cached: true, lastSuccessAt: freshSnapshot.timestamp, origin: 'snapshot' };
             } else {
               try {
@@ -798,7 +797,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
                 if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
 
                 if (decision.allowFallback) {
-                  logger.warn(`⚠️ ${sub.tag ? `[${sub.tag}] ` : ''}回源失败，已启用缓存兜底：${e.message}`);
+                  logger.warn(`${ICONS.FALLBACK_STALE} ${sub.tag ? `[${sub.tag}] ` : ''}${TERMS.FETCH_ERROR}，已启用${TERMS.FALLBACK_STALE}：${e.message}`);
                   rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp, origin: 'fallback-stale' };
                 } else {
                   if (decision.fallbackRejectReason && logger && (options.debug || userConfig.logLevel === 'debug')) {
@@ -983,17 +982,27 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         const subId = isDirect ? (sub.name || sub.tag || 'direct-node') : redactUrl(sub.url, showFullUrl);
         const expiryTerminal = EXPIRY_TERMINAL_KINDS.includes(terminalKind);
         // BackoffSkipped 是主动跳过请求，不是 FetchFailed；两者日志必须区分。
+        // 终态失效的长冷却与瞬时失败的短退避是两套策略，措辞必须分开。
         const isBackoffSkip = e?.isBackoff === true;
+        const terminalSkip = isBackoffSkip && terminal;
         const backoffState = sub.url && /^https?:\/\//i.test(sub.url) ? getSubFetchBackoff(sub.url) : null;
         const retryInSec = backoffState ? Math.max(1, Math.ceil((backoffState.nextRetryAt - Date.now()) / 1000)) : 0;
         const backoffFailures = backoffState ? backoffState.failures : 0;
         const backoffTotalSec = backoffState && Number.isFinite(backoffState.delayMs) ? Math.round(backoffState.delayMs / 1000) : 0;
+        const backoffDetail = backoffState
+          ? formatBackoffDetail({ failures: backoffFailures, delayMs: backoffState.delayMs, remainingMs: backoffState.nextRetryAt - Date.now() })
+          : `${retryInSec}s 后重试`;
+        const cooldownDetail = backoffState
+          ? formatBackoffDetail({ failures: backoffFailures, delayMs: backoffState.delayMs, remainingMs: backoffState.nextRetryAt - Date.now(), delayLabel: TERMS.LONG_COOLDOWN })
+          : `${retryInSec}s 后重试`;
         // 逐源明细仅在 debug 输出；info 级由下方「订阅源解析完成」汇总树保留每源一行
         logger.debug(expiryTerminal
-          ? `🛑 [${subId}] ${terminalReason}`
-          : isBackoffSkip
-            ? `⏳ [${subId}] 退避中跳过回源（${backoffState ? `第 ${backoffFailures} 次失败 · 退避 ${formatDuration(backoffState.delayMs)} · 剩余 ${formatDuration(backoffState.nextRetryAt - Date.now())}` : `${retryInSec}s 后重试`}）`
-            : `❌ [${subId}] 拉取失败：${terminalReason || e.message}`);
+          ? `${ICONS.TERMINAL} [${subId}] ${terminalReason}`
+          : terminalSkip
+            ? `${ICONS.TERMINAL} [${subId}] ${TERMS.TERMINAL} · ${TERMS.LONG_COOLDOWN}（${cooldownDetail}）`
+            : isBackoffSkip
+              ? `${ICONS.BACKOFF} [${subId}] ${TERMS.BACKOFF_SKIP}（${backoffDetail}）`
+              : `${ICONS.FETCH_FAILED} [${subId}] ${TERMS.FETCH_FAILED}：${terminalReason || e.message}`);
 
         let effectiveTag = sub.tag;
         if (!effectiveTag && sub.url && sub.url.startsWith('http')) {
@@ -1014,7 +1023,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           }));
         }
 
-        let shortMsg = terminalReason || e.message || '拉取失败';
+        let shortMsg = terminalReason || e.message || TERMS.FETCH_FAILED;
         if (/fetch failed/i.test(shortMsg)) shortMsg = '网络连接失败';
         else if (/timeout/i.test(shortMsg)) shortMsg = '拉取超时';
         else if (/HTTP Error: (\d+)/i.test(shortMsg)) shortMsg = `HTTP ${shortMsg.match(/HTTP Error: (\d+)/i)[1]}`;
@@ -1022,7 +1031,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         else if (/expired/i.test(shortMsg)) shortMsg = '订阅已失效';
         else if (/quota exhausted/i.test(shortMsg)) shortMsg = '流量已耗尽';
         else if (/SSRF 预检失败/i.test(shortMsg)) shortMsg = /解析失败|DNS/i.test(shortMsg) ? 'DNS 解析失败' : 'SSRF 策略拦截';
-        else if (/failure backoff/i.test(shortMsg)) shortMsg = '拉取退避中';
+        else if (/failure backoff/i.test(shortMsg)) shortMsg = '冷却期内不发起回源';
 
         if (e?.subInfo) {
           recordSubInfo(e.subInfo, sub.tag);
@@ -1045,6 +1054,8 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           skipped: isBackoffSkip && !terminal,
           origin: terminal ? 'terminal' : (isBackoffSkip ? 'backoff-skip' : 'fetch-failed'),
           terminalKind,
+          // 终态失效（含 401 / 流量耗尽）在汇总树中必须标注终态，不能与瞬时失败混写
+          terminal: terminal === true,
           failReason: shortMsg,
           retryInSec,
           backoffFailures,
@@ -1074,16 +1085,10 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         const isLast = idx === subSummaries.length - 1;
         const branch = isLast ? '└──' : '├──';
         if (s.disabled) {
-          lines.push(`${branch} ⏸️ ${s.tag ? `[${s.tag}] ` : ''}：订阅已禁用（跳过回源）`);
+          lines.push(`${branch} ${ICONS.DISABLED} ${s.tag ? `[${s.tag}] ` : ''}：订阅${TERMS.DISABLED}（跳过回源）`);
         } else if (s.failed) {
           const expiryLabel = { expired: '已失效', 'stale-expired': '已失效', cutoff: '已停用', 'stale-cutoff': '已停用' }[s.terminalKind];
-          if (expiryLabel) {
-            lines.push(`${branch} 🛑 [${s.tag}]：${expiryLabel}`);
-          } else if (s.skipped) {
-            lines.push(`${branch} ⏳ [${s.tag}]：退避中跳过回源（无可用缓存${s.backoffFailures ? ` · 第 ${s.backoffFailures} 次失败` : ''}${s.backoffTotalSec ? ` · 退避 ${formatDuration(s.backoffTotalSec * 1000)}` : ''}${s.retryInSec > 0 ? ` · 剩余 ${formatDuration(s.retryInSec * 1000)}` : ''}）`);
-          } else {
-            lines.push(`${branch} ❌ [${s.tag}]：拉取失败（${s.failReason}）${s.backoffFailures ? ` · 第 ${s.backoffFailures} 次失败` : ''}${s.backoffTotalSec ? ` · 退避 ${formatDuration(s.backoffTotalSec * 1000)}` : ''}${s.retryInSec > 0 ? ` · 剩余 ${formatDuration(s.retryInSec * 1000)}` : ''}`);
-          }
+          lines.push(`${branch} ${buildSubscriptionStateLine({ ...s, expiryLabel })}`);
         } else {
           const origin = describeOrigin(s.origin);
           const details = [`来源：${origin.label}`];
@@ -1100,10 +1105,10 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     } else if (subSummaries.length > 0 && logger) {
       // 全部源复用快照：info 级保持安静，但 debug 仍需逐订阅标明本次数据来源。
       if (typeof logger.debug === 'function') {
-        const lines = [`📡 全部订阅源复用快照，未发起回源（${subSummaries.length} 个源）：`];
+        const lines = [`📡 全部订阅源${TERMS.SNAPSHOT}，未发起${TERMS.FETCH}（${subSummaries.length} 个源）：`];
         subSummaries.forEach((s, idx) => {
           const branch = idx === subSummaries.length - 1 ? '└──' : '├──';
-          lines.push(`${branch} ⚡ [${s.tag}]：${s.total} 个节点（来源：复用快照）`);
+          lines.push(`${branch} ${ICONS.SNAPSHOT} [${s.tag}]：${s.total} 个节点（来源：${TERMS.SNAPSHOT}）`);
         });
         logger.debug(lines.join('\n'));
       }
@@ -1167,7 +1172,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         // 退避期内不再发起网络请求：有可用旧缓存直接复用，否则快速失败
         const backoff = resolveBackoffStale(subKey, initialStale, staleMaxAgeMs, expireCutoffHours, displayTimeZone);
         if (backoff && backoff.usable) {
-          logger.warn(`⏳ 退避中跳过回源，复用缓存兜底：${redactUrl(url, showFullUrl)}`);
+          logger.warn(`${ICONS.BACKOFF} ${TERMS.BACKOFF_SKIP}（${TERMS.FALLBACK_STALE}）：${redactUrl(url, showFullUrl)}`);
           rawResult = { content: backoff.stale.content, subInfo: backoff.stale.subInfo, stale: true, lastSuccessAt: backoff.stale.timestamp };
           singleOrigin = 'backoff-reuse';
           subStatus = 'stale';
@@ -1181,8 +1186,12 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           const retryInSec = Math.max(1, Math.ceil((nextRetryAt - Date.now()) / 1000));
           const backoffFailures = backoff ? backoff.state.failures : 1;
           const backoffTotalSec = backoff && Number.isFinite(backoff.state.delayMs) ? Math.round(backoff.state.delayMs / 1000) : 30;
+          const backoffDetail = formatBackoffDetail({ failures: backoffFailures, delayMs: backoffTotalSec * 1000, remainingMs: retryInSec * 1000 });
+          const cooldownDetail = formatBackoffDetail({ failures: backoffFailures, delayMs: backoffTotalSec * 1000, remainingMs: retryInSec * 1000, delayLabel: TERMS.LONG_COOLDOWN });
           // 主动跳过请求，并非真实回源失败；在抛错前显式记录本次行为。
-          logger.warn(`⏳ ${isTerminal ? '订阅已终态失效，' : ''}退避中跳过回源（无可用缓存 · 第 ${backoffFailures} 次失败 · 退避 ${formatDuration(backoffTotalSec * 1000)} · 剩余 ${formatDuration(retryInSec * 1000)}）：${redactUrl(url, showFullUrl)}`);
+          logger.warn(isTerminal
+            ? `${ICONS.TERMINAL} ${TERMS.TERMINAL} · ${TERMS.LONG_COOLDOWN}（无可用缓存 · ${cooldownDetail}）：${redactUrl(url, showFullUrl)}`
+            : `${ICONS.BACKOFF} ${TERMS.BACKOFF_SKIP}（无可用缓存 · ${backoffDetail}）：${redactUrl(url, showFullUrl)}`);
           const skipErr = new Error(`Subscription fetch skipped (failure backoff, retry in ${retryInSec}s)`);
           skipErr.isBackoff = true;
           skipErr.retryable = false;
@@ -1194,7 +1203,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           ? subStaleCache.getFresh(subKey, subFreshTtlMs)
           : null;
         if (freshSnapshot) {
-          logger.debug(`⚡ 复用快照：${redactUrl(url, showFullUrl)}`);
+          logger.debug(`${ICONS.SNAPSHOT} ${TERMS.SNAPSHOT}：${redactUrl(url, showFullUrl)}`);
           rawResult = { content: freshSnapshot.content, subInfo: freshSnapshot.subInfo, cached: true, lastSuccessAt: freshSnapshot.timestamp };
           singleOrigin = 'snapshot';
         } else {
@@ -1226,7 +1235,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
             if (!e.isBackoff) recordSubFetchFailure(subKey, e, isTerminal);
 
             if (decision.allowFallback) {
-              logger.warn(`⚠️ 回源失败，已启用缓存兜底：${e.message}`);
+              logger.warn(`${ICONS.FALLBACK_STALE} ${TERMS.FETCH_ERROR}，已启用${TERMS.FALLBACK_STALE}：${e.message}`);
               rawResult = { content: decision.stale.content, subInfo: decision.stale.subInfo, stale: true, lastSuccessAt: decision.stale.timestamp };
               singleOrigin = 'fallback-stale';
               subStatus = 'stale';

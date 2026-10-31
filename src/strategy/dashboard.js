@@ -12,6 +12,7 @@
 const { parseSubscriptionInfo, evaluateExpiry, formatDateInZone } = require('../infra/sub-info');
 const { isNoticeNode } = require('../core/notice');
 const { markTrustedSynthetic, isTrustedSynthetic, getTrustedProxyMetadata } = require('../core/node-trust');
+const { ICONS, TERMS } = require('../core/log-copy');
 
 function formatBytes(bytes, fractionDigits = 2) {
   const units = ['MB', 'GB', 'TB', 'PB'];
@@ -130,7 +131,7 @@ function generateInfoNodes(subInfo, tag, options = {}) {
   // 3. 容灾降级标记（命中 stale 缓存时）
   if (isStale) {
     nodes.push(markTrustedSynthetic({
-      name: `🔄 ${tagPrefix}拉取异常 · 已启用缓存兜底`,
+      name: `${ICONS.DEGRADED} ${tagPrefix}拉取异常 · 已启用${TERMS.FALLBACK_STALE}`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
@@ -297,10 +298,10 @@ function buildGlobalDashboardNodes({ globalUpload, globalDownload, globalTotal, 
  * @param {string} [errorMsg] 原始错误或管道层给出的中文终态原因（已为中文时原样透传）
  */
 function createFetchErrorNode(effectiveTag, errorMsg = '') {
-  // 退避期并非一次失败事件，单独渲染，避免「拉取失败：暂缓拉取」的自相矛盾
+  // 退避期并非一次失败事件，单独渲染，避免与「拉取失败」自相矛盾
   if (/fetch skipped/i.test(errorMsg)) {
     return markTrustedSynthetic({
-      name: `⏳ [${effectiveTag}] 暂缓拉取 · 退避中`,
+      name: `${ICONS.BACKOFF} [${effectiveTag}] ${TERMS.BACKOFF_SKIP} · 无可用缓存`,
       type: 'direct',
       server: '1.0.0.1',
       port: 80,
@@ -308,7 +309,7 @@ function createFetchErrorNode(effectiveTag, errorMsg = '') {
     });
   }
 
-  let shortMsg = errorMsg || '拉取失败';
+  let shortMsg = errorMsg || TERMS.FETCH_FAILED;
   if (/fetch failed/i.test(errorMsg)) shortMsg = '网络连接失败';
   else if (/SSRF 预检失败/i.test(errorMsg)) {
     // 原始 SSRF 错误带有主机名与冗长原因，面板节点只保留可读结论
@@ -321,7 +322,7 @@ function createFetchErrorNode(effectiveTag, errorMsg = '') {
   else if (/quota exhausted/i.test(errorMsg)) shortMsg = '流量已耗尽';
 
   return markTrustedSynthetic({
-    name: `❌ [${effectiveTag}] 拉取失败：${shortMsg}`,
+    name: `${ICONS.FETCH_FAILED} [${effectiveTag}] ${TERMS.FETCH_FAILED}：${shortMsg}`,
     type: 'direct',
     server: '1.0.0.1',
     port: 80,
