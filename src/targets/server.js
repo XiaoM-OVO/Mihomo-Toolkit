@@ -668,7 +668,7 @@ function startServer(options = {}) {
           if (seenTimes > 1) {
             serverLogger.debug(`🛡️ 请求 Host 被忽略：重复检测（第 ${seenTimes} 次 · 非回环监听未配置 allowedHosts）`);
           } else {
-            serverLogger.warn('🛡️ 非回环监听未配置 allowedHosts：未鉴权请求的 Host 不参与 subDomain 推导（防缓存投毒）；已通过 authToken 鉴权的请求仍会采信 Host');
+            serverLogger.warn('🛡️ 未鉴权请求的 Host 已忽略（非回环监听未配置 allowedHosts · 防缓存投毒）');
           }
         }
         if (hostResolution.hosts.length > 0 || userConfig.subDomain) {
@@ -890,10 +890,7 @@ function startServer(options = {}) {
       } else if (allowedHostsAtStartup.length > 0) {
         serverLogger.info(`🛡️ allowedHosts 白名单已生效（${allowedHostsAtStartup.length} 条规则）：仅白名单内 Host 参与 subDomain 推导`);
       } else {
-        serverLogger.warn(
-          '⚠️ 未配置 allowedHosts：未鉴权请求的 Host 不参与 subDomain 推导（fail-closed，防缓存投毒）；已鉴权请求仍按 Host 自动嗅探。\n' +
-          '   如需对全部访问域名生效，请在 config.yaml 中配置 allowedHosts（支持 *.example.com 通配）。'
-        );
+        serverLogger.warn('⚠️ 未配置 allowedHosts：仅已鉴权请求采信 Host（未鉴权忽略 · 防缓存投毒）');
       }
       const trustedProxiesAtStartup = normalizeProxyRules(localConfig.trustedProxies);
       if (localConfig.trustedProxies && trustedProxiesAtStartup.length === 0) {
