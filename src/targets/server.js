@@ -5,6 +5,7 @@
  */
 
 const http = require('http');
+const net = require('net');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -17,7 +18,7 @@ const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits'
 const { hardenRemoteConfig } = require('../core/security/remote-config');
 const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
-const { normalizeSubDomains } = require('../infra/ip');
+const { normalizeSubDomains, normalizeProxyRules, isTrustedProxy } = require('../infra/ip');
 const pkg = require('../../package.json');
 
 // 远程配置审计去重：按「配置来源 URL + 同一组被忽略字段」隔离计数；
@@ -76,6 +77,45 @@ function getClientIp(req) {
   return raw || '127.0.0.1';
 }
 
+/** 归一化 socket 地址/IP 片段：仅接受合法 IP，丢弃 "unknown" 等无效值 */
+function normalizeSocketAddress(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  const mapped = text.startsWith('::ffff:') ? text.slice(7) : text;
+  return net.isIP(mapped) ? mapped : '';
+}
+
+/**
+ * 解析请求的真实来源 IP（带反代信任边界）。
+ *
+ * X-Forwarded-For / X-Real-IP 属于客户端可伪造的头，只有当「直连 socket 地址」本身
+ * 命中 trustedProxies 时才会被采信；否则一律使用直连地址，避免日志与后续限流被伪造。
+ * 采信时从右向左跳过受信代理，返回第一个不可信地址（即最接近真实客户端的节点）。
+ *
+ * @param {object} req
+ * @param {string[]} [trustedProxies] 已归一化的受信代理规则（见 normalizeProxyRules）
+ * @returns {string}
+ */
+function resolveClientIp(req, trustedProxies = []) {
+  const rules = Array.isArray(trustedProxies) ? trustedProxies : [];
+  const direct = normalizeSocketAddress(req.socket?.remoteAddress) || '127.0.0.1';
+  if (rules.length === 0 || !isTrustedProxy(direct, rules)) return direct;
+
+  const xff = req.headers && req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.trim()) {
+    const hops = xff.split(',').map(part => normalizeSocketAddress(part)).filter(Boolean);
+    for (let i = hops.length - 1; i >= 0; i--) {
+      if (isTrustedProxy(hops[i], rules)) continue;
+      return hops[i];
+    }
+  }
+
+  const realIp = normalizeSocketAddress(req.headers && req.headers['x-real-ip']);
+  if (realIp && !isTrustedProxy(realIp, rules)) return realIp;
+
+  return direct;
+}
+
 /** 提取客户端请求的目标 Host（仅依据经过反向代理绑定的标准 Host 请求头，防止外部通过 X-Forwarded-Host 伪造投毒） */
 function getRequestHost(req) {
   const host = req.headers && req.headers['host'];
@@ -83,6 +123,66 @@ function getRequestHost(req) {
     return host.trim();
   }
   return null;
+}
+
+// ─── Host 白名单与缓存键收敛 ──────────────────────────────────────────────
+// Host 请求头是客户端可控输入，而 subDomain 会注入产物直连规则并参与 L2 缓存键。
+// 不加约束时，任意 Host 都能制造新的缓存条目并触发整轮重建（缓存投毒 + 放大攻击）。
+// 策略：
+//   - 配置 allowedHosts → 仅白名单内的 Host 参与 subDomain 推导；
+//   - 未配置 allowedHosts 且监听非回环地址 → 已通过 authToken 鉴权的请求允许自动嗅探，
+//     未鉴权请求的 Host 一律不参与推导（fail-closed）；
+//   - 未配置 allowedHosts 且监听回环地址 → 保持兼容，本机请求视为可信。
+// 无论何种路径，请求侧 Host 在合并前统一排序，确保同一 Host 集合收敛到同一缓存键。
+const hostPolicyAuditGate = createRepeatGate(100);
+
+/** 通配规则（`*.` / `+.`）按 DOMAIN-SUFFIX 语义匹配：含裸域与任意级子域 */
+function hostMatchesAllowedHost(host, rule) {
+  if (!host || !rule) return false;
+  const h = String(host).trim().toLowerCase();
+  const r = String(rule).trim().toLowerCase();
+  if (!h || !r) return false;
+  if (r.startsWith('*.') || r.startsWith('+.')) {
+    const suffix = r.slice(2);
+    return h === suffix || h.endsWith(`.${suffix}`);
+  }
+  return h === r;
+}
+
+/** 判定单个主机名是否命中白名单 */
+function isHostAllowed(host, allowedHosts) {
+  return Array.isArray(allowedHosts) && allowedHosts.some(rule => hostMatchesAllowedHost(host, rule));
+}
+
+ /**
+ * 解析本次请求可信的 Host 派生 subDomain。
+ *
+ * 信任层级（从高到低）：
+ *   1. 配置了 allowedHosts → 仅命中白名单的 Host；
+ *   2. 已通过 authToken 鉴权 → 请求方是持票人，允许自动嗅探 Host（保持原有直连规则自适应）；
+ *   3. 监听回环地址 → 本机请求视为可信；
+ *   4. 其余（非回环监听 + 未鉴权）→ 一律忽略，fail-closed 防缓存投毒。
+ *
+ * @param {object} params
+ * @param {string|null} params.rawHost 原始 Host 请求头
+ * @param {string[]} [params.allowedHosts] 已归一化的白名单规则
+ * @param {boolean} [params.boundLoopback] 服务是否监听回环地址
+ * @param {boolean} [params.authenticated] 本次请求是否已通过 authToken 鉴权
+ * @returns {{ hosts: string[], rejected: string[], reason: string|null }}
+ *   reason='not-allowed' 表示命中白名单拒绝；'untrusted-host' 表示非回环监听且请求未鉴权、未配置白名单
+ */
+function resolveRequestHosts({ rawHost, allowedHosts = [], boundLoopback = true, authenticated = false }) {
+  const candidates = normalizeSubDomains(rawHost).sort();
+  if (candidates.length === 0) return { hosts: [], rejected: [], reason: null };
+  if (allowedHosts.length > 0) {
+    const hosts = candidates.filter(h => isHostAllowed(h, allowedHosts));
+    const rejected = candidates.filter(h => !isHostAllowed(h, allowedHosts));
+    return { hosts, rejected, reason: rejected.length > 0 ? 'not-allowed' : null };
+  }
+  if (!boundLoopback && !authenticated) {
+    return { hosts: [], rejected: candidates, reason: 'untrusted-host' };
+  }
+  return { hosts: candidates, rejected: [], reason: null };
 }
 
 function startServer(options = {}) {
@@ -246,6 +346,10 @@ function startServer(options = {}) {
     ? Number(localConfig.maxConcurrentBuilds)
     : 8;
   let activeBuilds = 0;
+  // 请求访问日志序号：用于把「收到 / 完成」成对关联，避免并发请求日志交错后无法匹配
+  let requestSeq = 0;
+  // 并发过载拒绝属于持续性事件，沿用审计去重规范：首次 warn，重复降级 debug
+  const overloadAuditGate = createRepeatGate(50);
   const lastRefreshTimes = new Map();
 
   // 最近一次构建的订阅健康快照：供 /healthz 输出订阅连通度（避免暴露逐条 URL 明文与错误细节）
@@ -288,7 +392,7 @@ function startServer(options = {}) {
     const taskLogger = serverLogger.child(triggerName);
 
     try {
-      if (logMessage) serverLogger.info(logMessage);
+      if (logMessage) taskLogger.info(logMessage);
       let published = false;
       let hasFailedSub = false;
       const isWarmup = triggerName === 'Warmup';
@@ -310,25 +414,25 @@ function startServer(options = {}) {
 
       if (isWarmup) {
         if (hasFailedSub) {
-          serverLogger.warn('⚠️ 订阅快照预热完成，但部分订阅不可用；首次请求将按客户端 Host 组装产物');
+          taskLogger.warn('⚠️ 订阅快照预热完成，但部分订阅不可用；首次请求将按客户端 Host 组装产物');
         } else {
-          serverLogger.info('✨ 订阅快照预热完成（原始内容已缓存，首次请求将按客户端 Host 组装产物）');
+          taskLogger.info('✨ 订阅快照预热完成（原始内容已缓存，首次请求将按客户端 Host 组装产物）');
         }
       } else {
         if (published && hasFailedSub) {
-          serverLogger.warn('⚠️ 后台定时更新完成，部分订阅不可用，已发布降级缓存');
+          taskLogger.warn('⚠️ 后台定时更新完成，部分订阅不可用，已发布降级缓存');
         } else if (published) {
-          serverLogger.info('✅ 后台定时更新完成，新缓存已就绪');
+          taskLogger.info('✅ 后台定时更新完成，新缓存已就绪');
         } else {
-          serverLogger.warn('⚠️ 后台定时更新结束，未发布新缓存（保留旧缓存）：全部订阅不可用或写入被拦截');
+          taskLogger.warn('⚠️ 后台定时更新结束，未发布新缓存（保留旧缓存）：全部订阅不可用或写入被拦截');
         }
       }
       return true;
     } catch (err) {
       if (triggerName === 'Warmup') {
-        serverLogger.warn(`⚠️ 初始缓存预热失败（不影响服务运行）：${err.message}`);
+        taskLogger.warn(`⚠️ 初始缓存预热失败（不影响服务运行）：${err.message}`);
       } else {
-        serverLogger.warn(`⚠️ 后台定时更新异常（保留当前有效缓存）：${err.message}`);
+        taskLogger.warn(`⚠️ 后台定时更新异常（保留当前有效缓存）：${err.message}`);
       }
       return false;
     } finally {
@@ -375,6 +479,22 @@ function startServer(options = {}) {
     }
 
     if (reqUrl.pathname === '/sub' || reqUrl.pathname === '/') {
+      const reqStartedAt = Date.now();
+      const reqNo = ++requestSeq;
+      const reqId = `#${String(reqNo % 10000).padStart(4, '0')}`;
+      // writeHead 之后 res.getHeader 不可用，缓存状态需在响应前显式记录供结束行输出
+      let responseCacheStatus = '';
+      // 访问日志成对输出：请求行（鉴权通过后） + 结束行（状态码 · 耗时 · 缓存命中）
+      res.on('finish', () => {
+        const elapsedMs = Date.now() - reqStartedAt;
+        const detail = `${res.statusCode} · ${elapsedMs}ms${responseCacheStatus ? ` · X-Cache=${responseCacheStatus}` : ''}`;
+        if (res.statusCode >= 400) {
+          // 失败原因已由对应分支单独记录，结束行仅作配对，避免重复刷屏
+          serverLogger.debug(`📤 请求结束 ${reqId}：${detail}`);
+        } else {
+          serverLogger.info(`📤 请求完成 ${reqId}：${detail}`);
+        }
+      });
       if (isShuttingDown) {
         res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Connection': 'close' });
         res.end('Service Unavailable: server is shutting down.');
@@ -387,6 +507,13 @@ function startServer(options = {}) {
 
       // 并发上限：单次构建会触发多个外部拉取与全量拓扑计算，不设限可被轻易打满
       if (activeBuilds >= effectiveMaxConcurrent) {
+        const seenTimes = overloadAuditGate('sub-overload');
+        const detail = `并发构建已达上限（${activeBuilds}/${effectiveMaxConcurrent}）（来自 ${resolveClientIp(req, normalizeProxyRules(localConfig.trustedProxies))}）`;
+        if (seenTimes > 1) {
+          serverLogger.debug(`⏳ 并发过载：重复拒绝 ${reqId}（第 ${seenTimes} 次 · ${detail}）`);
+        } else {
+          serverLogger.warn(`⏳ 并发过载：拒绝请求 ${reqId}（${detail}）`);
+        }
         res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' });
         res.end('Service Unavailable: too many concurrent builds, please retry later.');
         return;
@@ -395,7 +522,7 @@ function startServer(options = {}) {
       try {
         localConfig = await getOrReloadConfig();
 
-        const clientIp = getClientIp(req);
+        const clientIp = resolveClientIp(req, normalizeProxyRules(localConfig.trustedProxies));
         const userAgent = (req.headers && req.headers['user-agent']) || 'unknown';
 
         let safeUrl = reqUrl.pathname;
@@ -409,11 +536,6 @@ function startServer(options = {}) {
         else if (reqUrl.searchParams.has('force')) safeParams.push(`force=${reqUrl.searchParams.get('force')}`);
         if (safeParams.length > 0) safeUrl += `?${safeParams.join('&')}`;
 
-        serverLogger.info(`🌐 收到订阅请求：${safeUrl}（来自 ${clientIp}）`);
-        if (localConfig.logLevel === 'debug' || reqUrl.searchParams.has('debug')) {
-          serverLogger.debug(`🔍 客户端信息：${clientIp} · User-Agent: ${userAgent}`);
-        }
-
         const authToken = process.env.AUTH_TOKEN || localConfig.authToken;
         if (authToken) {
           const urlToken = reqUrl.searchParams.get('token');
@@ -421,11 +543,18 @@ function startServer(options = {}) {
           const bearerToken = headerAuth.startsWith('Bearer ') ? headerAuth.slice(7) : '';
           const providedToken = urlToken || bearerToken;
           if (!safeTokenEqual(providedToken, authToken)) {
-            serverLogger.warn(`🛑 拒绝未授权访问：${safeUrl}（来自 ${clientIp}）`);
+            const reason = providedToken ? '凭据不匹配' : '未提供凭据';
+            serverLogger.warn(`🛑 拒绝未授权访问：${req.method} ${safeUrl}（来自 ${clientIp} · ${reason}）`);
             res.writeHead(401, { 'Content-Type': 'text/plain' });
             res.end('Unauthorized: Invalid or missing token. Provide ?token=xxx or Authorization: Bearer xxx');
             return;
           }
+        }
+
+        // 鉴权通过后才输出请求行：未授权请求只保留一条拒绝日志，避免被扫描器刷屏
+        serverLogger.info(`🌐 收到订阅请求 ${reqId}：${req.method} ${safeUrl}（来自 ${clientIp}）`);
+        if (localConfig.logLevel === 'debug' || reqUrl.searchParams.has('debug')) {
+          serverLogger.debug(`🔍 客户端信息 ${reqId}：${clientIp} · User-Agent: ${userAgent}`);
         }
 
         // 参数化请求属于「外部可控输入」入口：非回环监听且未配置 authToken 时一律 fail-closed
@@ -516,12 +645,36 @@ function startServer(options = {}) {
           return;
         }
 
-        // 订阅服务域名/IP 直连自适应推导：优先读取反向代理或客户端请求的 Host，安全合并到 subDomain
+        // 订阅服务域名/IP 直连自适应推导：Host 为客户端可控输入，必须过白名单/可信边界
         const reqHost = getRequestHost(req);
-        const validReqHosts = normalizeSubDomains(reqHost);
-        if (validReqHosts.length > 0) {
+        const allowedHosts = normalizeSubDomains(localConfig.allowedHosts);
+        const hostResolution = resolveRequestHosts({
+          rawHost: reqHost,
+          allowedHosts,
+          boundLoopback: BOUND_LOOPBACK,
+          // 已通过 authToken 鉴权的请求方是持票人：允许自动嗅探 Host，保持直连规则自适应
+          authenticated: !!authToken
+        });
+        if (hostResolution.reason === 'not-allowed') {
+          const preview = hostResolution.rejected.slice(0, 4).join(', ');
+          const seenTimes = hostPolicyAuditGate(`host|not-allowed|${hostResolution.rejected.join(',')}`);
+          if (seenTimes > 1) {
+            serverLogger.debug(`🛡️ 请求 Host 未命中 allowedHosts：重复拦截（第 ${seenTimes} 次 · ${preview}）`);
+          } else {
+            serverLogger.warn(`🛡️ 请求 Host 未命中 allowedHosts，已忽略且未注入直连规则（${preview}）`);
+          }
+        } else if (hostResolution.reason === 'untrusted-host') {
+          const seenTimes = hostPolicyAuditGate('host|untrusted-host');
+          if (seenTimes > 1) {
+            serverLogger.debug(`🛡️ 请求 Host 被忽略：重复检测（第 ${seenTimes} 次 · 非回环监听未配置 allowedHosts）`);
+          } else {
+            serverLogger.warn('🛡️ 非回环监听未配置 allowedHosts：未鉴权请求的 Host 不参与 subDomain 推导（防缓存投毒）；已通过 authToken 鉴权的请求仍会采信 Host');
+          }
+        }
+        if (hostResolution.hosts.length > 0 || userConfig.subDomain) {
           const existing = normalizeSubDomains(userConfig.subDomain);
-          const combined = Array.from(new Set([...existing, ...validReqHosts]));
+          // 统一归一化为数组：字符串写法与数组写法、不同 Host 顺序都收敛到同一缓存键
+          const combined = Array.from(new Set([...existing, ...hostResolution.hosts]));
           userConfig = { ...userConfig, subDomain: combined };
         }
 
@@ -597,15 +750,16 @@ function startServer(options = {}) {
           headers['Subscription-Userinfo'] = `upload=${userInfo.upload}; download=${userInfo.download}; total=${userInfo.total}; expire=${userInfo.expire}`;
         }
 
+        responseCacheStatus = headers['X-Cache'];
         res.writeHead(200, headers);
         res.end(isReport && result.report ? JSON.stringify(result.report, null, 2) : yamlStr);
       } catch (err) {
         // 仅记录日志，不回显内部错误细节（避免泄漏本地路径、上游状态等实现信息）
         if (err && err.isBackoff) {
           // 退避期主动跳过请求，不是真实回源失败；响应语义保持不变
-          serverLogger.warn(`⏳ 配置构建因订阅退避而跳过回源（未发起网络请求）：${err.message}`);
+          serverLogger.warn(`⏳ 配置构建因订阅退避而跳过回源（未发起网络请求）${reqId}：${err.message}`);
         } else {
-          serverLogger.error(`❌ 配置构建异常：${err.message}`);
+          serverLogger.error(`❌ 配置构建异常 ${reqId}：${err.message}`);
         }
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Server Internal Error: profile build failed. See server logs for details.');
@@ -730,6 +884,25 @@ function startServer(options = {}) {
   server.listen(PORT, HOST, () => {
     serverLogger.info(`🚀 Mihomo-Toolkit v${pkg.version} 服务已就绪，监听 http://${HOST}:${PORT}`);
     if (!BOUND_LOOPBACK) {
+      const allowedHostsAtStartup = normalizeSubDomains(localConfig.allowedHosts);
+      if (localConfig.allowedHosts && allowedHostsAtStartup.length === 0) {
+        serverLogger.warn('⚠️ allowedHosts 配置无有效条目（已全部忽略）：请求 Host 一律不参与 subDomain 推导');
+      } else if (allowedHostsAtStartup.length > 0) {
+        serverLogger.info(`🛡️ allowedHosts 白名单已生效（${allowedHostsAtStartup.length} 条规则）：仅白名单内 Host 参与 subDomain 推导`);
+      } else {
+        serverLogger.warn(
+          '⚠️ 未配置 allowedHosts：未鉴权请求的 Host 不参与 subDomain 推导（fail-closed，防缓存投毒）；已鉴权请求仍按 Host 自动嗅探。\n' +
+          '   如需对全部访问域名生效，请在 config.yaml 中配置 allowedHosts（支持 *.example.com 通配）。'
+        );
+      }
+      const trustedProxiesAtStartup = normalizeProxyRules(localConfig.trustedProxies);
+      if (localConfig.trustedProxies && trustedProxiesAtStartup.length === 0) {
+        serverLogger.warn('⚠️ trustedProxies 配置无有效条目（已全部忽略）：来源 IP 仅取直连地址');
+      } else if (trustedProxiesAtStartup.length > 0) {
+        serverLogger.info(`🛡️ 受信反代已配置（${trustedProxiesAtStartup.length} 条规则）：仅当直连地址命中时才采信 X-Forwarded-For`);
+      } else {
+        serverLogger.info('🛡️ 未配置 trustedProxies：来源 IP 仅取直连地址，X-Forwarded-For 将被忽略（防伪造）');
+      }
       if (authTokenAtStartup) {
         serverLogger.warn(`⚠️ 服务监听在非回环地址 ${HOST}，已启用 authToken 鉴权；请确认该端口不面向不可信网络开放。`);
       } else {
@@ -772,5 +945,8 @@ module.exports = {
   isLoopbackHost,
   safeTokenEqual,
   getClientIp,
+  resolveClientIp,
+  isHostAllowed,
+  resolveRequestHosts,
   mapCacheStatusToHeader
 };

@@ -224,6 +224,85 @@ function normalizeSubDomains(input) {
   return results;
 }
 
+/**
+ * 归一化单条受信代理规则（精确 IP 或 CIDR），非法写法返回空串
+ * @param {string} rule
+ * @returns {string}
+ */
+function normalizeProxyRule(rule) {
+  try {
+    const trimmed = String(rule || '').trim();
+    if (!trimmed) return '';
+    if (trimmed.includes('/')) {
+      const [base, bits] = ipaddr.parseCIDR(trimmed);
+      const addr = base.kind() === 'ipv6' && base.isIPv4MappedAddress() ? base.toIPv4Address() : base;
+      return `${addr.toString()}/${bits}`;
+    }
+    if (!ipaddr.isValid(trimmed)) return '';
+    const addr = ipaddr.parse(trimmed);
+    return (addr.kind() === 'ipv6' && addr.isIPv4MappedAddress() ? addr.toIPv4Address() : addr).toString();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 归一化受信反向代理清单：支持精确 IP 与 CIDR（如 10.0.0.0/8），非法条目直接忽略（fail-closed）
+ * @param {string|string[]} input
+ * @returns {string[]}
+ */
+function normalizeProxyRules(input) {
+  if (!input) return [];
+  const list = Array.isArray(input) ? input : [input];
+  const results = [];
+  const seen = new Set();
+  for (const item of list) {
+    if (typeof item !== 'string') continue;
+    for (const part of item.split(/[,;\s]+/)) {
+      const normalized = normalizeProxyRule(part);
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      results.push(normalized);
+    }
+  }
+  return results;
+}
+
+/**
+ * 判定某个地址是否命中受信代理清单（精确 IP 或 CIDR）
+ * @param {string} ip
+ * @param {string[]} rules 已归一化的规则（见 normalizeProxyRules）
+ * @returns {boolean}
+ */
+function isTrustedProxy(ip, rules) {
+  if (!ip || typeof ip !== 'string' || !Array.isArray(rules) || rules.length === 0) return false;
+  let addr;
+  try {
+    addr = ipaddr.parse(ip.trim());
+  } catch {
+    return false;
+  }
+  if (addr.kind() === 'ipv6' && addr.isIPv4MappedAddress()) addr = addr.toIPv4Address();
+
+  for (const raw of rules) {
+    const rule = normalizeProxyRule(String(raw || ''));
+    if (!rule) continue;
+    try {
+      if (rule.includes('/')) {
+        const [range, bits] = ipaddr.parseCIDR(rule);
+        if (range.kind() !== addr.kind()) continue;
+        if (addr.match(range, bits)) return true;
+      } else {
+        const ruleAddr = ipaddr.parse(rule);
+        if (ruleAddr.kind() === addr.kind() && ruleAddr.toString() === addr.toString()) return true;
+      }
+    } catch {
+      // 单条规则异常不影响其余规则判定
+    }
+  }
+  return false;
+}
+
 module.exports = {
   isPrivateIp,
   isPrivateIPv6,
@@ -232,5 +311,7 @@ module.exports = {
   isValidDomain,
   isLoopbackOrUnspecified,
   extractDomainOrIp,
-  normalizeSubDomains
+  normalizeSubDomains,
+  normalizeProxyRules,
+  isTrustedProxy
 };

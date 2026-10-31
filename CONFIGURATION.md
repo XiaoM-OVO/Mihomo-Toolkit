@@ -815,6 +815,8 @@ subscriptions:
 | 参数名 | 类型 | 默认值 | 信任 | 合并 | 功能说明与设计意图 |
 | :--- | :--- | :--- | :---: | :---: | :--- |
 | `security` | `object` | 内部默认 | `local` | `override` | **服务运行资源配额**：定义单次允许的最大节点数、最大订阅包大小等防 DoS 阈值。 |
+| `allowedHosts` | `string \| string[]` | `[]` | `local` | `override` | **请求 Host 白名单**（仅常驻服务模式生效）：条目支持精确 FQDN 与 `*.` / `+.` 后缀通配（含裸域与任意级子域）。命中规则的 Host 才参与 `subDomain` 直连规则推导；未配置且监听非回环地址时，未鉴权请求的 Host 一律被忽略（fail-closed），已通过 `authToken` 鉴权的请求仍按 Host 自动嗅探。同一 Host 集合在合并前统一排序，保证缓存键收敛，防止任意 Host 制造缓存条目与重复构建（缓存投毒 / 放大攻击）。 |
+| `trustedProxies` | `string \| string[]` | `[]` | `local` | `override` | **受信反向代理地址**：支持精确 IP 与 CIDR（如 `10.0.0.0/8`）。仅当请求的直连 socket 地址命中该清单时才采信 `X-Forwarded-For` / `X-Real-IP`，并按「从右向左跳过受信代理」取首个不可信地址作为真实客户端；未配置时来源 IP 只取直连地址，任何转发头一律忽略，避免日志与限流被伪造。 |
 | `hosts` | `object` | `{}` | `local` | `override` | 静态自定义 hosts 映射表（受保护的核心域名默认被拒绝修改）。 |
 | `nameserverPolicy` | `object` | `{}` | `local` | `override` | 按域分流解析规则链（保留键不可覆盖）。 |
 | `trustedHostDomains`| `string[]` | `[]` | `local` | `override` | 允许被 hosts 覆盖的受保护域名豁免白名单（极少数需要 mock 的场景，谨慎使用）。 |

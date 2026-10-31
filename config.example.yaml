@@ -374,9 +374,16 @@ testTolerance: 50                  # url-test 切换延迟容忍度（ms，防�
 # refreshCooldown: 15              # ?refresh=1 强制刷新冷却（秒，0 关闭）
 # autoRefreshInterval: 3600        # 后台自动拉取与预热周期（秒，0 关闭）
 # enableWarmup: true               # 启动时后台预热初始订阅
-# authToken: "your-secret-token"   # 访问鉴权（?token=xxx 或 Authorization 头）
+# authToken: "your-secret-token"   # 访问鉴权（?token=xxx 或 Authorization 头；能设置请求头时优先 Bearer，避免 token 进入反代访问日志）
 # enableUrlParams: true            # 允许 ?url= / ?config= 动态传参
 # maxConcurrentBuilds: 8           # 并发构建上限，超出返回 503
+# allowedHosts:                    # Host 白名单（监听非回环地址时强烈建议配置）
+#   - "sub.example.com"            #   精确匹配：仅该 Host 参与 subDomain 直连推导
+#   - "*.example.com"              #   后缀通配：含裸域与任意级子域
+#                                  #   未配置且监听非回环地址时，仅「已鉴权请求」采信 Host（自动嗅探直连域名）；
+#                                  #   未鉴权请求的 Host 一律忽略（fail-closed，防缓存投毒）
+# trustedProxies:                  # 受信反向代理地址（仅当直连地址命中时才采信 X-Forwarded-For）
+#   - "127.0.0.1"                  #   精确 IP 或 CIDR（如 10.0.0.0/8）；未配置时来源 IP 只取直连地址，伪造头一律忽略
 # security:                        # 资源配额（本机可信字段，远程配置无法写入）
 #   maxSubscriptionUrls: 20
 #   maxRemoteConfigBytes: 1048576  # 1MB
