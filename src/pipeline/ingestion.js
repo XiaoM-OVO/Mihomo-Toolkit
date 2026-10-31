@@ -1085,7 +1085,7 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
         const isLast = idx === subSummaries.length - 1;
         const branch = isLast ? '└──' : '├──';
         if (s.disabled) {
-          lines.push(`${branch} ${ICONS.DISABLED} ${s.tag ? `[${s.tag}] ` : ''}：订阅${TERMS.DISABLED}（跳过回源）`);
+          lines.push(`${branch} ${ICONS.DISABLED}${s.tag ? ` [${s.tag}]` : ''}：订阅${TERMS.DISABLED}（跳过回源）`);
         } else if (s.failed) {
           const expiryLabel = { expired: '已失效', 'stale-expired': '已失效', cutoff: '已停用', 'stale-cutoff': '已停用' }[s.terminalKind];
           lines.push(`${branch} ${buildSubscriptionStateLine({ ...s, expiryLabel })}`);
