@@ -157,6 +157,8 @@ cp config.example.yaml config.yaml
 docker compose up -d
 ```
 
+> **生产环境安全建议**：把端口映射改为 `127.0.0.1:3000:3000`，由本机 Nginx / Caddy 反代对外；若必须直接暴露到公网，请务必同时配置 `authToken` 与 `allowedHosts`。`docker-compose.yml` 中已给出对应注释示例。
+
 #### 部署方式 B：Node.js 本地/服务器直接启动
 
 ```bash
@@ -176,7 +178,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 | **监听 `127.0.0.1`（默认）** | 仅本机可访问，动态参数 `?url=` 与 `?config=` 入口开放可用 |
 | **监听非回环地址（如 `0.0.0.0`）且未配置 `authToken`** | **fail-closed**：自动拒绝 `?url=` / `?config=` 参数请求（返回 403）；无参数的 `/sub`（走本地 `config.yaml` 订阅清单）仍可访问 |
 | **监听非回环地址且配置了 `authToken`** | 参数入口放行，但所有 `/sub` 请求必须携带 `?token=xxx` 或 `Authorization: Bearer xxx` |
-| **请求 `Host` 与 `allowedHosts`** | 未配置 `allowedHosts` 且监听非回环地址时，未鉴权请求的 `Host` 不参与 `subDomain` 直连推导（fail-closed，防缓存投毒与缓存膨胀）；已通过 `authToken` 鉴权的请求仍按 `Host` 自动嗅探。配置后仅命中规则的 Host 生效，支持 `*.example.com` 后缀通配 |
+| **请求 `Host` 与 `allowedHosts`** | 未配置 `allowedHosts` 且监听非回环地址时，未鉴权请求的 `Host` 不参与 `subDomain` 直连推导（fail-closed，防缓存投毒与缓存膨胀）；已通过 `authToken` 鉴权的请求仍按 `Host` 自动嗅探。配置后仅命中规则的 Host 生效，`*.example.com` 与 `+.example.com` 均为 DOMAIN-SUFFIX 语义（含裸域与任意级子域） |
 | **来源 IP 与 `trustedProxies`** | 仅当直连地址命中 `trustedProxies`（精确 IP / CIDR）时才采信 `X-Forwarded-For`，并从右向左跳过受信代理取真实客户端；未配置时一律使用直连地址，伪造转发头不会污染日志与限流判断 |
 | **`?config=` 传入的远程配置** | 视为**不可信输入**：仅允许引用 http(s) 订阅源，且 DNS 控制面与本地资源类字段会被强制剥夺 |
 
@@ -209,7 +211,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 2. **多订阅独立容灾与退避**：
    - 单条订阅失败不会阻塞整体缓存写入；仅当**所有**已评估订阅均终态失效（401 / 到期 / 流量耗尽）时才淘汰 Profile 快照。
    - **单一时钟**：Profile 快照的失效时刻取 `cacheStaleMaxAge` 与「所有旧缓存兜底（stale）输入的最晚可用时刻」的最小值。订阅 LKG 到期后节点立即剔除并给出提示，不会再出现「快照还剩 19h、输入早已失效」的空窗。
-   - 失败订阅按 30s → 60s → 2m → 4m → 8m（上限 10m）独立指数退避；退避期内优先复用其旧缓存，无旧缓存则快速失败，不再拖慢整轮构建。
+   - **两级退避**：瞬时失败（超时 / 连接重置 / 5xx）按 30s → 60s → 2m → 4m → 8m（上限 10m）独立指数退避；终态失效（401 / 到期 / 流量耗尽）直接进入 6h → 12h → 24h 长冷却（封顶，±20% 抖动）。退避期内优先复用其旧缓存，无旧缓存则快速失败，不再拖慢整轮构建。
    - 显式 `?refresh=1` 会绕过单订阅退避以主动探测恢复；后台预热/定时刷新仍遵守退避。
 3. **并发合并 (Single-Flight) 与代际保护**：
    - 合并同一缓存键下的并发构建请求，避免重复拉取与计算。
@@ -266,13 +268,15 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 
 系统采用**完全扁平化设计**，无需理解复杂的嵌套结构，所有核心参数均在根级声明。完整配置模板请参阅 [`config.example.yaml`](config.example.yaml)：
 
+> 下方示例中的未注释项是**推荐取值**，不等于字段默认值；字段默认值以 [CONFIGURATION.md](CONFIGURATION.md) 与 `src/data/field-registry.js` 为准。
+
 ```yaml
 # 1. 交付形态与输出
 outputMode: "config"            # config (完整配置) | nodes (纯节点) | report (审计报告)
 output: "./dist/config.yaml"    # 输出路径
 
 # 2. 拉取与容灾
-fetchProxyPort: 7890            # 拉取代理端口（留空直连）
+# fetchProxyPort: 7890          # 本地拉取代理端口（取消注释即启用；留空=直连）
 fetchProxyStrategy: "auto"      # direct (直连) | proxy (代理) | auto (失败自动走代理重试)；同时决定节点裂变 DoH 兜底的出口
 fetchRetry: 2                   # 失败重试次数 (5xx/超时重试，4xx快速失败)
 fetchStaleTtl: 24               # 网络故障时复用旧缓存兜底时长 (小时)
@@ -367,7 +371,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 | **Layer 7: Data** | `src/data/` | 只读运行基础基线（字段注册表 SSOT、不可变安全基线、清洗规则词库） |
 | **Layer 8: Infra** | `src/infra/` | 基础设施无状态基元（IP/CIDR 校验、FQDN 判定、订阅元信息流量换算纯函数） |
 
-> 📖 **完整文件树与拓扑推演**：关于全仓 96 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
+> 📖 **完整文件树与拓扑推演**：关于全仓 97 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
 
 ---
 

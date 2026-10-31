@@ -1,26 +1,34 @@
 # =====================================================================
 # 📦 Mihomo-Toolkit  统一配置模板
 # =====================================================================
+# 快速开始：
+#   1. 复制本文件为 config.yaml
+#   2. 至少修改 subscriptions（订阅清单）与 output（产物路径）
+#   3. 详见 README.md 的「快速开始」
+#
 # 一句话数据流：
 #   subscriptions → 清洗/重命名 → groups（组怎么长）+ pools（可选节点集合）→ routing（谁走谁）→ 产物
 #
-# 必改两项：
-#   subscriptions   订阅清单
-#   output          产物输出路径
-#
-# 三条规则记住就不绕：
+# 核心规则：
 #   • routing 是唯一规则来源：表里出现即生效，没写就没有，数组顺序即优先级
 #   • groups 只声明「组」，不产出规则；多数场景写 { ref: <键> } 引用内置目录
-#   • 所有被注释的项都有内置默认值，取消注释即可覆盖
+#   • pools 是可选的节点集合，被 routing.to 或 @pool:<池名> 引用时才物化
+#
+# 默认值与模板：
+#   • 注释掉的项 = 内置默认值，取消注释即可覆盖
+#   • 未注释项 = 模板推荐值，不等于字段默认值；字段默认值以 CONFIGURATION.md / field-registry.js 为准
 #
 # 交付形态（outputMode 字段或 CLI -m / --mode）：
 #   config  完整配置（默认）｜ nodes  纯节点数组 ｜ report  审计报告 JSON
+#
+# 文档：
+#   README.md 快速开始 · CONFIGURATION.md 字段手册 · ARCHITECTURE.md 内部机制
 # =====================================================================
 
 
 # ───── ① 订阅源与拉取 ─────────────────────────────────────────────────
 # 拉取出口（本地代理 + 容灾兜底）
-fetchProxyPort: 7890          # 拉取代理端口，留空=直连；每项订阅可用 proxy 单独覆盖
+# fetchProxyPort: 7890         # 本地拉取代理端口；取消注释即启用（留空/注释=直连）；每项订阅可用 proxy 单独覆盖
 fetchProxyStrategy: "auto"    # direct=直连 / proxy=代理 / auto=先直连失败自动走代理
 # 直连模式：本机 DNS 解析失败/无记录一律拒绝（fail-closed）
 # 代理模式：目标域名由代理侧解析，本机校验无法约束实际出口；需要完整 SSRF 防护时，
@@ -95,7 +103,7 @@ output: "./dist/config.yaml"    # 产物输出路径
 
 
 # ───── ④ 节点清洗与重命名 ─────────────────────────────────────────────
-enableDedupe: true                 # 底层物理特征指纹去重
+enableDedupe: true                 # 底层物理特征指纹去重（内置默认 false，模板默认开启）
 enableDashboard: true              # 生成订阅状态看板节点（流量剩余、到期日等）
 removeInfoNodes: true              # 过滤机场原生说明/流量提示伪节点
 # strictRegionMatch: false         # true=严格字典匹配 / false=允许国旗 Emoji 与启发式识别
@@ -379,7 +387,7 @@ testTolerance: 50                  # url-test 切换延迟容忍度（ms，防�
 # maxConcurrentBuilds: 8           # 并发构建上限，超出返回 503
 # allowedHosts:                    # Host 白名单（监听非回环地址时强烈建议配置）
 #   - "sub.example.com"            #   精确匹配：仅该 Host 参与 subDomain 直连推导
-#   - "*.example.com"              #   后缀通配：含裸域与任意级子域
+#   - "*.example.com"              #   后缀通配：含裸域与任意级子域（本项目 *. 与 +. 等价，均按 DOMAIN-SUFFIX）
 #                                  #   未配置且监听非回环地址时，仅「已鉴权请求」采信 Host（自动嗅探直连域名）；
 #                                  #   未鉴权请求的 Host 一律忽略（fail-closed，防缓存投毒）
 # trustedProxies:                  # 受信反向代理地址（仅当直连地址命中时才采信 X-Forwarded-For）
