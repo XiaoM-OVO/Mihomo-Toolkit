@@ -1,6 +1,6 @@
 ﻿﻿const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildProfile } = require('../../src/index.js');
+const { buildProfile, safeFetchText } = require('../../src/index.js');
 const { profileCache } = require('../../src/io/cache.js');
 const { subFailureBackoff, subStaleCache, recordSubFetchFailure } = require('../../src/io/fetcher.js');
 
@@ -572,6 +572,49 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
     const third = recordSubFetchFailure(key, new Error('401'), true);
     assert.ok(third.delayMs <= 24 * 60 * 60 * 1000, '终态冷却不得超过 24h 上限');
     assert.ok(third.delayMs >= 24 * 60 * 60 * 1000 * 0.8, '连续终态失败应接近 24h 上限');
+  });
+
+  test('终态退避：到达 24h 封顶后仍保留抖动（不被裁剪成常量）', () => {
+    const key = 'http://93.184.216.34/terminal-jitter';
+    const MAX = 24 * 60 * 60 * 1000;
+    const realRandom = Math.random;
+    try {
+      // 抖动下界：封顶后仍应生效，结果为 24h * 0.8
+      Math.random = () => 0;
+      let entry = null;
+      for (let i = 0; i < 5; i++) entry = recordSubFetchFailure(key, new Error('401'), true);
+      assert.equal(entry.delayMs, MAX * 0.8, '封顶后抖动下界应严格小于 24h');
+
+      // 抖动上界：必须仍被 24h 上限裁剪
+      Math.random = () => 0.999;
+      entry = recordSubFetchFailure(key, new Error('401'), true);
+      assert.equal(entry.delayMs, MAX, '终态冷却不得超过 24h 上限');
+    } finally {
+      Math.random = realRandom;
+    }
+  });
+
+  test('safeFetchText：代理解析器构造抛错时也会清理超时定时器', async () => {
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    let created = 0;
+    let cleared = 0;
+    globalThis.setTimeout = (...args) => { created++; return realSetTimeout(...args); };
+    globalThis.clearTimeout = (id) => { cleared++; return realClearTimeout(id); };
+    try {
+      await assert.rejects(
+        safeFetchText('http://93.184.216.34/proxy-dispatch', {
+          proxyUrl: 'http://10.0.0.1:8080',
+          timeoutMs: 5000
+        }),
+        /SSRF|Proxy support unavailable/i
+      );
+      assert.equal(created, 1, '应只建立一个超时定时器');
+      assert.equal(cleared, created, '任何抛错路径都必须清理超时定时器');
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+      globalThis.clearTimeout = realClearTimeout;
+    }
   });
 
   test('终态长冷却：普通请求不回源，forceRefresh 可探测恢复并清除退避', async () => {

@@ -553,7 +553,18 @@ function startServer(options = {}) {
           }
         }
 
-        const outputMode = normalizeOutputMode(reqUrl.searchParams.get('mode') || userConfig.outputMode);
+        // 交付形态 fail-closed：非法 mode 直接 400，不进入构建、不产生缓存键
+        let outputMode;
+        try {
+          outputMode = normalizeOutputMode(reqUrl.searchParams.get('mode') || userConfig.outputMode);
+        } catch (err) {
+          if (err && err.code === 'INVALID_OUTPUT_MODE') {
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end(`Bad Request: ${err.message}`);
+            return;
+          }
+          throw err;
+        }
         const buildLogger = serverLogger.child('Server');
 
         // 捕获引擎本次实际采用的缓存状态

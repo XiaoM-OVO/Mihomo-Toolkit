@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml');
 const { program } = require('commander');
-const { buildProfile, normalizeOutputMode } = require('../pipeline/engine');
+const { buildProfile, normalizeOutputMode, VALID_OUTPUT_MODES } = require('../pipeline/engine');
 const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
 const { createLogger } = require('../core/logger');
@@ -66,9 +66,6 @@ function run(argv = process.argv) {
   }
 
   const options = program.opts();
-
-  // 模式归一化
-  const mode = normalizeOutputMode(options.mode);
 
   // 诊断模式：--dry-run 与 --validate 等价，仅校验不落盘；
   // --explain 同样只读（ROADMAP：默认只读不产出），只是在诊断之上多给一份激活摘要
@@ -128,9 +125,12 @@ function run(argv = process.argv) {
     level: effectiveLevel
   });
 
-  const VALID_MODES = ['config', 'nodes', 'report'];
-  if (!VALID_MODES.includes(mode)) {
-    logger.error(`❌ 非法交付模式「${options.mode}」，可选模式：${VALID_MODES.join(', ')}`);
+  // 模式归一化：非法值 fail-closed（normalizeOutputMode 抛错），不静默回退 config
+  let mode;
+  try {
+    mode = normalizeOutputMode(options.mode);
+  } catch {
+    logger.error(`❌ 非法交付模式「${options.mode ?? ''}」，可选模式：${VALID_OUTPUT_MODES.join(', ')}`);
     process.exit(1);
   }
   if (options.json === true && !explain) {

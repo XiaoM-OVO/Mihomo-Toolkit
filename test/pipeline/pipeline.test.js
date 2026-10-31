@@ -74,13 +74,18 @@ describe('【Pipeline】核心流水线装配与交付形态 (pipeline)', () => 
     assert.ok(Array.isArray(outputData.proxies));
   });
 
-  it('normalizeOutputMode - 仅做小写归一化 (不接受别名)', () => {
+  it('normalizeOutputMode - 大小写归一化，非法模式 fail-closed', () => {
     const { normalizeOutputMode } = require('../../src/pipeline/engine');
     assert.equal(normalizeOutputMode('config'), 'config');
     assert.equal(normalizeOutputMode('nodes'), 'nodes');
     assert.equal(normalizeOutputMode('report'), 'report');
     assert.equal(normalizeOutputMode('NODES'), 'nodes');
     assert.equal(normalizeOutputMode(), 'config');
+    // 非法值必须拒绝，不得静默回退 config（否则会产出错误形态并污染缓存键）
+    assert.throws(() => normalizeOutputMode('bogus'), (err) => {
+      assert.equal(err.code, 'INVALID_OUTPUT_MODE');
+      return true;
+    });
   });
 
   it('nodeIpVersion - 批量注入节点 IP 栈偏好策略 (dual / ipv6-prefer)', async () => {

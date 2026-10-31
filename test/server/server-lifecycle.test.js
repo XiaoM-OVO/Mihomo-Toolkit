@@ -200,6 +200,28 @@ describe('【Server】生命周期管理与热重载稳固性 (server-lifecycle)
     }
   });
 
+  it('mode 参数 fail-closed - 非法交付模式返回 400，合法模式照常构建', async () => {
+    const tmpDir = makeTmpDir();
+    const configFile = path.join(tmpDir, 'config.yaml');
+    fs.writeFileSync(configFile, yaml.stringify({
+      subscriptions: [{ name: 'HK-Sub', ...BASE_PROXY_1 }]
+    }));
+
+    const { server, port } = await startTestServer({ configPath: configFile });
+    try {
+      const bad = await request(port, '/sub?mode=bogus');
+      assert.equal(bad.status, 400, '非法 mode 必须拒绝，不得静默回退 config');
+      assert.match(bad.body, /Bad Request/i);
+      assert.equal(bad.headers['x-cache'], undefined, '400 不得进入缓存/构建');
+
+      const ok = await request(port, '/sub?mode=NODES');
+      assert.equal(ok.status, 200, '合法模式（大小写不敏感）应正常构建');
+    } finally {
+      await server.closeGracefully();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it('graceful-shutdown - 平滑退出等待在途请求完成排空后再关闭', async () => {
     const tmpDir = makeTmpDir();
     const configFile = path.join(tmpDir, 'config.yaml');

@@ -173,7 +173,9 @@ function recordSubFetchFailure(key, error, terminal = false) {
   let delayMs;
   if (terminalState) {
     const base = SUB_TERMINAL_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, terminalFailures - 1));
-    delayMs = Math.min(withJitter(base), SUB_TERMINAL_BACKOFF_MAX_MS);
+    // 先封顶再抖动：抖动必须作用在上限后的基准上，否则第 4 次起会被 min 直接裁成常量 24h，
+    // 多订阅失去分散探测能力。最终仍裁到上限，保证「终态冷却 ≤24h」的既有语义。
+    delayMs = Math.min(SUB_TERMINAL_BACKOFF_MAX_MS, withJitter(Math.min(base, SUB_TERMINAL_BACKOFF_MAX_MS)));
   } else {
     delayMs = Math.min(SUB_BACKOFF_BASE_MS * Math.pow(2, failures - 1), SUB_BACKOFF_MAX_MS);
   }
@@ -311,24 +313,26 @@ async function safeFetchText(url, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  let proxyDispatcher = null;
-  if (proxyUrl) {
-    if (typeof resolveLocalProxyDispatcher !== 'function') throw new Error('Proxy support unavailable (undici not loaded)');
-    proxyDispatcher = resolveLocalProxyDispatcher(proxyUrl);
-  }
-
-  // SSRF 严格度随模式变化：
-  //   - 直连：本地解析结果即权威 → strict，DNS 失败/无记录一律拒绝（fail-closed）；
-  //     并注入 IP Pinning Agent，使建连使用与校验同源的已固定 IP（阻断 DNS Rebinding）。
-  //   - 代理：目标由代理侧解析，本地结果不构成安全保证 → 非严格，仅尽力过滤。
-  //     残余风险（分裂 DNS / 代理侧私有解析 / 代理 ACL 缺失）无法在本层消除，见 ssrf.js 文件头。
-  const ssrfStrict = !proxyDispatcher;
-  const dispatcher = proxyDispatcher || getPinnedAgent();
-
-  let currentUrl = url;
-  let redirects = 0;
-
+  // 所有可能抛错的步骤（含代理解析器构造）都必须位于 try 内，
+  // 保证 finally 的 clearTimeout 一定执行，不留下悬挂的超时定时器。
   try {
+    let proxyDispatcher = null;
+    if (proxyUrl) {
+      if (typeof resolveLocalProxyDispatcher !== 'function') throw new Error('Proxy support unavailable (undici not loaded)');
+      proxyDispatcher = resolveLocalProxyDispatcher(proxyUrl);
+    }
+
+    // SSRF 严格度随模式变化：
+    //   - 直连：本地解析结果即权威 → strict，DNS 失败/无记录一律拒绝（fail-closed）；
+    //     并注入 IP Pinning Agent，使建连使用与校验同源的已固定 IP（阻断 DNS Rebinding）。
+    //   - 代理：目标由代理侧解析，本地结果不构成安全保证 → 非严格，仅尽力过滤。
+    //     残余风险（分裂 DNS / 代理侧私有解析 / 代理 ACL 缺失）无法在本层消除，见 ssrf.js 文件头。
+    const ssrfStrict = !proxyDispatcher;
+    const dispatcher = proxyDispatcher || getPinnedAgent();
+
+    let currentUrl = url;
+    let redirects = 0;
+
     while (true) {
       await validateUrlSsrf(currentUrl, { strict: ssrfStrict });
       const parsedUrl = new URL(currentUrl);

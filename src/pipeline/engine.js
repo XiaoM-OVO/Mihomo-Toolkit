@@ -23,8 +23,25 @@ const { expandIncludes } = require('../config/include');
 const dashboard = require('../strategy/dashboard');
 const { createLogger } = require('../core/logger');
 
+/** 合法交付形态：仅这三种，非法值必须 fail-closed，不得静默回退 config */
+const VALID_OUTPUT_MODES = Object.freeze(['config', 'nodes', 'report']);
+
+/**
+ * 归一化交付形态（大小写不敏感），非法值抛错。
+ *
+ * 非法 mode 若被静默当作 config，会既产出错误形态的产物、又作为独立键污染缓存；
+ * 因此这里采用 fail-closed：调用方必须显式处理错误（HTTP 400 / CLI 退出）。
+ * @param {string} [rawMode]
+ * @returns {'config'|'nodes'|'report'}
+ */
 function normalizeOutputMode(rawMode) {
-  return String(rawMode || 'config').toLowerCase();
+  const mode = String(rawMode || 'config').toLowerCase();
+  if (!VALID_OUTPUT_MODES.includes(mode)) {
+    const err = new Error(`Invalid output mode "${rawMode}" (expected one of: ${VALID_OUTPUT_MODES.join(', ')})`);
+    err.code = 'INVALID_OUTPUT_MODE';
+    throw err;
+  }
+  return mode;
 }
 
 /**
@@ -581,7 +598,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       });
 
   const enableCache = userConfig.enableCache !== false && !options.noCache;
-  const cacheKey = getCacheKey(userConfig, options);
+  // 交付形态进入缓存/构建之前的 fail-closed 校验：非法值不得产生缓存键，也不得进入任何流水线。
+  const outputMode = normalizeOutputMode(options.mode || userConfig.outputMode || 'config');
+  const cacheKey = getCacheKey(userConfig, { ...options, mode: outputMode });
   const isForce = !!options.forceRefresh;
 
   // 状态感知回调：旧调用方未传时为空调用
@@ -707,6 +726,7 @@ module.exports = {
   /** 导出全局 Profile SWR 缓存运行指标（hits/misses/hitRate），供 targets 层 /healthz 监控消费 */
   getProfileCacheStats: () => profileCache.getStats(),
   normalizeOutputMode,
+  VALID_OUTPUT_MODES,
   createLogger,
   safeErrorMessage,
   // 导出单测可控接口

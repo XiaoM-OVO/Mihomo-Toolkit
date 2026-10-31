@@ -27,10 +27,34 @@ function normalizeDomain(domain) {
   return domain.trim().toLowerCase().replace(/\.$/, '');
 }
 
+/**
+ * 规范化单个解析器地址：
+ * - 可解析为 URL 的（DoH / DoT 等）：scheme / host 统一小写、去掉路径末尾斜杠，
+ *   使「同一解析器的大小写 / 尾斜杠差异」不会被误判为不同集合（从而误判域名冲突）；
+ * - 非 URL 形态（纯主机名、IP 字面量等）：仅去首尾空白。
+ * 输出保持为可直接写入 nameserver-policy 的规范形式。
+ * @param {string} resolver
+ * @returns {string}
+ */
+function normalizeResolver(resolver) {
+  const raw = resolver.trim();
+  try {
+    const u = new URL(raw);
+    const pathname = u.pathname.replace(/\/+$/, '');
+    return `${u.protocol}//${u.host}${pathname}${u.search}${u.hash}`;
+  } catch {
+    return raw;
+  }
+}
+
 /** 规范化解析器集合：去重并排序，用于集合比较与确定性输出 */
 function normalizeResolvers(resolvers) {
   const list = Array.isArray(resolvers) ? resolvers : [resolvers];
-  return [...new Set(list.filter(v => typeof v === 'string' && v).map(v => v.trim()))].sort();
+  const normalized = list
+    .filter(v => typeof v === 'string' && v.trim())
+    .map(normalizeResolver)
+    .filter(v => v);
+  return [...new Set(normalized)].sort();
 }
 
 /**

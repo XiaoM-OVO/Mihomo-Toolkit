@@ -66,6 +66,25 @@ describe('【Security】节点域名解析器归属决议 (node-dns-policy)', ()
     assert.deepEqual(policies, { 'hk.example.com': ['https://doh-a.example/dns-query'] });
   });
 
+  test('解析器规范化：scheme/host 大小写与路径尾斜杠差异视为同一集合', () => {
+    const { policies, conflicts } = resolveNodeDnsPolicies([
+      candidate('hk.example.com', ['HTTPS://DoH-A.Example.COM/dns-query/'], 'url:aaa'),
+      candidate('hk.example.com', ['https://doh-a.example.com/dns-query'], 'url:bbb')
+    ]);
+    // 规范化后不应再被误判为冲突（否则域名会静默回退默认 DNS）
+    assert.deepEqual(conflicts, []);
+    assert.deepEqual(policies, {
+      'hk.example.com': ['https://doh-a.example.com/dns-query']
+    });
+  });
+
+  test('解析器规范化：非 URL 形态（主机名/IP）保持原样并参与去重', () => {
+    const { policies } = resolveNodeDnsPolicies([
+      candidate('hk.example.com', [' 8.8.8.8 ', '8.8.8.8'], 'url:aaa')
+    ]);
+    assert.deepEqual(policies, { 'hk.example.com': ['8.8.8.8'] });
+  });
+
   test('无效候选被跳过：空解析器、缺失域名或来源', () => {
     const { policies, conflicts } = resolveNodeDnsPolicies([
       candidate('', ['https://doh-a.example/dns-query'], 'url:aaa'),
