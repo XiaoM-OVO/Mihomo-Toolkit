@@ -176,7 +176,22 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 | **监听 `127.0.0.1`（默认）** | 仅本机可访问，动态参数 `?url=` 与 `?config=` 入口开放可用 |
 | **监听非回环地址（如 `0.0.0.0`）且未配置 `authToken`** | **fail-closed**：自动拒绝 `?url=` / `?config=` 参数请求（返回 403）；无参数的 `/sub`（走本地 `config.yaml` 订阅清单）仍可访问 |
 | **监听非回环地址且配置了 `authToken`** | 参数入口放行，但所有 `/sub` 请求必须携带 `?token=xxx` 或 `Authorization: Bearer xxx` |
+| **请求 `Host` 与 `allowedHosts`** | 未配置 `allowedHosts` 且监听非回环地址时，未鉴权请求的 `Host` 不参与 `subDomain` 直连推导（fail-closed，防缓存投毒与缓存膨胀）；已通过 `authToken` 鉴权的请求仍按 `Host` 自动嗅探。配置后仅命中规则的 Host 生效，支持 `*.example.com` 后缀通配 |
+| **来源 IP 与 `trustedProxies`** | 仅当直连地址命中 `trustedProxies`（精确 IP / CIDR）时才采信 `X-Forwarded-For`，并从右向左跳过受信代理取真实客户端；未配置时一律使用直连地址，伪造转发头不会污染日志与限流判断 |
 | **`?config=` 传入的远程配置** | 视为**不可信输入**：仅允许引用 http(s) 订阅源，且 DNS 控制面与本地资源类字段会被强制剥夺 |
+
+> **Token 传递方式**：`?token=xxx` 会随完整 URL 落入 nginx / Caddy / CDN 等反代的访问日志与浏览器历史，HTTPS 只保护传输过程。客户端支持自定义请求头时请改用 `Authorization: Bearer xxx`；只能走 URL 时，请在反代日志格式中屏蔽查询串（如 nginx 的 `log_format` 去掉 `$request` 中的 `$args`）。本服务自身日志始终将 token 脱敏为 `***`。
+
+#### 接入方式选型
+
+`authToken` 与 `allowedHosts` 是两个独立开关，按部署场景组合即可，无需同时开启：
+
+| 部署场景 | 推荐组合 |
+| :--- | :--- |
+| 反代后面 + 已配置 `authToken` | 不必配置 `allowedHosts`：已鉴权请求仍按 `Host` 自动嗅探，保留订阅域名直连规则自适应 |
+| 公网直接暴露 | `authToken` + `allowedHosts` 双保险：凭据控访问，白名单把 `Host` 收敛到已知域名，彻底消除缓存键放大 |
+| 客户端只会填 URL（Clash Verge Rev / FlClash） | 只能 `?token=xxx`（两个 GUI 均不支持自定义 `Authorization` 头），并在反代日志格式中屏蔽查询串 |
+| curl / 脚本 / sing-box 等可设请求头 | `Authorization: Bearer xxx`，避免 token 进入 URL、浏览器历史与反代日志 |
 
 > **硬性资源配额**：单次最多 20 个订阅 URL、远程配置 ≤ 1MB、单订阅响应体 ≤ 8MB（流式截断）、单次构建节点总量 ≤ 5000、单订阅 ≤ 3000 节点、并发构建上限 8（超限返回 503）。
 
