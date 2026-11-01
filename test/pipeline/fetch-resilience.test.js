@@ -1,8 +1,9 @@
-﻿﻿const { test, describe, beforeEach } = require('node:test');
+const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildProfile, safeFetchText } = require('../../src/index.js');
 const { profileCache } = require('../../src/io/cache.js');
 const { subFailureBackoff, subStaleCache, recordSubFetchFailure } = require('../../src/io/fetcher.js');
+const { createStatelessResilienceContext } = require('../../src/pipeline/resilience.js');
 
 // 单订阅失败退避与原始订阅快照 (L1) 都是进程级内存状态，测试之间必须隔离
 beforeEach(() => {
@@ -647,6 +648,87 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
       assert.ok(recovered.yamlStr.includes('香港'));
       assert.equal(subFailureBackoff.has(url), false, '恢复成功后必须清除退避状态');
     } finally {
+      restoreFetch();
+    }
+  });
+
+  test('CLI 一次性构建（StatelessResilienceContext）：失败不写入退避表，汇总树也不展示退避明细', async () => {
+    const url = 'http://93.184.216.34/oneshot-fail';
+    globalThis.fetch = async () => { throw new Error('getaddrinfo ENOTFOUND oneshot.domain'); };
+    try {
+      const statelessLogs = [];
+      await buildProfile(baseConfig(url, { retry: 0 }), {
+        mode: 'config', production: true, noCache: true, resilience: createStatelessResilienceContext(), logger: makeLogger(statelessLogs)
+      });
+      assert.equal(subFailureBackoff.has(url), false, '一次性构建不得写入退避表');
+      const statelessText = statelessLogs.map(l => l.msg).join('\n');
+      assert.ok(statelessText.includes('拉取失败'), `应如实报告拉取失败：${statelessText}`);
+      assert.equal(/退避|第 1 次失败/.test(statelessText), false, `一次性构建不得展示退避明细：${statelessText}`);
+
+      // 对照组：常驻语义（server / SDK）仍记录并展示退避
+      subFailureBackoff.clear();
+      const residentLogs = [];
+      await buildProfile(baseConfig(url, { retry: 0 }), {
+        mode: 'config', production: true, noCache: true, logger: makeLogger(residentLogs)
+      });
+      assert.ok(subFailureBackoff.has(url), '常驻语义下失败必须进入退避表');
+      const residentText = residentLogs.map(l => l.msg).join('\n');
+      assert.ok(residentText.includes('第 1 次失败'), `常驻语义应展示退避明细：${residentText}`);
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('CLI 一次性构建（StatelessResilienceContext）：不输出「兜底被拒绝」等容灾旧缓存决策日志', async () => {
+    const url = 'http://93.184.216.34/oneshot-expired';
+    const expirePast = Math.floor(Date.now() / 1000) - 3600;
+    globalThis.fetch = async () => new Response(SUB_CONTENT, {
+      status: 200,
+      headers: { 'subscription-userinfo': `upload=100; download=200; total=1000000; expire=${expirePast}` }
+    });
+    try {
+      const statelessLogs = [];
+      await buildProfile(baseConfig(url, { retry: 0 }), {
+        mode: 'config', production: true, noCache: true, debug: true, resilience: createStatelessResilienceContext(), logger: makeLogger(statelessLogs)
+      });
+      const statelessText = statelessLogs.map(l => l.msg).join('\n');
+      assert.equal(
+        statelessText.includes('兜底被拒绝'),
+        false,
+        `一次性构建没有旧缓存可兜底，不得输出容灾决策日志：${statelessText}`
+      );
+
+      // 对照组：常驻语义保留容灾决策日志，便于排查为何不降级
+      const residentLogs = [];
+      await buildProfile(baseConfig(url, { retry: 0 }), {
+        mode: 'config', production: true, noCache: true, debug: true, logger: makeLogger(residentLogs)
+      });
+      assert.ok(
+        residentLogs.map(l => l.msg).join('\n').includes('兜底被拒绝'),
+        '常驻语义应保留「兜底被拒绝」决策日志'
+      );
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test('CLI 一次性构建（StatelessResilienceContext）：成功拉取不污染 subStaleCache 内存快照', async () => {
+    const url = 'http://93.184.216.34/oneshot-success';
+    globalThis.fetch = async () => new Response(SUB_CONTENT, { status: 200 });
+    try {
+      subStaleCache.delete(url);
+      await buildProfile(baseConfig(url, { retry: 0 }), {
+        mode: 'config', production: true, noCache: true, resilience: createStatelessResilienceContext()
+      });
+      assert.equal(subStaleCache.has(url), false, '一次性构建拉取成功不得写入常驻 subStaleCache');
+
+      // 对照组：常驻语义拉取成功会缓存 L1 原始快照
+      await buildProfile(baseConfig(url, { retry: 0 }), {
+        mode: 'config', production: true, noCache: true
+      });
+      assert.ok(subStaleCache.has(url), '常驻语义拉取成功应写入 subStaleCache');
+    } finally {
+      subStaleCache.delete(url);
       restoreFetch();
     }
   });

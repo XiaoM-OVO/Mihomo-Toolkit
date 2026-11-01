@@ -14,6 +14,7 @@ const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
 const { createLogger } = require('../core/logger');
 const { isTrustedSynthetic } = require('../core/node-trust');
+const { createStatelessResilienceContext } = require('../pipeline/resilience');
 const { runListCommand } = require('./list');
 const { buildExplainPayload, renderExplainReport } = require('./explain');
 const pkg = require('../../package.json');
@@ -159,7 +160,10 @@ function run(argv = process.argv) {
         ...options,
         mode,
         production: !!options.prod,
-        logger
+        logger,
+        // CLI 是一次性进程：使用 StatelessResilienceContext 彻底解耦常驻状态。
+        // 不读写退避表、不写常驻快照缓存、不输出退避明细；server / SDK 仍照常生效。
+        resilience: createStatelessResilienceContext()
       };
       if (dryRun) {
         // 诊断模式：绕过缓存强制现场构建（真实验证订阅连通性），且不写缓存、不落盘
@@ -288,12 +292,7 @@ function run(argv = process.argv) {
         logger.warn(lines.join('\n'));
       }
     } catch (err) {
-      if (err && err.isBackoff) {
-        // 退避期主动跳过请求，不是真实回源失败；退出码保持不变
-        logger.warn(`⏳ 构建因订阅退避而跳过回源（未发起网络请求）：${err.message}`);
-      } else {
-        logger.error(`❌ 构建异常：${err.message}`);
-      }
+      logger.error(`❌ 构建异常：${err.message}`);
       process.exit(1);
     }
   })();

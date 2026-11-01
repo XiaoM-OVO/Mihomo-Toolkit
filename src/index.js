@@ -32,6 +32,7 @@ const {
 const { runNodesPipeline } = require('./pipeline/nodes');
 const { runStrategyPipeline } = require('./pipeline/strategy');
 const { buildAuditReport } = require('./pipeline/report');
+const { createStatelessResilienceContext } = require('./pipeline/resilience');
 const { createLogger, Logger } = require('./core/logger');
 const { hardenRemoteConfig, REMOTE_CONFIG_FORBIDDEN_KEYS } = require('./core/security/remote-config');
 
@@ -45,6 +46,7 @@ module.exports = {
   runNodesPipeline,
   runStrategyPipeline,
   buildAuditReport,
+  createStatelessResilienceContext,
   redactUrl,
   isAllowedUrl,
   isAllowedUrlAsync,

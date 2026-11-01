@@ -23,6 +23,7 @@ const { expandIncludes } = require('../config/include');
 const dashboard = require('../strategy/dashboard');
 const { createLogger } = require('../core/logger');
 const { ICONS, TERMS } = require('../core/log-copy');
+const { resolveResilienceContext } = require('./resilience');
 
 /** 合法交付形态：仅这三种，非法值必须 fail-closed，不得静默回退 config */
 const VALID_OUTPUT_MODES = Object.freeze(['config', 'nodes', 'report']);
@@ -598,6 +599,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
         timestamps: options.timestamps !== false
       });
 
+  const resilience = resolveResilienceContext(options);
+  const effectiveOptions = { ...options, resilience };
+
   const enableCache = userConfig.enableCache !== false && !options.noCache;
   // 交付形态进入缓存/构建之前的 fail-closed 校验：非法值不得产生缓存键，也不得进入任何流水线。
   const outputMode = normalizeOutputMode(options.mode || userConfig.outputMode || 'config');
@@ -655,8 +659,10 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
           staleTags: cacheEntry.staleTags,
           usableSubCount: cacheEntry.usableSubCount
         });
-        // 启动后台静默更新
-        triggerBackgroundRevalidate(userConfig, options, logger, cacheKey);
+        // 启动后台静默更新（仅常驻服务模式；一次性运行进程即将退出，不得触发后台悬挂重验）
+        if (resilience.isStateful) {
+          triggerBackgroundRevalidate(userConfig, effectiveOptions, logger, cacheKey);
+        }
         // 立即返回陈旧快照
         return cacheEntry.result;
       }
@@ -712,7 +718,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   // 启动全新的 Single-Flight 构建
   return await launchSingleFlightBuild({
     userConfig,
-    options,
+    options: effectiveOptions,
     logger,
     cacheKey,
     enableCache,

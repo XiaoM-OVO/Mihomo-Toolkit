@@ -34,6 +34,30 @@ function runCli(args) {
   });
 }
 
+describe('CLI 一次性构建（不参与退避）', () => {
+  it('订阅失败只报失败原因，不出现退避 / 剩余 / 第 N 次失败等明细', () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const cfgPath = path.join(tmpDir, 'config.yaml');
+      const outPath = path.join(tmpDir, 'out.yaml');
+      // 私网地址由 SSRF 预检同步拒绝，不产生任何真实网络 IO
+      fs.writeFileSync(cfgPath, yaml.stringify({
+        subscriptions: [{ url: 'http://10.0.0.1/sub', tag: 'A', retry: 0 }],
+        minorNodeThreshold: 1
+      }));
+
+      const res = runCli(['-c', cfgPath, '-o', outPath, '--log-level', 'info']);
+      assert.equal(res.status, 0, `stderr=${res.stderr}`);
+      const output = res.stdout;
+      assert.ok(output.includes('拉取失败'), `应如实报告拉取失败：${output}`);
+      assert.equal(output.includes('退避'), false, `一次性构建不得展示退避：${output}`);
+      assert.equal(output.includes('第 1 次失败'), false, `一次性构建不得展示失败次数：${output}`);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('CLI 诊断模式 (--dry-run / --validate)', () => {
   it('--dry-run 通过校验且绝不落盘；对照组（无该标志）正常写出产物', () => {
     const tmpDir = makeTmpDir();
