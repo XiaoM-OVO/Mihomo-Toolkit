@@ -12,6 +12,8 @@
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底** 」
 
 > ⚠️ **开发中版本 · `v4.0.0-alpha`**：本项目当前处于下一代统一内核构建阶段（Milestone 1–3 已闭环，Milestone 4 发版收尾准备中），接口与配置可能微调，暂不建议直接用于生产环境。开发进展与演进规划请参阅 [开发路线图 (ROADMAP.md)](ROADMAP.md)。
+>
+> 📦 **内核要求**：节点域名专属 DNS 映射依赖 `dns.proxy-server-nameserver-policy`，需要 Mihomo **≥ v1.19.21**（推荐最新稳定版）。
 
 </div>
 
@@ -347,7 +349,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 ### 核心安全防护机制
 
 1. **交付契约白名单**（`src/core/security/control-plane.js`）：产物顶层键采用白名单收口机制，防范订阅源携带的 `external-controller`、`secret`、`hosts` 等控制面字段污染最终产物。
-2. **控制面净化与资产闭包**（`src/pipeline/ingestion.js` + `src/core/security/dns-sanitizer.js`）：剥离非节点控制字段的同时，自动识别并继承节点服务器专用的 Hosts 映射与私有 DoH 解析策略，兼顾安全性与节点连通性。
+2. **控制面净化与资产闭包**（`src/pipeline/ingestion.js` + `src/core/security/dns-sanitizer.js`）：剥离非节点控制字段的同时，自动识别并继承节点服务器专用的 Hosts 映射与专属解析策略，兼顾安全性与节点连通性。
 3. **DNS 净化与不变式自检**（`src/strategy/dns.js` + `src/core/security/resolver-plan.js`）：引导层 DNS 纯 IP 化，过滤高危修饰符；交付前执行 INV 不变式自检，降低 Fake-IP 虚拟环路与解析异常风险。
 4. **远程配置白名单收敛**（`src/core/security/remote-config.js`）：对 `?config=` 输入实施 fail-closed 白名单过滤，仅放行明确允许的安全字段，限制对宿主机资源的访问。
 5. **SSRF 与资源配额防御**（`src/io/ssrf.js` / `src/io/pinned-agent.js` / `src/io/fetcher.js` / `src/io/limits.js`）：包含私网网段拦截、直连建连期 IP Pinning、重定向逐跳复核、响应体流式限长与单次构建节点配额限制，缓解网络探测与资源消耗风险。

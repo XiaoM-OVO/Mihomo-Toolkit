@@ -57,7 +57,7 @@ function baseConfig(url, extra = {}) {
   };
 }
 
-/** 生成携带节点私有 DoH 的订阅内容（Base64） */
+/** 生成携带节点专属解析器的订阅内容（Base64） */
 function subWithResolver({ proxyName, server, resolver }) {
   return Buffer.from(`
 dns:
@@ -733,7 +733,7 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
     }
   });
 
-  test('订阅 proxy-server-nameserver：私有 DoH 按节点域名解析器继承', async () => {
+  test('订阅 proxy-server-nameserver：专属解析器按节点域名解析器继承', async () => {
     const content = Buffer.from(`
 dns:
   proxy-server-nameserver:
@@ -762,7 +762,7 @@ proxies:
       });
       assert.ok(yamlStr.includes('dns.airport-a.com/dns-query/secret-token'), '应继承订阅的节点解析器');
       assert.ok(
-        logs.some(l => l.level === 'info' && l.msg.includes('注入 DNS 映射')),
+        logs.some(l => l.level === 'info' && l.msg.includes('proxy-server-nameserver-policy')),
         '继承行为必须有审计日志'
       );
       assert.ok(
@@ -796,11 +796,17 @@ proxies:
         mode: 'config', production: true, noCache: true, logger: makeLogger(logs)
       });
       const YAML = require('yaml');
-      const value = YAML.parse(yamlStr).dns['nameserver-policy']['hk.domain.com'];
-      const list = Array.isArray(value) ? value : [value];
-      // 节点解析器映射优先：同一订阅的自相矛盾声明不至于让节点域名落到别的 DoH
-      assert.ok(list.includes('https://dns.airport-a.com/dns-query/token-a'), '生成映射应覆盖订阅声明');
-      assert.ok(!list.includes('https://dns.airport-b.com/dns-query/token-b'), '被覆盖的声明不得残留');
+      const out = YAML.parse(yamlStr);
+      assert.deepEqual(
+        out.dns['proxy-server-nameserver-policy']['hk.domain.com'],
+        ['https://dns.airport-a.com/dns-query/token-a'],
+        '节点域名解析应走独立映射字段'
+      );
+      assert.equal(
+        out.dns['nameserver-policy']['hk.domain.com'],
+        'https://dns.airport-b.com/dns-query/token-b',
+        '普通 nameserver-policy 声明保留原样'
+      );
 
       const shadowLog = logs.find(l => l.level === 'debug' && l.msg.includes('被节点解析器映射覆盖'));
       assert.ok(shadowLog, '覆盖行为必须有 debug 审计');
@@ -832,8 +838,9 @@ proxies:
       const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       assert.ok(yamlStr.includes('9.9.9.9'), '用户显式配置的解析器必须生效');
       assert.ok(!yamlStr.includes('airport-a.com'), '不得用订阅解析器覆盖用户显式配置');
-      assert.equal(require('yaml').parse(yamlStr).dns['respect-rules'], true, '非映射模式必须保持 respect-rules=true');
-      assert.ok(!yamlStr.includes('#RULES'), '非映射模式不得输出 RULES 标记');
+      const out = require('yaml').parse(yamlStr);
+      assert.equal(out.dns['respect-rules'], true);
+      assert.equal(out.dns['proxy-server-nameserver-policy'], undefined, '用户显式配置时不得生成订阅映射');
     } finally {
       restoreFetch();
     }
@@ -859,8 +866,9 @@ proxies:
       });
       assert.ok(!yamlStr.includes('airport-a.com'), '明文域名解析器不得进入产物');
       assert.ok(yamlStr.includes('119.29.29.29'), '应回退到默认纯 IP 节点解析器');
-      assert.equal(require('yaml').parse(yamlStr).dns['respect-rules'], true, '无映射时不得关闭 respect-rules');
-      assert.ok(!yamlStr.includes('#RULES'), '无映射时不得输出 RULES 标记');
+      const out = require('yaml').parse(yamlStr);
+      assert.equal(out.dns['respect-rules'], true);
+      assert.equal(out.dns['proxy-server-nameserver-policy'], undefined, '无映射时不得写入映射字段');
     } finally {
       restoreFetch();
     }
@@ -904,33 +912,17 @@ proxies:
       const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       const YAML = require('yaml');
       const out = YAML.parse(yamlStr);
-      assert.deepEqual(out.dns['nameserver-policy']['hk.domain.com'], ['https://dns.airport-a.com/dns-query/token-a']);
-      assert.deepEqual(out.dns['nameserver-policy']['jp.domain.com'], ['https://dns.airport-b.com/dns-query/token-b']);
-      assert.equal(out.dns['proxy-server-nameserver'], undefined, '映射模式下必须留空节点解析器');
-      // 兼容 v1.19.13：映射模式必须关闭 respect-rules，并对非节点解析器显式标记 #RULES
-      assert.equal(out.dns['respect-rules'], false, '映射模式必须关闭 respect-rules');
-      assert.ok(
-        out.dns.nameserver.every(s => String(s).endsWith('#RULES')),
-        '主解析链必须显式携带 #RULES 出口标记'
-      );
-      assert.ok(
-        out.dns['nameserver-policy']['rule-set:cn-domain'].every(s => String(s).endsWith('#RULES')),
-        'cn-domain 策略必须显式携带 #RULES'
-      );
-      assert.ok(
-        out.dns['nameserver-policy']['rule-set:non-cn'].every(s => String(s).endsWith('#RULES')),
-        'non-cn 策略必须显式携带 #RULES'
-      );
-      assert.ok(
-        !out.dns['nameserver-policy']['hk.domain.com'][0].includes('#RULES'),
-        '节点域名专属映射必须保持直连引导，不得带 #RULES'
-      );
+      assert.deepEqual(out.dns['proxy-server-nameserver-policy']['hk.domain.com'], ['https://dns.airport-a.com/dns-query/token-a']);
+      assert.deepEqual(out.dns['proxy-server-nameserver-policy']['jp.domain.com'], ['https://dns.airport-b.com/dns-query/token-b']);
+      assert.deepEqual(out.dns['proxy-server-nameserver'], ['223.5.5.5', '119.29.29.29'], '通用节点解析器保持出厂纯 IP 默认');
+      assert.equal(out.dns['respect-rules'], true, '映射模式必须保持 respect-rules=true');
+      assert.ok(!yamlStr.includes('#RULES'), '不得再输出 #RULES 兼容标记');
     } finally {
       restoreFetch();
     }
   });
 
-  test('特殊 DNS 条目：system 存在时整体回退非映射模式，映射不生效且告警脱敏', async () => {
+  test('特殊 DNS 条目：system 存在时映射照常生效且日志不泄露解析器', async () => {
     const content = subWithResolver({
       proxyName: '🇭🇰 香港 01', server: 'hk.domain.com',
       resolver: 'https://dns.airport-a.com/dns-query/secrect-token'
@@ -945,25 +937,25 @@ proxies:
         mode: 'config', production: true, noCache: true, logger: makeLogger(logs)
       });
       const out = require('yaml').parse(yamlStr);
-      assert.equal(out.dns['respect-rules'], true, '回退后必须恢复 respect-rules=true');
+      assert.equal(out.dns['respect-rules'], true);
       assert.ok(Array.isArray(out.dns['proxy-server-nameserver']) && out.dns['proxy-server-nameserver'].length > 0,
-        '回退后 proxy-server-nameserver 必须非空');
-      assert.equal(out.dns['nameserver-policy']['hk.domain.com'], undefined, '回退后不得残留订阅域名专属映射');
-      assert.ok(!yamlStr.includes('#RULES'), '回退后不得输出 RULES 标记');
-      assert.ok(
-        logs.some(l => l.level === 'warn' && l.msg.includes('映射模式已禁用') && l.msg.includes('respect-rules 保持开启')),
-        '必须明确说明映射模式被禁用及回退结果'
+        'proxy-server-nameserver 必须非空');
+      assert.deepEqual(
+        out.dns['proxy-server-nameserver-policy']['hk.domain.com'],
+        ['https://dns.airport-a.com/dns-query/secrect-token'],
+        'system 不再阻断映射'
       );
+      assert.ok(!logs.some(l => l.msg.includes('映射模式已禁用')));
       assert.ok(
         !logs.some(l => l.msg.includes('secrect-token') || l.msg.includes('dns.airport-a.com')),
-        '回退警告不得包含订阅 URL、DoH 地址或 token'
+        '日志不得包含订阅 URL、DoH 地址或 token'
       );
     } finally {
       restoreFetch();
     }
   });
 
-  test('特殊 DNS 条目：dhcp:// 存在时同样整体回退非映射模式', async () => {
+  test('特殊 DNS 条目：dhcp:// 存在时映射照常生效', async () => {
     const content = subWithResolver({
       proxyName: '🇭🇰 香港 01', server: 'hk.domain.com',
       resolver: 'https://dns.airport-a.com/dns-query/secrect-token'
@@ -978,18 +970,18 @@ proxies:
         mode: 'config', production: true, noCache: true, logger: makeLogger(logs)
       });
       const out = require('yaml').parse(yamlStr);
-      assert.equal(out.dns['respect-rules'], true, '回退后必须恢复 respect-rules=true');
+      assert.equal(out.dns['respect-rules'], true);
       assert.ok(Array.isArray(out.dns['proxy-server-nameserver']) && out.dns['proxy-server-nameserver'].length > 0,
-        '回退后 proxy-server-nameserver 必须非空');
-      assert.equal(out.dns['nameserver-policy']['hk.domain.com'], undefined, '回退后不得残留订阅域名专属映射');
-      assert.ok(!yamlStr.includes('#RULES'), '回退后不得输出 RULES 标记');
-      assert.ok(
-        logs.some(l => l.level === 'warn' && l.msg.includes('映射模式已禁用')),
-        '特殊条目触发回退必须有脱敏告警'
+        'proxy-server-nameserver 必须非空');
+      assert.deepEqual(
+        out.dns['proxy-server-nameserver-policy']['hk.domain.com'],
+        ['https://dns.airport-a.com/dns-query/secrect-token'],
+        'dhcp:// 不再阻断映射'
       );
+      assert.ok(!logs.some(l => l.msg.includes('映射模式已禁用')));
       assert.ok(
         !logs.some(l => l.msg.includes('secrect-token') || l.msg.includes('dns.airport-a.com')),
-        '回退警告不得包含订阅 URL、DoH 地址或 token'
+        '日志不得包含订阅 URL、DoH 地址或 token'
       );
     } finally {
       restoreFetch();
@@ -1026,11 +1018,11 @@ proxies:
         mode: 'config', production: true, noCache: true, logger: makeLogger(logs)
       });
       const out = require('yaml').parse(yamlStr);
-      assert.equal(out.dns['nameserver-policy']['hk.domain.com'], undefined, '冲突域名不得写入映射');
+      assert.equal(out.dns['proxy-server-nameserver-policy'], undefined, '冲突域名不得写入映射');
       assert.deepEqual(out.dns['proxy-server-nameserver'], ['223.5.5.5', '119.29.29.29'], '冲突时必须回退默认节点解析器');
       assert.ok(
         !yamlStr.includes('airport-a.com') && !yamlStr.includes('airport-b.com'),
-        '冲突时不得保留任意一方的私有 DoH'
+        '冲突时不得保留任意一方的专属解析器'
       );
       assert.ok(
         logs.some(l => l.level === 'warn' && l.msg.includes('节点解析器冲突') && l.msg.includes('hk.domain.com')),
@@ -1041,7 +1033,6 @@ proxies:
         '冲突日志不得泄露订阅 URL、DoH 地址或 token'
       );
       assert.equal(out.dns['respect-rules'], true, '无映射时必须保持 respect-rules=true');
-      assert.ok(!yamlStr.includes('#RULES'), '无映射时不得输出 RULES 标记');
     } finally {
       restoreFetch();
     }
@@ -1074,12 +1065,11 @@ proxies:
       });
       const out = require('yaml').parse(yamlStr);
       assert.deepEqual(
-        out.dns['nameserver-policy']['hk.domain.com'],
+        out.dns['proxy-server-nameserver-policy']['hk.domain.com'],
         ['https://dns.airport-a.com/dns-query/token-a']
       );
-      assert.equal(out.dns['proxy-server-nameserver'], undefined, '映射模式下必须留空节点解析器');
-      assert.equal(out.dns['respect-rules'], false, '映射模式必须关闭 respect-rules');
-      assert.ok(!String(out.dns['nameserver-policy']['hk.domain.com'][0]).includes('#RULES'), '节点映射不得带 #RULES');
+      assert.deepEqual(out.dns['proxy-server-nameserver'], ['223.5.5.5', '119.29.29.29']);
+      assert.equal(out.dns['respect-rules'], true);
       assert.ok(
         !logs.some(l => l.level === 'warn' && l.msg.includes('节点解析器冲突')),
         '解析器集合相同不应判定为冲突'
@@ -1117,7 +1107,7 @@ proxies:
       };
       const { yamlStr } = await buildProfile(cfg, { mode: 'config', production: true, noCache: true });
       const out = require('yaml').parse(yamlStr);
-      assert.equal(out.dns['nameserver-policy']['hk.domain.com'], undefined, '存在任一不同解析器即整体冲突');
+      assert.equal(out.dns['proxy-server-nameserver-policy'], undefined, '存在任一不同解析器即整体冲突');
       assert.ok(!yamlStr.includes('airport-a.com'), '不得保留 A/B 的共同解析器');
       assert.deepEqual(out.dns['proxy-server-nameserver'], ['223.5.5.5', '119.29.29.29']);
       assert.equal(out.dns['respect-rules'], true, '全部冲突时不得关闭 respect-rules');
@@ -1184,13 +1174,12 @@ proxies:
         const dns = YAML.parse(yamlStr).dns;
         if (baseline === null) {
           baseline = JSON.stringify(dns);
-          assert.deepEqual(dns['nameserver-policy']['a.domain.com'], [resolverA]);
-          assert.deepEqual(dns['nameserver-policy']['b.domain.com'], ['https://dns.airport-b.com/dns-query/token-b']);
-          assert.equal(dns['nameserver-policy']['shared.domain.com'], undefined, '冲突域名必须退出映射');
+          assert.deepEqual(dns['proxy-server-nameserver-policy']['a.domain.com'], [resolverA]);
+          assert.deepEqual(dns['proxy-server-nameserver-policy']['b.domain.com'], ['https://dns.airport-b.com/dns-query/token-b']);
+          assert.equal(dns['proxy-server-nameserver-policy']['shared.domain.com'], undefined, '冲突域名必须退出映射');
           assert.ok(dns['nameserver-policy']['rule-set:cn-domain'], '普通分流 DNS 策略不得被破坏');
           assert.ok(dns['nameserver-policy']['rule-set:non-cn'], '普通分流 DNS 策略不得被破坏');
-          assert.equal(dns['respect-rules'], false, '存在有效映射时必须关闭 respect-rules');
-          assert.ok(!String(dns['nameserver-policy']['a.domain.com'][0]).includes('#RULES'), '节点映射不得带 #RULES');
+          assert.equal(dns['respect-rules'], true, '映射模式必须保持 respect-rules=true');
         } else {
           assert.equal(JSON.stringify(dns), baseline, `订阅顺序 ${order.join('')} 的 DNS 产物必须一致`);
         }
@@ -1229,11 +1218,11 @@ proxies:
         { mode: 'config', production: true, noCache: true, logger: makeLogger(foldLogs) }
       );
       const dnsFolded = YAML.parse(folded.yamlStr).dns;
-      assert.deepEqual(dnsFolded['nameserver-policy']['.459292.xyz'], doh, '同源同后缀应折叠');
-      assert.equal(dnsFolded['nameserver-policy']['hk01.459292.xyz'], undefined, '折叠后不再保留精确键');
-      assert.equal(dnsFolded['respect-rules'], false);
+      assert.deepEqual(dnsFolded['proxy-server-nameserver-policy']['.459292.xyz'], doh, '同源同后缀应折叠');
+      assert.equal(dnsFolded['proxy-server-nameserver-policy']['hk01.459292.xyz'], undefined, '折叠后不再保留精确键');
+      assert.equal(dnsFolded['respect-rules'], true);
       assert.ok(
-        foldLogs.some(l => l.level === 'info' && l.msg.includes('注入 DNS 映射') && l.msg.includes('通配 1')),
+        foldLogs.some(l => l.level === 'info' && l.msg.includes('proxy-server-nameserver-policy') && l.msg.includes('通配 1')),
         '折叠后日志应按映射条数与通配条数表述，不能把键数说成域名数'
       );
 
@@ -1242,9 +1231,9 @@ proxies:
         { mode: 'config', production: true, noCache: true }
       );
       const dnsExact = YAML.parse(exact.yamlStr).dns;
-      assert.deepEqual(dnsExact['nameserver-policy']['hk01.459292.xyz'], doh);
-      assert.deepEqual(dnsExact['nameserver-policy']['hk02.459292.xyz'], doh);
-      assert.equal(dnsExact['nameserver-policy']['.459292.xyz'], undefined, '关闭后不得出现通配键');
+      assert.deepEqual(dnsExact['proxy-server-nameserver-policy']['hk01.459292.xyz'], doh);
+      assert.deepEqual(dnsExact['proxy-server-nameserver-policy']['hk02.459292.xyz'], doh);
+      assert.equal(dnsExact['proxy-server-nameserver-policy']['.459292.xyz'], undefined, '关闭后不得出现通配键');
     } finally {
       restoreFetch();
     }
@@ -1271,10 +1260,9 @@ proxies:
         mode: 'config', production: true, noCache: true, logger: makeLogger(logs)
       });
       const YAML = require('yaml');
-      const value = YAML.parse(yamlStr).dns['nameserver-policy']['hk.trunc.xyz'];
+      const value = YAML.parse(yamlStr).dns['proxy-server-nameserver-policy']['hk.trunc.xyz'];
       const list = Array.isArray(value) ? value : [value];
       assert.equal(list.length, 4, '单订阅至多保留 4 条解析器');
-      // 节点域名映射按设计不带 #RULES（解析自身节点域名时不能绕回代理）
       assert.ok(list.includes('https://doh1.provider.com/dns-query'));
       assert.ok(!list.includes('https://doh5.provider.com/dns-query'), '第 5 条起应被截断');
 
@@ -1316,7 +1304,7 @@ proxies:
         minorNodeThreshold: 1
       }, { mode: 'config', production: true, noCache: true, logger: makeLogger(logs) });
       assert.ok(
-        logs.some(l => l.level === 'info' && l.msg.includes('注入 DNS 映射') && l.msg.includes('8 项加密解析器')),
+        logs.some(l => l.level === 'info' && l.msg.includes('proxy-server-nameserver-policy') && l.msg.includes('8 项加密解析器')),
         '并集被上限截断时不得低报实际引用的解析器数量'
       );
     } finally {

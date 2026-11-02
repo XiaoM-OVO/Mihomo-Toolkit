@@ -1,16 +1,16 @@
 /**
  * 真实内核契约测试（默认跳过）。
  *
- * 背景：#RULES 出口标记是 v1.19.13 的内部实现细节（tunnel/dns_dialer.go 的
- * `DnsRespectRules = "RULES"`），且「respect-rules=true + proxy-server-nameserver 为空」
- * 会被 config/config.go 直接拒绝。本测试用真实二进制校验 legacy 映射模式的三种产物：
- *   1. 正常映射（respect-rules=false + #RULES 标记）
+ * 背景：节点域名专属解析器使用内核原生 dns.proxy-server-nameserver-policy（v1.19.21 起），
+ * 且 respect-rules=true 要求 proxy-server-nameserver 非空（v1.19.13 起硬校验）。
+ * 本测试用真实二进制校验三种产物：
+ *   1. 正常映射（respect-rules=true + proxy-server-nameserver-policy）
  *   2. 部分冲突（有效域名映射 + 冲突域名回退）
- *   3. 特殊条目回退（system → 非映射模式）
+ *   3. 特殊条目（system）下映射仍生效
  *
  * 启用方式：
  *   MIHOMO_BIN=/path/to/mihomo node --test test/kernel/mihomo-kernel-contract.test.js
- * 可选：MIHOMO_EXPECT_VERSION=v1.19.13 用于校验内核版本。
+ * 可选：MIHOMO_EXPECT_VERSION=v1.19.21 用于校验内核版本（最低 v1.19.21）。
  */
 
 const { test } = require('node:test');
@@ -61,7 +61,7 @@ function kernelTest(yamlStr) {
 
 const originalFetch = globalThis.fetch;
 
-test('内核契约：映射模式产物可通过 v1.19.13 -t', { skip: !MIHOMO_BIN }, async () => {
+test('内核契约：proxy-server-nameserver-policy 产物可通过 v1.19.21+ -t', { skip: !MIHOMO_BIN }, async () => {
   if (EXPECT_VERSION) {
     const v = spawnSync(MIHOMO_BIN, ['-v'], { encoding: 'utf8' });
     assert.ok(`${v.stdout || ''}${v.stderr || ''}`.includes(EXPECT_VERSION), `内核版本必须为 ${EXPECT_VERSION}`);
@@ -75,6 +75,10 @@ test('内核契约：映射模式产物可通过 v1.19.13 -t', { skip: !MIHOMO_B
       { subscriptions: [{ url: 'http://93.184.216.34/kernel-mapping', tag: 'A', retry: 0 }], minorNodeThreshold: 1 },
       { mode: 'config', production: true, noCache: true }
     );
+    const { parse } = require('yaml');
+    const dns = parse(yamlStr).dns;
+    assert.equal(dns['respect-rules'], true);
+    assert.deepEqual(dns['proxy-server-nameserver-policy']['hk.domain.com'], ['https://dns.airport-a.com/dns-query/token-a']);
     kernelTest(yamlStr);
   } finally {
     globalThis.fetch = originalFetch;
@@ -115,7 +119,7 @@ test('内核契约：部分冲突（映射 + 回退）可通过 -t', { skip: !MI
   }
 });
 
-test('内核契约：特殊条目回退后的非映射产物可通过 -t', { skip: !MIHOMO_BIN }, async () => {
+test('内核契约：system 条目下的映射产物可通过 -t', { skip: !MIHOMO_BIN }, async () => {
   globalThis.fetch = async () => new Response(subWithResolver({
     proxyName: '🇭🇰 香港 01', server: 'hk.domain.com',
     resolver: 'https://dns.airport-a.com/dns-query/token-a'

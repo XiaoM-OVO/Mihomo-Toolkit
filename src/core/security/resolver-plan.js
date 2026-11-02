@@ -10,8 +10,8 @@
  *
  *   INV-1  default-nameserver ⊆ IP 字面量（否则解析 DNS 服务器域名时死锁）
  *   INV-2  proxy-server-nameserver ∩ fake-ip-range = ∅（否则虚拟自环）
- *   INV-3  proxy-server-nameserver 与节点域名 nameserver-policy 的值禁止明文域名；加密 DoH/DoT 域名必须由纯 IP default-nameserver 引导
- *   INV-4  respect-rules = true ⇒ proxy-server-nameserver ≠ ∅（v1.19.13 内核硬校验；映射模式必须显式关闭 respect-rules）
+ *   INV-3  proxy-server-nameserver 与 proxy-server-nameserver-policy 的值禁止明文域名；加密 DoH/DoT 域名必须由纯 IP default-nameserver 引导
+ *   INV-4  respect-rules = true ⇒ proxy-server-nameserver ≠ ∅（v1.19.13 起内核硬校验）
  *   INV-5  fallback ≠ ∅ ⇒ fallback-filter 必须显式声明（否则内核默认 geoip-code=CN 生效）
  *   INV-6  direct-nameserver-follow-policy = true ⇒ direct-nameserver ≠ ∅
  *   INV-7  enhanced-mode = fake-ip ⇒ 节点域名必须进入 fake-ip-filter（防环路）
@@ -34,46 +34,6 @@ function asArray(v) {
   return Array.isArray(v) ? v : [v];
 }
 
-/**
- * 取出覆盖指定域名的策略值，按内核 trie 语义匹配静态键：
- *   - 精确键            仅裸域
- *   - `+.suffix`        裸域 + 任意层级子域
- *   - `.suffix`         任意层级子域（不含裸域）
- *   - `*.suffix`        仅严格单层子域
- *   - 逗号多键          逐个拆分后匹配
- * `rule-set:` / `geosite:` 等动态匹配器无法静态判定，直接跳过。
- * 中间 `*`（如 `a.*.b`）形态罕见，同样跳过以避免误判。
- * 仅用于不变式校验，不参与映射生成。
- */
-function policyServersForDomain(policy, domain) {
-  if (!policy || typeof policy !== 'object') return [];
-  const target = String(domain).toLowerCase();
-  for (const [rawKey, value] of Object.entries(policy)) {
-    const keys = String(rawKey).toLowerCase().split(',').map(k => k.trim()).filter(Boolean);
-    for (const key of keys) {
-      if (key === target) return asArray(value);
-      if (key.startsWith('rule-set:') || key.startsWith('geosite:')) continue;
-      if (key.startsWith('*.')) {
-        const suffix = key.slice(2);
-        if (!suffix || suffix.includes('*')) continue;
-        if (!target.endsWith(`.${suffix}`)) continue;
-        // `*.` 在内核 trie 中仅匹配严格单层子域
-        if (!target.slice(0, target.length - suffix.length - 1).includes('.')) return asArray(value);
-        continue;
-      }
-      if (key.includes('*')) continue;
-      if (key.startsWith('+.')) {
-        const suffix = key.slice(2);
-        if (suffix && (target === suffix || target.endsWith(`.${suffix}`))) return asArray(value);
-      } else if (key.startsWith('.')) {
-        const suffix = key.slice(1);
-        if (suffix && target.endsWith(`.${suffix}`)) return asArray(value);
-      }
-    }
-  }
-  return [];
-}
-
 function checkInvariants(dns = {}, options = {}) {
   const v = [];
   const fakeRanges = [dns['fake-ip-range'] || '198.18.0.1/16'];
@@ -91,8 +51,6 @@ function checkInvariants(dns = {}, options = {}) {
     const p = parseDnsServer(s);
     return p.kind === 'ip' && (!p.scheme || p.scheme === 'plain');
   });
-  // 节点域名（精确）：供 INV-3 的 legacy 映射校验与 INV-4 覆盖判定复用
-  const nodeDomains = deriveFakeIpFilterAdditions(options.proxies || [], { mode: 'exact' });
 
   for (const s of asArray(dns['proxy-server-nameserver'])) {
     const p = parseDnsServer(s);
@@ -110,11 +68,11 @@ function checkInvariants(dns = {}, options = {}) {
     }
   }
 
-  // INV-3 扩展：legacy 模式下节点专属解析器落在 nameserver-policy（精确键或 `.suffix` 折叠键），
+  // INV-3 扩展：节点域名专属解析器落在 proxy-server-nameserver-policy（精确键或 `.suffix` 折叠键），
   //            其值同样必须为加密 DNS，且由纯 IP 的 default-nameserver 引导。
   //            诊断信息不回显解析器地址，避免把 token 写进日志。
-  for (const domain of nodeDomains) {
-    for (const s of policyServersForDomain(dns['nameserver-policy'], domain)) {
+  for (const [domain, value] of Object.entries(dns['proxy-server-nameserver-policy'] || {})) {
+    for (const s of asArray(value)) {
       const p = parseDnsServer(s);
       if (p.kind === 'url' && !p.isIpLiteral) {
         const encrypted = /^(https|tls|quic|h3)$/i.test(p.scheme || '');
@@ -125,11 +83,10 @@ function checkInvariants(dns = {}, options = {}) {
     }
   }
 
-  // INV-4 v1.19.13 内核硬校验：respect-rules=true 时 proxy-server-nameserver 不得为空
-  //         （config/config.go 会直接拒绝启动）。legacy 映射模式因此必须关闭 respect-rules，
-  //         并以显式 #RULES 标记补齐原本隐式继承的 DNS 出口。
+  // INV-4 v1.19.13 起内核硬校验：respect-rules=true 时 proxy-server-nameserver 不得为空
+  //         （config/config.go 会直接拒绝启动）。
   if (dns['respect-rules'] === true && asArray(dns['proxy-server-nameserver']).length === 0) {
-    v.push({ id: 'INV-4', detail: 'respect-rules=true 但 proxy-server-nameserver 为空（v1.19.13 内核会拒绝启动；映射模式应改用 respect-rules=false）' });
+    v.push({ id: 'INV-4', detail: 'respect-rules=true 但 proxy-server-nameserver 为空（v1.19.13 起内核会拒绝启动）' });
   }
 
   // INV-5 fallback 必须显式声明 filter

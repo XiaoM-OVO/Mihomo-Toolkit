@@ -367,7 +367,7 @@ function applySubscriptionGuards(subConfig, options = {}) {
     }
   }
 
-  // 4. 专属 Nameserver-Policy 提取（节点私有 DoH 依赖闭包保留）
+  // 4. 专属 Nameserver-Policy 提取（节点专属解析策略闭包保留）
   const rawPolicy = (subConfig.dns && subConfig.dns['nameserver-policy']) || subConfig['nameserver-policy'];
   if (rawPolicy && typeof rawPolicy === 'object') {
     const scopedPolicy = {};
@@ -397,10 +397,10 @@ function applySubscriptionGuards(subConfig, options = {}) {
   }
 
   // 6. 节点专属解析器继承（proxy-server-nameserver）
-  //    这里只登记「该订阅的节点域名 → 该订阅的 DoH」候选，不直接写最终映射。
-  //    多订阅若出现同名域名，必须由上层全局冲突决议后再生成 nameserver-policy，
+  //    这里只登记「该订阅的节点域名 → 该订阅的专属解析器」候选，不直接写最终映射。
+  //    多订阅若出现同名域名，必须由上层全局冲突决议后再生成 proxy-server-nameserver-policy，
   //    避免后处理无法撤销已写入条目、或按遍历顺序静默择一。
-  //    仅允许加密 DNS（DoH/DoT/DoQ）；strict 模式仅映射白名单内的节点域名。
+  //    仅允许加密 DNS（DoH/DoT/DoQ/H3）；strict 模式仅映射白名单内的节点域名。
   const rawProxyResolvers = (subConfig.dns && subConfig.dns['proxy-server-nameserver'])
     || subConfig['proxy-server-nameserver'];
   if (rawProxyResolvers) {

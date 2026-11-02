@@ -6,18 +6,18 @@
  * 1. 生成高可用 Fake-IP DNS 拓扑，抵御 DNS 泄漏与投毒
  * 2. 破除「鸡生蛋」Bootstrap 死锁：强制 default-nameserver 与 proxy-server-nameserver 纯 IP 化
  * 3. 动态将节点资产域名注入 fake-ip-filter，杜绝 Fake-IP 自环
- * 4. 自动挂载节点专属 Hosts（CDN 优选）与 Nameserver-Policy（私有 DoH）
+ * 4. 自动挂载节点专属 Hosts（CDN 优选）与 Nameserver-Policy（专属解析器）
  * 5. 落地核心内核不变式（与 core/security/resolver-plan.js 的 INV 定义保持一致）：
  *      INV-1/INV-3  引导层与节点解析层必须为纯 IP 字面量（防解析死锁）
  *      INV-2        解析器地址不得落在 fake-ip 网段（防虚拟自环）
- *      INV-4        respect-rules=true 时 proxy-server-nameserver 不得为空（v1.19.13 硬校验）
+ *      INV-4        respect-rules=true 时 proxy-server-nameserver 不得为空（v1.19.13 起硬校验；本项目要求 ≥ v1.19.21）
  *      INV-8        dns.listen 必须绑定回环，否则将对外提供开放 DNS 解析
  *      另：直连/主解析链与 nameserver-policy 同样过净化沙箱，剥离 #skip-cert-verify 等危险修饰符
  *
- * 6. legacy 映射模式的 compatibility 层：订阅私有 DoH 映射要求留空 proxy-server-nameserver，
- *    而 v1.19.13 内核禁止该组合与 respect-rules=true 共存。因此映射模式关闭总开关，
- *    并对原本隐式继承 RULES 的条目显式补齐出口标记（详见 KERNEL_RULES_PROXY）。
- *    若出现无法安全标记的 system / dhcp:// 条目，则整体退出映射模式，回退非映射 DNS 配置。
+ * 6. 订阅专属加密解析器采用内核原生 dns.proxy-server-nameserver-policy（v1.19.21 起）：
+ *    节点域名专属解析器写入该字段，通用 proxy-server-nameserver 保持纯 IP 出厂默认，
+ *    既满足 respect-rules 的非空校验，也避免跨订阅解析器互相解析对方节点域名。
+ *    节点域名解析由内核直连完成，不依赖代理规则，无需任何出口标记兼容层。
  *
  * 说明：本函数是生产路径的 DNS 装配实现，复用 dns-sanitizer 的纯函数沙箱。
  */
@@ -26,7 +26,6 @@
 
 const {
   ROLES,
-  parseDnsServer,
   sanitizeDnsServerList,
   sanitizeNameserverPolicy,
   sanitizeHosts
@@ -38,8 +37,6 @@ const { createRepeatGate } = require('../core/logger');
 
 // DNS 沙箱审计去重：按「覆盖输入来源 + findings 签名」隔离计数；拦截/修正行为本身不变。
 const dnsAuditGate = createRepeatGate(100);
-// 映射模式因特殊解析器条目整体回退的告警去重：首次 warn，重复降级 debug。
-const dnsMappingFallbackGate = createRepeatGate(100);
 
 function dedupe(arr) {
   return [...new Set(arr)];
@@ -73,87 +70,6 @@ function normalizeLoopbackHost(host) {
   if (/^(::1|0:0:0:0:0:0:0:1)$/i.test(bare)) return '[::1]';
   if (/^localhost$/i.test(bare)) return 'localhost';
   return bare;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// legacy 映射模式：RULES 出口标记兼容层
-// ─────────────────────────────────────────────────────────────────────────────
-// v1.19.13 的 `respect-rules: true` 是解析期开关：内核会给 nameserver 与
-// nameserver-policy 的每个条目隐式注入 proxyName="RULES"（tunnel/dns_dialer.go 的
-// `DnsRespectRules = "RULES"`）。而 legacy 映射模式必须留空 proxy-server-nameserver，
-// 内核对该组合直接拒绝启动（config/config.go: "respect-rules" cannot be empty）。
-// 因此映射模式关闭总开关，并对原本隐式继承 RULES 的条目显式补齐同一标记。
-// ⚠️ "RULES" 是内核实现细节而非公开接口：升级内核必须重跑 test/kernel 契约测试。
-const KERNEL_RULES_PROXY = 'RULES';
-
-/**
- * 明确的出口标记白名单（大小写不敏感）。
- * 内核用 `&` 拆分片段后，任何无等号片段都会成为 proxyName；但只有这些写法的语义是「显式出口」，
- * 其余无等号片段（如误写 #h3、拼写错误的代理名）不能未经判断就当作出口声明。
- */
-const EXPLICIT_EGRESS_MARKERS = new Set(['RULES', 'DIRECT', 'PROXY', 'INTERFACE']);
-
-function hasExplicitEgress(modifiers = []) {
-  return modifiers.some(m => EXPLICIT_EGRESS_MARKERS.has(String(m).trim().toUpperCase()));
-}
-
-/**
- * 为单个 DNS 条目追加内核 RULES 出口标记。
- * - 纯 IP / 裸域名统一改写为显式协议形式（udp://...），保证最终产物可被沙箱再次解析；
- * - 仅白名单内的显式出口标记（#RULES / #DIRECT / #proxy / #interface）保持原样；
- *   其余无等号片段不会被当作出口声明，仍追加 RULES；
- * - system / dhcp:// 无法安全追加，返回 ok:false，由调用方整体回退映射模式。
- * @returns {{ ok: boolean, value: string, reason?: string }}
- */
-function withRespectRules(entry) {
-  const raw = String(entry).trim();
-  if (!raw) return { ok: false, value: raw, reason: 'empty' };
-  const parsed = parseDnsServer(raw);
-  if (parsed.kind === 'special') return { ok: false, value: raw, reason: 'special' };
-  if (parsed.kind === 'invalid') return { ok: false, value: raw, reason: 'invalid' };
-
-  if (parsed.kind === 'ip' || !parsed.scheme || parsed.scheme === 'plain') {
-    // 纯 IP（含 IP:port / IPv6）与裸域名在内核里等价于 udp://，显式写协议才能携带片段。
-    const host = parsed.isIpv6 ? `[${parsed.host}]` : parsed.host;
-    const port = parsed.port ? `:${parsed.port}` : '';
-    return { ok: true, value: `udp://${host}${port}#${KERNEL_RULES_PROXY}` };
-  }
-
-  const normalized = raw.replace(/#+$/, '');
-  const hashIdx = normalized.indexOf('#');
-  if (hashIdx === -1) return { ok: true, value: `${normalized}#${KERNEL_RULES_PROXY}` };
-  const modifiers = normalized.slice(hashIdx + 1).split('&').filter(Boolean);
-  if (hasExplicitEgress(modifiers)) {
-    // 仅认可明确的出口标记（#RULES / #DIRECT / #proxy / #interface）：保持原样，避免重复追加。
-    return { ok: true, value: normalized };
-  }
-  // 其余无等号片段（例如误写成 #h3 而非 #h3=true）在内核里会被当作代理名，
-  // 不能未经判断就视为已声明出口；统一追加 RULES，避免映射模式丢失规则出口语义。
-  return { ok: true, value: `${normalized}&${KERNEL_RULES_PROXY}` };
-}
-
-/** 对一组已净化条目追加 RULES 标记，并用同一沙箱复核最终形态是否仍可解析。 */
-function markRulesList(list, privateOpts) {
-  const values = [];
-  for (const entry of (Array.isArray(list) ? list : [])) {
-    const r = withRespectRules(entry);
-    if (!r.ok) return { ok: false, reason: r.reason, entry, values: [] };
-    values.push(r.value);
-  }
-  const checked = sanitizeDnsServerList(values, { role: ROLES.NAMESERVER, ...privateOpts });
-  if (checked.rejected.length > 0) return { ok: false, reason: 'post-mark-validation', values: [] };
-  return { ok: true, values: checked.servers };
-}
-
-/** 对 nameserver-policy 的每个值追加 RULES 标记。 */
-function markRulesPolicy(policy, privateOpts) {
-  const out = {};
-  for (const [key, value] of Object.entries(policy || {})) {
-    const r = markRulesList(Array.isArray(value) ? value : [value], privateOpts);
-    if (!r.ok) return { ok: false, reason: r.reason, entry: r.entry, policy: {} };
-    if (r.values.length > 0) out[key] = r.values.length === 1 ? r.values[0] : r.values;
-  }
-  return { ok: true, policy: out };
 }
 
 /**
@@ -229,7 +145,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     { role: ROLES.DEFAULT }
   ).servers;
 
-  // 节点解析器优先级：用户显式覆盖 > 订阅私有的「域名 → DoH」映射 > 出厂默认。
+  // 节点解析器优先级：用户显式覆盖 > 订阅专属「域名 → 加密解析器」映射 > 出厂默认。
   // 订阅映射只在用户未改动默认 dnsServer 时生效，避免静默夺取用户的显式配置。
   const requestedProxyNs = serverDNS == null ? [] : (Array.isArray(serverDNS) ? serverDNS : [serverDNS]);
   const userConfiguredProxyNs = requestedProxyNs.length > 0 && (
@@ -250,10 +166,11 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     proxyNsSource = 'user';
     proxyNsInput = requestedProxyNs;
   } else if (useAssetResolverPolicy) {
-    // 留空 proxy-server-nameserver，让内核按 nameserver-policy 对节点域名应用订阅私有 DoH；
-    // 这样不同订阅的解析器互不共享，不会互相解析对方的节点域名。
+    // 节点域名专属映射改走内核原生 proxy-server-nameserver-policy；
+    // 通用 proxy-server-nameserver 保留出厂纯 IP 默认值（INV-4 要求其非空），
+    // 从而不同订阅的解析器互不共享，不会互相解析对方的节点域名。
     proxyNsSource = 'asset-policy';
-    proxyNsInput = [];
+    proxyNsInput = DEFAULT_PROXY_SERVER_DNS;
   } else if (hasResolverCandidates) {
     // 存在订阅解析器候选但全部因域名冲突被排除：绝不回退到跨订阅 union 列表，
     // 统一回退出厂默认纯 IP 节点解析器。
@@ -262,8 +179,6 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   } else if (assetProxyResolvers.length > 0) {
     proxyNsSource = 'asset';
     proxyNsInput = assetProxyResolvers;
-  } else if (requestedProxyNs.length > 0) {
-    proxyNsInput = requestedProxyNs;
   }
 
   // 3.1 直连链与主解析链同样过净化沙箱：
@@ -276,8 +191,8 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   const safeDirectNs = sanitizeResolverList(directDNS, ['https://223.5.5.5/dns-query', '223.5.5.5']);
   const safeMainNs = sanitizeResolverList(proxyDNS, ['https://8.8.8.8/dns-query', 'https://1.1.1.1/dns-query']);
 
-  // 3.2 用户 Policy 与订阅 Policy 先过沙箱：映射模式需要确认其值能否安全注入 #RULES。
-  //     保留键 (rule-set:cn-domain / rule-set:non-cn) 不可被覆盖，危险修饰符被剥离，私网解析器默认拒绝。
+  // 3.2 用户 Policy 与订阅 Policy 先过沙箱：保留键 (rule-set:cn-domain / rule-set:non-cn)
+  //     不可被覆盖，危险修饰符被剥离，私网解析器默认拒绝。
   const { policy: safeUserPolicy, findings: userPolicyFindings } = sanitizeNameserverPolicy(
     userConfig.nameserverPolicy || {},
     { trustedSource: true, ...privateOpts }
@@ -285,40 +200,9 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   if (userPolicyFindings.length > 0) findings.push(...userPolicyFindings);
   const assetPolicy = options.dnsAssets?.policies || {};
 
-  // 3.3 legacy 映射模式的 respect-rules 兼容决议：
-  //     v1.19.13 禁止「respect-rules=true + proxy-server-nameserver 为空」，而映射模式必须留空，
-  //     因此关闭总开关，并把原本隐式继承 RULES 的条目显式标记。任一需要标记的条目为
-  //     system / dhcp:// 等无法安全追加的形式时，整体退出映射模式。
-  let respectRules = true;
-  let mappingFallbackReason = null;
-  let finalMainNs = safeMainNs;
-  let finalDirectPolicyNs = safeDirectNs;
-  let finalAssetPolicy = assetPolicy;
-  let finalUserPolicy = safeUserPolicy;
-  let resolverPolicy = {};
-  if (proxyNsSource === 'asset-policy') {
-    const markedMain = markRulesList(safeMainNs, privateOpts);
-    const markedDirect = markRulesList(safeDirectNs, privateOpts);
-    const markedAsset = markRulesPolicy(assetPolicy, privateOpts);
-    const markedUser = markRulesPolicy(safeUserPolicy, privateOpts);
-    if (markedMain.ok && markedDirect.ok && markedAsset.ok && markedUser.ok) {
-      respectRules = false;
-      finalMainNs = markedMain.values;
-      finalDirectPolicyNs = markedDirect.values;
-      finalAssetPolicy = markedAsset.policy;
-      finalUserPolicy = markedUser.policy;
-      resolverPolicy = assetResolverPolicies;
-    } else {
-      // 整体退出映射模式：恢复非空节点解析器与 respect-rules=true，且不写入任何订阅域名专属映射。
-      const failed = [markedMain, markedDirect, markedAsset, markedUser].find(m => !m.ok);
-      const failedEntry = String(failed?.entry || '');
-      // 仅用于日志去重分类，不含任何地址或凭据
-      const specialKind = /^dhcp:\/\//i.test(failedEntry) ? 'dhcp' : (/^system$/i.test(failedEntry) ? 'system' : 'other');
-      mappingFallbackReason = `${failed?.reason || 'special'}|${specialKind}`;
-      proxyNsSource = assetProxyResolvers.length > 0 ? 'asset' : 'default';
-      proxyNsInput = assetProxyResolvers.length > 0 ? assetProxyResolvers : DEFAULT_PROXY_SERVER_DNS;
-    }
-  }
+  // 3.3 订阅专属解析器映射走内核原生 proxy-server-nameserver-policy（v1.19.21 起）：
+  //     respect-rules 保持开启，节点域名由内核直连解析，无需在 nameserver 链上追加出口标记。
+  const resolverPolicy = (proxyNsSource === 'asset-policy') ? assetResolverPolicies : {};
 
   const safeProxyServerNs = sanitizeDnsServerList(
     proxyNsInput,
@@ -339,52 +223,35 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
       [].concat(...Object.values(assetResolverPolicies)).map(String)
     ).size;
     logger.info(
-      `🛡️ 资产闭包：注入 DNS 映射 ${policyKeys.length} 条${shape} → ` +
+      `🛡️ 资产闭包：注入 proxy-server-nameserver-policy 映射 ${policyKeys.length} 条${shape} → ` +
       `${referencedResolvers} 项加密解析器，仅解析对应订阅的节点域名`
     );
-    // 内核兼容细节属于实现层，降为 debug：info 级只留业务语义
-    if (typeof logger.debug === 'function') {
-      logger.debug(
-        '🛡️ 资产闭包：v1.19.13 兼容层已启用（respect-rules 关闭，继承 RULES 的条目显式补 #RULES）'
-      );
-    }
   } else if (proxyNsSource === 'asset' && safeProxyServerNs.length > 0 && logger && typeof logger.info === 'function') {
     logger.info(`🛡️ 资产闭包：注入节点解析器 ${safeProxyServerNs.length} 项（仅用于节点域名解析）`);
   }
-  if (mappingFallbackReason && logger && typeof logger.warn === 'function') {
-    // 脱敏告警：只说明类别与回退结果，不展示订阅 URL、DoH 地址或 token。
-    const base = '🛡️ 资产闭包：映射模式已禁用（检测到 system / dhcp:// 等无法安全注入 #RULES 的特殊 DNS 条目），' +
-      '本次回退非映射配置：respect-rules 保持开启、使用非空节点解析器，且不写入订阅域名专属映射';
-    const seenTimes = dnsMappingFallbackGate(`dns-mapping-fallback|${mappingFallbackReason}`);
-    if (seenTimes > 1) {
-      logger.debug(`${base}（第 ${seenTimes} 次 · 本次仍未写入映射）`);
-    } else {
-      logger.warn(base);
-    }
-  }
 
   // 4. 解析器拓扑装配
-  //    订阅按域名映射时故意留空 proxy-server-nameserver：内核在留空时才会对节点域名应用
-  //    nameserver-policy，从而实现「订阅 A 的 DoH 只解析 A 的节点域名」。
+  //    proxy-server-nameserver 始终非空（INV-4）；节点域名专属映射写入独立字段（INV-3 校验其加密与引导）。
   const ns = {
     'default-nameserver': safeDefaultNs.length ? safeDefaultNs : ['223.5.5.5', '1.1.1.1'],
     'direct-nameserver': safeDirectNs,
     'direct-nameserver-follow-policy': false, // Mihomo 官方推荐 false，防止直连域名 DNS 被代理规则劫持
-    ...(proxyNsSource === 'asset-policy'
-      ? {}
-      : { 'proxy-server-nameserver': safeProxyServerNs.length ? safeProxyServerNs : ['223.5.5.5', '119.29.29.29'] }),
-    'nameserver': finalMainNs
+    'proxy-server-nameserver': safeProxyServerNs.length ? safeProxyServerNs : DEFAULT_PROXY_SERVER_DNS,
+    ...(Object.keys(resolverPolicy).length > 0
+      ? { 'proxy-server-nameserver-policy': resolverPolicy }
+      : {}),
+    'nameserver': safeMainNs
   };
 
-  // 5. Policy 安全分流：基础规则 + 节点专属私有 DoH 依赖 + 用户自定义 Policy
-  const scriptPolicy = { 'rule-set:cn-domain': finalDirectPolicyNs, 'rule-set:non-cn': finalMainNs };
-  const mergedPolicy = { ...scriptPolicy, ...finalAssetPolicy, ...resolverPolicy, ...finalUserPolicy };
+  // 5. Policy 安全分流：基础规则 + 订阅普通 Policy + 用户自定义 Policy
+  const scriptPolicy = { 'rule-set:cn-domain': safeDirectNs, 'rule-set:non-cn': safeMainNs };
+  const mergedPolicy = { ...scriptPolicy, ...assetPolicy, ...safeUserPolicy };
 
   // 订阅既用 proxy-server-nameserver 生成映射、又在自身 nameserver-policy 里声明同一域名时，
-  // 生成映射会覆盖其声明。两者同源、不构成越权，但属自相矛盾输入，debug 级透明化被覆盖的键
-  // （只输出键名，绝不输出解析器地址或 token）。
+  // 节点解析阶段会优先采用 proxy-server-nameserver-policy。两者同源、不构成越权，但属自相矛盾输入，
+  // debug 级透明化被覆盖的键（只输出键名，绝不输出解析器地址或 token）。
   if (logger && typeof logger.debug === 'function') {
-    const shadowed = Object.keys(resolverPolicy).filter(key => key in finalAssetPolicy);
+    const shadowed = Object.keys(resolverPolicy).filter(key => key in assetPolicy);
     if (shadowed.length > 0) {
       logger.debug(
         `🛡️ 资产闭包：订阅自身声明的 ${shadowed.length} 条策略被节点解析器映射覆盖（${shadowed.join(', ')}）`
@@ -419,7 +286,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     'fake-ip-range': '198.18.0.1/16',
     'fake-ip-filter-mode': 'blacklist',
     'fake-ip-filter': finalList,
-    'respect-rules': respectRules,
+    'respect-rules': true,
     'use-hosts': true,
     'use-system-hosts': false,
     ...ns,
