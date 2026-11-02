@@ -1192,7 +1192,11 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
     if (enableDashboard) {
       const effectiveTag = (url && url.startsWith('http')) ? new URL(url).hostname : '订阅';
       const effectiveSubInfo = rawResult?.subInfo || (fetchError?.subInfo || null);
-      const { nodes: synthNodes } = generateInfoNodes(effectiveSubInfo, '', { cutoffHours: expireCutoffHours, timeZone: displayTimeZone });
+      const { nodes: synthNodes } = generateInfoNodes(effectiveSubInfo, '', {
+        isStale: subStatus === 'stale',
+        cutoffHours: expireCutoffHours,
+        timeZone: displayTimeZone
+      });
       if (isTerminal) {
         // 到期/停用（含旧缓存命中）渲染 🛑 套餐看板；其余终态（401/流量耗尽等）保留 ❌ 占位
         sourceSkeleton.proxies.push(...buildTerminalNodes({

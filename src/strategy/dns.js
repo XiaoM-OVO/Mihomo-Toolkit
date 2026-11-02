@@ -79,6 +79,18 @@ function normalizeLoopbackHost(host) {
 const DEFAULT_SCRIPT_FILTERS = [...FAKEIP_FILTER_BASELINE];
 
 /**
+ * 收集订阅服务域名的 fake-ip-filter 条目（纯函数，仅域名/通配，不含 IP 字面量）
+ *
+ * 与路由直连规则共用同一份 Host 来源：构建期静态 subDomain 与交付期请求 Host 叠加。
+ *
+ * @param {string|string[]} subDomains
+ * @returns {string[]}
+ */
+function buildSubDomainFakeIpFilters(subDomains) {
+  return normalizeSubDomains(subDomains).filter(d => !isIPv4(d) && !isIPv6(d));
+}
+
+/**
  * 注入或覆写 Mihomo DNS 配置
  * @param {object} config 待修改的 Mihomo 配置对象
  * @param {object} userConfig 用户配置参数
@@ -136,7 +148,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     ? assetFakeIpFilters
     : [];
   const userFilters = Array.isArray(userConfig.fakeIpFilter) ? userConfig.fakeIpFilter : [];
-  const subDomainFilters = normalizeSubDomains(userConfig.subDomain).filter(d => !isIPv4(d) && !isIPv6(d));
+  const subDomainFilters = buildSubDomainFakeIpFilters(userConfig.subDomain);
   const finalList = dedupe([...DEFAULT_SCRIPT_FILTERS, ...nodeFilters, ...assetFilters, ...userFilters, ...subDomainFilters]);
 
   // 3. 破除死锁：引导 DNS 与节点解析器严格纯 IP 化 (INV-1 / INV-2 / INV-3)
@@ -316,5 +328,6 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
 
 module.exports = {
   applyDnsOverlay,
-  isLoopbackListenHost
+  isLoopbackListenHost,
+  buildSubDomainFakeIpFilters
 };

@@ -152,6 +152,7 @@ function runConfigPipeline({
 
   return {
     yamlStr,
+    banner,
     outputData,
     invariantViolations,
     explain: explainTrace ? explainTrace.records : null,

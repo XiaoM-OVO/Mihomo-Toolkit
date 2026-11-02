@@ -320,11 +320,10 @@ async function executeBuildPipeline({
   if (nodeLimitErr) throw nodeLimitErr;
 
   // ─── 🛑 Checkpoint 0: 仅拉取原始订阅快照（启动预热专用早退截断） ───
-  // 预热阶段本机尚不知道客户端会用哪个 Host 访问，subDomain 无法确定，
-  // 此时组装出的 Profile 缓存键与真实请求键必然不同，构建产物必然作废。
-  // 因此这里只保留 processSubscriptionSources 刚写入的原始订阅快照（L1，按订阅 URL 共享），
-  // 既不组装产物也不写 Profile 缓存（L2，按 Host 隔离）；客户端首次带 Host 请求时
-  // 会直接命中新鲜的 L1 内容，跳过网络拉取，只做一次按该 Host 的组装。
+  // 预热阶段尚无客户端真实请求，无需提前生成具体交付视图。
+  // 这里只保留 processSubscriptionSources 刚写入的原始订阅快照（L1，按订阅 URL 共享），
+  // 既不组装产物也不写 Profile 缓存（L2）；客户端首次请求时直接命中新鲜的 L1 内容，
+  // 跳过网络拉取，组装出与 Host 解耦的 L2 内容产物，后续跨 Host 请求均可共享复用。
   if (options.fetchOnly === true) {
     ioLogger.debug('🔥 预热模式：仅回源并写入 L1 原始订阅快照，跳过节点清洗与产物组装');
     return {
@@ -396,7 +395,7 @@ async function executeBuildPipeline({
 
   // ─── 🛑 Checkpoint 3: 交付完整配置 (config 模式跑完全程) ───
   const explainEnabled = options.explain === true;
-  const { yamlStr, outputData, userInfo, invariantViolations, explain } = runConfigPipeline({
+  const { yamlStr, banner, outputData, userInfo, invariantViolations, explain } = runConfigPipeline({
     sourceSkeleton,
     dnsAssets,
     cleanProxies,
@@ -409,6 +408,7 @@ async function executeBuildPipeline({
 
   const configResult = {
     yamlStr,
+    banner,
     meta,
     proxies: cleanProxies,
     outputData,
@@ -619,7 +619,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   if (enableCache && cacheKey) {
     if (isForce) {
       logger.info(options.fetchOnly === true
-        ? '🔥 启动预热：回源原始订阅快照并写入 L1 快照缓存（客户端首次请求时按 Host 组装产物）'
+        ? '🔥 启动预热：回源原始订阅快照并写入 L1 快照缓存（首个请求组装后各 Host 共享复用）'
         : '🔄 触发强制刷新，绕过 L2 缓存直接回源并构建');
       notifyCacheStatus('force', { cacheKey });
     } else {

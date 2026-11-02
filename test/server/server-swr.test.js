@@ -207,6 +207,109 @@ subscriptions:
     });
   });
 
+  describe('headers - X-Degraded / X-Stale-Subs 降级状态透出', () => {
+    it('降级构建与其后的缓存命中都透出降级状态头与看板提示', async () => {
+      let calls = 0;
+      globalThis.fetch = async () => {
+        calls += 1;
+        return calls === 1
+          ? new Response(SUB_YAML, { status: 200 })
+          : new Response('upstream down', { status: 500 });
+      };
+
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'srv-degraded-'));
+      const configFile = path.join(dir, 'config.yaml');
+      fs.writeFileSync(configFile, `
+logLevel: silent
+cacheTtl: 300
+refreshCooldown: 0
+enableWarmup: false
+enableNodeRename: false
+minorNodeThreshold: 1
+subscriptions:
+  - url: http://93.184.216.34/sub
+    tag: T1
+`, 'utf-8');
+
+      const { server, port } = await startTestServer({ configPath: configFile });
+
+      try {
+        const healthy = await request(port, '/sub');
+        assert.equal(healthy.status, 200);
+        assert.equal(healthy.headers['x-cache'], 'MISS');
+        assert.equal(healthy.headers['x-degraded'], undefined);
+
+        // 回源失败 → L1 旧快照兜底构建，响应必须透出降级状态
+        const degraded = await request(port, '/sub?refresh=1');
+        assert.equal(degraded.status, 200);
+        assert.equal(degraded.headers['x-cache'], 'BYPASS');
+        assert.equal(degraded.headers['x-degraded'], '1');
+        assert.equal(degraded.headers['x-stale-subs'], 'T1');
+        assert.match(degraded.body, /拉取异常/);
+
+        // 命中降级缓存时状态不能丢
+        const degradedHit = await request(port, '/sub');
+        assert.equal(degradedHit.headers['x-cache'], 'HIT');
+        assert.equal(degradedHit.headers['x-degraded'], '1');
+        assert.equal(degradedHit.headers['x-stale-subs'], 'T1');
+        assert.match(degradedHit.body, /拉取异常/);
+      } finally {
+        server.close();
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('隔离性 - ?url= 外部异常请求不得污染主服务 buildHealth 与后续 localOnly 请求', async () => {
+      globalThis.fetch = async (url) => {
+        const u = String(url);
+        if (u.includes('bad-upstream')) {
+          return new Response('upstream 500', { status: 500 });
+        }
+        return new Response(SUB_YAML, { status: 200 });
+      };
+
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'srv-isolation-'));
+      const configFile = path.join(dir, 'config.yaml');
+      fs.writeFileSync(configFile, `
+logLevel: silent
+cacheTtl: 300
+refreshCooldown: 0
+enableWarmup: false
+subscriptions:
+  - url: http://93.184.216.34/sub
+    tag: LOCAL_OK
+`, 'utf-8');
+
+      const { server, port } = await startTestServer({ configPath: configFile });
+
+      try {
+        // 1. 本地请求初始健康
+        const first = await request(port, '/sub');
+        assert.equal(first.status, 200);
+        assert.equal(first.headers['x-degraded'], undefined);
+
+        // 2. 外部参数化请求异常
+        await request(port, '/sub?url=http://93.184.216.35/bad-upstream');
+
+        // 3. 后续本地请求绝对不得被外部请求污染状态
+        const second = await request(port, '/sub');
+        assert.equal(second.status, 200);
+        assert.equal(second.headers['x-degraded'], undefined, '外部请求失败绝不能导致本地订阅透出 X-Degraded');
+        assert.equal(second.headers['x-failed-subs'], undefined);
+        assert.equal(second.headers['x-stale-subs'], undefined);
+        assert.ok(!second.body.includes('bad-upstream'));
+
+        // 4. /healthz 监控指标中 degraded 必须保持 false
+        const health = await request(port, '/healthz');
+        const healthJson = JSON.parse(health.body);
+        assert.equal(healthJson.subscriptions.degraded, false);
+      } finally {
+        server.close();
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('guarded-refresh - 后台刷新防重叠锁与任务合并', () => {
     it('refresh-lock - 预热与定时任务共享刷新锁：上一轮未完成时跳过并记录告警，锁正常释放', async () => {
       let fetchRunning = false;

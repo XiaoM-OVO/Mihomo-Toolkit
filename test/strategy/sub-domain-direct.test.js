@@ -193,4 +193,72 @@ describe('【Strategy】订阅服务域名与 IP 直连注入 (subDomain)', () =
       }
     });
   });
+
+  describe('5. 交付层 Host 叠加与内容缓存键解耦 (delivery-overlay)', () => {
+    function requestWithHost(port, host) {
+      return new Promise((resolve, reject) => {
+        const req = http.request({
+          hostname: '127.0.0.1',
+          port,
+          path: '/sub',
+          method: 'GET',
+          headers: { Host: host }
+        }, res => {
+          let body = '';
+          res.on('data', chunk => { body += chunk; });
+          res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
+        });
+        req.on('error', reject);
+        req.end();
+      });
+    }
+
+    it('server - 不同请求 Host 共享同一内容缓存键，仅交付叠加不同', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mtk-host-overlay-test-'));
+      const subFile = path.join(tmpDir, 'nodes.yaml');
+      fs.writeFileSync(
+        subFile,
+        'proxies:\n  - name: TestNode\n    type: vless\n    server: 198.51.100.1\n    port: 443\n    uuid: 4cff45d5-e95f-4f3c-9dc8-d2bcbd04ce8a\n',
+        'utf-8'
+      );
+      const configFile = path.join(tmpDir, 'config.yaml');
+      fs.writeFileSync(
+        configFile,
+        `logLevel: silent\ncacheTtl: 300\nenableWarmup: false\nsubscriptions:\n  - url: ${JSON.stringify(subFile)}\n    tag: LOCAL\n`,
+        'utf-8'
+      );
+
+      const server = startServer({
+        port: 0,
+        host: '127.0.0.1',
+        configPath: configFile,
+        silent: true
+      });
+      if (!server.listening) {
+        await new Promise((resolve, reject) => {
+          server.once('listening', resolve);
+          server.once('error', reject);
+        });
+      }
+      const port = server.address().port;
+
+      try {
+        const first = await requestWithHost(port, 'a.test-toolkit.com');
+        assert.equal(first.status, 200);
+        assert.equal(first.headers['x-cache'], 'MISS');
+        assert.ok(first.body.includes('DOMAIN,a.test-toolkit.com,DIRECT'));
+
+        // Host 不再进入缓存键：第二个 Host 直接复用同一内容产物
+        const second = await requestWithHost(port, 'b.test-toolkit.com');
+        assert.equal(second.status, 200);
+        assert.equal(second.headers['x-cache'], 'HIT');
+        assert.ok(second.body.includes('DOMAIN,b.test-toolkit.com,DIRECT'), '本次请求 Host 必须叠加到产物');
+        assert.ok(!second.body.includes('DOMAIN,a.test-toolkit.com,DIRECT'), '其它请求 Host 不得污染本次产物');
+        assert.equal(second.headers['x-degraded'], undefined);
+      } finally {
+        await new Promise(resolve => server.close(resolve));
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
 });

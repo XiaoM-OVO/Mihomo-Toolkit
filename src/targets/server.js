@@ -19,11 +19,35 @@ const { hardenRemoteConfig } = require('../core/security/remote-config');
 const { absolutizeMountPaths } = require('../config/mounts');
 const { expandIncludes } = require('../config/include');
 const { normalizeSubDomains, normalizeProxyRules, isTrustedProxy } = require('../infra/ip');
+const { renderDelivery } = require('../strategy/delivery-overlay');
+const { chineseConvert } = require('../core/chinese-sync');
 const pkg = require('../../package.json');
 
 // 远程配置审计去重：按「配置来源 URL + 同一组被忽略字段」隔离计数；
 // 加固与剥离行为始终执行，去重只影响日志级别。
 const remoteConfigAuditGate = createRepeatGate(100);
+
+/**
+ * 把订阅标识编码为安全的响应头值。
+ * 标识来自用户配置，可能含非 ASCII / 逗号 / 换行；统一 URI 编码后再拼接，
+ * 既避免非法请求头导致 http 抛错，也避免分隔符注入。
+ */
+function encodeDeliveryTags(tags) {
+  const encoded = Array.from(new Set(
+    (Array.isArray(tags) ? tags : [])
+      .filter(t => typeof t === 'string' && t.trim())
+      .map(t => encodeURIComponent(t.trim()))
+  ));
+  const result = [];
+  let length = 0;
+  for (const tag of encoded) {
+    const nextLen = length + (result.length > 0 ? 1 : 0) + tag.length;
+    if (nextLen > 256) break;
+    result.push(tag);
+    length = nextLen;
+  }
+  return result.join(',');
+}
 
 /** 回环地址判定（仅这些地址可视为「本机可信接入」） */
 function isLoopbackHost(host) {
@@ -361,7 +385,10 @@ function startServer(options = {}) {
     degraded: false,
     usableSubCount: 0,
     failedSubCount: 0,
-    staleSubCount: 0
+    staleSubCount: 0,
+    // 仅保留订阅标识用于交付期降级提示，绝不携带 URL
+    failedTags: [],
+    staleTags: []
   };
   const recordBuildHealth = (outcome = {}) => {
     buildHealth.lastBuildAt = Date.now();
@@ -369,8 +396,10 @@ function startServer(options = {}) {
     buildHealth.hasTerminalFailure = outcome.hasTerminalFailure === true;
     buildHealth.degraded = outcome.degraded === true;
     buildHealth.usableSubCount = Number.isFinite(outcome.usableSubCount) ? outcome.usableSubCount : 0;
-    buildHealth.failedSubCount = Array.isArray(outcome.failedTags) ? outcome.failedTags.length : 0;
-    buildHealth.staleSubCount = Array.isArray(outcome.staleTags) ? outcome.staleTags.length : 0;
+    buildHealth.failedTags = Array.isArray(outcome.failedTags) ? outcome.failedTags.filter(t => typeof t === 'string' && t.trim()) : [];
+    buildHealth.staleTags = Array.isArray(outcome.staleTags) ? outcome.staleTags.filter(t => typeof t === 'string' && t.trim()) : [];
+    buildHealth.failedSubCount = buildHealth.failedTags.length;
+    buildHealth.staleSubCount = buildHealth.staleTags.length;
     buildHealth.lastBuildOk = !buildHealth.hasFailedSub && !buildHealth.hasTerminalFailure;
   };
 
@@ -401,8 +430,8 @@ function startServer(options = {}) {
       await buildProfile(currentConfig, {
         production: true,
         forceRefresh: true,
-        // 预热只做「原始订阅快照」（L1）：此时尚无客户端 Host，subDomain 无法确定，
-        // 组装出的 Profile 缓存键与真实请求键必然不同，构建产物必然作废。
+        // 预热只做「原始订阅快照」（L1）：此时没有真实请求，无需为任何 Host 生成交付视图；
+        // 客户端首次请求命中新鲜 L1 后只做一次内容组装，产物与 Host 无关、可被后续请求复用。
         fetchOnly: isWarmup,
         logger: taskLogger,
         onBuildOutcome: (outcome) => {
@@ -414,9 +443,9 @@ function startServer(options = {}) {
 
       if (isWarmup) {
         if (hasFailedSub) {
-          taskLogger.warn('⚠️ 订阅快照预热完成，但部分订阅不可用；首次请求将按客户端 Host 组装产物');
+          taskLogger.warn('⚠️ 订阅快照预热完成，但部分订阅不可用；产物已与 Host 解耦');
         } else {
-          taskLogger.info('✨ 订阅快照预热完成（原始内容已缓存，首次请求将按客户端 Host 组装产物）');
+          taskLogger.info('✨ 订阅快照预热完成（原始内容已缓存，首个请求组装后各 Host 共享复用）');
         }
       } else {
         if (published && hasFailedSub) {
@@ -671,12 +700,10 @@ function startServer(options = {}) {
             serverLogger.warn('🛡️ 未鉴权请求的 Host 已忽略（非回环监听未配置 allowedHosts · 防缓存投毒）');
           }
         }
-        if (hostResolution.hosts.length > 0 || userConfig.subDomain) {
-          const existing = normalizeSubDomains(userConfig.subDomain);
-          // 统一归一化为数组：字符串写法与数组写法、不同 Host 顺序都收敛到同一缓存键
-          const combined = Array.from(new Set([...existing, ...hostResolution.hosts]));
-          userConfig = { ...userConfig, subDomain: combined };
-        }
+        // 请求 Host 不进入构建输入，也不进入 L2 缓存键：
+        // 缓存产物保持 Host 无关（cron / 预热 / 各客户端共享同一内容键），
+        // Host 派生的直连规则与 fake-ip-filter 在交付期由 delivery-overlay 叠加。
+        const requestHosts = hostResolution.hosts;
 
         const debugMode = reqUrl.searchParams.get('debug') === '1';
         const isRefreshParam = reqUrl.searchParams.get('refresh') === '1' || reqUrl.searchParams.get('force') === '1';
@@ -719,23 +746,67 @@ function startServer(options = {}) {
           throw err;
         }
         const buildLogger = serverLogger.child('Server');
+        const localOnly = !configUrl && subUrls.length === 0;
 
-        // 捕获引擎本次实际采用的缓存状态
+        // 捕获引擎本次实际采用的缓存状态与产物健康元数据
         let actualCacheStatus = 'bypass';
+        let servedMeta = { degraded: false, failedTags: [], staleTags: [] };
         const result = await buildProfile(userConfig, {
           production: true,
           debug: debugMode,
           mode: outputMode,
           forceRefresh,
           logger: buildLogger,
-          onCacheStatus: (status) => {
+          onCacheStatus: (status, payload) => {
             actualCacheStatus = status;
+            if (payload && typeof payload.degraded === 'boolean') {
+              servedMeta = {
+                degraded: payload.degraded,
+                failedTags: Array.isArray(payload.failedTags) ? payload.failedTags : [],
+                staleTags: Array.isArray(payload.staleTags) ? payload.staleTags : []
+              };
+            }
           },
           onBuildOutcome: (outcome) => {
-            recordBuildHealth(outcome);
+            if (localOnly) {
+              recordBuildHealth(outcome);
+            }
+            if (outcome) {
+              servedMeta = {
+                degraded: outcome.degraded === true,
+                failedTags: Array.isArray(outcome.failedTags) ? outcome.failedTags : [],
+                staleTags: Array.isArray(outcome.staleTags) ? outcome.staleTags : []
+              };
+            }
           }
         });
-        const { yamlStr, userInfo } = result;
+        const { userInfo } = result;
+        let yamlStr = result.yamlStr;
+
+        const effectiveFailedTags = Array.from(new Set([
+          ...servedMeta.failedTags,
+          ...(localOnly && !servedMeta.degraded ? buildHealth.failedTags : [])
+        ]));
+        const effectiveStaleTags = Array.from(new Set([
+          ...servedMeta.staleTags,
+          ...(localOnly && !servedMeta.degraded ? buildHealth.staleTags : [])
+        ]));
+
+        // 交付期叠加：请求 Host 的直连规则 / fake-ip-filter，以及「当前服务旧缓存」提示。
+        // 缓存产物保持 Host 无关，叠加只发生在克隆副本上。
+        if (outputMode === 'config') {
+          const noticeTags = (localOnly && buildHealth.degraded && !servedMeta.degraded)
+            ? [...buildHealth.failedTags, ...buildHealth.staleTags]
+            : [];
+          yamlStr = renderDelivery(result, {
+            hosts: requestHosts,
+            noticeTags,
+            enableDashboard: userConfig.enableDashboard !== false,
+            convertText: (userConfig.enableChineseConvert && chineseConvert.isAvailable())
+              ? (userConfig.chineseConvertMode === 's2t' ? chineseConvert.toTraditional : chineseConvert.toSimplified)
+              : null
+          });
+        }
 
         const isReport = outputMode === 'report';
         const headers = {
@@ -745,6 +816,16 @@ function startServer(options = {}) {
           'Server': `Mihomo-Toolkit/v${pkg.version}`,
           'X-Cache': mapCacheStatusToHeader(actualCacheStatus)
         };
+
+        if (servedMeta.degraded || (localOnly && buildHealth.degraded)) {
+          headers['X-Degraded'] = '1';
+        }
+        if (effectiveFailedTags.length > 0) {
+          headers['X-Failed-Subs'] = encodeDeliveryTags(effectiveFailedTags);
+        }
+        if (effectiveStaleTags.length > 0) {
+          headers['X-Stale-Subs'] = encodeDeliveryTags(effectiveStaleTags);
+        }
 
         if (userInfo && (userInfo.total > 0 || userInfo.expire > 0)) {
           headers['Subscription-Userinfo'] = `upload=${userInfo.upload}; download=${userInfo.download}; total=${userInfo.total}; expire=${userInfo.expire}`;

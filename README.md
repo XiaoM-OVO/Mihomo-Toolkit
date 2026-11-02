@@ -180,7 +180,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 | **监听 `127.0.0.1`（默认）** | 仅本机可访问，动态参数 `?url=` 与 `?config=` 入口开放可用 |
 | **监听非回环地址（如 `0.0.0.0`）且未配置 `authToken`** | **fail-closed**：自动拒绝 `?url=` / `?config=` 参数请求（返回 403）；无参数的 `/sub`（走本地 `config.yaml` 订阅清单）仍可访问 |
 | **监听非回环地址且配置了 `authToken`** | 参数入口放行，但所有 `/sub` 请求必须携带 `?token=xxx` 或 `Authorization: Bearer xxx` |
-| **请求 `Host` 与 `allowedHosts`** | 未配置 `allowedHosts` 且监听非回环地址时，未鉴权请求的 `Host` 不参与 `subDomain` 直连推导（fail-closed，防缓存投毒与缓存膨胀）；已通过 `authToken` 鉴权的请求仍按 `Host` 自动嗅探。配置后仅命中规则的 Host 生效，`*.example.com` 与 `+.example.com` 均为 DOMAIN-SUFFIX 语义（含裸域与任意级子域） |
+| **请求 `Host` 与 `allowedHosts`** | 未配置 `allowedHosts` 且监听非回环地址时，未鉴权请求的 `Host` 不参与 `subDomain` 直连推导（fail-closed，防规则注入）；已通过 `authToken` 鉴权的请求仍按 `Host` 自动嗅探。配置后仅命中规则的 Host 生效，`*.example.com` 与 `+.example.com` 均为 DOMAIN-SUFFIX 语义（含裸域与任意级子域）。`Host` 只影响本次交付视图，不进入构建与缓存键 |
 | **来源 IP 与 `trustedProxies`** | 仅当直连地址命中 `trustedProxies`（精确 IP / CIDR）时才采信 `X-Forwarded-For`，并从右向左跳过受信代理取真实客户端；未配置时一律使用直连地址，伪造转发头不会污染日志与限流判断 |
 | **`?config=` 传入的远程配置** | 视为**不可信输入**：仅允许引用 http(s) 订阅源，且 DNS 控制面与本地资源类字段会被强制剥夺 |
 
@@ -193,7 +193,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 | 部署场景 | 推荐组合 |
 | :--- | :--- |
 | 反代后面 + 已配置 `authToken` | 不必配置 `allowedHosts`：已鉴权请求仍按 `Host` 自动嗅探，保留订阅域名直连规则自适应 |
-| 公网直接暴露 | `authToken` + `allowedHosts` 双保险：凭据控访问，白名单把 `Host` 收敛到已知域名，彻底消除缓存键放大 |
+| 公网直接暴露 | `authToken` + `allowedHosts` 双保险：凭据控访问，白名单把 `Host` 收敛到已知域名，杜绝任意 Host 注入直连规则 |
 | 客户端只会填 URL（Clash Verge Rev / FlClash） | 只能 `?token=xxx`（两个 GUI 均不支持自定义 `Authorization` 头），并在反代日志格式中屏蔽查询串 |
 | curl / 脚本 / sing-box 等可设请求头 | `Authorization: Bearer xxx`，避免 token 进入 URL、浏览器历史与反代日志 |
 
@@ -220,7 +220,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
    - 单调递增 Generation 代际检查，防止较早启动的慢任务覆盖新代际的成功缓存。
    - 后台刷新未成功发布（无可用订阅）时采用指数退避（10s ~ 60s）限制重试频率，成功发布后立即清除。
 4. **后台自动预热与定时刷新**：
-   - `enableWarmup: true`：服务启动后异步**只拉取并缓存原始订阅内容**（L1 快照，按订阅 URL 共享）。此时尚无客户端 Host，`subDomain` 无法确定，组装出的产物必然作废，因此预热不组装、不发布产物；客户端首次请求会命中新鲜 L1，只做一次按该 Host 的组装。
+   - `enableWarmup: true`：服务启动后异步**只拉取并缓存原始订阅内容**（L1 快照，按订阅 URL 共享）。预热阶段没有真实请求，不生成交付视图，也不发布产物；客户端首次请求命中新鲜 L1 后只做一次内容组装（产物与 Host 无关，可被后续请求复用）。
    - `autoRefreshInterval: 3600`：每隔 1 小时自动触发后台定时刷新（带防重叠锁，完整构建并按当前配置发布）。
    - **L1 原始订阅快照**的新鲜期复用 `cacheTtl`（默认 300s）；`?refresh=1` 与 `noCache` 会同时绕过 L1。
 5. **强制穿透与冷却防护**：
@@ -228,6 +228,17 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
    - `refreshCooldown: 15`：默认 15 秒冷却时间，防范恶意频繁回源击穿源站。
 
 > `/healthz` 的 `subscriptions` 字段会聚合输出 `degraded`、`usableSubCount`、`failedSubCount`、`staleSubCount` 等状态，便于监控部分订阅失效。
+
+**订阅响应的状态头**：
+
+| 响应头 | 语义 |
+| :--- | :--- |
+| `X-Cache` | `HIT` / `MISS` / `STALE` / `BYPASS`，本次产物的缓存状态 |
+| `X-Degraded` | `1` 表示本次产物存在失败/容灾订阅，但仍有可用节点；纯健康产物不输出 |
+| `X-Failed-Subs` | 最近一次回源异常的订阅标签（URL 编码、逗号分隔），绝不包含订阅 URL |
+| `X-Stale-Subs` | 本次使用旧缓存兜底（stale）的订阅标签（URL 编码、逗号分隔） |
+
+> 状态头随每次请求计算：即使命中一份早先构建的健康缓存，后端当前回源异常时也会透出 `X-Degraded: 1`。客户端或监控可用它判断「拉取一直 200，但订阅其实已失效」。
 
 *注：该缓存仅保存在进程内存中，服务重启不持久化。*
 </details>
@@ -373,7 +384,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 | **Layer 7: Data** | `src/data/` | 只读运行基础基线（字段注册表 SSOT、不可变安全基线、清洗规则词库） |
 | **Layer 8: Infra** | `src/infra/` | 基础设施无状态基元（IP/CIDR 校验、FQDN 判定、订阅元信息流量换算纯函数） |
 
-> 📖 **完整文件树与拓扑推演**：关于全仓 98 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
+> 📖 **完整文件树与拓扑推演**：关于全仓 99 个源文件的详细物理映射、调用拓扑、算法机理及已知技术债务，请详阅 [架构设计文档](ARCHITECTURE.md)。
 
 ---
 

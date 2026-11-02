@@ -50,12 +50,26 @@ function calcResetDays({ resetDay } = {}) {
  * 根据 subscription-userinfo 头合成流量状态与到期提示节点
  */
 function generateInfoNodes(subInfo, tag, options = {}) {
-  if (!subInfo) return { nodes: [], expireDays: -1 };
-  const { upload, download, total, expire } = parseSubscriptionInfo(subInfo);
   const isStale = !!options.isStale;
+  const tagPrefix = tag ? `[${tag}] ` : '';
+  // 无 subscription-userinfo 的订阅也必须能透出降级状态：
+  // 「拉取异常」是本次构建的运行态，不依赖订阅是否携带流量/到期元数据。
+  if (!subInfo) {
+    if (!isStale) return { nodes: [], expireDays: -1 };
+    return {
+      nodes: [markTrustedSynthetic({
+        name: `${ICONS.DEGRADED} ${tagPrefix}拉取异常 · 已启用${TERMS.FALLBACK_STALE}`,
+        type: 'direct',
+        server: '1.0.0.1',
+        port: 80,
+        isSyntheticInfo: true
+      })],
+      expireDays: -1
+    };
+  }
+  const { upload, download, total, expire } = parseSubscriptionInfo(subInfo);
   const cutoffHours = (typeof options.cutoffHours === 'number' && options.cutoffHours > 0) ? options.cutoffHours : 0;
   const timeZone = options.timeZone || '';
-  const tagPrefix = tag ? `[${tag}] ` : '';
 
   const nodes = [];
   const { known, expired, cutoffExpired, expireDays } = evaluateExpiry(expire, cutoffHours);

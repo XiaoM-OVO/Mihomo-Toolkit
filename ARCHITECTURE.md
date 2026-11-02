@@ -132,6 +132,7 @@ src/
 │   ├── prune.js                  # 有向无环图 (DAG) 空组淘汰、悬空目标剪枝
 │   ├── explain.js                # 激活摘要收集器：routing / topology / prune 决策的只读结构化通道
 │   ├── dashboard.js              # 看板状态合成 (流量/到期/信息节点网格化)
+│   ├── delivery-overlay.js       # 交付层叠加：请求 Host 直连规则 / fake-ip-filter / 降级提示
 │   ├── registries.js             # 服务注册表管理模块 (委托 catalog)
 │   ├── dns.js                    # Fake-IP / DoH 防泄漏 DNS 方案覆写注入
 │   └── kernel.js                 # TUN 网卡、Sniffer 嗅探器及内核性能调优
@@ -321,14 +322,19 @@ src/
 **请求命中顺序（两层缓存）**：
 
 ```text
-请求 → L2 产物快照（键含 Host / subDomain）
-       ├─ Fresh  → 直接返回
-       ├─ Stale  → 返回旧产物 + 后台 revalidate
+请求 → L2 产物快照（键为内容输入，不含请求 Host）
+       ├─ Fresh  → 叠加交付视图 → 返回
+       ├─ Stale  → 叠加交付视图返回旧产物 + 后台 revalidate
        └─ Miss
-            → L1 原始订阅快照（键为订阅 URL，跨 Host 共享）
-                 ├─ 新鲜期 → 按本次 Host 组装 → 写 L2 → 返回
-                 └─ 过期   → 回源拉取 → 写 L1 → 清洗/组装 → 写 L2 → 返回
+            → L1 原始订阅快照（键为订阅 URL，跨请求共享）
+                 ├─ 新鲜期 → 组装内容 → 写 L2 → 叠加交付视图 → 返回
+                 └─ 过期   → 回源拉取 → 写 L1 → 清洗/组装 → 写 L2 → 叠加交付视图 → 返回
 ```
+
+**内容层 / 交付层分离**：
+- **内容层**（构建 + L2 缓存）：订阅内容、节点清洗、策略组、DNS 拓扑等与请求无关的输入，按内容配置生成缓存键；同一份内容对所有 Host 只构建一次。
+- **交付层**（`src/strategy/delivery-overlay.js`，每请求执行）：把请求 `Host` 派生的订阅服务域名直连规则 / fake-ip-filter 叠加到内容产物副本上；命中旧缓存但后端当前回源异常时，再叠加降级提示节点。叠加只修改克隆副本，绝不写回缓存。
+- **收益**：定时刷新（无请求 Host）与客户端请求收敛到同一个 L2 键，不再是两套缓存；客户端命中旧条目时也能通过响应头与交付视图看到当前降级状态。
 
 **SWR 状态流转**：
 
@@ -344,9 +350,10 @@ Fresh ──(age > cacheTtl)──> Stale ──(后台重建成功)──> Fres
   - **Miss**：无缓存，同步执行构建。
 - **两层缓存（原始快照与产物快照）**：
   - **L1 原始订阅快照**（`io/fetcher.js` 的 `subStaleCache`）：键为订阅 URL，保存最近一次成功拉取的原始内容，与客户端 Host / `subDomain` 无关，因此在任意缓存键之间共享。新鲜期复用 `cacheTtl`，`forceRefresh` 与 `noCache` 均绕过；命中后不回写时间戳，避免新鲜期被无限续期。
-  - **L2 产物快照**（`io/cache.js` 的 `profileCache`）：键为 `getCacheKey(...)`（含 `subDomain` 等全部产物相关输入），保存组装后的完整配置。
-  - **启动预热**只跑 `fetchOnly`：仅拉取并写入 L1，跳过节点清洗、策略组组装与 L2 发布（预热时客户端的 Host 尚不可知，此时构建的 L2 键与真实请求键必然不同）。
-  - 请求侧先查 L2；L2 Miss 时若 L1 仍在新鲜期则免回源，直接按本次 Host 组装并写入 L2。
+  - **L2 产物快照**（`io/cache.js` 的 `profileCache`）：键为 `getCacheKey(...)`（只含内容输入，**不含**请求 Host / `subDomain`），保存组装后的、Host 无关的完整配置。
+  - **启动预热**只跑 `fetchOnly`：仅拉取并写入 L1，跳过节点清洗、策略组组装与 L2 发布（预热阶段没有真实请求，不生成交付视图）。
+  - 请求侧先查 L2；L2 Miss 时若 L1 仍在新鲜期则免回源，直接组装内容并写入 L2；最后统一在渲染期叠加本次请求的交付视图。
+  - **交付视图不缓存**：Host 直连规则 / fake-ip-filter / 降级提示都在 `renderDelivery` 中按请求计算，因此同一份 L2 产物可服务任意 Host。
 - **多订阅健康判定与发布门控**：
   - 仅当 `usableSubCount > 0`（至少一条订阅 ok/stale）时写入 Profile 缓存；
   - 仅当「可用订阅为 0 且所有已评估订阅均终态失效（401 / 到期 / 流量耗尽）」时淘汰旧 Profile 快照，单条订阅失效不再拖垮多订阅缓存；
@@ -360,6 +367,7 @@ Fresh ──(age > cacheTtl)──> Stale ──(后台重建成功)──> Fres
   并发发起的相同缓存键请求会共享同一个构建 Promise，避免瞬时并发导致重复拉取上游。
 - **监控可见性**：
   `/healthz` 的 `subscriptions` 聚合输出 `degraded` / `usableSubCount` / `failedSubCount` / `staleSubCount`，不暴露逐条订阅 URL 与上游错误细节。
+  订阅响应头额外透出 `X-Degraded`（`1` 表示仍有可用节点但存在失败订阅）、`X-Failed-Subs` / `X-Stale-Subs`（URL 编码的订阅标签，逗号分隔）；这些状态按请求实时计算，即使命中的是早先构建的健康缓存也能反映当前回源状况。
 
 ---
 

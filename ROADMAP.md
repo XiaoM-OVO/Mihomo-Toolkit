@@ -103,8 +103,8 @@ M3.B 的设计不变量、两表 DSL 契约、迁移对照与验收标准（10.1
    - 现状：日志已对 `token` 脱敏，但 `/?token=***` 仍可能落入反代访问日志、浏览器历史、Referer 与外部监控系统。
    - 候选：默认仅监听 `127.0.0.1`，生产统一置于反代之后并走 HTTPS；鉴权优先使用 `Authorization` 头；补充限流、令牌轮换与 IP 白名单 / 防火墙。
 2. **Host 注入与缓存投毒防护（P1，✅ 已落地）**
-   - 现状：按 Host 组装的产物参与 L2 缓存键与产物组装。
-   - 已落地：新增 `allowedHosts` 白名单（精确 FQDN + `*.` / `+.` 后缀通配）；未配置且监听非回环地址时，未鉴权请求的 Host 一律不参与 `subDomain` 推导（fail-closed），已通过 `authToken` 鉴权的请求仍按 Host 自动嗅探；请求侧 Host 排序后合并，保证同一 Host 集合收敛到同一缓存键。见 `src/targets/server.js` 的 `resolveRequestHosts`。
+   - 已落地：`allowedHosts` 白名单（精确 FQDN + `*.` / `+.` 后缀通配）；未配置且监听非回环地址时，未鉴权请求的 Host 一律不参与 `subDomain` 推导（fail-closed），已通过 `authToken` 鉴权的请求仍按 Host 自动嗅探。见 `src/targets/server.js` 的 `resolveRequestHosts`。
+   - 已完成内容 / 交付分层：Host 只影响本次交付视图（直连规则 / fake-ip-filter / 降级提示），不进入构建，也不进入 L2 缓存键。定时刷新与客户端请求因此收敛到同一份内容缓存，旧的「cron 键 ≠ 客户端键」分裂问题消失。见 `src/strategy/delivery-overlay.js`。
 3. **失败状态措辞收敛（P2）**
    - 目标：把 `disabled / failed / backoff / stale` 收敛为单一状态机口径，看板、汇总树与 `/healthz` 共用同一枚举。
    - 现状：终态订阅已进入 6h→24h 长冷却；仍需把「无可用缓存时是否返回部分产物」明确成显式策略，而不是仅靠降级标记推断。

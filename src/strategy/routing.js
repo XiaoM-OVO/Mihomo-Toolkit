@@ -184,6 +184,31 @@ function createContext(userConfig, registries, options) {
 }
 
 /**
+ * 生成订阅服务域名/IP 的直连规则段（纯函数）
+ *
+ * 同一份逻辑同时供「构建期静态 subDomain」与「交付期请求 Host 叠加」使用，
+ * 避免两处规则格式漂移。
+ *
+ * @param {string|string[]} subDomains 已归一化或待归一化的域名/IP 列表
+ * @returns {string[]}
+ */
+function buildSubDomainDirectRules(subDomains) {
+  const rules = [];
+  for (const item of normalizeSubDomains(subDomains)) {
+    if (isIPv4(item)) {
+      rules.push(`IP-CIDR,${item}/32,DIRECT,no-resolve`);
+    } else if (isIPv6(item)) {
+      rules.push(`IP-CIDR6,${item}/128,DIRECT,no-resolve`);
+    } else if (item.startsWith('+.') || item.startsWith('*.')) {
+      rules.push(`DOMAIN-SUFFIX,${item.replace(/^(\+\.|\*\.)/, '')},DIRECT`);
+    } else {
+      rules.push(`DOMAIN,${item},DIRECT`);
+    }
+  }
+  return rules;
+}
+
+/**
  * 展开订阅直连段（局域网 + 订阅域名 + 可选 IPv6 / QUIC）
  * @param {object} ctx 上下文
  */
@@ -197,17 +222,7 @@ function expandSubscription(ctx) {
       'IP-CIDR6,fe80::/10,DIRECT,no-resolve'
     );
   }
-  for (const item of normalizeSubDomains(config.subDomain)) {
-    if (isIPv4(item)) {
-      rules.push(`IP-CIDR,${item}/32,DIRECT,no-resolve`);
-    } else if (isIPv6(item)) {
-      rules.push(`IP-CIDR6,${item}/128,DIRECT,no-resolve`);
-    } else if (item.startsWith('+.') || item.startsWith('*.')) {
-      rules.push(`DOMAIN-SUFFIX,${item.replace(/^(\+\.|\*\.)/, '')},DIRECT`);
-    } else {
-      rules.push(`DOMAIN,${item},DIRECT`);
-    }
-  }
+  rules.push(...buildSubDomainDirectRules(config.subDomain));
   // QUIC 拦截由独立的 `quic` 预设展开（顺序见 `DEFAULT_ROUTING`），
   // 这样 `customRules` 仍排在它前面，与旧实现的优先级一致。
 }
@@ -794,6 +809,7 @@ module.exports = {
   retarget,
   collectTargets,
   ruleTargetOf,
+  buildSubDomainDirectRules,
   DEFAULT_ROUTING,
   PRESET_DEFINITIONS
 };
