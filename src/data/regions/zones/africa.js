@@ -1,0 +1,48 @@
+/**
+ * -----------------------------------------------------------------------------
+ * Data: 非洲大区 (Africa)
+ * -----------------------------------------------------------------------------
+ */
+
+'use strict';
+
+module.exports = {
+  za: {
+    id: "za",
+    code: "ZA",
+    name: "南非",
+    groupName: "南非节点",
+    continent: "africa",
+    subGroup: "af",
+    foldGroup: "af",
+    icon: "🇿🇦",
+    iconFile: "ZA.png",
+    city: "约翰内斯堡",
+    reg: /南非|(?<![a-zA-Z])ZA(?![a-zA-Z])|South Africa/i
+  },
+  ng: {
+    id: "ng",
+    code: "NG",
+    name: "尼日利亚",
+    groupName: "尼日利亚节点",
+    continent: "africa",
+    subGroup: "af",
+    foldGroup: "af",
+    icon: "🇳🇬",
+    iconFile: "NG.png",
+    reg: /尼日利亚|(?<![a-zA-Z])NG(?![a-zA-Z])|Nigeria/i
+  },
+  eg: {
+    id: "eg",
+    code: "EG",
+    name: "埃及",
+    groupName: "埃及节点",
+    continent: "africa",
+    subGroup: "af",
+    foldGroup: "af",
+    icon: "🇪🇬",
+    iconFile: "EG.png",
+    city: "开罗",
+    reg: /埃及|(?<![a-zA-Z])EG(?![a-zA-Z])|Egypt/i
+  }
+};

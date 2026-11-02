@@ -206,6 +206,18 @@ src/
 │   │       ├── game.js           # 游戏服务
 │   │       ├── dev.js            # 开发者与学术
 │   │       └── system.js         # 系统基础服务
+│   ├── regions/                  # 全球大区、大洲与次大区识别字典 (按地理大区拆分)
+│   │   ├── index.js              # 地区与大洲静态基线汇总导出
+│   │   ├── continents.js         # 大洲与次大区折叠桶定义
+│   │   └── zones/                # 八大地理大区国家定义字典
+│   │       ├── east-asia.js      # 大中华区与东亚核心区
+│   │       ├── southeast-asia.js # 东南亚大区
+│   │       ├── south-asia.js     # 南亚大区
+│   │       ├── americas.js       # 北美与拉美大区
+│   │       ├── europe.js         # 欧洲大区
+│   │       ├── middle-east.js    # 中东大区
+│   │       ├── africa.js         # 非洲大区
+│   │       └── oceania.js        # 大洋洲大区
 │   ├── field-registry.js         # 字段注册表 SSOT (定义/默认值/信任级别)
 │   ├── security-baselines.js     # 安全基线 (受保护域名/豁免组/Fake-IP 保底)
 │   ├── cleaner-rules.js          # 节点清洗规则库 (地区/线路/阻断正则/权重)
