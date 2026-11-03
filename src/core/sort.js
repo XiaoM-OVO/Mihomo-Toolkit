@@ -66,7 +66,9 @@ function compareNodes(a, b, options = {}) {
     return isSynthA ? -1 : 1;
   }
   if (isSynthA && isSynthB) {
-    return (a.rawName || a.proxy?.name || '').localeCompare(b.rawName || b.proxy?.name || '', 'zh-CN');
+    // 看板节点内部顺序由 dashboard 梯队契约在上游排定；
+    // 这里保持稳定排序，避免字母序覆盖「全局 → 到期/流量成对 → 纯流量 → 状态」的布局。
+    return 0;
   }
 
   const regionOrder = getRegionOrderMap();

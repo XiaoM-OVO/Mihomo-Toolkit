@@ -796,19 +796,14 @@ async function processSubscriptionSources({ subscriptions, url, userConfig = {},
           rawName: p.name || ''
         }));
 
-        const { nodes: synthNodes, expireDays } = enableDashboard
-          ? generateInfoNodes(rawResult.subInfo, effectiveTag, { isStale: !!rawResult.stale, cutoffHours: expireCutoffHours, timeZone: displayTimeZone })
-          : { nodes: [], expireDays: -1 };
-
-        if (enableDashboard && resetText && (expireDays === -1 || expireDays > 30)) {
-          synthNodes.push(markTrustedSynthetic({
-            name: `🔄 [${effectiveTag}] ${resetText}`,
-            type: 'direct',
-            server: '1.0.0.1',
-            port: 80,
-            isSyntheticInfo: true
-          }));
-        }
+        const { nodes: synthNodes } = enableDashboard
+          ? generateInfoNodes(rawResult.subInfo, effectiveTag, {
+              isStale: !!rawResult.stale,
+              cutoffHours: expireCutoffHours,
+              timeZone: displayTimeZone,
+              resetText
+            })
+          : { nodes: [] };
 
         if (synthNodes.length > 0) {
           synthNodes.forEach(n => logger.debug(`📊 [合成看板] 「${n.name}」`));

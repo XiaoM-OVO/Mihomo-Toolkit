@@ -18,9 +18,8 @@ const yaml = require('yaml');
 const { GROUP_KEYS, groupName } = require('../data/catalog/identity');
 const { buildSubDomainDirectRules } = require('./routing');
 const { buildSubDomainFakeIpFilters } = require('./dns');
-const { markTrustedSynthetic } = require('../core/node-trust');
+const { createFallbackStaleNode } = require('./dashboard');
 const { normalizeSubDomains } = require('../infra/ip');
-const { ICONS } = require('../core/log-copy');
 
 const LAN_IP_RULE = 'RULE-SET,lan-ip,DIRECT,no-resolve';
 /** expandSubscription 在 LAN 规则后紧跟的可选 IPv6 直连段（叠加点必须越过它们） */
@@ -135,17 +134,12 @@ function renderDelivery(result, options = {}) {
       const existingNames = new Set(data.proxies.map(p => p && p.name).filter(Boolean));
       const newNames = [];
       for (const tag of noticeTags) {
-        const rawName = `${ICONS.DEGRADED} [${tag}] 最近一次回源异常 · 当前为旧缓存`;
-        const name = convertText ? convertText(rawName) : rawName;
+        const baseNode = createFallbackStaleNode(tag);
+        const name = convertText ? convertText(baseNode.name) : baseNode.name;
         if (existingNames.has(name)) continue;
         existingNames.add(name);
-        data.proxies.push(markTrustedSynthetic({
-          name,
-          type: 'direct',
-          server: '1.0.0.1',
-          port: 80,
-          isSyntheticInfo: true
-        }));
+        baseNode.name = name;
+        data.proxies.push(baseNode);
         newNames.push(name);
       }
       if (newNames.length > 0) {
