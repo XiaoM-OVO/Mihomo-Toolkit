@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     ports:
       # 对外暴露端口：若只通过本机 Nginx/1Panel 反代，可改回 "127.0.0.1:3000:3000"
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
