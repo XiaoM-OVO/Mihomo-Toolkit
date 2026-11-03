@@ -619,19 +619,30 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   if (enableCache && cacheKey) {
     if (isForce) {
       logger.info(options.fetchOnly === true
-        ? '🔥 启动预热：回源原始订阅快照并写入 L1 快照缓存（首个请求组装后各 Host 共享复用）'
-        : '🔄 触发强制刷新，绕过 L2 缓存直接回源并构建');
+        ? '🔥 启动预热：正在后台预先拉取订阅源并写入快照缓存'
+        : '🔄 触发强制刷新：绕过缓存直接回源拉取并重新构建');
       notifyCacheStatus('force', { cacheKey });
     } else {
       const durations = normalizeCacheDurations(userConfig);
       const cacheEntry = profileCache.getWithStatus(cacheKey, durations);
 
+      const formatDegradedSummary = (entry) => {
+        const details = [];
+        if (Array.isArray(entry.staleTags) && entry.staleTags.length > 0) {
+          details.push(`兜底 ${entry.staleTags.length} 个: [${entry.staleTags.join(', ')}]`);
+        }
+        if (Array.isArray(entry.failedTags) && entry.failedTags.length > 0) {
+          details.push(`失败 ${entry.failedTags.length} 个: [${entry.failedTags.join(', ')}]`);
+        }
+        return details.join(' · ') || '部分订阅异常';
+      };
+
       // Case 1: Fresh 绝对新鲜（优先返回，即使后台有强制刷新在跑也不阻塞，直接秒回）
       if (cacheEntry.status === 'fresh') {
         if (cacheEntry.degraded) {
-          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级缓存（L2 组装产物 · ${cacheEntry.remainingSec}s 后转入后台刷新，失败订阅 ${cacheEntry.failedTags.length} 个），直接响应缓存数据`);
+          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级缓存（${formatDegradedSummary(cacheEntry)} · ${cacheEntry.remainingSec}s 后后台刷新），直接响应缓存数据`);
         } else {
-          logger.info(`${ICONS.CACHE_HIT} ${TERMS.CACHE_HIT}（L2 组装产物 · ${cacheEntry.remainingSec}s 后过期），直接响应缓存数据`);
+          logger.info(`${ICONS.CACHE_HIT} ${TERMS.CACHE_HIT}（${cacheEntry.remainingSec}s 后过期），直接响应缓存数据`);
         }
         notifyCacheStatus('fresh', {
           remainingSec: cacheEntry.remainingSec,
@@ -647,9 +658,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       // Case 2: Stale 陈旧可用（优先返回旧快照，不阻塞客户端，后台静默启动 Revalidate）
       if (cacheEntry.status === 'stale') {
         if (cacheEntry.degraded) {
-          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级陈旧缓存（L2 组装产物 · SWR · ${cacheEntry.remainingSec}s 后彻底失效，失败订阅 ${cacheEntry.failedTags.length} 个），已启动后台刷新`);
+          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级陈旧缓存（${formatDegradedSummary(cacheEntry)} · ${cacheEntry.remainingSec}s 后彻底失效），优先快速返回旧数据并已启动后台刷新`);
         } else {
-          logger.info(`${ICONS.CACHE_HIT} 命中陈旧缓存（L2 组装产物 · SWR · ${cacheEntry.remainingSec}s 后彻底失效），优先快速返回旧数据`);
+          logger.info(`${ICONS.CACHE_HIT} 命中陈旧缓存（${cacheEntry.remainingSec}s 后彻底失效），优先快速返回旧数据并已启动后台刷新`);
         }
         notifyCacheStatus('stale', {
           remainingSec: cacheEntry.remainingSec,

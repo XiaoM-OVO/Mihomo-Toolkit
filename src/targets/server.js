@@ -319,7 +319,7 @@ function startServer(options = {}) {
 
           localConfig = parsed;
           lastConfigMtime = statNow.mtimeMs;
-          serverLogger.info(`🔄 配置文件变动，已平滑重载（mtime: ${statNow.mtimeMs}）`);
+          serverLogger.info('🔄 配置文件变动，已平滑重载');
           return localConfig;
         } catch (err) {
           lastErr = err;
@@ -443,9 +443,9 @@ function startServer(options = {}) {
 
       if (isWarmup) {
         if (hasFailedSub) {
-          taskLogger.warn('⚠️ 订阅快照预热完成，但部分订阅不可用；产物已与 Host 解耦');
+          taskLogger.warn('⚠️ 订阅快照预热完成，但部分订阅不可用');
         } else {
-          taskLogger.info('✨ 订阅快照预热完成（原始内容已缓存，首个请求组装后各 Host 共享复用）');
+          taskLogger.info('✨ 订阅快照预热完成（已就绪，客户端首次连接可极速响应）');
         }
       } else {
         if (published && hasFailedSub) {
@@ -573,7 +573,7 @@ function startServer(options = {}) {
           const providedToken = urlToken || bearerToken;
           if (!safeTokenEqual(providedToken, authToken)) {
             const reason = providedToken ? '凭据不匹配' : '未提供凭据';
-            serverLogger.warn(`🛑 拒绝未授权访问：${req.method} ${safeUrl}（来自 ${clientIp} · ${reason}）`);
+            serverLogger.warn(`🛑 拒绝未授权访问 ${reqId}：${req.method} ${safeUrl}（来自 ${clientIp} · ${reason}）`);
             res.writeHead(401, { 'Content-Type': 'text/plain' });
             res.end('Unauthorized: Invalid or missing token. Provide ?token=xxx or Authorization: Bearer xxx');
             return;
