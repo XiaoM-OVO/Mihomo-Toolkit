@@ -235,8 +235,8 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
       [].concat(...Object.values(assetResolverPolicies)).map(String)
     ).size;
     logger.info(
-      `🛡️ 资产闭包：注入 proxy-server-nameserver-policy 映射 ${policyKeys.length} 条${shape} → ` +
-      `${referencedResolvers} 项加密解析器，仅解析对应订阅的节点域名`
+      `🛡️ 资产闭包：注入节点 DNS 映射 ${policyKeys.length} 条${shape}，` +
+      `指向 ${referencedResolvers} 项加密解析器（proxy-server-nameserver-policy）`
     );
   } else if (proxyNsSource === 'asset' && safeProxyServerNs.length > 0 && logger && typeof logger.info === 'function') {
     logger.info(`🛡️ 资产闭包：注入节点解析器 ${safeProxyServerNs.length} 项（仅用于节点域名解析）`);
