@@ -618,9 +618,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
   // ─── 缓存三态判定与分流 (Fresh / Stale 优先裁决) ──────────────────────────
   if (enableCache && cacheKey) {
     if (isForce) {
-      logger.info(options.fetchOnly === true
-        ? '🔥 启动预热：正在后台预先拉取订阅源并写入快照缓存'
-        : '🔄 触发强制刷新：绕过缓存直接回源拉取并重新构建');
+      logger.debug(options.fetchOnly === true
+        ? '🔥 启动预热：后台拉取订阅快照'
+        : '🔄 强制刷新：绕过缓存直接回源并重新构建');
       notifyCacheStatus('force', { cacheKey });
     } else {
       const durations = normalizeCacheDurations(userConfig);
@@ -640,9 +640,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       // Case 1: Fresh 绝对新鲜（优先返回，即使后台有强制刷新在跑也不阻塞，直接秒回）
       if (cacheEntry.status === 'fresh') {
         if (cacheEntry.degraded) {
-          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级缓存（${formatDegradedSummary(cacheEntry)} · ${cacheEntry.remainingSec}s 后后台刷新），直接响应缓存数据`);
+          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级缓存（${formatDegradedSummary(cacheEntry)} · 剩余 ${cacheEntry.remainingSec}s）`);
         } else {
-          logger.info(`${ICONS.CACHE_HIT} ${TERMS.CACHE_HIT}（${cacheEntry.remainingSec}s 后过期），直接响应缓存数据`);
+          logger.info(`${ICONS.CACHE_HIT} ${TERMS.CACHE_HIT}（剩余 ${cacheEntry.remainingSec}s）`);
         }
         notifyCacheStatus('fresh', {
           remainingSec: cacheEntry.remainingSec,
@@ -658,9 +658,9 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
       // Case 2: Stale 陈旧可用（优先返回旧快照，不阻塞客户端，后台静默启动 Revalidate）
       if (cacheEntry.status === 'stale') {
         if (cacheEntry.degraded) {
-          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级陈旧缓存（${formatDegradedSummary(cacheEntry)} · ${cacheEntry.remainingSec}s 后彻底失效），优先快速返回旧数据并已启动后台刷新`);
+          logger.warn(`${ICONS.FALLBACK_STALE} 命中降级陈旧缓存（${formatDegradedSummary(cacheEntry)} · ${cacheEntry.remainingSec}s 后失效 · 后台异步刷新中）`);
         } else {
-          logger.info(`${ICONS.CACHE_HIT} 命中陈旧缓存（${cacheEntry.remainingSec}s 后彻底失效），优先快速返回旧数据并已启动后台刷新`);
+          logger.info(`${ICONS.CACHE_HIT} 命中陈旧缓存（${cacheEntry.remainingSec}s 后失效 · 后台异步刷新中）`);
         }
         notifyCacheStatus('stale', {
           remainingSec: cacheEntry.remainingSec,
@@ -716,7 +716,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
     // 普通请求 (Miss / Expired)：规则 1 & 2
     // 优先：若已有同键强制构建正在跑，直接复用等待强制构建
     if (cacheKey && forceFlights.has(cacheKey)) {
-      logger.info('⏳ 同键强制构建进行中，共享等待（复用现有任务）');
+      logger.info('⏳ 同键强制构建进行中，共享等待');
       return await awaitFlightAndNotify(forceFlights.get(cacheKey));
     }
     // 其次：若已有同键普通构建正在跑，直接共享

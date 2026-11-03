@@ -445,7 +445,7 @@ function startServer(options = {}) {
         if (hasFailedSub) {
           taskLogger.warn('⚠️ 订阅快照预热完成，但部分订阅不可用');
         } else {
-          taskLogger.info('✨ 订阅快照预热完成（已就绪，客户端首次连接可极速响应）');
+          taskLogger.info('✨ 订阅快照预热完成');
         }
       } else {
         if (published && hasFailedSub) {
@@ -838,7 +838,7 @@ function startServer(options = {}) {
         // 仅记录日志，不回显内部错误细节（避免泄漏本地路径、上游状态等实现信息）
         if (err && err.isBackoff) {
           // 退避期主动跳过请求，不是真实回源失败；响应语义保持不变
-          serverLogger.warn(`⏳ 配置构建因订阅退避而跳过回源（未发起网络请求）${reqId}：${err.message}`);
+          serverLogger.warn(`⏳ 配置构建因订阅退避而跳过回源 ${reqId}：${err.message}`);
         } else {
           serverLogger.error(`❌ 配置构建异常 ${reqId}：${err.message}`);
         }
