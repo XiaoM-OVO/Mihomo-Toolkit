@@ -256,7 +256,15 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   };
 
   // 5. Policy 安全分流：基础规则 + 订阅普通 Policy + 用户自定义 Policy
-  const scriptPolicy = { 'rule-set:cn-domain': safeDirectNs, 'rule-set:non-cn': safeMainNs };
+  //    rule-set 策略键必须与实际产出的 rule-providers 对齐：空节点（纯分流拦截模式）下
+  //    规则被级联剪枝，此时仍注入悬空 rule-set 引用会让内核因「规则集不存在」拒绝整份配置。
+  //    产物尚未声明 rule-providers 时视为沿用既有契约（独立调用 applyDnsOverlay 的场景）。
+  const providers = config['rule-providers'];
+  const providerExists = name =>
+    !providers || typeof providers !== 'object' || Object.prototype.hasOwnProperty.call(providers, name);
+  const scriptPolicy = {};
+  if (providerExists('cn-domain')) scriptPolicy['rule-set:cn-domain'] = safeDirectNs;
+  if (providerExists('non-cn')) scriptPolicy['rule-set:non-cn'] = safeMainNs;
   const mergedPolicy = { ...scriptPolicy, ...assetPolicy, ...safeUserPolicy };
 
   // 订阅既用 proxy-server-nameserver 生成映射、又在自身 nameserver-policy 里声明同一域名时，
@@ -302,7 +310,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
     'use-hosts': true,
     'use-system-hosts': false,
     ...ns,
-    'nameserver-policy': mergedPolicy
+    ...(Object.keys(mergedPolicy).length > 0 ? { 'nameserver-policy': mergedPolicy } : {})
   };
 
   // 8. 安全审计输出

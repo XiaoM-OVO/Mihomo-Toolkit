@@ -30,6 +30,7 @@
       "*.music.163.com",
       "*.music.126.net",
       "+.stun.*.*",
+      "+.stun.*.*.*",
       "+.nintendo.net",
       "+.playstation.net",
       "+.xboxlive.com",

@@ -265,6 +265,41 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.deepStrictEqual(res3.proxyGroups.map(g => g.name), ['家宽优选']);
     });
 
+    it('applyDnsOverlay - 空节点场景不注入悬空 rule-set 策略（否则内核拒绝整份配置）', () => {
+      // 空输入：规则与 rule-providers 均被级联剪枝清空
+      const empty = { proxies: [], 'rule-providers': {} };
+      applyDnsOverlay(empty, { ...DEFAULT_CONFIG });
+      const emptyPolicy = empty.dns['nameserver-policy'] || {};
+      assert.equal(
+        Object.keys(emptyPolicy).some(k => k.startsWith('rule-set:')),
+        false,
+        'providers 为空时仍注入了悬空 rule-set 引用'
+      );
+
+      // 基础 DNS 分流供应商不得被空节点剪枝（否则 DNS 策略悬空）
+      const pruned = pruneEmptyGroups({
+        proxyGroups: [],
+        proxies: [],
+        rules: [],
+        ruleProviders: {
+          'cn-domain': { type: 'http', behavior: 'domain' },
+          'non-cn': { type: 'http', behavior: 'domain' }
+        }
+      });
+      assert.ok('cn-domain' in pruned.ruleProviders, 'cn-domain 被空节点误剪');
+      assert.ok('non-cn' in pruned.ruleProviders, 'non-cn 被空节点误剪');
+
+      // 正常场景：providers 存在时必须保留基础分流策略
+      const normal = {
+        proxies: [],
+        'rule-providers': { 'cn-domain': {}, 'non-cn': {} }
+      };
+      applyDnsOverlay(normal, { ...DEFAULT_CONFIG });
+      const normalPolicy = normal.dns['nameserver-policy'] || {};
+      assert.ok('rule-set:cn-domain' in normalPolicy, 'cn-domain 策略缺失');
+      assert.ok('rule-set:non-cn' in normalPolicy, 'non-cn 策略缺失');
+    });
+
     it('protectedDomains - 判定点自持基线：传入空受保护域名清单也不会 fail-open', () => {
       const config = { proxies: [] };
       applyDnsOverlay(config, {
