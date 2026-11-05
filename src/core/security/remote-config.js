@@ -54,7 +54,7 @@ const INLINE_URI_SCHEMES = new Set([
 
 /** 图标类字段：客户端会直接请求这些 URL，属于「客户端侧访问」能力 */
 const ICON_REPO_KEYS = ['iconRepoOrz', 'iconRepoKoolson', 'iconRepoLige47'];
-const ICON_FIELD_RE = /^(icon|iconUrl|image|logo)$/i;
+const ICON_FIELD_RE = /^(icons?|iconUrls?|images?|logos?)$/i;
 
 /**
  * 判断一个字符串是不是「客户端会去请求的」安全资源地址。
@@ -64,10 +64,12 @@ const ICON_FIELD_RE = /^(icon|iconUrl|image|logo)$/i;
  * 服务端 SSRF 校验拦不到（请求根本不经过本工具）。
  *
  * 规则：https、主机名带点、非私网 IP 字面量。非 URL 形态（emoji / 图标文件名）原样放行。
+ * 协议相对 URL（//host/path）按当前页面协议请求，可能降级为明文 http，一律拒绝。
  */
 function isSafeRemoteAssetUrl(value) {
   if (typeof value !== 'string') return true;
   const raw = value.trim();
+  if (raw.startsWith('//')) return false;
   if (!/^https?:\/\//i.test(raw)) return true;
   let url;
   try {
@@ -94,7 +96,22 @@ function sanitizeIconFields(node, path, dropped) {
       }
       continue;
     }
-    if (Array.isArray(value)) continue;
+    if (Array.isArray(value)) {
+      // 数组同样可能承载图标字段（如 icons: [...]）或嵌套对象，倒序遍历以便原地剔除
+      for (let i = value.length - 1; i >= 0; i--) {
+        const item = value[i];
+        const itemPath = `${currentPath}[${i}]`;
+        if (typeof item === 'string') {
+          if (ICON_FIELD_RE.test(key) && !isSafeRemoteAssetUrl(item)) {
+            value.splice(i, 1);
+            dropped.push(itemPath);
+          }
+        } else if (item && typeof item === 'object') {
+          sanitizeIconFields(item, itemPath, dropped);
+        }
+      }
+      continue;
+    }
     if (value && typeof value === 'object') sanitizeIconFields(value, currentPath, dropped);
   }
 }

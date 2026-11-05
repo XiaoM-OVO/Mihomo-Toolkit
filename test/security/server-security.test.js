@@ -217,6 +217,24 @@ describe('【Security】常驻服务安全姿态与防御 (server-security)', ()
       assert.equal(r.config.customServices.streaming.netflix.name, 'Netflix', '服务定义本体应保留');
     });
 
+    it('hardenRemoteConfig - 协议相对 URL 与数组内图标一并拦截', () => {
+      const r = hardenRemoteConfig({
+        groupIcons: {
+          // 协议相对 URL 会按页面协议降级为 http，必须拒绝
+          自动选择: '//cdn.example.com/x.png',
+          // 数组承载的图标字段同样要清洗
+          流媒体: { name: '流媒体', icons: ['https://cdn.example.com/ok.png', 'http://10.0.0.9/x.png'] }
+        }
+      });
+      assert.equal(r.ok, true);
+      assert.equal(r.config.groupIcons['自动选择'], undefined, '协议相对图标未被丢弃');
+      assert.deepEqual(
+        r.config.groupIcons['流媒体'].icons,
+        ['https://cdn.example.com/ok.png'],
+        '数组内的内网图标未被剔除'
+      );
+    });
+
     it('isLoopbackHost & safeTokenEqual - 回环判定与恒定时间防时序攻击比较', () => {
       for (const h of ['127.0.0.1', '127.1.2.3', 'localhost', '::1', '[::1]']) {
         assert.equal(isLoopbackHost(h), true, `${h} 应判为回环`);
