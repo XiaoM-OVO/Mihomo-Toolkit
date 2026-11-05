@@ -15,11 +15,19 @@
  *   也不按遍历顺序择一保留；
  * - 折叠仅在同一来源、同一解析器集合、且后缀下无冲突域名时进行；
  *   否则保留逐域名精确键；
+ * - 多租户平台后缀（github.io / workers.dev 等，见 data 层 MULTI_TENANT_SUFFIXES）
+ *   一律禁止折叠：折叠会把同一平台上未申报私有解析器的其他租户节点域名
+ *   一并捕获给本订阅的解析器，构成跨租户解析劫持；
  * - 折叠键统一使用 `.suffix`（覆盖任意层级子域，不含裸域），不使用 `+.` / `*.`；
  * - 输出按域名排序，保证多订阅顺序变化不改变最终配置。
  */
 
 'use strict';
+
+const { MULTI_TENANT_SUFFIXES } = require('../../data');
+
+/** 多租户平台后缀集合视图（折叠守卫用，精确匹配后缀） */
+const MULTI_TENANT_SUFFIX_SET = new Set(MULTI_TENANT_SUFFIXES);
 
 /** 规范化域名：小写、去首尾空白、去掉末尾根点 */
 function normalizeDomain(domain) {
@@ -149,6 +157,9 @@ function resolveNodeDnsPolicies(candidates = [], options = {}) {
     if (group.domains.some(domain => folded.has(domain))) continue;
     // 后缀下若有冲突域名，折叠会把该域名交给本订阅解析器，违反「冲突回退默认 DNS」。
     if (conflictDomains.some(domain => domain.endsWith(`.${suffix}`))) continue;
+    // 多租户平台后缀禁止折叠：折叠会把同平台其他租户（未申报解析器的）域名一并捕获。
+    // 注意 conflictDomains 守卫只拦「候选里已出现的冲突」，拦不住「根本不在候选里的他人域名」。
+    if (MULTI_TENANT_SUFFIX_SET.has(suffix)) continue;
 
     policies[`.${suffix}`] = assignable.get(group.domains[0]).resolvers;
     for (const domain of group.domains) folded.add(domain);

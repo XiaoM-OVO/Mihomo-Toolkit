@@ -153,6 +153,28 @@ describe('【Security】节点域名解析器归属决议 (node-dns-policy)', ()
     ]);
   });
 
+  test('折叠守卫：多租户平台后缀禁止折叠，保留精确键（防跨租户解析捕获）', () => {
+    const doh = ['https://doh-a.example/dns-query'];
+    const { policies } = resolveNodeDnsPolicies([
+      candidate('a.github.io', doh, 'url:aaa'),
+      candidate('b.github.io', doh, 'url:aaa')
+    ]);
+    // 折叠成 .github.io 会把同平台其他（未申报解析器的）租户域名一并捕获给本订阅解析器
+    assert.deepEqual(policies, {
+      'a.github.io': doh,
+      'b.github.io': doh
+    });
+  });
+
+  test('折叠守卫：租户级子域仍可折叠（只拦平台级后缀）', () => {
+    const doh = ['https://doh-a.example/dns-query'];
+    const { policies } = resolveNodeDnsPolicies([
+      candidate('a.tenant.workers.dev', doh, 'url:aaa'),
+      candidate('b.tenant.workers.dev', doh, 'url:aaa')
+    ]);
+    assert.deepEqual(policies, { '.tenant.workers.dev': doh });
+  });
+
   test('折叠开关关闭：同源同后缀仍输出逐域名精确键', () => {
     const doh = ['https://doh-a.example/dns-query'];
     const { policies } = resolveNodeDnsPolicies([

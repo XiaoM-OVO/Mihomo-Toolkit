@@ -143,6 +143,25 @@ describe('【Security】DNS 不变式与净化沙箱 (dns-invariants)', () => {
       assert.ok(ids.includes('INV-8'), 'INV-8 未检出');
     });
 
+    it('checkInvariants - fake-ip-filter 的 . 与 *. 前缀覆盖判定不误报 [INV-7]', () => {
+      const mkDns = (filter) => ({
+        enable: true,
+        listen: '127.0.0.1:1053',
+        'enhanced-mode': 'fake-ip',
+        'default-nameserver': ['223.5.5.5'],
+        'fake-ip-filter': filter
+      });
+      // .example.com（仅子域）应覆盖子域节点，不误报
+      let v = checkInvariants(mkDns(['.example.com']), { proxies: [{ server: 'a.example.com' }] });
+      assert.ok(!v.some(x => x.id === 'INV-7'), `.example.com 应覆盖子域: ${JSON.stringify(v)}`);
+      // *.example.com 与 +. 等价：同时覆盖裸域与子域
+      v = checkInvariants(mkDns(['*.example.com']), { proxies: [{ server: 'example.com' }] });
+      assert.ok(!v.some(x => x.id === 'INV-7'), '*.example.com 应覆盖裸域');
+      // .example.com 不覆盖裸域，仍应检出
+      v = checkInvariants(mkDns(['.example.com']), { proxies: [{ server: 'example.com' }] });
+      assert.ok(v.some(x => x.id === 'INV-7'), '.example.com 不应覆盖裸域');
+    });
+
     it('checkInvariants - 显式开启 dnsAllowNonLoopback 时不产生违规告警 [INV-8]', () => {
       const dns = { enable: true, listen: '0.0.0.0:1053' };
       const violations = checkInvariants(dns, { dnsAllowNonLoopback: true });

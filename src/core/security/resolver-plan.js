@@ -24,6 +24,14 @@
 const ipaddr = require('ipaddr.js');
 
 const { parseDnsServer, ipv4InCidrs } = require('./dns-sanitizer');
+const { MULTI_TENANT_SUFFIXES: MULTI_TENANT_SUFFIX_LIST } = require('../../data');
+
+/**
+ * 常见多租户公共托管、PaaS 与动态 DNS 服务商域名。
+ * 词表本体在只读数据层 `src/data/security-baselines.js`（与 node-dns-policy 折叠守卫共用），
+ * 此处仅保留 Set 视图。对此类域名，保留其租户专属二级/三级注册子域，绝不折叠到平台级后缀。
+ */
+const MULTI_TENANT_SUFFIXES = new Set(MULTI_TENANT_SUFFIX_LIST);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 不变式校验器（可独立用于回归测试）
@@ -107,9 +115,15 @@ function checkInvariants(dns = {}, options = {}) {
     const filterList = Array.isArray(dns['fake-ip-filter']) ? dns['fake-ip-filter'] : [];
     for (const req of requiredDomains) {
       const covered = filterList.some(f => {
+        if (typeof f !== 'string') return false;
         if (f === req) return true;
-        if (f.startsWith('+.') && (req === f.slice(2) || req.endsWith('.' + f.slice(2)))) return true;
-        if (f.startsWith('*.') && req.endsWith(f.slice(1))) return true;
+        // `+.` 与 `*.` 在 Mihomo 语义中等价：同时覆盖裸域与任意层级子域
+        if (f.startsWith('+.') || f.startsWith('*.')) {
+          const base = f.slice(2);
+          return req === base || req.endsWith('.' + base);
+        }
+        // 纯前缀点（.example.com）：仅覆盖任意层级子域，不含裸域
+        if (f.startsWith('.')) return req.endsWith(f);
         return false;
       });
       if (!covered) {
@@ -132,25 +146,6 @@ function checkInvariants(dns = {}, options = {}) {
 
   return v;
 }
-
-/**
- * 常见多租户公共托管、PaaS 与动态 DNS 服务商域名
- * 此类域名若粗暴折叠到顶级托管域（如 +.workers.dev），会导致平台其他公用资产一并丧失 Fake-IP。
- * 对此类域名，保留其租户专属二级/三级注册子域。
- */
-const MULTI_TENANT_SUFFIXES = new Set([
-  // Cloud / Serverless / Static Hosting PaaS
-  'workers.dev', 'pages.dev', 'github.io', 'gitlab.io',
-  'vercel.app', 'netlify.app', 'herokuapp.com', 'fly.dev',
-  'onrender.com', 'render.com', 'glitch.me', 'deno.dev',
-  'azurewebsites.net', 'appspot.com', 'cloudfront.net',
-  's3.amazonaws.com', 'myshopify.com',
-
-  // Dynamic DNS (DDNS) 动态域名服务
-  'duckdns.org', 'ddns.net', 'no-ip.com', 'no-ip.org',
-  'zapto.org', 'bounceme.net', 'myfritz.net', 'dynu.net',
-  'afraid.org', 'freedns.org', 'changeip.com', 'dynv6.net'
-]);
 
 /**
  * 常见国家/地区复合公共后缀二级类别：
