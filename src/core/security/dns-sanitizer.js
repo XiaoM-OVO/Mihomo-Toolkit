@@ -178,6 +178,12 @@ function parseDnsServer(entry) {
   // 裸域名（带或不带端口，例如 dns.example.com 或 dns.example.com:53）
   const bareMatch = raw.match(/^([a-zA-Z0-9.-]+)(?::(\d+))?$/);
   if (bareMatch) {
+    // 裸域名必须含点且至少含一个字母：'1234'、'not-a-domain'、'1.2.3' 这类
+    // 单 label / 纯数字输入不是合法 DNS 主机名，放行会把垃圾配置送进内核（违背 fail-closed）。
+    if (!bareMatch[1].includes('.') || !/[a-zA-Z]/.test(bareMatch[1])) {
+      result.kind = 'invalid';
+      return result;
+    }
     result.kind = 'url';
     result.scheme = 'plain';
     result.host = bareMatch[1];
@@ -459,7 +465,12 @@ function sanitizeHosts(hostsMap, options = {}) {
 
     // 受保护域名检测（支持用户显式白名单 userTrustedDomains 豁免）
     const isExempt = trustedSet.has(bare) || [...trustedSet].some(t => bare.endsWith('.' + t));
-    const suffixHit = !isExempt && [...protectedSet].find(p => bare === p || bare.endsWith(`.${p}`));
+    let suffixHit = null;
+    if (!isExempt) {
+      for (const p of protectedSet) {
+        if (bare === p || bare.endsWith(`.${p}`)) { suffixHit = p; break; }
+      }
+    }
     if (suffixHit) {
       findings.push({
         id: 'HOSTS-PROTECTED-DOMAIN', severity: 'critical',

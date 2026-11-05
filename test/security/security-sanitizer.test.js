@@ -112,6 +112,20 @@ describe('【Security】控制面净化与 DNS 消毒沙箱 (sanitizer)', () => 
       assert.deepStrictEqual(withMod.modifiers, ['proxy', 'skip-cert-verify=true']);
     });
 
+    it('parseDnsServer - 拒绝无点裸域与纯数字主机名（fail-closed）', () => {
+      for (const bad of ['1234', 'not-a-domain', '1.2.3', 'localhost']) {
+        assert.strictEqual(parseDnsServer(bad).kind, 'invalid', `${bad} 应判为 invalid`);
+        assert.strictEqual(
+          sanitizeDnsServer(bad, { role: ROLES.NAMESERVER }).ok,
+          false,
+          `${bad} 不应被放行到内核`
+        );
+      }
+      // 合法裸域名不受影响
+      assert.strictEqual(parseDnsServer('dns.google').kind, 'url');
+      assert.strictEqual(sanitizeDnsServer('dns.google', { role: ROLES.NAMESERVER }).ok, true);
+    });
+
     it('sanitizeDnsServer - default 角色拒绝域名形式防死锁', () => {
       const r = sanitizeDnsServer('https://doh.pub/dns-query', { role: ROLES.DEFAULT });
       assert.strictEqual(r.ok, false);
@@ -403,7 +417,8 @@ describe('【Security】控制面净化与 DNS 消毒沙箱 (sanitizer)', () => 
     it('parseDnsServer - 非法 IPv4 数值不被识别为合法 IP', () => {
       const r = parseDnsServer('256.256.256.256');
       assert.strictEqual(r.isIpLiteral, false);
-      assert.strictEqual(r.kind, 'url');
+      // 纯数字点分串不是合法主机名，fail-closed 判为 invalid（旧行为会当裸域名放行给内核）
+      assert.strictEqual(r.kind, 'invalid');
     });
 
     it('parseDnsServer - 裸域名带端口干净拆分 host 与 port', () => {
