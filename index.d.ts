@@ -428,6 +428,24 @@ export interface UserConfig extends PureConfig, ToolkitConfig {
   /** 请求与资源配额（服务端/常驻模式主要用于防御滥用） */
   security?: RequestLimits;
 
+  // 🖥 服务端部署与运行参数（常驻 server 模式生效，CLI 不读取）
+  /** 请求 Host 白名单：精确 FQDN 或 `*.` / `+.` 后缀通配；仅命中项参与 subDomain 直连推导 */
+  allowedHosts?: string[];
+  /** 受信反向代理地址（精确 IP 或 CIDR）；仅直连地址命中时才采信 X-Forwarded-For / X-Real-IP */
+  trustedProxies?: string[];
+  /** 访问鉴权令牌（?token= 或 Authorization Bearer；环境变量 AUTH_TOKEN 优先） */
+  authToken?: string;
+  /** 并发构建上限（默认 8，超出返回 503） */
+  maxConcurrentBuilds?: number;
+  /** ?refresh=1 强制刷新冷却秒数（默认 15，0 关闭） */
+  refreshCooldown?: number;
+  /** 后台自动拉取与预热周期秒数（默认 3600，0 关闭） */
+  autoRefreshInterval?: number;
+  /** 启动时后台预热初始订阅（默认开启） */
+  enableWarmup?: boolean;
+  /** 是否允许 ?url= / ?config= 动态传参（默认 true；非回环监听且未鉴权时仍 fail-closed） */
+  enableUrlParams?: boolean;
+
   // 🔤 简繁中文转换
   /** 是否开启简繁中文全链路转换（需 opencc-js 依赖） */
   enableChineseConvert?: boolean;

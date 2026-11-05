@@ -311,7 +311,31 @@ const FIELDS = [
   { key: 'fakeIpFilter', type: 'string[]', merge: 'override', trust: 'local',
     group: '安全与资源配额', doc: 'fake-ip-filter 追加条目' },
   { key: 'fakeIpFilterNodes', type: 'string', merge: 'override', trust: 'local',
-    group: '安全与资源配额', doc: '节点防环注入模式: smart | exact | off' }
+    group: '安全与资源配额', doc: '节点防环注入模式: smart | exact | off' },
+  { key: 'allowedHosts', type: 'string[]', merge: 'override', trust: 'local',
+    group: '安全与资源配额',
+    doc: '常驻服务的 Host 白名单（精确 FQDN 或 *. / +. 后缀通配）；仅命中项参与 subDomain 直连推导' },
+  { key: 'trustedProxies', type: 'string[]', merge: 'override', trust: 'local',
+    group: '安全与资源配额',
+    doc: '受信反向代理地址（精确 IP 或 CIDR）；仅直连地址命中时才采信 X-Forwarded-For / X-Real-IP' },
+  { key: 'authToken', type: 'string', merge: 'override', trust: 'local',
+    group: '安全与资源配额',
+    doc: '常驻服务访问鉴权令牌（?token= 或 Authorization Bearer；环境变量 AUTH_TOKEN 优先）' },
+
+  // ── 【16. 服务端运行参数】（无出厂默认值：由 server 内兜底，CLI 模式不读取） ──
+  // 登记目的：把「远程 ?config= 不得写服务端运行参数」由信任级派生显式兜底，
+  // 而不是依赖「未登记字段一律剥离」的隐式路径；审计口径也能区分「local 字段拒绝」与「未知字段」。
+  { key: 'maxConcurrentBuilds', type: 'number', merge: 'override', trust: 'local',
+    group: '运行模式与缓存', doc: '并发构建上限（代码内兜底 8，超出返回 503）' },
+  { key: 'refreshCooldown', type: 'number', merge: 'override', trust: 'local',
+    group: '运行模式与缓存', doc: '?refresh=1 强制刷新冷却秒数（代码内兜底 15，0 关闭）' },
+  { key: 'autoRefreshInterval', type: 'number', merge: 'override', trust: 'local',
+    group: '运行模式与缓存', doc: '后台自动拉取与预热周期秒数（代码内兜底 3600，0 关闭）' },
+  { key: 'enableWarmup', type: 'boolean', merge: 'override', trust: 'local',
+    group: '运行模式与缓存', doc: '启动时后台预热初始订阅（代码内兜底为开启）' },
+  { key: 'enableUrlParams', type: 'boolean', merge: 'override', trust: 'local',
+    group: '运行模式与缓存',
+    doc: '是否允许 ?url= / ?config= 动态传参（代码内兜底 true；非回环监听且未鉴权时仍 fail-closed）' }
 ];
 
 /** 字段名 → 声明 索引 */

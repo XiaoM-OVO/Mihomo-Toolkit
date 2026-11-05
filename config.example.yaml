@@ -187,6 +187,9 @@ showFeatureIcon: true              # 节点名后追加特征 Emoji（🚀 4K �
 # exemptGroups:                    # 追加「永不被空组剪枝」的组名（只增不减）
 #   - "🏠 家宽优选"
 # iconRepoOrz / iconRepoKoolson / iconRepoLige47   # 在线图标仓库前缀
+# trafficDirection: "split"        # 流量方向：split 国内直连/海外代理（默认） / return 回国（国内代理/海外直连）
+#                                  #   只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支；规则走向仍由 ⑦ routing 决定
+# defaultProxyMode: "auto"         # @defaultProxy 宏的指向：auto 自动测速 / manual 手动选择 / fallback 故障转移 / direct / reject
 
 
 # ───── ⑦ 分流表 routing（最常改的一项）─────────────────────────────────
