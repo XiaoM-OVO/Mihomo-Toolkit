@@ -1,6 +1,6 @@
 # 📖 Mihomo-Toolkit 配置全景字典与参数指南 (CONFIGURATION.md)
 
-> **版本适用**：`Mihomo-Toolkit` (v4.0.0-alpha 统一内核)  
+> **版本适用**：`Mihomo-Toolkit` (v4.0.0-beta.1 统一内核)  
 > **数据权威**：本项目所有参数名称、默认值与安全策略以 [`src/data/field-registry.js`](src/data/field-registry.js)（单一真理来源 SSOT）为准。测试套件严格校验代码读取、类型定义与本文档的一致性，杜绝“隐形参数”与“空承诺字段”。
 
 ---

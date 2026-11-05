@@ -6,12 +6,12 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Mihomo](https://img.shields.io/badge/Core-Mihomo-orange)](https://github.com/MetaCubeX/mihomo)
-[![Version](https://img.shields.io/badge/Version-v4.0.0--alpha-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
-[![Tests](https://img.shields.io/badge/Tests-793%20Passed-brightgreen)](test/)
+[![Version](https://img.shields.io/badge/Version-v4.0.0--beta.1-9cf)](https://github.com/XiaoM-OVO/Mihomo-Toolkit/releases)
+[![Tests](https://img.shields.io/badge/Tests-823%20Passed-brightgreen)](test/)
 
 「 **自动清洗 · 物理去重 · 动态拓扑 · 容灾兜底** 」
 
-> ⚠️ **开发中版本 · `v4.0.0-alpha`**：本项目当前处于下一代统一内核构建阶段（Milestone 1–3 已闭环，Milestone 4 发版收尾准备中），接口与配置可能微调，暂不建议直接用于生产环境。开发进展与演进规划请参阅 [开发路线图 (ROADMAP.md)](ROADMAP.md)。
+> 💡 **公开测试版 · `v4.0.0-beta.1`**：核心架构与声明式策略 DSL 已全面冻结并闭环（Milestone 1–3 完成，进入 Beta 演进与收尾），整体功能完备且通过 820+ 场景测试。开发进展与演进规划请参阅 [开发路线图 (ROADMAP.md)](ROADMAP.md)。
 >
 > 📦 **内核要求**：节点域名专属 DNS 映射依赖 `dns.proxy-server-nameserver-policy`，需要 Mihomo **≥ v1.19.21**（推荐最新稳定版）。
 
