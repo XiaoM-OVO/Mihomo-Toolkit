@@ -26,7 +26,7 @@ function makeOutputData(overrides = {}) {
       { name: '节点A', type: 'ss', server: '1.2.3.4', port: 443 }
     ],
     'proxy-groups': [
-      { name: groupName(GROUP_KEYS.dashboard), type: 'select', proxies: ['节点A', 'DIRECT'] },
+      { name: groupName(GROUP_KEYS.dashboard), type: 'select', proxies: ['节点A'] },
       { name: groupName(GROUP_KEYS.auto), type: 'select', proxies: ['节点A'] }
     ],
     dns: { 'fake-ip-filter': ['*.lan', 'static.example.com'] },
@@ -85,7 +85,7 @@ describe('【Strategy】交付层叠加 (delivery-overlay)', () => {
     assert.equal(parsed.dns['fake-ip-filter'].filter(f => f === 'static.example.com').length, 1);
   });
 
-  it('降级提示节点只加入看板组，且排在 DIRECT 之前', () => {
+  it('降级提示节点只加入看板组并追加到末尾', () => {
     const result = makeResult();
     const out = renderDelivery(result, { noticeTags: ['FN'] });
     const parsed = yaml.parse(out);
@@ -94,7 +94,8 @@ describe('【Strategy】交付层叠加 (delivery-overlay)', () => {
     const noticeName = parsed.proxies.map(p => p.name).find(name => /[FN].*旧缓存/.test(name));
     assert.ok(noticeName, '必须生成降级提示节点');
     assert.ok(dashboard.proxies.includes(noticeName), '提示节点必须进入看板组');
-    assert.equal(dashboard.proxies[dashboard.proxies.length - 1], 'DIRECT');
+    assert.equal(dashboard.proxies[dashboard.proxies.length - 1], noticeName, '提示节点应追加到末尾');
+    assert.ok(!dashboard.proxies.includes('DIRECT'), '看板组不应再含 DIRECT 占位成员');
     assert.equal(parsed.proxies.length, result.outputData.proxies.length + 1);
 
     // 其它组不得被污染

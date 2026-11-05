@@ -564,7 +564,8 @@ function buildProxyTopology({
   const finalGroups = [];
 
   if (userConfig.enableDashboard !== false && buckets.info.length > 0) {
-    finalGroups.push(buildSelect(groupName(GROUP_KEYS.dashboard), [...buckets.info, 'DIRECT']));
+    // 看板成员本身即 type:direct 的合成节点，无需再追加 DIRECT 占位出口
+    finalGroups.push(buildSelect(groupName(GROUP_KEYS.dashboard), [...buckets.info]));
   }
 
   finalGroups.push(

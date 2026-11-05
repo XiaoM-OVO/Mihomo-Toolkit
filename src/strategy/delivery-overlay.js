@@ -143,12 +143,8 @@ function renderDelivery(result, options = {}) {
         newNames.push(name);
       }
       if (newNames.length > 0) {
-        const directIdx = dashboardGroup.proxies.indexOf('DIRECT');
-        if (directIdx >= 0) {
-          dashboardGroup.proxies.splice(directIdx, 0, ...newNames);
-        } else {
-          dashboardGroup.proxies.push(...newNames);
-        }
+        // 看板组已无 DIRECT 占位成员，降级节点统一追加到末尾
+        dashboardGroup.proxies.push(...newNames);
         changed = true;
       }
     }
