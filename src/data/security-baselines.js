@@ -82,12 +82,44 @@ const FAKEIP_FILTER_BASELINE = [
   '*.lan', '*.local', '*.arpa', 'time.*.com', 'ntp.*.com',
   'localhost.ptlogin2.qq.com', '*.msftncsi.com', '*.msftconnecttest.com', 'www.msftconnecttest.com',
   'ipv6.msftncsi.com', 'ipv6.msftconnecttest.com', '*.ipv6-literal.net', 'google.cn',
-  '*.music.163.com', '*.music.126.net', '+.stun.*.*',
+  '*.music.163.com', '*.music.126.net', '+.stun.*.*', '+.stun.*.*.*',
   '+.nintendo.net', '+.playstation.net', '+.xboxlive.com'
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. 基线合并工具（纯函数）
+// 4. 多租户公共托管域名基线（Fake-IP 防污染 + 节点 DNS 折叠守卫）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 多租户平台后缀：同一后缀下承载大量互不隶属的租户子域。
+ *
+ * 用途一（resolver-plan.getRootDomain）：节点域名聚合 Fake-IP 时保留租户级子域，
+ *   避免把 +.workers.dev 这类平台级后缀整体放进 fake-ip-filter（平台上其他站点会全部失联）。
+ * 用途二（node-dns-policy 折叠守卫）：节点域名专属解析器的后缀折叠不得落在这些后缀上，
+ *   否则某订阅申报 a.github.io + b.github.io 会被折叠成 .github.io，
+ *   把同一平台上其他（未申报私有解析器的）租户节点域名一并捕获给该订阅的解析器。
+ *
+ * 已知局限：这是人工维护的枚举清单，无法穷尽（权威全集是 Public Suffix List，
+ * 但为一个词表问题引入 PSL 依赖快照的代价大于收益）。发现遗漏时直接在本清单追加。
+ */
+const MULTI_TENANT_SUFFIXES = [
+  // Cloud / Serverless / Static Hosting PaaS
+  'workers.dev', 'pages.dev', 'trycloudflare.com', 'github.io', 'gitlab.io',
+  'vercel.app', 'now.sh', 'netlify.app', 'herokuapp.com', 'fly.dev', 'fly.io',
+  'onrender.com', 'render.com', 'glitch.me', 'deno.dev',
+  'azurewebsites.net', 'azurestaticapps.net', 'appspot.com', 'cloudfront.net',
+  'firebaseapp.com', 'web.app', 'surge.sh', 'railway.app', 'ondigitalocean.app',
+  'pythonanywhere.com', 'replit.app', 's3.amazonaws.com', 'myshopify.com',
+  // 公共后缀型免费二级域
+  'eu.org',
+  // Dynamic DNS (DDNS) 动态域名服务
+  'duckdns.org', 'ddns.net', 'no-ip.com', 'no-ip.org',
+  'zapto.org', 'bounceme.net', 'myfritz.net', 'dynu.net',
+  'afraid.org', 'freedns.org', 'changeip.com', 'dynv6.net'
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. 基线合并工具（纯函数）
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -178,6 +210,7 @@ module.exports = {
   PROTECTED_DOMAINS,
   SKELETON_EXEMPT_GROUPS,
   FAKEIP_FILTER_BASELINE,
+  MULTI_TENANT_SUFFIXES,
   ENTRY_NORMALIZERS,
   normalizeDomainList,
   mergeBaseline,
