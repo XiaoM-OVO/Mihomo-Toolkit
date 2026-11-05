@@ -235,8 +235,12 @@ function normalizeProxyRule(rule) {
     if (!trimmed) return '';
     if (trimmed.includes('/')) {
       const [base, bits] = ipaddr.parseCIDR(trimmed);
-      const addr = base.kind() === 'ipv6' && base.isIPv4MappedAddress() ? base.toIPv4Address() : base;
-      return `${addr.toString()}/${bits}`;
+      const isMapped = base.kind() === 'ipv6' && base.isIPv4MappedAddress();
+      const addr = isMapped ? base.toIPv4Address() : base;
+      // IPv4 映射地址转 IPv4 后必须同步换算前缀长度（::ffff:x.x.x.x/120 ≡ x.x.x.x/24），
+      // 否则下游 parseCIDR 因 IPv4 前缀超 32 位抛错，规则静默失效
+      const finalBits = isMapped ? Math.max(0, bits - 96) : bits;
+      return `${addr.toString()}/${finalBits}`;
     }
     if (!ipaddr.isValid(trimmed)) return '';
     const addr = ipaddr.parse(trimmed);

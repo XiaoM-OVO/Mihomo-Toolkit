@@ -12,9 +12,22 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { isPrivateIp, isPrivateIPv6 } = require('../../src/infra/ip');
+const { isPrivateIp, isPrivateIPv6, normalizeProxyRules, isTrustedProxy } = require('../../src/infra/ip');
 
 describe('【Security】IP 分类原语 (ip-classification)', () => {
+  it('normalizeProxyRule - IPv4 映射 CIDR 同步换算前缀长度', () => {
+    // ::ffff:192.168.1.0/120 ≡ 192.168.1.0/24；旧实现保留 bits=120，
+    // 下游 parseCIDR 抛错导致规则静默失效
+    const rules = normalizeProxyRules('::ffff:192.168.1.0/120');
+    assert.deepStrictEqual(rules, ['192.168.1.0/24']);
+    assert.strictEqual(isTrustedProxy('192.168.1.5', rules), true, '换算后的规则未生效');
+    assert.strictEqual(isTrustedProxy('192.168.2.5', rules), false);
+    // 映射 /96 ≡ IPv4 /0
+    assert.deepStrictEqual(normalizeProxyRules('::ffff:0.0.0.0/96'), ['0.0.0.0/0']);
+    // 非映射 CIDR 不受影响
+    assert.deepStrictEqual(normalizeProxyRules('10.0.0.0/8'), ['10.0.0.0/8']);
+  });
+
   it('isPrivateIPv6 - NAT64 内嵌 IPv4 按最后 32 位判定，与文本写法无关', () => {
     // 同一地址的两种写法必须同判：十六进制缩写不能绕过
     assert.strictEqual(isPrivateIPv6('64:ff9b::7f00:1'), true, 'NAT64 内嵌 127.0.0.1（十六进制）漏判');
