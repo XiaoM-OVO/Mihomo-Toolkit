@@ -54,10 +54,10 @@ function isLoopbackHostName(host) {
   return host === 'localhost' || host.endsWith('.localhost');
 }
 
-function withTimeout(promise, ms) {
+function withTimeout(promise, ms, message = 'DNS timeout') {
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('DNS timeout')), ms);
+    timer = setTimeout(() => reject(new Error(message)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
@@ -110,6 +110,13 @@ function isDnsNotFound(err) {
  * @param {4|6} family
  * @returns {Promise<string[]>}
  */
+// 并发解析合并（Single-Flight）：同一 host 的并发解析共享同一个 work。
+// 否则缓存 miss 瞬间，resolveCandidates 里 family 4/6 两个调用各自跑一遍完整解析，
+// 高并发下 DNS 查询量成倍放大（engine.js 的构建合并已采用同型模式）。
+// settle 后即移出合并表：失败结果不缓存、不共享给后续调用。
+const dnsInflight = new Map();
+let dnsWorkCount = 0; // 仅供测试观测合并是否生效
+
 function defaultResolver(host, family) {
   if (!dns) return Promise.reject(new Error('DNS module unavailable'));
   const now = Date.now();
@@ -118,33 +125,39 @@ function defaultResolver(host, family) {
     return Promise.resolve(family === 4 ? cached.v4 : cached.v6);
   }
 
-  const work = (async () => {
-    const [r4, r6] = await Promise.allSettled([dns.resolve4(host), dns.resolve6(host)]);
-    let v4 = r4.status === 'fulfilled' ? r4.value : [];
-    let v6 = r6.status === 'fulfilled' ? r6.value : [];
+  let inflight = dnsInflight.get(host);
+  if (!inflight) {
+    const work = (async () => {
+      dnsWorkCount++;
+      const [r4, r6] = await Promise.allSettled([dns.resolve4(host), dns.resolve6(host)]);
+      let v4 = r4.status === 'fulfilled' ? r4.value : [];
+      let v6 = r6.status === 'fulfilled' ? r6.value : [];
 
-    // c-ares 整体失败（NXDOMAIN / 服务器拒连 / 网络不可用）→ 回退 OS 解析器
-    if (r4.status === 'rejected' && r6.status === 'rejected') {
-      const viaOs = await lookupViaOsResolver(host);
-      v4 = viaOs.v4;
-      v6 = viaOs.v6;
-      // 两条路径均无记录 → 无法证明目标安全，向上传播
-      if (v4.length === 0 && v6.length === 0) {
-        const err = new Error(`DNS resolution failed: ${host}`);
-        // OS 解析器是实际建连路径：明确返回「域名不存在」时属确定性失败，供上层跳过重试
-        if (isDnsNotFound(viaOs.error)) err.code = 'ENOTFOUND';
-        throw err;
+      // c-ares 整体失败（NXDOMAIN / 服务器拒连 / 网络不可用）→ 回退 OS 解析器
+      if (r4.status === 'rejected' && r6.status === 'rejected') {
+        const viaOs = await lookupViaOsResolver(host);
+        v4 = viaOs.v4;
+        v6 = viaOs.v6;
+        // 两条路径均无记录 → 无法证明目标安全，向上传播
+        if (v4.length === 0 && v6.length === 0) {
+          const err = new Error(`DNS resolution failed: ${host}`);
+          // OS 解析器是实际建连路径：明确返回「域名不存在」时属确定性失败，供上层跳过重试
+          if (isDnsNotFound(viaOs.error)) err.code = 'ENOTFOUND';
+          throw err;
+        }
       }
-    }
 
-    if (v4.length > 0 || v6.length > 0) {
-      if (dnsCache.size >= DNS_CACHE_MAX) dnsCache.delete(dnsCache.keys().next().value);
-      dnsCache.set(host, { v4, v6, expireAt: Date.now() + DNS_CACHE_TTL_MS });
-    }
-    return family === 4 ? v4 : v6;
-  })();
+      if (v4.length > 0 || v6.length > 0) {
+        if (dnsCache.size >= DNS_CACHE_MAX) dnsCache.delete(dnsCache.keys().next().value);
+        dnsCache.set(host, { v4, v6, expireAt: Date.now() + DNS_CACHE_TTL_MS });
+      }
+      return { v4, v6 };
+    })();
+    inflight = withTimeout(work, DNS_TIMEOUT_MS).finally(() => { dnsInflight.delete(host); });
+    dnsInflight.set(host, inflight);
+  }
 
-  return withTimeout(work, DNS_TIMEOUT_MS);
+  return inflight.then(({ v4, v6 }) => (family === 4 ? v4 : v6));
 }
 
 /**
@@ -299,5 +312,12 @@ module.exports = {
   validateUrlSsrf,
   redactUrl,
   policyBlocked,
-  unverifiedBlocked
+  unverifiedBlocked,
+  withTimeout,
+  defaultResolver,
+  // 测试观测口：合并表与 work 计数，验证 single-flight 是否生效
+  dnsDebug: {
+    inflight: dnsInflight,
+    get workCount() { return dnsWorkCount; }
+  }
 };

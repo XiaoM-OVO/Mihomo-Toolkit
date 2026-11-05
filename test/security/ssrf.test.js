@@ -2,8 +2,20 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const dnsPromises = require('node:dns').promises;
 const { validateUrlSsrf, isAllowedUrl, isAllowedUrlAsync } = require('../../src/index.js');
+const { defaultResolver, dnsDebug } = require('../../src/io/ssrf.js');
 
 describe('【Security】SSRF 安全拦截与 URL 校验 (ssrf)', () => {
+  it('defaultResolver - 并发解析合并为 single-flight，settle 后清空合并表', async () => {
+    // .invalid 永不解析成功：work 必然走完失败路径，正好观测合并与清理
+    const host = 'single-flight-nonexistent.invalid';
+    const before = dnsDebug.workCount;
+    const [r4, r6] = await Promise.allSettled([defaultResolver(host, 4), defaultResolver(host, 6)]);
+    assert.equal(dnsDebug.workCount - before, 1, 'family 4/6 并发调用应共享同一个解析 work');
+    assert.equal(dnsDebug.inflight.size, 0, 'settle 后合并表必须清空（失败结果不共享）');
+    assert.equal(r4.status, 'rejected');
+    assert.equal(r6.status, 'rejected');
+  });
+
   it('isAllowedUrl - 拦截私网地址、云元数据及非法协议', () => {
     assert.equal(isAllowedUrl('http://localhost/config.yaml'), false);
     assert.equal(isAllowedUrl('http://127.0.0.1:8080/sub'), false);
