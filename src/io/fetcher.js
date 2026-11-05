@@ -247,9 +247,8 @@ function buildFetchOpts(parsedUrl, signal) {
   if (parsedUrl.username || parsedUrl.password) {
     const user = safeDecodeURIComponent(parsedUrl.username);
     const pass = safeDecodeURIComponent(parsedUrl.password);
-    const auth = (typeof btoa !== 'undefined')
-      ? btoa(`${user}:${pass}`)
-      : Buffer.from(`${user}:${pass}`).toString('base64');
+    // 纯 Node 环境统一走 Buffer：全局 btoa 只接受 Latin-1，Unicode 凭据（如中文）会抛 InvalidCharacterError
+    const auth = Buffer.from(`${user}:${pass}`, 'utf8').toString('base64');
     fetchOpts.headers['Authorization'] = `Basic ${auth}`;
     parsedUrl.username = '';
     parsedUrl.password = '';
@@ -318,7 +317,12 @@ async function safeFetchText(url, options = {}) {
   try {
     let proxyDispatcher = null;
     if (proxyUrl) {
-      if (typeof resolveLocalProxyDispatcher !== 'function') throw new Error('Proxy support unavailable (undici not loaded)');
+      if (typeof resolveLocalProxyDispatcher !== 'function') {
+        // 环境性缺失属确定性错误：重试不会改变结果，直接标记不可重试
+        const err = new Error('Proxy support unavailable (undici not loaded)');
+        err.retryable = false;
+        throw err;
+      }
       proxyDispatcher = resolveLocalProxyDispatcher(proxyUrl);
     }
 

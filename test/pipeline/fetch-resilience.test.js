@@ -595,6 +595,31 @@ describe('【Pipeline】订阅拉取容灾与重试降级 (fetch-resilience)', (
     }
   });
 
+  test('safeFetchText：Unicode Basic Auth 凭据按 UTF-8 编码（不再被 btoa 的 Latin-1 限制拒绝）', async () => {
+    let seenAuth = null;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+      seenAuth = opts.headers['Authorization'];
+      return {
+        ok: true,
+        status: 200,
+        headers: new Map([['content-length', '2']]),
+        body: null,
+        text: async () => 'ok'
+      };
+    };
+    try {
+      const user = '用户';
+      const pass = '密码123';
+      const url = `http://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@93.184.216.34/sub`;
+      const { text } = await safeFetchText(url, { timeoutMs: 1000 });
+      assert.equal(text, 'ok');
+      assert.equal(seenAuth, 'Basic ' + Buffer.from(`${user}:${pass}`, 'utf8').toString('base64'));
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   test('safeFetchText：代理解析器构造抛错时也会清理超时定时器', async () => {
     const realSetTimeout = globalThis.setTimeout;
     const realClearTimeout = globalThis.clearTimeout;
