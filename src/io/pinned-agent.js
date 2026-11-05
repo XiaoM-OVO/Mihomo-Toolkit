@@ -18,7 +18,11 @@
 
 const net = require('net');
 const { isPrivateIp, isPrivateIPv6 } = require('../infra/ip');
-const { policyBlocked, unverifiedBlocked } = require('./ssrf');
+const { policyBlocked, unverifiedBlocked, withTimeout } = require('./ssrf');
+
+// 与 ssrf.js 的预检超时对齐：OS 解析器卡住（nameserver 不响应 / 网络黑洞）时，
+// 不能把兜底交给 undici connectTimeout 的实现细节——同层两条解析路径防护必须对称
+const RESOLVE_TIMEOUT_MS = 5000;
 
 let Agent = null;
 try { Agent = require('undici').Agent; } catch { Agent = null; }
@@ -88,6 +92,7 @@ function createPinnedLookup(options = {}) {
     ? options.resolve
     : (host) => require('dns').promises.lookup(host, { all: true, verbatim: true });
   const isBlocked = typeof options.isBlocked === 'function' ? options.isBlocked : isBlockedAddress;
+  const resolveTimeoutMs = Number.isFinite(options.resolveTimeoutMs) ? options.resolveTimeoutMs : RESOLVE_TIMEOUT_MS;
 
   return function pinnedLookup(hostname, lookupOptions, callback) {
     const requested = lookupOptions || {};
@@ -97,9 +102,10 @@ function createPinnedLookup(options = {}) {
     (async () => {
       let result;
       try {
-        result = await resolve(hostname);
-      } catch {
-        throw unverifiedBlocked(`SSRF 预检失败：${hostname} 域名解析失败（已拒绝连接）`);
+        result = await withTimeout(resolve(hostname), resolveTimeoutMs, `DNS timeout: ${hostname}`);
+      } catch (e) {
+        const reason = e && /timeout/i.test(e.message) ? '域名解析超时' : '域名解析失败';
+        throw unverifiedBlocked(`SSRF 预检失败：${hostname} ${reason}（已拒绝连接）`);
       }
 
       let entries = normalizeEntries(result);

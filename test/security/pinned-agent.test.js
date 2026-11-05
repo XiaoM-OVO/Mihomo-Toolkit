@@ -103,6 +103,18 @@ describe('【Security】建连期 IP Pinning (pinned-agent)', () => {
     );
   });
 
+  it('解析超时 - OS 解析器卡住时按 unverified 拒绝，不悬挂等待', async () => {
+    const lookup = createPinnedLookup({
+      resolve: () => new Promise(() => {}), // 永不 settle，模拟 nameserver 无响应
+      resolveTimeoutMs: 30
+    });
+
+    await assert.rejects(
+      () => callLookup(lookup, 'hang.example', { all: true }),
+      (err) => err.ssrfBlocked === 'unverified' && /解析超时/.test(err.message)
+    );
+  });
+
   it('集成 - Agent 的 lookup 真正参与建连', async () => {
     const server = http.createServer((req, res) => res.end('pinned-ok'));
     const port = await listen(server);
