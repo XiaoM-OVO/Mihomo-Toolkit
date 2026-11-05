@@ -143,7 +143,7 @@ describe('【Security】DNS 不变式与净化沙箱 (dns-invariants)', () => {
       assert.ok(ids.includes('INV-8'), 'INV-8 未检出');
     });
 
-    it('checkInvariants - fake-ip-filter 的 . 与 *. 前缀覆盖判定不误报 [INV-7]', () => {
+    it('checkInvariants - fake-ip-filter 前缀覆盖判定与内核 domain-trie 语义对齐 [INV-7]', () => {
       const mkDns = (filter) => ({
         enable: true,
         listen: '127.0.0.1:1053',
@@ -151,15 +151,21 @@ describe('【Security】DNS 不变式与净化沙箱 (dns-invariants)', () => {
         'default-nameserver': ['223.5.5.5'],
         'fake-ip-filter': filter
       });
-      // .example.com（仅子域）应覆盖子域节点，不误报
-      let v = checkInvariants(mkDns(['.example.com']), { proxies: [{ server: 'a.example.com' }] });
-      assert.ok(!v.some(x => x.id === 'INV-7'), `.example.com 应覆盖子域: ${JSON.stringify(v)}`);
-      // *.example.com 与 +. 等价：同时覆盖裸域与子域
-      v = checkInvariants(mkDns(['*.example.com']), { proxies: [{ server: 'example.com' }] });
-      assert.ok(!v.some(x => x.id === 'INV-7'), '*.example.com 应覆盖裸域');
-      // .example.com 不覆盖裸域，仍应检出
-      v = checkInvariants(mkDns(['.example.com']), { proxies: [{ server: 'example.com' }] });
-      assert.ok(v.some(x => x.id === 'INV-7'), '.example.com 不应覆盖裸域');
+      const noInv7 = (filter, server) => !checkInvariants(mkDns([filter]), { proxies: [{ server }] }).some(x => x.id === 'INV-7');
+
+      // `.example.com`（点通配）：任意层子域覆盖、不含裸域
+      assert.ok(noInv7('.example.com', 'a.example.com'), '. 应覆盖单层子域');
+      assert.ok(noInv7('.example.com', 'a.b.example.com'), '. 应覆盖多层子域');
+      assert.ok(!noInv7('.example.com', 'example.com'), '. 不应覆盖裸域');
+
+      // `+.example.com`：裸域 + 任意层子域（≡ DOMAIN-SUFFIX）
+      assert.ok(noInv7('+.example.com', 'example.com'), '+. 应覆盖裸域');
+      assert.ok(noInv7('+.example.com', 'a.b.example.com'), '+. 应覆盖多层子域');
+
+      // `*.example.com`：严格单层通配（内核 search 中 wildcard 每次只消耗一个标签）
+      assert.ok(noInv7('*.example.com', 'a.example.com'), '*. 应覆盖单层子域');
+      assert.ok(!noInv7('*.example.com', 'example.com'), '*. 不应覆盖裸域');
+      assert.ok(!noInv7('*.example.com', 'a.b.example.com'), '*. 不应覆盖多层子域');
     });
 
     it('checkInvariants - 显式开启 dnsAllowNonLoopback 时不产生违规告警 [INV-8]', () => {

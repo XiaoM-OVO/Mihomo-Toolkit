@@ -114,16 +114,24 @@ function checkInvariants(dns = {}, options = {}) {
     const requiredDomains = deriveFakeIpFilterAdditions(options.proxies, { mode: 'exact' });
     const filterList = Array.isArray(dns['fake-ip-filter']) ? dns['fake-ip-filter'] : [];
     for (const req of requiredDomains) {
+      // 覆盖判定与内核 component/trie/domain.go 语义严格对齐：
+      // - 精确匹配：`example.com` 仅覆盖自身
+      // - `+.example.com`：展开为裸域 + 点通配，覆盖裸域与任意层子域（≡ DOMAIN-SUFFIX）
+      // - `.example.com`：点通配无视剩余标签数终结匹配，覆盖任意层子域、不含裸域
+      // - `*.example.com`：严格单层通配，仅覆盖 `x.example.com`，不含裸域与更深层级
       const covered = filterList.some(f => {
         if (typeof f !== 'string') return false;
         if (f === req) return true;
-        // `+.` 与 `*.` 在 Mihomo 语义中等价：同时覆盖裸域与任意层级子域
-        if (f.startsWith('+.') || f.startsWith('*.')) {
+        if (f.startsWith('+.')) {
           const base = f.slice(2);
           return req === base || req.endsWith('.' + base);
         }
         // 纯前缀点（.example.com）：仅覆盖任意层级子域，不含裸域
         if (f.startsWith('.')) return req.endsWith(f);
+        if (f.startsWith('*.')) {
+          const base = f.slice(2);
+          return req.endsWith('.' + base) && req.split('.').length === base.split('.').length + 1;
+        }
         return false;
       });
       if (!covered) {
