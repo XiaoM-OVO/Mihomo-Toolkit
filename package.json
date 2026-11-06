@@ -66,5 +66,8 @@
   },
   "devDependencies": {
     "eslint": "^10.12.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.5"
   }
 }
