@@ -89,14 +89,12 @@ Options:
   -m, --mode <mode>    交付输出模式: "config" (默认), "nodes" (纯节点), 或 "report" (审计报告)
   -c, --config <path>  指定自定义 YAML/JSON 配置文件
   -r, --report <path>  在生成配置的同时，顺手将审计报告另存为指定 JSON 文件
-  --dry-run            诊断模式：完整校验配置语法、订阅连通性与 DNS 不变式，绝不落盘
-  --validate           同 --dry-run（仅校验不落盘）
-  --explain            只读激活摘要：输出组 / 规则 / 池的「激活 / 跳过 / 剪枝 / 为空」及原因，不落盘
+  --dry-run            诊断模式：完整校验配置语法、订阅连通性与 DNS 不变式，绝不落盘；全订阅不可用或不变式违规时退出码 1（可接入 CI）
+  --explain            只读激活摘要：输出组 / 规则 / 池的「激活 / 跳过 / 剪枝 / 为空」及原因，不落盘；只呈现结论，不因订阅不可用失败关闭
   --json               与 --explain 配合：以 JSON 输出摘要（固定契约，可用于回归基线）
   --prod               生产环境模式 (开启严格安全锁，强制禁止敏感凭据明文打印)
   --debug              开启详细调试日志 (展示 fetch 过程及中间状态)
-  -q, --quiet          关闭日志输出（同 --silent）
-  --silent             关闭全部日志输出
+  -s, --silent         关闭全部日志输出
   --log-level <level>  显式日志级别: silent | error | warn | info | debug
   -h, --help           显示帮助信息
 
@@ -395,7 +393,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 本项目采用“稳定性先行、大动作新功能排后”的务实演进路线，划分为 4 个推进阶段：
 
 - 🟢 **Milestone 1 (v2.0-Alpha)**：已闭环 —— 稳定性加固与核心债务清零（优先级倒挂、SSRF 穿透、IO 反向依赖、协议截断）；
-- 🟡 **Milestone 2 (v2.0-Beta)**：已闭环 —— 优雅停机、DNS 并发流控、CLI `--dry-run` / `--validate`；
+- 🟡 **Milestone 2 (v2.0-Beta)**：已闭环 —— 优雅停机、DNS 并发流控、CLI `--dry-run`；
 - 🔵 **Milestone 3 (v4.0.0-alpha)**：已闭环 —— 声明式策略拓扑 DSL 收口（`groups` + `routing` 两表、方向限定）、配置解耦与直连建连期 IP Pinning；
 - 🟣 **Milestone 4 (v4.0-GA)**：正式发版 —— main 合流、默认产物基线锁定与迁移说明（不再扩展新功能面）。
 

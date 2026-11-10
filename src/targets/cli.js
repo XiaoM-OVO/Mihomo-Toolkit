@@ -29,14 +29,12 @@ function run(argv = process.argv) {
     .option('-m, --mode <mode>', 'Output mode: "config" (default), "nodes" (clean proxies only), or "report" (audit JSON)', 'config')
     .option('-c, --config <path>', 'User config JSON/YAML file path (optional)')
     .option('-r, --report <path>', 'Save extra audit report to a JSON file (optional)')
-    .option('--dry-run', '诊断模式：执行完整流水线校验配置语法、订阅连通性与 DNS 不变式，但不写入任何磁盘产物')
-    .option('--validate', '同 --dry-run：仅校验不落盘')
+    .option('--dry-run', '诊断模式：执行完整流水线校验配置语法、订阅连通性与 DNS 不变式，但不写入任何磁盘产物；全订阅不可用或不变式违规时退出码 1')
     .option('--prod', 'Simulate production environment (enables security locks)')
     .option('--debug', 'Enable debug output (verbose fetch logs, intermediate snapshots)')
-    .option('-q, --quiet', 'Suppress logging output (same as --silent)')
-    .option('--silent', 'Suppress all logging output')
+    .option('-s, --silent', 'Suppress all logging output')
     .option('--log-level <level>', 'Explicit log level: silent | error | warn | info | debug')
-    .option('--explain', '只读激活摘要：输出组 / 规则 / 池的「激活 / 跳过 / 剪枝 / 为空」及原因（不写入任何磁盘产物）')
+    .option('--explain', '只读激活摘要：输出组 / 规则 / 池的「激活 / 跳过 / 剪枝 / 为空」及原因（不写入任何磁盘产物；只呈现结论，不因订阅不可用失败关闭）')
     .option('--json', '与 --explain 配合：以 JSON 输出激活摘要，便于脚本与回归基线消费');
 
   // 只读查询命令：list 反射当前配置下可引用的对象，不触发构建流水线
@@ -68,9 +66,9 @@ function run(argv = process.argv) {
 
   const options = program.opts();
 
-  // 诊断模式：--dry-run 与 --validate 等价，仅校验不落盘；
+  // 诊断模式：--dry-run 仅校验不落盘；
   // --explain 同样只读（ROADMAP：默认只读不产出），只是在诊断之上多给一份激活摘要
-  const dryRun = Boolean(options.dryRun || options.validate || options.explain);
+  const dryRun = Boolean(options.dryRun || options.explain);
   const explain = options.explain === true;
   // JSON 模式下 stdout 必须只承载结构化摘要
   const explainJson = explain && options.json === true;
@@ -107,7 +105,7 @@ function run(argv = process.argv) {
 
   // 2. 判定生效日志等级：CLI 参数 > 配置文件 logLevel > 默认 'info'
   let effectiveLevel = 'info';
-  if (options.silent || options.quiet) {
+  if (options.silent) {
     effectiveLevel = 'silent';
   } else if (options.debug) {
     effectiveLevel = 'debug';
@@ -218,11 +216,18 @@ function run(argv = process.argv) {
           logger.warn(vLines.join('\n'));
         }
 
-        if (violations.length > 0 || hasTerminal) {
+        const unhealthy = violations.length > 0 || allUnusable;
+        // --dry-run 是健康门禁：上游全挂即失败关闭，便于接入 CI。
+        // --explain 是只读解释工具：只呈现 ❌ 结论，不以退出码阻断排查。
+        if (!explain && unhealthy) {
           logger.error('❌ 诊断未通过：存在 DNS 不变式违规或订阅全部不可用');
           process.exit(1);
         }
-        logger.success('✅ 诊断通过：配置语法、订阅连通性与 DNS 不变式均正常');
+        if (!unhealthy) {
+          logger.success(hasFailedSub
+            ? '✅ 诊断通过（存在部分不可用订阅）：配置语法与 DNS 不变式正常'
+            : '✅ 诊断通过：配置语法、订阅连通性与 DNS 不变式均正常');
+        }
         return;
       }
 

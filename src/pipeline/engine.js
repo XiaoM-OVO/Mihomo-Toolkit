@@ -587,7 +587,7 @@ async function runPipelineEngine(userConfig = {}, options = {}) {
 
   const effectiveLogLevel = options.debug
     ? 'debug'
-    : (options.silent || options.quiet
+    : (options.silent
         ? 'silent'
         : (options.logLevel || userConfig.logLevel || envLogLevel || defaultLogLevel));
   const logger = (options.logger && typeof options.logger.child === 'function')

@@ -61,8 +61,8 @@
 ### 🟡 Milestone 2: v2.0-Beta 宿主健壮性与生产级加固（已闭环）
 > **阶段目标**：加固 HTTP Server 与 CLI 的生产可用性，增强运行期容灾与排障体验。
 
-- ✅ **闭环结论**：Graceful Shutdown（连接全关 ∧ 任务排空）、DNS 并发上限 16、DoH 代理与双路竞速、`--dry-run` / `--validate`、`/healthz` 扩展、include 去 cwd 依赖、缓存代际原语 `src/io/generation.js`。
-- 🔒 **仍生效的约束**：停机必须等排空 + 连接全关；诊断模式绝不写盘且失败关闭；代际超限抛错、不回绕。
+- ✅ **闭环结论**：Graceful Shutdown（连接全关 ∧ 任务排空）、DNS 并发上限 16、DoH 代理与双路竞速、`--dry-run`、`/healthz` 扩展、include 去 cwd 依赖、缓存代际原语 `src/io/generation.js`。
+- 🔒 **仍生效的约束**：停机必须等排空 + 连接全关；诊断模式绝不写盘；`--dry-run` 在上游全挂或 DNS 不变式违规时失败关闭，`--explain` 只呈现结论不阻断；代际超限抛错、不回绕。
 
 > 逐条验收项与实现细节见 [M1 / M2 完成记录](docs/history/milestones-v2-alpha-beta.md)。
 

@@ -1,5 +1,5 @@
 /**
- * CLI 诊断模式：--dry-run / --validate 仅校验配置语法、订阅连通性与 DNS 不变式，绝不写入磁盘产物
+ * CLI 诊断模式：--dry-run 仅校验配置语法、订阅连通性与 DNS 不变式，绝不写入磁盘产物
  */
 
 'use strict';
@@ -58,7 +58,7 @@ describe('CLI 一次性构建（不参与退避）', () => {
   });
 });
 
-describe('CLI 诊断模式 (--dry-run / --validate)', () => {
+describe('CLI 诊断模式 (--dry-run)', () => {
   it('--dry-run 通过校验且绝不落盘；对照组（无该标志）正常写出产物', () => {
     const tmpDir = makeTmpDir();
     try {
@@ -81,17 +81,67 @@ describe('CLI 诊断模式 (--dry-run / --validate)', () => {
     }
   });
 
-  it('--validate 与 --dry-run 等价，同样不落盘', () => {
+  it('--dry-run：订阅全部不可用时以退出码 1 失败关闭', () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const cfgPath = path.join(tmpDir, 'config.yaml');
+      const outPath = path.join(tmpDir, 'out.yaml');
+      // 私网地址由 SSRF 预检同步拒绝，可用订阅数为 0
+      fs.writeFileSync(cfgPath, yaml.stringify({
+        subscriptions: [{ url: 'http://10.0.0.1/sub', tag: 'A', retry: 0 }]
+      }));
+
+      const res = runCli(['--dry-run', '-c', cfgPath, '-o', outPath, '--log-level', 'info']);
+      assert.equal(res.status, 1, `全部订阅不可用应失败关闭，stdout=${res.stdout}`);
+      assert.ok(res.stdout.includes('全部订阅不可用'), `stdout=${res.stdout}`);
+      assert.equal(res.stdout.includes('诊断通过'), false, `不得同时输出成功结论：${res.stdout}`);
+      assert.ok(res.stderr.includes('诊断未通过'), `stderr=${res.stderr}`);
+      assert.equal(fs.existsSync(outPath), false, '诊断模式不得写入输出文件');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('--explain：订阅全部不可用只提示不失败关闭', () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const cfgPath = path.join(tmpDir, 'config.yaml');
+      fs.writeFileSync(cfgPath, yaml.stringify({
+        subscriptions: [{ url: 'http://10.0.0.1/sub', tag: 'A', retry: 0 }]
+      }));
+
+      const res = runCli(['--explain', '-c', cfgPath, '--log-level', 'info']);
+      assert.equal(res.status, 0, `--explain 不应失败关闭，stderr=${res.stderr}`);
+      assert.ok(res.stdout.includes('全部订阅不可用'), `stdout=${res.stdout}`);
+      assert.equal(res.stderr.includes('诊断未通过'), false, `stderr=${res.stderr}`);
+      assert.equal(res.stdout.includes('诊断通过'), false, `不得输出成功结论：${res.stdout}`);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+});
+
+describe('CLI 参数收窄', () => {
+  it('已移除的 --validate / -q / --quiet 按未知选项拒绝', () => {
+    for (const flag of ['--validate', '-q', '--quiet']) {
+      const res = runCli([flag]);
+      assert.equal(res.status, 1, `${flag} 应被拒绝，stderr=${res.stderr}`);
+      assert.ok(res.stderr.includes('unknown option'), `${flag} 应报未知选项：${res.stderr}`);
+    }
+  });
+
+  it('-s 关闭全部日志输出，但不影响产物落盘', () => {
     const tmpDir = makeTmpDir();
     try {
       const cfgPath = path.join(tmpDir, 'config.yaml');
       const outPath = path.join(tmpDir, 'out.yaml');
       writeInlineNodeConfig(cfgPath);
 
-      const res = runCli(['--validate', '-c', cfgPath, '-o', outPath, '--log-level', 'info']);
-      assert.equal(res.status, 0, `退出码应为 0，stderr=${res.stderr}`);
-      assert.ok(res.stdout.includes('诊断模式'));
-      assert.equal(fs.existsSync(outPath), false, '--validate 不得写入输出文件');
+      const res = runCli(['-s', '-c', cfgPath, '-o', outPath]);
+      assert.equal(res.status, 0, `stderr=${res.stderr}`);
+      assert.equal(res.stdout.trim(), '', `-s 不应输出日志：${res.stdout}`);
+      assert.equal(fs.existsSync(outPath), true, '-s 仅静音日志，产物仍应落盘');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
