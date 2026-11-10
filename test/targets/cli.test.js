@@ -56,6 +56,35 @@ describe('CLI 一次性构建（不参与退避）', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('-r 另存的审计报告与 -m report 使用同一标准结构', () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const cfgPath = path.join(tmpDir, 'config.yaml');
+      const outPath = path.join(tmpDir, 'out.yaml');
+      const extraPath = path.join(tmpDir, 'extra.json');
+      const modePath = path.join(tmpDir, 'mode.json');
+      writeInlineNodeConfig(cfgPath);
+
+      const cfgBuild = runCli(['-c', cfgPath, '-o', outPath, '-r', extraPath]);
+      assert.equal(cfgBuild.status, 0, `stderr=${cfgBuild.stderr}`);
+      const extra = JSON.parse(fs.readFileSync(extraPath, 'utf-8'));
+      assert.equal(extra.service, 'mihomo-toolkit');
+      assert.equal(extra.summary.totalInput, 1);
+      assert.ok(Array.isArray(extra.invariantViolations));
+
+      const reportBuild = runCli(['-c', cfgPath, '-m', 'report', '-o', modePath]);
+      assert.equal(reportBuild.status, 0, `stderr=${reportBuild.stderr}`);
+      const modeReport = JSON.parse(fs.readFileSync(modePath, 'utf-8'));
+      assert.deepEqual(
+        Object.keys(extra).sort(),
+        ['invariantViolations', 'service', 'stats', 'summary', 'timestamp', 'version']
+      );
+      assert.deepEqual(Object.keys(extra).sort(), Object.keys(modeReport).sort());
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('CLI 诊断模式 (--dry-run)', () => {

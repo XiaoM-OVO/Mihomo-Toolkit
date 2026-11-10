@@ -46,8 +46,7 @@ function buildAuditReport(meta = {}, proxies = [], options = {}) {
       fissionCreated: stats.fissionCount,
       invariantViolations: invariantViolations.length
     },
-    invariantViolations,
-    meta: meta || null
+    invariantViolations
   };
 }
 

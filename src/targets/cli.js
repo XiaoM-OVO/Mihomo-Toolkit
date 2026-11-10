@@ -15,6 +15,7 @@ const { expandIncludes } = require('../config/include');
 const { createLogger } = require('../core/logger');
 const { isTrustedSynthetic } = require('../core/node-trust');
 const { createStatelessResilienceContext } = require('../pipeline/resilience');
+const { buildAuditReport } = require('../pipeline/report');
 const { runListCommand } = require('./list');
 const { buildExplainPayload, renderExplainReport } = require('./explain');
 const pkg = require('../../package.json');
@@ -253,14 +254,13 @@ function run(argv = process.argv) {
         return;
       }
 
-      // 2. 附加 -r 选项导出审计 JSON
+      // 2. 附加 -r 选项导出审计 JSON（与 -m report 使用同一标准结构）
       const reportTarget = options.report;
       if (reportTarget && (result.report || meta)) {
         const reportPath = path.resolve(process.cwd(), reportTarget);
-        const extraReport = result.report || meta;
-        if (result.invariantViolations && typeof extraReport === 'object') {
-          extraReport.invariantViolations = result.invariantViolations;
-        }
+        const extraReport = result.report || buildAuditReport(meta, result.proxies || [], {
+          invariantViolations: result.invariantViolations || []
+        });
         fs.writeFileSync(reportPath, JSON.stringify(extraReport, null, 2), 'utf-8');
         logger.info(`💾 审计报告已另存至：${reportPath}`);
 
