@@ -92,10 +92,10 @@ function writeFixture(content) {
 
 describe('【Security】交付契约与控制面净化 (delivery-contract)', () => {
   describe('contract - 交付契约与控制面净化 [C-1 / M-1]', () => {
-    it('buildProfile - 单 URL/本地文件路径：控制面字段一律剥离且保留节点资产闭包 [C-1]', async () => {
+    it('buildProfile - 本地订阅文件：控制面字段一律剥离且保留节点资产闭包 [C-1]', async () => {
       const { dir, file } = writeFixture(EVIL_SUBSCRIPTION);
       try {
-        const res = await buildProfile({}, { mode: 'config', url: file, production: true, noCache: true });
+        const res = await buildProfile({ subscriptions: [{ url: file, tag: 'Fixtures' }] }, { mode: 'config', production: true, noCache: true });
         const d = res.outputData;
 
         // 1. 控制面攻击载荷 0 残留
@@ -136,7 +136,7 @@ describe('【Security】交付契约与控制面净化 (delivery-contract)', () 
     it('buildProfile - enablePipeline=false 时依然强制控制面净化 [M-1]', async () => {
       const { dir, file } = writeFixture(EVIL_SUBSCRIPTION);
       try {
-        const res = await buildProfile({ enablePipeline: false }, { mode: 'config', url: file, production: true, noCache: true });
+        const res = await buildProfile({ enablePipeline: false, subscriptions: [{ url: file, tag: 'Fixtures' }] }, { mode: 'config', production: true, noCache: true });
         const d = res.outputData;
         const leaked = FORBIDDEN_TOP_LEVEL.filter(k => Object.prototype.hasOwnProperty.call(d, k));
         assert.deepEqual(leaked, [], `enablePipeline=false 时控制面字段泄漏: ${leaked.join(', ')}`);
@@ -220,8 +220,8 @@ proxies:
       const { dir, file } = writeFixture(TWO_AIRPORTS);
       try {
         const res = await buildProfile(
-          { assetClosure: mode, assetDomainAllowlist: allowlist || [] },
-          { mode: 'config', url: file, production: true, noCache: true }
+          { assetClosure: mode, assetDomainAllowlist: allowlist || [], subscriptions: [{ url: file, tag: 'Fixtures' }] },
+          { mode: 'config', production: true, noCache: true }
         );
         return res.outputData;
       } finally {

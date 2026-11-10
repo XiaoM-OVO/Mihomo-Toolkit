@@ -51,7 +51,7 @@ function runConfigPipeline({
   const agg = aggregateSubscriptions(collectedSubInfos, { expireAggregation, logger });
 
   // 1. 控制面重置：清空输入骨架中一切工具自有键，确保覆盖式生成不残留源配置取值。
-  //    治本点：config 模式的输出骨架可能来自外部输入（订阅 / --url 指定的配置文件），
+  //    治本点：config 模式的输出骨架可能来自外部输入（订阅源），
   //    绝不允许其携带 dns / tun / hosts / rules 等控制面字段进入产物。
   const resetKeys = resetToolkitOutputKeys(sourceSkeleton);
   if (resetKeys.length > 0 && logger && logger.isLevelEnabled && logger.isLevelEnabled('debug')) {

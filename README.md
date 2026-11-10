@@ -84,7 +84,6 @@ Commands:
 
 Options:
   -V, --version        输出版本号
-  -u, --url <url>      订阅链接或本地配置文件路径 (若 config 中已有 subscriptions 则可省略)
   -o, --out <path>     输出文件路径 (默认: config.yaml / nodes.yaml / report.json)
   -m, --mode <mode>    交付输出模式: "config" (默认), "nodes" (纯节点), 或 "report" (审计报告)
   -c, --config <path>  指定自定义 YAML/JSON 配置文件
@@ -108,17 +107,17 @@ List options:
 #### 常用命令范例
 
 ```bash
-# 场景 1：拉取订阅并生成完整分流配置
-./m-tk -u "https://airport.com/sub" -o config.yaml
-
-# 场景 2：根据本地 config.yaml 统一配置多订阅并编译
+# 场景 1：按 config.yaml 中的订阅清单生成完整分流配置
 npm run build
 
+# 场景 2：改用其他配置文件编译
+./m-tk -c my-profile.yaml -o my-config.yaml
+
 # 场景 3：纯节点提纯模式（Sub-Store 等二次加工专用）
-./m-tk -u "https://airport.com/sub" -m nodes -o nodes.yaml
+./m-tk -c config.yaml -m nodes -o nodes.yaml
 
 # 场景 4：生成分流配置的同时，顺手导出一份健康质检报告
-./m-tk -u "https://airport.com/sub" -r report.json
+./m-tk -c config.yaml -r report.json
 
 # 场景 5：查询当前配置下可引用的组 / 预设 / 宏 / 池 / 服务
 ./m-tk list refs
@@ -258,7 +257,7 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 
 #### 与 Sub-Store 搭配使用
 
-使用纯节点模式：`./m-tk -u "订阅地址" -m nodes -o nodes.yaml`，生成的纯净代理数组可直接作为 Sub-Store 的本地/远程节点源进行聚合。
+使用纯节点模式：`./m-tk -c config.yaml -m nodes -o nodes.yaml`，生成的纯净代理数组可直接作为 Sub-Store 的本地/远程节点源进行聚合。
 
 ### 4. 自包含单文件脚本（免部署）
 
@@ -353,7 +352,6 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 | 输入来源 | 信任级 | 处理原则与能力边界 |
 | :--- | :--- | :--- |
 | `config.yaml` / `-c` 指定的本地配置 | **可信** | 可声明 DNS 控制面、本机资源路径与策略编排偏好 |
-| CLI `-u <本地文件>` | **可信**（本机操作者显式指定） | 具备与本地配置文件相同的功能权限 |
 | 机场订阅源（远程 URL / 内联 `uri`） | **不可信** | 仅提取节点数据面；控制面字段与未知属性自动剥离 |
 | 服务端 `?config=<远程URL>` | **不可信** | 仅放行基础策略编排偏好；DNS 控制面、本机文件与资源类字段自动剥离 |
 

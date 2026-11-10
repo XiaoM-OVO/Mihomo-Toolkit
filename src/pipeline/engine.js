@@ -86,13 +86,6 @@ function safeErrorMessage(err) {
 const CACHE_KEY_VERSION = 'v2';
 
 /**
- * 除 userConfig 之外，仅这些 CLI / 运行时选项会影响产物内容
- * （options.debug / silent / logger / colors / onCacheStatus 等只影响行为与日志；
- * options.mode 经 normalizeOutputMode 归一化后单独纳入，故此处不重复计入原始字面量）
- */
-const CACHE_KEY_OPTION_KEYS = ['url'];
-
-/**
  * 计算构建产物缓存键 (纯函数)
  *
  * @param {object} [userConfig={}] 用户全局配置
@@ -113,11 +106,6 @@ function getCacheKey(userConfig = {}, options = {}) {
     const configRest = { ...userConfig };
     delete configRest.subscriptions;
     delete configRest.outputMode;
-
-    const optionSubset = {};
-    for (const key of CACHE_KEY_OPTION_KEYS) {
-      if (options[key] !== undefined) optionSubset[key] = options[key];
-    }
 
     const mounts = computeMountDigest(configRest);
 
@@ -144,7 +132,6 @@ function getCacheKey(userConfig = {}, options = {}) {
     const canonical = stableStringify({
       v: CACHE_KEY_VERSION,
       outputMode,
-      options: optionSubset,
       subs,
       mounts,
       config: configRest
@@ -273,7 +260,6 @@ async function executeBuildPipeline({
     usableSubCount = 0
   } = await processSubscriptionSources({
     subscriptions: userConfig.subscriptions,
-    url: options.url,
     userConfig,
     options,
     logger: ioLogger,

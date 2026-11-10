@@ -24,7 +24,6 @@ function run(argv = process.argv) {
     .name('mihomo-toolkit')
     .description(`Mihomo-Toolkit v${pkg.version} - 自动化节点清洗与策略组构建引擎`)
     .version(pkg.version)
-    .option('-u, --url <url>', 'Subscription URL or local config file path')
     .option('-o, --out <path>', 'Output file path (default: config.yaml / nodes.yaml / report.json)')
     .option('-m, --mode <mode>', 'Output mode: "config" (default), "nodes" (clean proxies only), or "report" (audit JSON)', 'config')
     .option('-c, --config <path>', 'User config JSON/YAML file path (optional)')

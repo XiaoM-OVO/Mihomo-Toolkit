@@ -533,16 +533,17 @@ proxies:
     }
   });
 
-  test('单 URL 路径：本次响应通过 Userinfo 明确报告到期或流量耗尽时，元数据保留且拒绝容灾', async () => {
+  test('单订阅路径：本次响应通过 Userinfo 明确报告到期或流量耗尽时，元数据保留且拒绝容灾', async () => {
     subStaleCache.clear();
     profileCache.clear();
     try {
       const url = 'http://93.184.216.34/single-url-expired';
+      const cfg = { subscriptions: [{ url, tag: 'Single', retry: 0 }] };
       const expirePast = Math.floor(Date.now() / 1000) - 3600;
 
       // 1. 建立旧有效缓存
       globalThis.fetch = async () => new Response(VALID_SUB_CONTENT, { status: 200 });
-      await buildProfile({}, { url, mode: 'config', noCache: true });
+      await buildProfile(cfg, { mode: 'config', noCache: true });
       assert.ok(subStaleCache.has(url));
 
       // 2. 本次请求返回 200 但 Userinfo 明确已到期
@@ -550,11 +551,11 @@ proxies:
         status: 200,
         headers: { 'subscription-userinfo': `upload=100; download=200; total=1000000; expire=${expirePast}` }
       });
-      const res = await buildProfile({}, { url, mode: 'config', noCache: true });
-      assert.ok(!res.yamlStr.includes('香港'), '单 URL 路径已到期时绝不得输出旧节点');
-      assert.equal(subStaleCache.has(url), false, '单 URL 终态失效后物理删除 subStaleCache');
-      assert.equal(res.userInfo.expire, expirePast, '单 URL 路径应忠实保留 expire 元数据用于注释防丢头');
-      assert.ok(res.yamlStr.includes(`# subscription-userinfo:`), '单 URL 路径生成防丢头注释');
+      const res = await buildProfile(cfg, { mode: 'config', noCache: true });
+      assert.ok(!res.yamlStr.includes('香港'), '单订阅路径已到期时绝不得输出旧节点');
+      assert.equal(subStaleCache.has(url), false, '单订阅终态失效后物理删除 subStaleCache');
+      assert.equal(res.userInfo.expire, expirePast, '单订阅路径应忠实保留 expire 元数据用于注释防丢头');
+      assert.ok(res.yamlStr.includes(`# subscription-userinfo:`), '单订阅路径生成防丢头注释');
     } finally {
       restoreFetch();
     }
