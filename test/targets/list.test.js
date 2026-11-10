@@ -137,4 +137,20 @@ describe('list 子命令', () => {
     assert.equal(unknown.status, 1);
     assert.ok(unknown.stderr.includes('未知 list 域「nope」'));
   });
+
+  it('refs 人类可读输出按分类树形分级呈现，且支持 groups 别名', () => {
+    const res = runCli(['list', 'refs']);
+    assert.equal(res.status, 0);
+    assert.ok(res.stdout.includes('可引用组目录 (refs)'));
+    assert.ok(res.stdout.includes('AI 助手'));
+    assert.ok(res.stdout.includes('流媒体'));
+    assert.ok(res.stdout.includes('chatgpt'));
+    assert.ok(res.stdout.includes('[独立引用]'));
+    assert.ok(res.stdout.includes('[聚合组]'));
+
+    // groups 别名与 refs 一致
+    const aliasRes = runCli(['list', 'groups']);
+    assert.equal(aliasRes.status, 0);
+    assert.equal(aliasRes.stdout, res.stdout);
+  });
 });

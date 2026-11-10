@@ -41,7 +41,7 @@ function run(argv = process.argv) {
   let listRequest = null;
   program
     .command('list [domain]')
-    .description('列出当前配置下可引用的对象（域: refs | presets | macros | pools | services）')
+    .description('列出当前配置下可引用的对象（域: refs | presets | macros | pools | services；refs 可简写为 groups）')
     .option('--json', '以 JSON 输出，便于脚本消费')
     .action((domain, listOptions) => {
       // 配置文件路径沿用根命令的 -c：commander 默认由父命令消费该选项，

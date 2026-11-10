@@ -51,6 +51,65 @@ const CATEGORY_LABELS = {
 };
 // 注：ads 用「广告规则」而非组名，避免在逻辑层复写已登记的组身份字面量。
 
+/** 域别名映射表：支持直觉别名 */
+const DOMAIN_ALIASES = {
+  groups: 'refs'
+};
+
+const REF_CATEGORY_META = {
+  ai: { icon: '🤖', label: 'AI 助手' },
+  streaming: { icon: '🎬', label: '流媒体' },
+  social: { icon: '💬', label: '社交平台' },
+  game: { icon: '🎮', label: '游戏平台' },
+  dev: { icon: '💻', label: '开发者与学术' },
+  system: { icon: '⚙️', label: '系统服务' },
+  specialized: { icon: '⚡', label: '专项服务' },
+  ads: { icon: '🛡️', label: '广告规则' },
+  custom: { icon: '🧩', label: '自定义策略组' }
+};
+
+const REF_CATEGORY_ORDER = ['ai', 'streaming', 'social', 'game', 'dev', 'system', 'specialized', 'ads', 'custom'];
+
+function resolveRefCategory(ref, registries = {}) {
+  for (const cat of ['ai', 'streaming', 'social', 'dev', 'system', 'specialized']) {
+    if (registries[cat]?.[ref]) return cat;
+  }
+  if (registries.aggregates) {
+    for (const item of Object.values(registries.aggregates)) {
+      if (item && (item.refKey === ref || item.key === ref)) {
+        return item.category || 'game';
+      }
+    }
+  }
+  if (ADS_GROUPS[ref]) return 'ads';
+  return 'custom';
+}
+
+function stringWidth(str) {
+  if (!str) return 0;
+  let width = 0;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if ((code >= 0x4e00 && code <= 0x9fff) ||
+        (code >= 0x3400 && code <= 0x4dbf) ||
+        (code >= 0xf900 && code <= 0xfaff) ||
+        (code >= 0xff01 && code <= 0xff60) ||
+        (code >= 0xffe0 && code <= 0xffe6) ||
+        (code >= 0x3000 && code <= 0x303f)) {
+      width += 2;
+    } else {
+      width += 1;
+    }
+  }
+  return width;
+}
+
+function padEndVisual(str, targetWidth) {
+  const w = stringWidth(str);
+  if (w >= targetWidth) return str;
+  return str + ' '.repeat(targetWidth - w);
+}
+
 /**
  * 读取并解析配置，产出与流水线同一口径的合并配置
  * @param {string} [configPath] CLI `-c` 指定的路径
@@ -79,23 +138,33 @@ function loadConfig(configPath) {
  * @param {object} config 已解析配置
  */
 function collectRefs(config) {
-  const groups = config.registries?.groups || {};
+  const registries = config?.registries || {};
+  const groups = registries.groups || {};
   const aggregateRefs = new Set(
-    Object.values(config.registries?.aggregates || {})
+    Object.values(registries.aggregates || {})
       .filter(Boolean)
       .map(item => item.refKey || item.key)
   );
-  const disabled = new Set(config.disabledGroupRefs || []);
+  const disabled = new Set(config?.disabledGroupRefs || []);
 
-  return Object.entries(groups).map(([ref, item]) => ({
-    ref,
-    name: item.name,
-    type: item.type || 'select',
-    // 用户语义：聚合组（成员不单独成组） vs 可独立引用
-    kind: aggregateRefs.has(ref) ? 'aggregate' : 'standalone',
-    hidden: item.hidden === true,
-    status: disabled.has(ref) ? 'disabled' : 'active'
-  }));
+  return Object.entries(groups).map(([ref, item]) => {
+    const entry = {
+      ref,
+      name: item.name,
+      type: item.type || 'select',
+      // 用户语义：聚合组（成员不单独成组） vs 可独立引用
+      kind: aggregateRefs.has(ref) ? 'aggregate' : 'standalone',
+      hidden: item.hidden === true,
+      status: disabled.has(ref) ? 'disabled' : 'active'
+    };
+    // 分类只服务于人类可读输出的分组：挂成非枚举属性，
+    // 避免扩展 `--json` 已固定的字段契约（ref/name/type/kind/hidden/status）。
+    Object.defineProperty(entry, 'category', {
+      value: resolveRefCategory(ref, registries),
+      enumerable: false
+    });
+    return entry;
+  });
 }
 
 /** `presets`：`routing[].preset` 的合法取值 */
@@ -293,10 +362,66 @@ function renderItem(domain, item) {
   }
 }
 
+function renderRefItem(item) {
+  const pRef = padEndVisual(item.ref, 14);
+  const pName = padEndVisual(item.name, 10);
+  const pType = padEndVisual(`(${item.type})`, 10);
+  const pKind = padEndVisual(item.kind === 'aggregate' ? '[聚合组]' : '[独立引用]', 10);
+  const parts = [pRef, '·', pName, '·', pType, '·', pKind];
+  if (item.hidden) parts.push('· 隐藏');
+  if (item.status === 'disabled') parts.push('· 已禁用');
+  return parts.join(' ');
+}
+
 /** 渲染人类可读输出 */
 function renderHuman(domain, items) {
   const title = `🧾 ${DOMAIN_LABELS[domain]} (${domain})：共 ${items.length} 个${summarize(domain, items)}`;
   if (items.length === 0) return [title, '└── （无）'].join('\n');
+
+  if (domain === 'refs') {
+    const categoryBuckets = new Map();
+    for (const cat of REF_CATEGORY_ORDER) {
+      categoryBuckets.set(cat, []);
+    }
+    for (const item of items) {
+      const cat = item.category || 'custom';
+      if (!categoryBuckets.has(cat)) categoryBuckets.set(cat, []);
+      categoryBuckets.get(cat).push(item);
+    }
+
+    const sections = [];
+    for (const cat of REF_CATEGORY_ORDER) {
+      const bucket = categoryBuckets.get(cat) || [];
+      if (bucket.length === 0) continue;
+      const meta = REF_CATEGORY_META[cat] || { icon: '📦', label: cat };
+      sections.push({
+        title: `${meta.icon} ${meta.label} (${bucket.length})`,
+        items: bucket
+      });
+    }
+
+    for (const [cat, bucket] of categoryBuckets.entries()) {
+      if (!REF_CATEGORY_ORDER.includes(cat) && bucket.length > 0) {
+        sections.push({
+          title: `📦 ${cat} (${bucket.length})`,
+          items: bucket
+        });
+      }
+    }
+
+    const lines = [title];
+    sections.forEach((sec, sIdx) => {
+      const isLastSec = sIdx === sections.length - 1;
+      lines.push(`${isLastSec ? '└──' : '├──'} ${sec.title}`);
+      const indent = isLastSec ? '    ' : '│   ';
+      sec.items.forEach((item, iIdx) => {
+        const isLastItem = iIdx === sec.items.length - 1;
+        lines.push(`${indent}${isLastItem ? '└──' : '├──'} ${renderRefItem(item)}`);
+      });
+    });
+    return lines.join('\n');
+  }
+
   const lines = items.map((item, index) => {
     const branch = index === items.length - 1 ? '└──' : '├──';
     return `${branch} ${renderItem(domain, item)}`;
@@ -318,7 +443,8 @@ function runListCommand({ domain, config, json = false } = {}) {
     process.exitCode = 1;
     return;
   }
-  if (!available.includes(domain)) {
+  const resolvedDomain = DOMAIN_ALIASES[domain] || domain;
+  if (!available.includes(resolvedDomain)) {
     console.error(`❌ 未知 list 域「${domain}」，可选：${available.join(' / ')}`);
     process.exitCode = 1;
     return;
@@ -327,23 +453,23 @@ function runListCommand({ domain, config, json = false } = {}) {
   try {
     let resolved = null;
     let configLoaded = false;
-    if (CONFIG_DEPENDENT_DOMAINS.has(domain)) {
+    if (CONFIG_DEPENDENT_DOMAINS.has(resolvedDomain)) {
       const loaded = loadConfig(config);
       resolved = loaded.config;
       configLoaded = loaded.configLoaded;
     }
-    const items = COLLECTORS[domain](resolved);
+    const items = COLLECTORS[resolvedDomain](resolved);
 
     if (json) {
       console.log(JSON.stringify({
-        domain,
+        domain: resolvedDomain,
         configLoaded,
         count: items.length,
         items
       }, null, 2));
       return;
     }
-    console.log(renderHuman(domain, items));
+    console.log(renderHuman(resolvedDomain, items));
   } catch (err) {
     console.error(`❌ list 失败：${err.message}`);
     process.exitCode = 1;
