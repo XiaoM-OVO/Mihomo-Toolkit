@@ -85,6 +85,39 @@ describe('CLI 一次性构建（不参与退避）', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('-m report 同时 -r 时两份报告都会落盘', () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const cfgPath = path.join(tmpDir, 'config.yaml');
+      const mainPath = path.join(tmpDir, 'main.json');
+      const extraPath = path.join(tmpDir, 'extra.json');
+      writeInlineNodeConfig(cfgPath);
+
+      const r = runCli(['-c', cfgPath, '-m', 'report', '-o', mainPath, '-r', extraPath]);
+      assert.equal(r.status, 0, `stderr=${r.stderr}`);
+      const main = JSON.parse(fs.readFileSync(mainPath, 'utf-8'));
+      const extra = JSON.parse(fs.readFileSync(extraPath, 'utf-8'));
+      assert.equal(extra.summary.totalInput, 1);
+      assert.deepEqual(Object.keys(extra).sort(), Object.keys(main).sort());
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('非法 YAML 配置的报错包含文件名与解析失败前缀', () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const cfgPath = path.join(tmpDir, 'bad.yaml');
+      fs.writeFileSync(cfgPath, 'subscriptions: [\n  - name: x\n');
+      const r = runCli(['-c', cfgPath]);
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr + r.stdout, /配置文件加载失败/);
+      assert.match(r.stderr + r.stdout, /bad\.yaml/);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('CLI 诊断模式 (--dry-run)', () => {

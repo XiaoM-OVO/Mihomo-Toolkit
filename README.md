@@ -76,11 +76,11 @@ npm install
 
 ```text
 Usage: ./m-tk [options]
-       ./m-tk list [domain] [--json]
+       ./m-tk list <domain> [--json]
        ./m-tk --explain [-c config.yaml] [--json]
 
 Commands:
-  list [domain]        只读列出当前配置下可引用的对象（域: refs | presets | macros | pools | services；refs 可简写为 groups）
+  list <domain>        只读列出当前配置下可引用的对象（域: refs | presets | macros | pools | services；refs 可简写为 groups）
 
 Options:
   -V, --version        输出版本号

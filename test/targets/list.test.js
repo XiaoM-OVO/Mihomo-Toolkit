@@ -128,10 +128,10 @@ describe('list 子命令', () => {
     assert.ok(human.stdout.includes('@matchednodes'));
   });
 
-  it('缺少或未知域时给出可选域清单并非零退出', () => {
+  it('缺少或未知域时非零退出并给出提示', () => {
     const missing = runCli(['list']);
     assert.equal(missing.status, 1);
-    assert.ok(missing.stderr.includes('refs / presets / macros / pools / services'));
+    assert.ok(missing.stderr.includes("missing required argument 'domain'"));
 
     const unknown = runCli(['list', 'nope']);
     assert.equal(unknown.status, 1);

@@ -438,11 +438,6 @@ function renderHuman(domain, items) {
  */
 function runListCommand({ domain, config, json = false } = {}) {
   const available = Object.keys(DOMAIN_LABELS);
-  if (!domain) {
-    console.error(`❌ 缺少 list 域，可选：${available.join(' / ')}`);
-    process.exitCode = 1;
-    return;
-  }
   const resolvedDomain = DOMAIN_ALIASES[domain] || domain;
   if (!available.includes(resolvedDomain)) {
     console.error(`❌ 未知 list 域「${domain}」，可选：${available.join(' / ')}`);

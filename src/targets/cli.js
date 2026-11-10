@@ -40,7 +40,7 @@ function run(argv = process.argv) {
   // 只读查询命令：list 反射当前配置下可引用的对象，不触发构建流水线
   let listRequest = null;
   program
-    .command('list [domain]')
+    .command('list <domain>')
     .description('列出当前配置下可引用的对象（域: refs | presets | macros | pools | services；refs 可简写为 groups）')
     .option('--json', '以 JSON 输出，便于脚本消费')
     .action((domain, listOptions) => {
@@ -98,7 +98,7 @@ function run(argv = process.argv) {
         // 这些字段就会在片段里「配了等于没配」。基准目录必须是配置文件所在目录。
         userConfig = expandIncludes(userConfig, path.dirname(configPath));
       } catch (err) {
-        configLoadError = err;
+        configLoadError = new Error(`配置文件加载失败 (${configPath}): ${err.message}`);
       }
     }
   }
@@ -238,6 +238,12 @@ function run(argv = process.argv) {
         const reportData = result.report;
         fs.writeFileSync(outPath, JSON.stringify(reportData, null, 2), 'utf-8');
         logger.success(`🎉 审计报告已输出至：${outPath}`);
+
+        if (options.report) {
+          const extraPath = path.resolve(process.cwd(), options.report);
+          fs.writeFileSync(extraPath, JSON.stringify(reportData, null, 2), 'utf-8');
+          logger.info(`💾 审计报告已另存至：${extraPath}`);
+        }
 
         if (meta?.stats && logger.isLevelEnabled('info')) {
           const lines = [
