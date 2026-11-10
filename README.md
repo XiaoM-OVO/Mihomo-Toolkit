@@ -75,12 +75,12 @@ npm install
 #### 命令行参数速查
 
 ```text
-Usage: mihomo-toolkit [options]
-       mihomo-toolkit list [domain] [--json]
-       mihomo-toolkit --explain [-c config.yaml] [--json]
+Usage: ./m-tk [options]
+       ./m-tk list [domain] [--json]
+       ./m-tk --explain [-c config.yaml] [--json]
 
 Commands:
-  list [domain]        只读列出当前配置下可引用的对象（域: refs | presets | macros | pools | services）
+  list [domain]        只读列出当前配置下可引用的对象（域: refs | presets | macros | pools | services；refs 可简写为 groups）
 
 Options:
   -V, --version        输出版本号
@@ -105,31 +105,33 @@ List options:
   -c, --config <path>  同主命令；refs / pools / services 按该配置投影
 ```
 
+> `./m-tk` 是仓库根目录的启动脚本（Windows 下自动匹配同目录的 `m-tk.cmd`），无需全局安装即可使用；下文所有命令均以其为入口。
+
 #### 常用命令范例
 
 ```bash
 # 场景 1：拉取订阅并生成完整分流配置
-node src/targets/cli.js -u "https://airport.com/sub" -o config.yaml
+./m-tk -u "https://airport.com/sub" -o config.yaml
 
 # 场景 2：根据本地 config.yaml 统一配置多订阅并编译
 npm run build
 
 # 场景 3：纯节点提纯模式（Sub-Store 等二次加工专用）
-node src/targets/cli.js -u "https://airport.com/sub" -m nodes -o nodes.yaml
+./m-tk -u "https://airport.com/sub" -m nodes -o nodes.yaml
 
 # 场景 4：生成分流配置的同时，顺手导出一份健康质检报告
-node src/targets/cli.js -u "https://airport.com/sub" -r report.json
+./m-tk -u "https://airport.com/sub" -r report.json
 
 # 场景 5：查询当前配置下可引用的组 / 预设 / 宏 / 池 / 服务
-node src/targets/cli.js list refs
-node src/targets/cli.js list services -c config.yaml
+./m-tk list refs
+./m-tk list services -c config.yaml
 
 # 场景 6：排查「配了不生效 / 被剪了不知道」——只读激活摘要（不落盘）
-node src/targets/cli.js --explain -c config.yaml
-node src/targets/cli.js --explain --json -c config.yaml > explain.json
+./m-tk --explain -c config.yaml
+./m-tk --explain --json -c config.yaml > explain.json
 
 # 场景 7：结构化输出，交给脚本消费
-node src/targets/cli.js list pools --json -c config.yaml
+./m-tk list pools --json -c config.yaml
 ```
 
 `list` 的 `--json` 输出契约固定为 `{ domain, configLoaded, count, items }`（`configLoaded` 表示是否通过 `-c` 加载了用户配置；`presets` / `macros` 是静态事实，不随配置变化）。各域字段：
@@ -252,13 +254,13 @@ HOST=0.0.0.0 PORT=8080 CONFIG_PATH=/path/to/my-config.yaml AUTH_TOKEN=your-token
 按设备条件二选一；两者输出规格一致，只是执行位置不同：
 
 1. **本地订阅方式（推荐）**：启动 `npm start` 常驻服务，在 Clash Verge Rev 中添加新订阅为 `http://127.0.0.1:3000/sub`，完全当做普通远程订阅使用。
-2. **计划任务直写配置**：在 `config.yaml` 中将 `output` 路径指向 Verge 的 profiles 目录，通过系统计划任务（Windows Task Scheduler / Cron）定时执行 `node src/targets/cli.js -c config.yaml` 自动写入。
+2. **计划任务直写配置**：在 `config.yaml` 中将 `output` 路径指向 Verge 的 profiles 目录，通过系统计划任务（Windows Task Scheduler / Cron）定时执行 `npm run build` 自动写入。
 
 > 若不想引入运行环境与常驻进程，可直接使用下节的[自包含单文件脚本](#4-自包含单文件脚本免部署)；代价是脚本在客户端沙箱内执行，设备性能较弱时编译超大单体会带来额外开销。
 
 #### 与 Sub-Store 搭配使用
 
-使用纯节点模式：`node src/targets/cli.js -u "订阅地址" -m nodes -o nodes.yaml`，生成的纯净代理数组可直接作为 Sub-Store 的本地/远程节点源进行聚合。
+使用纯节点模式：`./m-tk -u "订阅地址" -m nodes -o nodes.yaml`，生成的纯净代理数组可直接作为 Sub-Store 的本地/远程节点源进行聚合。
 
 ### 4. 自包含单文件脚本（免部署）
 
@@ -436,7 +438,7 @@ enableCoreOptimize: true         # 开启客户端指纹伪装与 TCP 并发优�
 <details>
 <summary><b>Q: 如何在 Clash Verge Rev 中使用？</b></summary>
 
-推荐直接在后台常驻服务中运行 `npm start`，然后在 Clash Verge Rev 中将订阅链接设置为 `http://127.0.0.1:3000/sub`；或者通过计划任务定时执行 `node src/targets/cli.js -c config.yaml` 直接生成写入 Verge 的配置 profile 路径，客户端零计算负担。
+推荐直接在后台常驻服务中运行 `npm start`，然后在 Clash Verge Rev 中将订阅链接设置为 `http://127.0.0.1:3000/sub`；或者通过计划任务定时执行 `npm run build` 直接生成写入 Verge 的配置 profile 路径，客户端零计算负担。
 </details>
 
 ---

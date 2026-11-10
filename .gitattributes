@@ -1,0 +1,3 @@
+# 根目录短命令：shebang 脚本必须保持 LF，Windows 批处理保持 CRLF
+m-tk text eol=lf
+m-tk.cmd text eol=crlf

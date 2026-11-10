@@ -1,0 +1,3 @@
+#!/bin/sh
+# 仓库根目录短命令：免全局安装，等价于 node src/targets/cli.js
+exec node "$(dirname "$0")/src/targets/cli.js" "$@"
