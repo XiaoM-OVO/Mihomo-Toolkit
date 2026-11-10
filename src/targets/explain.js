@@ -15,6 +15,7 @@
 const EXPLAIN_PAYLOAD_VERSION = 1;
 
 const KIND_ORDER = ['group', 'rule', 'pool', 'provider'];
+const STATUS_ORDER = ['active', 'skipped', 'pruned', 'empty'];
 
 const KIND_LABELS = {
   group: '组',
@@ -78,6 +79,15 @@ function renderRecord(record) {
   return parts.join(' ');
 }
 
+/** 分节标题里的状态构成，例如「激活 23 · 剪枝 28」 */
+function summarizeStatuses(records) {
+  return STATUS_ORDER
+    .map(status => [status, records.filter(record => record.status === status).length])
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => `${STATUS_LABELS[status]} ${count}`)
+    .join(' · ');
+}
+
 /**
  * 渲染人类可读摘要
  * @param {Array<object>} records 收集器记录
@@ -86,7 +96,7 @@ function renderRecord(record) {
 function renderExplainReport(records = []) {
   const list = Array.isArray(records) ? records : [];
   const counts = countRecords(list);
-  const statusText = ['active', 'skipped', 'pruned', 'empty']
+  const statusText = STATUS_ORDER
     .map(status => `${STATUS_LABELS[status]} ${counts.byStatus[status]}`)
     .join(' · ');
   const head = `🧪 激活摘要 (--explain)：共 ${counts.total} 条记录（${statusText}）`;
@@ -97,8 +107,11 @@ function renderExplainReport(records = []) {
   const sections = KIND_ORDER
     .filter(kind => counts.byKind[kind] > 0)
     .map(kind => {
-      const sectionRecords = list.filter(record => record.kind === kind);
-      const lines = [`${KIND_LABELS[kind]} (${sectionRecords.length})`];
+      // 同一节内按状态归拢，避免「激活」与「剪枝」交错出现
+      const sectionRecords = list
+        .filter(record => record.kind === kind)
+        .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+      const lines = [`${KIND_LABELS[kind]} (${sectionRecords.length}：${summarizeStatuses(sectionRecords)})`];
       sectionRecords.forEach((record, index) => {
         const branch = index === sectionRecords.length - 1 ? '└──' : '├──';
         lines.push(`${branch} ${renderRecord(record)}`);

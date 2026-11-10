@@ -22,6 +22,21 @@
 
 const EXPLAIN_KINDS = Object.freeze(['group', 'rule', 'pool', 'provider']);
 const EXPLAIN_STATUSES = Object.freeze(['active', 'skipped', 'pruned', 'empty']);
+// 组记录的「最终态」优先级：剪枝淘汰 > 骨架兜底 > 破环保留 > 建组快照。
+// 同一组会在 topology 与 prune 两层各写一次，必须让更接近最终产物的结论覆盖过程快照。
+const GROUP_RECORD_WEIGHT = Object.freeze({
+  snapshot: 1,
+  cycleBroken: 2,
+  rescued: 3,
+  pruned: 4
+});
+
+function groupRecordWeight(record) {
+  if (record.code === 'unreachable' || record.code === 'post-cycle') return GROUP_RECORD_WEIGHT.pruned;
+  if (record.code === 'rescue-direct') return GROUP_RECORD_WEIGHT.rescued;
+  if (record.code === 'cycle-broken') return GROUP_RECORD_WEIGHT.cycleBroken;
+  return GROUP_RECORD_WEIGHT.snapshot;
+}
 
 /**
  * 创建激活摘要收集器
@@ -57,6 +72,17 @@ function createExplainTrace(enabled = false) {
       const entry = { kind, id: String(id), status, code: String(code || 'unspecified') };
       if (typeof members === 'number' && Number.isFinite(members)) entry.members = members;
       if (detail !== undefined && detail !== null && detail !== '') entry.detail = String(detail);
+      // 组摘要只保留最终态：同一组被剪枝后，先前的「激活」快照必须被覆盖，
+      // 否则摘要会同时给出两条相反结论，读者无法判断最终产物里到底有没有这个组。
+      if (kind === 'group') {
+        const index = records.findIndex(item => item.kind === 'group' && item.id === entry.id);
+        if (index !== -1) {
+          if (groupRecordWeight(entry) > groupRecordWeight(records[index])) {
+            records[index] = entry;
+          }
+          return;
+        }
+      }
       records.push(entry);
     }
   };

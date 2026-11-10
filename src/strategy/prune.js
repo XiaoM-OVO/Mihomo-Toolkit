@@ -301,9 +301,9 @@ function pruneEmptyGroups({
           trace.add({
             kind: 'group',
             id: nodeName,
-            status: 'pruned',
-            code: 'cycle',
-            detail: `剪断循环依赖 ${nodeName} ➔ ${target}`
+            status: 'active',
+            code: 'cycle-broken',
+            detail: `剪断循环依赖 ${nodeName} ➔ ${target}（组保留）`
           });
         }
         if (logger && typeof logger.warn === 'function') {
@@ -379,6 +379,7 @@ function pruneEmptyGroups({
   if (currentRules.length > 0) {
     const knownTargets = new Set([...builtinTargets, ...physicalNodeNames, ...groupMap.keys()]);
     const orphanTargets = new Map();
+    const prunedTargets = new Map();
     const expectedAbsent = new Map();
     currentRules = currentRules.filter(rule => {
       if (typeof rule !== 'string') return true;
@@ -390,12 +391,22 @@ function pruneEmptyGroups({
         expectedAbsent.set(target, (expectedAbsent.get(target) || 0) + 1);
         return false;
       }
+      // 组建过但随后被剪枝：与「目标写错、根本不存在」是两回事，分开归因
+      if (removedGroups.has(target) || removedGroups.has(stripGroupDecoration(target))) {
+        prunedTargets.set(target, (prunedTargets.get(target) || 0) + 1);
+        return false;
+      }
       orphanTargets.set(target, (orphanTargets.get(target) || 0) + 1);
       return false;
     });
     if (expectedAbsent.size > 0 && logger && typeof logger.debug === 'function') {
       const detail = [...expectedAbsent.entries()].map(([target, count]) => `「${target}」×${count}`).join('、');
       logger.debug(`⏭️ 节点池为空或未激活，依赖该池的规则按设计跳过：${detail}`);
+    }
+    const prunedCount = [...prunedTargets.values()].reduce((sum, n) => sum + n, 0);
+    if (prunedCount > 0 && logger && typeof logger.warn === 'function') {
+      const detail = [...prunedTargets.entries()].map(([target, count]) => `「${target}」×${count}`).join('、');
+      logger.warn(`⚠️ 规则目标已被剪枝（无可用节点），已跳过 ${prunedCount} 条分流规则：${detail}`);
     }
     const orphanCount = [...orphanTargets.values()].reduce((sum, n) => sum + n, 0);
     if (orphanCount > 0 && logger && typeof logger.warn === 'function') {
@@ -411,6 +422,15 @@ function pruneEmptyGroups({
           status: 'skipped',
           code: 'pool-dependent',
           detail: `${count} 条规则指向该池依赖组（池为空或未激活）`
+        });
+      }
+      for (const [target, count] of prunedTargets) {
+        trace.add({
+          kind: 'rule',
+          id: target,
+          status: 'skipped',
+          code: 'pruned-target',
+          detail: `${count} 条规则的目标组已被剪枝（无可用节点）`
         });
       }
       for (const [target, count] of orphanTargets) {
