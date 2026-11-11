@@ -1018,7 +1018,9 @@ async function processSubscriptionSources({ subscriptions, userConfig = {}, opti
       }
     }
   } else {
-    throw new Error('No enabled subscriptions configured.');
+    // 零订阅与「有订阅但解析出 0 节点」等价：按空节点集继续走完策略层，
+    // 由拓扑装配收敛为无节点分流配置，而不是在中途中断流水线。
+    if (logger) logger.debug('未配置订阅：按空节点集继续执行（无节点分流模式）');
   }
 
   // 2 列网格对齐：看板节点按「到期 + 流量」成对排列，状态类节点统一置底

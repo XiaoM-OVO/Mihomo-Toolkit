@@ -96,7 +96,7 @@ describe('【Security】安全分类、内部 Synthetic 信任来源与黑名单
       // 1.6 纯看板判定：只有真实代理为 0 且仅剩受信看板时才是 isZeroNode
       const onlyFakeProxy = [fakeP1];
       const realProxies = onlyFakeProxy.filter(p => !isTrustedSynthetic(p));
-      assert.equal(realProxies.length, 1, '伪造 synthetic 节点被视为真实代理，不会触发纯分流拦截模式');
+      assert.equal(realProxies.length, 1, '伪造 synthetic 节点被视为真实代理，不会触发无节点分流模式');
     });
 
     it('sanitizeExternalProxy 消毒防篡改：浅拷贝移除内部保留字段，原对象保持不变', () => {

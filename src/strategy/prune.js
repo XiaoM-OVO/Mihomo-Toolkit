@@ -456,7 +456,7 @@ function pruneEmptyGroups({
   if (Object.keys(providers).length > 0) {
     const usedProviders = new Set();
     // 基础 DNS 分流规则集同时是 nameserver-policy 的 rule-set: 引用目标。
-    // 纯分流拦截模式（无节点）下 rules 为空，但 DNS 仍需按 cn-domain / non-cn 分流；
+    // 无节点分流模式下 rules 为空，但 DNS 仍需按 cn-domain / non-cn 分流；
     // 若按「未被规则引用」剪掉它们，产物就会出现悬空 rule-set 引用，内核会拒绝整份配置。
     ['cn-domain', 'non-cn'].forEach(name => usedProviders.add(name));
     currentRules.forEach(rule => {

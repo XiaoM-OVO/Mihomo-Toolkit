@@ -184,6 +184,36 @@ describe('CLI 诊断模式 (--dry-run)', () => {
 
 });
 
+describe('CLI 零订阅构建契约', () => {
+  it('零订阅等价于零节点：产出无节点分流配置，诊断模式结论一致', () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const cfgPath = path.join(tmpDir, 'empty.yaml');
+      const outPath = path.join(tmpDir, 'out.yaml');
+      fs.writeFileSync(cfgPath, yaml.stringify({ subscriptions: [] }));
+
+      // --explain 只输出摘要，不因「全部订阅不可用」失败关闭
+      const explain = runCli(['--explain', '-c', cfgPath, '--log-level', 'info']);
+      assert.equal(explain.status, 0, `--explain 不应失败关闭，stderr=${explain.stderr}`);
+      assert.ok(explain.stdout.includes('全部订阅不可用'), `stdout=${explain.stdout}`);
+
+      // --dry-run 同属诊断模式，但维持失败关闭语义
+      const dry = runCli(['--dry-run', '-c', cfgPath, '-o', outPath, '--log-level', 'info']);
+      assert.equal(dry.status, 1, `零订阅应失败关闭，stdout=${dry.stdout}`);
+      assert.equal(fs.existsSync(outPath), false, '诊断模式不得写入输出文件');
+
+      // 常规构建与「有订阅但 0 节点」保持一致：产出无节点分流配置
+      const build = runCli(['-c', cfgPath, '-o', outPath, '--log-level', 'info']);
+      assert.equal(build.status, 0, `零订阅应正常产出无节点分流配置，stderr=${build.stderr}`);
+      assert.ok(build.stdout.includes('无节点分流模式'), `stdout=${build.stdout}`);
+      assert.equal(fs.existsSync(outPath), true, '常规构建应写出产物文件');
+      assert.match(fs.readFileSync(outPath, 'utf8'), /^proxies: \[\]$/m, '产物应为空代理列表');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('CLI 参数收窄', () => {
   it('已移除的 --validate / -q / --quiet 按未知选项拒绝', () => {
     for (const flag of ['--validate', '-q', '--quiet']) {

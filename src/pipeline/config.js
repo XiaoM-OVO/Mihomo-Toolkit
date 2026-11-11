@@ -82,7 +82,7 @@ function runConfigPipeline({
     const lines = ['📐 拓扑策略装配完成：'];
 
     if (isZeroNode) {
-      lines.push('├── ⚙️ 纯分流拦截模式：无代理节点，已清空区域组并保留拦截/直连规则');
+      lines.push('├── ⚙️ 无节点分流模式：已清空区域组，仅保留拦截/直连规则');
     } else {
       if (synthCount > 0) {
         lines.push(`├── 📊 状态看板：${synthCount} 条目（已合成全局总额与独立看板）`);

@@ -256,7 +256,7 @@ function applyDnsOverlay(config, userConfig = {}, options = {}) {
   };
 
   // 5. Policy 安全分流：基础规则 + 订阅普通 Policy + 用户自定义 Policy
-  //    rule-set 策略键必须与实际产出的 rule-providers 对齐：空节点（纯分流拦截模式）下
+  //    rule-set 策略键必须与实际产出的 rule-providers 对齐：无节点分流模式下
   //    规则被级联剪枝，此时仍注入悬空 rule-set 引用会让内核因「规则集不存在」拒绝整份配置。
   //    产物尚未声明 rule-providers 时视为沿用既有契约（独立调用 applyDnsOverlay 的场景）。
   const providers = config['rule-providers'];

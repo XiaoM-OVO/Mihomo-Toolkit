@@ -290,7 +290,7 @@ function run(argv = process.argv) {
       const outPath = path.resolve(process.cwd(), targetOut);
       fs.writeFileSync(outPath, yamlStr, 'utf-8');
       const isZeroNode = mode === 'config' && (!result.proxies || result.proxies.filter(p => !isTrustedSynthetic(p)).length === 0);
-      const modeSuffix = isZeroNode ? '（纯分流拦截模式）' : '';
+      const modeSuffix = isZeroNode ? '（无节点分流模式）' : '';
       logger.success(`🎉 配置文件构建成功${modeSuffix} ➔ ${outPath}`);
 
       if (result.invariantViolations && result.invariantViolations.length > 0 && logger.isLevelEnabled('warn')) {
