@@ -44,5 +44,19 @@ module.exports = {
     iconFile: "EG.png",
     city: "开罗",
     reg: /埃及|(?<![a-zA-Z])EG(?![a-zA-Z])|Egypt/i
+  },
+  sc: {
+    id: "sc",
+    code: "SC",
+    name: "塞舌尔",
+    groupName: "塞舌尔节点",
+    continent: "africa",
+    subGroup: "af",
+    foldGroup: "af",
+    icon: "🇸🇨",
+    iconFile: "SC.png",
+    city: "维多利亚",
+    reg: /塞舌[尔爾]|Seychelles/i,
+    codeReg: /(?<![a-zA-Z])SC(?![a-zA-Z])/
   }
 };

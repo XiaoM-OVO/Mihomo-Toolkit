@@ -46,6 +46,22 @@ const REGION_DEFS_RAW = [
   europe.pl,
   europe.fi,
   europe.is,
+  europe.at,
+  europe.cz,
+  europe.hu,
+  europe.gr,
+  europe.pt,
+  europe.no,
+  europe.bg,
+  europe.ro,
+  europe.lv,
+  europe.lt,
+  europe.ee,
+  europe.md,
+  europe.cy,
+  europe.ba,
+  europe.mc,
+  europe.va,
 
   // 4. 南亚与东南亚扩展
   southAsia.in,
@@ -54,6 +70,7 @@ const REGION_DEFS_RAW = [
   southeastAsia.id,
   southeastAsia.ph,
   southeastAsia.vn,
+  southeastAsia.la,
 
   // 5. 美洲扩展
   americas.ca,
@@ -61,17 +78,22 @@ const REGION_DEFS_RAW = [
   americas.br,
   americas.mx,
   americas.cl,
+  americas.bz,
+  americas.vg,
 
   // 6. 中东大区
   middleEast.ae,
   middleEast.tr,
   middleEast.sa,
   middleEast.il,
+  middleEast.iq,
+  middleEast.ir,
 
   // 7. 非洲大区
   africa.za,
   africa.ng,
   africa.eg,
+  africa.sc,
 
   // 8. 大洋洲大区
   oceania.au

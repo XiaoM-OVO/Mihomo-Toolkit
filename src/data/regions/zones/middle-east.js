@@ -58,5 +58,33 @@ module.exports = {
     iconFile: "IL.png",
     city: "特拉维夫",
     reg: /以色列|(?<![a-zA-Z])IL(?![a-zA-Z])|Israel/i
+  },
+  iq: {
+    id: "iq",
+    code: "IQ",
+    name: "伊拉克",
+    groupName: "伊拉克节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇮🇶",
+    iconFile: "IQ.png",
+    city: "巴格达",
+    reg: /伊拉克|Iraq/i,
+    codeReg: /(?<![a-zA-Z])IQ(?![a-zA-Z])/
+  },
+  ir: {
+    id: "ir",
+    code: "IR",
+    name: "伊朗",
+    groupName: "伊朗节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇮🇷",
+    iconFile: "IR.png",
+    city: "德黑兰",
+    reg: /伊朗|Iran/i,
+    codeReg: /(?<![a-zA-Z])IR(?![a-zA-Z])/
   }
 };

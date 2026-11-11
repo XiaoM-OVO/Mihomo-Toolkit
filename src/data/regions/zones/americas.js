@@ -87,5 +87,33 @@ module.exports = {
     icon: "🇨🇱",
     iconFile: "CL.png",
     reg: /智利|(?<![a-zA-Z])CL(?![a-zA-Z])|Chile/i
+  },
+  bz: {
+    id: "bz",
+    code: "BZ",
+    name: "伯利兹",
+    groupName: "伯利兹节点",
+    continent: "americas",
+    subGroup: "latam",
+    foldGroup: "am",
+    icon: "🇧🇿",
+    iconFile: "BZ.png",
+    city: "贝尔莫潘",
+    reg: /伯利兹|Belize/i,
+    codeReg: /(?<![a-zA-Z])BZ(?![a-zA-Z])/
+  },
+  vg: {
+    id: "vg",
+    code: "VG",
+    name: "维尔京",
+    groupName: "维尔京节点",
+    continent: "americas",
+    subGroup: "latam",
+    foldGroup: "am",
+    icon: "🇻🇬",
+    iconFile: "VG.png",
+    city: "罗德城",
+    reg: /维尔京|Virgin Islands/i,
+    codeReg: /(?<![a-zA-Z])VG(?![a-zA-Z])/
   }
 };
