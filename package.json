@@ -31,6 +31,7 @@
     "build": "node src/targets/cli.js -c config.yaml -m config",
     "build:nodes": "node src/targets/cli.js -c config.yaml -m nodes",
     "build:report": "node src/targets/cli.js -c config.yaml -m report",
+    "benchmark": "node --expose-gc scripts/benchmark.js",
     "dev": "node --watch src/targets/server.js"
   },
   "repository": {

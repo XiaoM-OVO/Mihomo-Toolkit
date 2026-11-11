@@ -23,3 +23,4 @@ dist/
 
 # 安全审计临时夹具与攻击探针（本地复现用，不入库）
 .sec-audit/
+.benchmark-cache.txt
