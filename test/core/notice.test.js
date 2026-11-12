@@ -69,6 +69,12 @@ describe('【Core】占位与公告节点判定 (notice)', () => {
       assert.equal(isNoticeNode({ name: '套餐到期日：2026-12-31', server: '1.2.3.4', port: 443 }), true);
     });
 
+    it('倒序流量文案、裸日期横幅与更新时间：挂在真实 IP 上仍判定为 notice', () => {
+      assert.equal(isNoticeNode({ name: '流量剩余 ≫ 888.01 PB', server: '129.151.64.169', port: 31867 }), true);
+      assert.equal(isNoticeNode({ name: '日期：11-11', server: '129.151.64.169', port: 31867 }), true);
+      assert.equal(isNoticeNode({ name: '[压测订阅] 更新时间18:33', server: '202.50.253.99', port: 19999 }), true);
+    });
+
     it('一般公告/说明词：伴随假服务参数才判定为 notice，真实代理参数不误判', () => {
       // 伴随假参数 -> 确认为 notice
       assert.equal(isNoticeNode({ name: '官方公告：请更新订阅', server: '127.0.0.1', port: 0 }), true);

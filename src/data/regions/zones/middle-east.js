@@ -86,5 +86,47 @@ module.exports = {
     city: "德黑兰",
     reg: /伊朗|Iran/i,
     codeReg: /(?<![a-zA-Z])IR(?![a-zA-Z])/
+  },
+  qa: {
+    id: "qa",
+    code: "QA",
+    name: "卡塔尔",
+    groupName: "卡塔尔节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇶🇦",
+    iconFile: "QA.png",
+    city: "多哈",
+    reg: /卡塔尔|卡塔爾|Qatar/i,
+    codeReg: /(?<![a-zA-Z])QA(?![a-zA-Z])/
+  },
+  kz: {
+    id: "kz",
+    code: "KZ",
+    name: "哈萨克斯坦",
+    groupName: "哈萨克斯坦节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇰🇿",
+    iconFile: "KZ.png",
+    city: "阿拉木图",
+    reg: /哈萨克斯坦|哈薩克|Kazakhstan/i,
+    codeReg: /(?<![a-zA-Z])KZ(?![a-zA-Z])/
+  },
+  uz: {
+    id: "uz",
+    code: "UZ",
+    name: "乌兹别克斯坦",
+    groupName: "乌兹别克斯坦节点",
+    continent: "asia",
+    subGroup: "me",
+    foldGroup: "me",
+    icon: "🇺🇿",
+    iconFile: "UZ.png",
+    city: "塔什干",
+    reg: /乌兹别克斯坦|烏茲別克|Uzbekistan/i,
+    codeReg: /(?<![a-zA-Z])UZ(?![a-zA-Z])/
   }
 };

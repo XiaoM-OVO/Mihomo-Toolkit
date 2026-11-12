@@ -646,5 +646,40 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
       assert.equal(res.skip, true);
       assert.equal(res.blockReason, '广告词');
     });
+
+    it('短链引流与短别名收敛：tt.vg 不得被当成 TikTok，且必须命中广告词', () => {
+      const adProxy = {
+        name: '免费VPN：tt.vg/FJOE2Mm',
+        type: 'ss',
+        server: '104.28.1.1',
+        port: 443,
+        cipher: 'aes-256-gcm',
+        password: 'p'
+      };
+
+      assert.equal(checkNodeBlockReason(adProxy, adProxy.name), '广告词');
+
+      const { STREAMING_FEATURE_REG } = require('../../src/data/cleaner-rules');
+      const { streaming } = require('../../src/data/catalog/services/streaming');
+      assert.equal(streaming.tiktok.reg.test(adProxy.name), false, 'tt.vg 短链不得命中 TikTok');
+      assert.equal(STREAMING_FEATURE_REG.test(adProxy.name), false, 'tt.vg 短链不得命中通用流媒体特征');
+
+      // 正常 TT 词元仍须命中
+      const { STREAMING_FEATURE_REG: reg } = require('../../src/data/cleaner-rules');
+      assert.equal(reg.test('🇺🇸 美国 TT 专线 01'), true);
+      assert.equal(streaming.tiktok.reg.test('🇺🇸 美国 TT 专线 01'), true);
+    });
+
+    it('机场营销词不需搭配价格也可识别为广告词', () => {
+      const adProxy = {
+        name: '🇮🇩 机场推荐:dafei.de 印尼 03',
+        type: 'ss',
+        server: '104.28.1.1',
+        port: 443,
+        cipher: 'aes-256-gcm',
+        password: 'p'
+      };
+      assert.equal(checkNodeBlockReason(adProxy, adProxy.name), '广告词');
+    });
   });
 });

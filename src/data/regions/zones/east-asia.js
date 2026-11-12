@@ -6,7 +6,7 @@
 
 'use strict';
 
-const { SINGLE_EXIT_LOOKAHEAD } = require('../../cleaner-rules');
+const { SINGLE_EXIT_LOOKAHEAD, SINGLE_EXIT_LOOKBEHIND } = require('../../cleaner-rules');
 
 module.exports = {
   cn: {
@@ -67,7 +67,7 @@ module.exports = {
     icon: "🇯🇵",
     iconFile: "JP.png",
     city: "东京|大阪|埼玉|京都|川崎",
-    reg: new RegExp(`日本|日${SINGLE_EXIT_LOOKAHEAD.日}|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala`, "i")
+    reg: new RegExp(`日本|${SINGLE_EXIT_LOOKBEHIND.日}日${SINGLE_EXIT_LOOKAHEAD.日}|(?<![a-zA-Z])(?:JP|OCN)(?![a-zA-Z])|Japan|Nuro|Plala`, "i")
   },
   kr: {
     id: "kr",

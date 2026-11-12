@@ -6,7 +6,7 @@
 
 'use strict';
 
-const { SINGLE_EXIT_LOOKAHEAD } = require('../../cleaner-rules');
+const { SINGLE_EXIT_LOOKAHEAD, SINGLE_EXIT_LOOKBEHIND } = require('../../cleaner-rules');
 
 module.exports = {
   sg: {
@@ -20,7 +20,7 @@ module.exports = {
     icon: "🇸🇬",
     iconFile: "SG.png",
     city: "狮城",
-    reg: new RegExp(`新加坡|新${SINGLE_EXIT_LOOKAHEAD.新}|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest`, "i")
+    reg: new RegExp(`新加坡|${SINGLE_EXIT_LOOKBEHIND.新}新${SINGLE_EXIT_LOOKAHEAD.新}|(?<![a-zA-Z])SG(?![a-zA-Z])|Singapore|Singtel|StarHub|MyRepublic|ViewQwest`, "i")
   },
   my: {
     id: "my",

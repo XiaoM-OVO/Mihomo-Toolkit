@@ -72,4 +72,42 @@ describe('【Core】地区与出入口识别 (recognizer)', () => {
     assert.equal(recognizeRegion('🇦🇦 测试地 01', undefined, { strictRegionMatch: true }).regionDef, null);
     assert.equal(recognizeRegion('🇦🇦 测试地 01').regionDef?.name, '测试地');
   });
+
+  it('单字地区别名不吞噬普通词（更新/今日/每日）与国名内嵌字', () => {
+    assert.equal(recognizeRegion('[压测订阅] 更新时间18:33').regionDef, null);
+    assert.equal(recognizeRegion('每天更新，请加电报群防止失联').regionDef, null);
+    assert.equal(recognizeRegion('每日更新，请关注').regionDef, null);
+    assert.equal(recognizeRegion('今日新增节点').regionDef, null);
+    assert.equal(recognizeRegion('明日维护通知').regionDef, null);
+
+    // 单字别名在合法语境仍必须命中
+    assert.equal(recognizeRegion('🇸🇬新 01').regionDef?.name, '新加坡');
+    assert.equal(recognizeRegion('🇯🇵 日 01').regionDef?.name, '日本');
+
+    // 国名内嵌「日」不得把尼日尔/尼日利亚判成日本
+    assert.equal(recognizeRegion('🇳🇪 尼日尔 01').regionDef?.name, '尼日尔');
+    assert.equal(recognizeRegion('🇳🇬 尼日利亚 01').regionDef?.name, '尼日利亚');
+  });
+
+  it('动态建区名剥离首尾分隔符，纯分隔符不建区', () => {
+    const dynamic = recognizeRegion('🇦🇦 测试地丨 · 01');
+    assert.equal(dynamic.regionDef?.name, '测试地');
+    assert.equal(dynamic.regionDef?._isDynamic, true);
+
+    assert.equal(recognizeRegion('🇽🇰 丨').regionDef, null);
+  });
+
+  it('小众地区字典覆盖：比利时/卡塔尔/哈萨克斯坦/乌兹别克斯坦/尼日尔/利比亚', () => {
+    const cases = {
+      '🇧🇪 比利时 01': '比利时',
+      '🇶🇦 卡塔尔 01': '卡塔尔',
+      '🇰🇿 哈萨克斯坦 01': '哈萨克斯坦',
+      '🇺🇿 UZ乌兹别克斯坦丨 · WS': '乌兹别克斯坦',
+      '🇳🇪 尼日尔 01': '尼日尔',
+      '🇱🇾 利比亚 01': '利比亚'
+    };
+    for (const [name, expected] of Object.entries(cases)) {
+      assert.equal(recognizeRegion(name).regionDef?.name, expected, name);
+    }
+  });
 });

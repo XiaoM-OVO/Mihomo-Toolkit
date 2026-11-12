@@ -418,5 +418,19 @@ module.exports = {
     city: "梵蒂冈",
     reg: /梵蒂冈|Vatican/i,
     codeReg: /(?<![a-zA-Z])VA(?![a-zA-Z])/
+  },
+  be: {
+    id: "be",
+    code: "BE",
+    name: "比利时",
+    groupName: "比利时节点",
+    continent: "europe",
+    subGroup: "eu",
+    foldGroup: "eu",
+    icon: "🇧🇪",
+    iconFile: "BE.png",
+    city: "布鲁塞尔",
+    reg: /比利时|比利時|Belgium/i,
+    codeReg: /(?<![a-zA-Z])BE(?![a-zA-Z])/
   }
 };

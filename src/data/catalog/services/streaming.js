@@ -73,7 +73,7 @@ module.exports = {
       emoji: '🎵',
       tag: 'tk',
       pool: 'tiktok',
-      reg: /\b(?:TikTok|抖音海外|TT)\b/i,
+      reg: /(?:TikTok|抖音海外)|(?<![A-Za-z0-9_.])TT(?![A-Za-z0-9_.])/i,
       rules: 'tiktok',
       type: 'select',
       match: { pool: 'tiktok' },

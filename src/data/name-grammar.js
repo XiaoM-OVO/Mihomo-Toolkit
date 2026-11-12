@@ -19,6 +19,7 @@
 const {
   EXIT_REGIONS,
   SINGLE_EXIT_LOOKAHEAD,
+  SINGLE_EXIT_LOOKBEHIND,
   DOMESTIC_ENTRY_CITIES,
   escapeRegex
 } = require('./cleaner-rules');
@@ -44,7 +45,9 @@ function toAlternation(words) {
 const ENTRY_PATTERN = toAlternation(DOMESTIC_ENTRY_CITIES);
 const EXIT_PATTERN = EXIT_REGIONS.map(r => {
   const esc = escapeRegex(r);
-  return SINGLE_EXIT_LOOKAHEAD[r] ? `${esc}${SINGLE_EXIT_LOOKAHEAD[r]}` : esc;
+  const lookbehind = SINGLE_EXIT_LOOKBEHIND[r] || '';
+  const lookahead = SINGLE_EXIT_LOOKAHEAD[r] || '';
+  return `${lookbehind}${esc}${lookahead}`;
 }).join('|');
 const CONNECTOR_PATTERN = toAlternation(ENTRY_CONNECTORS);
 

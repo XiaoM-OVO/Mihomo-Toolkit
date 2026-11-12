@@ -62,6 +62,7 @@ const REGION_DEFS_RAW = [
   europe.ba,
   europe.mc,
   europe.va,
+  europe.be,
 
   // 4. 南亚与东南亚扩展
   southAsia.in,
@@ -88,12 +89,17 @@ const REGION_DEFS_RAW = [
   middleEast.il,
   middleEast.iq,
   middleEast.ir,
+  middleEast.qa,
+  middleEast.kz,
+  middleEast.uz,
 
   // 7. 非洲大区
   africa.za,
   africa.ng,
   africa.eg,
   africa.sc,
+  africa.ne,
+  africa.ly,
 
   // 8. 大洋洲大区
   oceania.au

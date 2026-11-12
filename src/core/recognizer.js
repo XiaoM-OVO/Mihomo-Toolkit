@@ -25,6 +25,9 @@ const { REGEX_FLAGS, REGEX_UNKNOWN_FLAG, REGEX_ENTRY_CITY } = require('../data/n
 const { escapeRegex: escapePattern, DOMESTIC_ENTRY_CITIES } = require('../data/cleaner-rules');
 const { getEnhancedRegionDefs, getRegionFlagLookup } = require('./shared/regions');
 
+// 动态建区名的首尾分隔符：国旗后紧跟的 `丨`、`-`、`·` 等不应进入地区名
+const REGEX_DYNAMIC_NAME_TRIM = /^[\s丨|｜·•・,，、:：;；\-—_=+~>→/\\]+|[\s丨|｜·•・,，、:：;；\-—_=+~>→/\\]+$/g;
+
 /**
  * 收集名字里所有地区命中项（每个字典条目取其第一个命中）。
  * @param {string} name
@@ -120,21 +123,25 @@ function recognizeRegion(name, regionDefs, options = {}) {
       if (lookup.has(flagIcon)) {
         regionDef = lookup.get(flagIcon);
       } else {
-        const dynamicName = flagMatch[2].trim();
-        regionDef = {
-          id: dynamicName.toLowerCase(),
-          code: null,
-          icon: flagIcon,
-          iconFile: 'Global.png',
-          name: dynamicName,
-          groupName: `${dynamicName}节点`,
-          continent: 'other',
-          subGroup: 'other',
-          foldGroup: 'other',
-          _isDynamic: true,
-          matchReg: new RegExp(escapePattern(dynamicName), 'i'),
-          cityReg: null
-        };
+        const dynamicName = flagMatch[2].replace(REGEX_DYNAMIC_NAME_TRIM, '').trim();
+        // 纯分隔符、单字噪声不建区，避免生成「丨节点」这类悬空分组
+        const isMeaningful = dynamicName && (/[A-Za-z]/.test(dynamicName) || [...dynamicName].length >= 2);
+        if (isMeaningful) {
+          regionDef = {
+            id: dynamicName.toLowerCase(),
+            code: null,
+            icon: flagIcon,
+            iconFile: 'Global.png',
+            name: dynamicName,
+            groupName: `${dynamicName}节点`,
+            continent: 'other',
+            subGroup: 'other',
+            foldGroup: 'other',
+            _isDynamic: true,
+            matchReg: new RegExp(escapePattern(dynamicName), 'i'),
+            cityReg: null
+          };
+        }
       }
     }
   }
