@@ -338,6 +338,18 @@ describe('【Pipeline】DAG 级联空组剪枝与级联清理 (strategy-prune)',
     );
   });
 
+  it('pruneEmptyGroups - 策略组与节点去除装饰后同名抛出明确诊断错误', () => {
+    const proxies = [{ name: '🇭🇰 香港' }];
+    const proxyGroups = [
+      { name: '香港', proxies: ['🇭🇰 香港'] }
+    ];
+
+    assert.throws(
+      () => pruneEmptyGroups({ proxyGroups, proxies }),
+      /\[Prune\] 命名冲突: 策略组 "香港" 与物理代理节点 "🇭🇰 香港" 去除装饰后同名/
+    );
+  });
+
   it('pruneEmptyGroups - 策略组使用内核保留内置目标名称抛出明确诊断错误', () => {
     const proxyGroups = [
       { name: 'DIRECT', proxies: ['Node1'] }

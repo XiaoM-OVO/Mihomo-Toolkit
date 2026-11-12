@@ -51,6 +51,14 @@ function pruneEmptyGroups({
     }
   }
 
+  // 剥装饰后的节点名索引：`🇭🇰 香港` 与组 `香港` 字面不同，但展示层会把两者归一成
+  // 同一实体，导致组在解析成员时把自己当成员（自环）后被静默剪除。这里提前拦截。
+  const physicalStrippedNames = new Map();
+  for (const name of physicalNodeNames) {
+    const key = stripGroupDecoration(name).toLowerCase();
+    if (!physicalStrippedNames.has(key)) physicalStrippedNames.set(key, name);
+  }
+
   const exemptList = effectiveExemptGroups(exemptGroups);
   const exemptExactSet = new Set(exemptList);
   const exemptStrippedSet = new Set(exemptList.map(stripGroupDecoration));
@@ -77,6 +85,11 @@ function pruneEmptyGroups({
       }
       if (physicalNodeNames.has(g.name)) {
         throw new Error(`[Prune] 命名冲突: 策略组 "${g.name}" 与物理代理节点重名，导致目标引用歧义`);
+      }
+      const strippedGroupName = stripGroupDecoration(g.name).toLowerCase();
+      const clashingNode = physicalStrippedNames.get(strippedGroupName);
+      if (clashingNode) {
+        throw new Error(`[Prune] 命名冲突: 策略组 "${g.name}" 与物理代理节点 "${clashingNode}" 去除装饰后同名，导致目标引用歧义`);
       }
       originalOrder.set(g.name, idx);
       const snapshot = Object.freeze(Array.isArray(g.proxies) ? [...g.proxies] : []);
