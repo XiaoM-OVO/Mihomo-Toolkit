@@ -59,4 +59,77 @@ describe('【Core】脏乱节点清洗与物理去重 (dedupe)', () => {
     assert.equal(proxies.length, 2);
     assert.ok(proxies.some(p => p.name.includes('剩余流量')));
   });
+
+  it('dedupe-priority - 显式公告节点不得抢走同指纹真实节点的保留位', async () => {
+    const shared = {
+      type: 'ss',
+      server: '202.50.253.99',
+      port: 19999,
+      cipher: 'aes-256-gcm',
+      password: 'samepassword'
+    };
+    const notice = { ...shared, name: '[压测订阅] 更新时间18:33' };
+    const real = { ...shared, name: '意大利 - Milan - 8' };
+
+    // 公告在前：旧实现会让公告赢下去重，真实节点被剔除
+    const noticeFirst = await runNodesPipeline([notice, real], { enableDedupe: true });
+    assert.equal(noticeFirst.length, 1);
+    assert.ok(noticeFirst[0].name.includes('意大利'), '同指纹时应保留真实节点');
+    assert.ok(!noticeFirst.some(p => p.name.includes('新加坡')), '公告节点不得被识别为新加坡并混入产物');
+
+    // 顺序反转也必须保留真实节点
+    const realFirst = await runNodesPipeline([real, notice], { enableDedupe: true });
+    assert.equal(realFirst.length, 1);
+    assert.ok(realFirst[0].name.includes('意大利'));
+  });
+
+  it('dedupe-priority - 仅公告节点时仍按 removeInfoNodes 开关保留', async () => {
+    const noticeOnly = [{
+      name: '流量剩余 ≫ 888.01 PB',
+      type: 'ss',
+      server: '129.151.64.169',
+      port: 31867,
+      cipher: 'aes-256-gcm',
+      password: 'p'
+    }];
+
+    const kept = await runNodesPipeline(noticeOnly, { enableDedupe: true, removeInfoNodes: false });
+    assert.equal(kept.length, 1);
+
+    const dropped = await runNodesPipeline(noticeOnly, { enableDedupe: true, removeInfoNodes: true });
+    assert.equal(dropped.length, 0);
+  });
+
+  it('admission - 无法识别地区的节点默认丢弃，特殊节点豁免', async () => {
+    const unknown = {
+      name: '节点来自互联网，请自行判断',
+      type: 'ss',
+      server: '104.28.1.1',
+      port: 443,
+      cipher: 'aes-256-gcm',
+      password: 'p'
+    };
+    const real = {
+      name: '🇭🇰 香港 01',
+      type: 'ss',
+      server: 'hk.node.com',
+      port: 443,
+      cipher: 'aes-256-gcm',
+      password: 'p'
+    };
+
+    const strict = await runNodesPipeline([unknown, real], { enableDedupe: false });
+    assert.equal(strict.length, 1, '未识别地区节点应被准入拒绝');
+    assert.ok(strict[0].name.includes('香港'));
+
+    const loose = await runNodesPipeline([unknown, real], { enableDedupe: false, keepUnknownNodes: true });
+    assert.equal(loose.length, 2, 'keepUnknownNodes 开启后未识别节点应保留');
+
+    const special = await runNodesPipeline([unknown], {
+      enableDedupe: false,
+      keepUnknownNodes: false,
+      specialNodeRules: [{ reg: /节点来自/, targetName: '自建节点' }]
+    });
+    assert.equal(special.length, 1, '特殊/白名单节点必须豁免准入丢弃');
+  });
 });

@@ -10,6 +10,7 @@
   "assetDomainAllowlist": [],
   "enableDashboard": true,
   "removeInfoNodes": true,
+  "keepUnknownNodes": false,
   "renameTemplate": "[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}",
   "renameSeparators": [
     "|",

@@ -18,6 +18,7 @@ const {
 const { sortNodes } = require('../core/sort');
 const { getEnhancedRegionDefs } = require('../core/shared/regions');
 const { getIsolationBucket } = require('../core/isolation');
+const { REGEX_EXPLICIT_NOTICE } = require('../data/cleaner-rules');
 const { POOL_SORT_ORDER } = require('../data/default-pools');
 const { decorateGroupName } = require('../strategy/presentation');
 const { GROUP_KEYS, groupName: resolveGroupName } = require('../data/catalog/identity');
@@ -27,6 +28,17 @@ const { resolveProxiesDomains } = require('../io/dns-resolver');
 const { resolveProxyUrl } = require('../io/fetcher');
 const { fissionNodes } = require('../core/fission');
 const { createEnvelopesBypass } = require('./envelope');
+
+/**
+ * 物理去重的低优先级判定：显式公告/横幅节点不得抢占真实节点的唯一指纹。
+ * 只影响「同指纹谁胜出」，不改变是否保留；removeInfoNodes 的开关语义保持不变。
+ * @param {object} proxy
+ * @returns {boolean}
+ */
+function isLowPriorityForDedupe(proxy) {
+  const rawName = getTrustedProxyMetadata(proxy, 'rawName') || proxy?.name || '';
+  return REGEX_EXPLICIT_NOTICE.test(rawName);
+}
 
 /**
  * 执行纯净节点清洗与标准化流水线
@@ -78,6 +90,7 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
   if (config.enableDedupe) {
     const beforeDedupe = currentProxies.length;
     currentProxies = dedupeNodes(currentProxies, {
+      isLowPriority: isLowPriorityForDedupe,
       onDuplicate: (dup, exist) => {
         if (logger) logger.debug(`🗑️ [去重] 「${dup.name}」与「${exist.name}」重复，已剔除`);
       }
@@ -132,6 +145,14 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
       }
     }
     if (!item.regionInfo || item.regionInfo.isUnknown) {
+      // 准入控制：默认丢弃无法识别地区的节点（白名单/特殊/说明节点除外），
+      // 避免未识别噪声进入交付物与业务策略组。
+      const exemptFromAdmission = item.isSpecial || item.isInfo || item.keepName;
+      if (!exemptFromAdmission && config.keepUnknownNodes !== true) {
+        discardedCount++;
+        if (logger) logger.debug(`🗑️ [准入拒绝] 「${item.rawName}」· 原因：无法识别地区`);
+        return false;
+      }
       unknownCount++;
       if (logger && !item.isInfo && !item.isSpecial) {
         logger.debug(`❓ [未识别地区] 「${item.rawName}」`);
@@ -272,7 +293,9 @@ function cleanAndClassifyNodesSync(rawProxies = [], userConfig = {}) {
       ...entries.filter(entry => entry.trustedCleaned),
       ...entries.filter(entry => !entry.trustedCleaned)
     ];
-    const deduped = dedupeNodes(preferred.map(entry => entry.proxy));
+    const deduped = dedupeNodes(preferred.map(entry => entry.proxy), {
+      isLowPriority: isLowPriorityForDedupe
+    });
     const counts = new Map();
     for (const proxy of deduped) counts.set(proxy, (counts.get(proxy) || 0) + 1);
     const kept = new Set(deduped);

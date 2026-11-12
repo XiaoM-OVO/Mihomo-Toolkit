@@ -75,6 +75,8 @@ const FIELDS = [
     group: '节点清洗与处理', doc: '订阅看板：为流量/到期信息建立独立策略组' },
   { key: 'removeInfoNodes', type: 'boolean', default: true, merge: 'override', trust: 'any',
     group: '节点清洗与处理', doc: '过滤机场自带的原生说明/流量提示伪节点' },
+  { key: 'keepUnknownNodes', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '节点清洗与处理', doc: '准入控制：false 丢弃无法识别地区的节点（白名单/特殊节点除外），true 保留到未知地区兜底组' },
   { key: 'renameTemplate', type: 'string',
     default: '[{airport}] {icon} {region} {index} {features} | {in} {city} {line} {multi} {ip_stack} · {transport}',
     merge: 'override', trust: 'any', group: '节点清洗与处理', doc: '节点重命名模板' },

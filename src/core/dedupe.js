@@ -205,18 +205,21 @@ function getNodeFingerprint(proxy) {
  * @param {Array<object>} proxies
  * @param {object} [options]
  * @param {Function} [options.onDuplicate] 重复节点回调 (duplicateNode, existingNode)
- * @returns {Array<object>} 去重后的节点数组
+ * @param {Function} [options.isLowPriority] 低优先级判定（如显式公告/横幅节点）
+ *   低优先级节点只在唯一指纹尚未被占用时补入，绝不抢占真实节点的位置。
+ * @returns {Array<object>} 去重后的节点数组（保持原始输入顺序）
  */
 function dedupeNodes(proxies, options = {}) {
   if (!Array.isArray(proxies)) return [];
-  const { onDuplicate } = options;
+  const { onDuplicate, isLowPriority } = options;
+  const hasPriority = typeof isLowPriority === 'function';
   const seenMap = new Map();
-  const result = [];
+  const kept = [];
 
-  for (const proxy of proxies) {
+  const keep = (proxy, index) => {
     if (!proxy || !proxy.server) {
-      result.push(proxy);
-      continue;
+      kept.push({ proxy, index });
+      return;
     }
 
     // 虚拟看板/信息节点不参与底层 IP:Port 物理去重（防止同为 127.0.0.1:80 被互相剔除），仅按名称防重
@@ -229,9 +232,9 @@ function dedupeNodes(proxies, options = {}) {
         }
       } else {
         seenMap.set(infoKey, proxy);
-        result.push(proxy);
+        kept.push({ proxy, index });
       }
-      continue;
+      return;
     }
 
     const key = getNodeFingerprint(proxy);
@@ -239,13 +242,31 @@ function dedupeNodes(proxies, options = {}) {
       if (typeof onDuplicate === 'function') {
         onDuplicate(proxy, seenMap.get(key));
       }
-    } else {
-      seenMap.set(key, proxy);
-      result.push(proxy);
+      return;
     }
+    seenMap.set(key, proxy);
+    kept.push({ proxy, index });
+  };
+
+  // 第一遍：优先让真实节点占位；低优先级节点先挂起。
+  const deferred = [];
+  for (let index = 0; index < proxies.length; index++) {
+    const proxy = proxies[index];
+    if (hasPriority && isLowPriority(proxy)) {
+      deferred.push({ proxy, index });
+      continue;
+    }
+    keep(proxy, index);
   }
 
-  return result;
+  // 第二遍：低优先级节点仅在指纹空闲时补入，保留「只有公告节点」的订阅。
+  for (const entry of deferred) {
+    keep(entry.proxy, entry.index);
+  }
+
+  // 选择顺序按输入下标回排，避免优先级两遍法打乱调用方的原始顺序。
+  kept.sort((a, b) => a.index - b.index);
+  return kept.map(entry => entry.proxy);
 }
 
 module.exports = {

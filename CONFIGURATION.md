@@ -570,6 +570,7 @@ include:
 | `indexPrefixMap` | `object` | `{}` | `any` | `override` | **序号前缀映射表**：指定各订阅的序号前缀字母（如 `{ '机场A': 'A' }` ➔ `A01`）。 |
 | `enableNodeRename` | `boolean` | `true` | `any` | `override` | **重命名开关**：设为 `false` 可完全原样保留订阅原有节点名称，但底层地区识别照常生效。 |
 | `strictRegionMatch`| `boolean` | `false` | `any` | `override` | **地区识别严格度**：`true` 为严格官方标准字典，`false` 允许国旗 Emoji 与启发式捕获。 |
+| `keepUnknownNodes` | `boolean` | `false` | `any` | `override` | **未知地区准入**：`false` 丢弃无法识别地区的节点（白名单/特殊节点除外），`true` 保留到未知地区兜底组。 |
 | `adTextThreshold` | `number` | `6` | `any` | `override` | **纯文本广告拦截阈值**：节点名无数字且无任何网络线路特征时，字符长度超过此值判定为广告丢弃。 |
 | `lowMultiThreshold`| `number` | `0.99` | `any` | `override` | **低倍率判定阈值**：倍率 <= 此值时打上 `lowMulti` 标签（进入「`低倍率节点`」池，设为 `0` 关闭）。 |
 | `enableIsolation` | `boolean` | `false` | `any` | `override` | **隔离总开关**：`true` 启用「家宽优选 / 高倍率优选 / 实验节点」三个内置隔离池，成员从地区池剔除；池本身由 `pools` 描述。 |

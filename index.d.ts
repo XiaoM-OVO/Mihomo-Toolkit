@@ -278,6 +278,8 @@ export interface ToolkitConfig {
   // 节点清洗
   /** 过滤机场自带的原生说明/流量提示伪节点 */
   removeInfoNodes?: boolean;
+  /** 准入控制：false 丢弃无法识别地区的节点（白名单/特殊节点除外），true 保留到未知地区兜底组 */
+  keepUnknownNodes?: boolean;
   /** 纯文本广告判定长度阈值（无数字/线路特征且长度超过此值判定为广告） */
   adTextThreshold?: number;
   /** 低倍率分流阈值（倍率 <= 此值归入下载策略，设为 0 关闭） */
