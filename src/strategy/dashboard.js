@@ -20,7 +20,7 @@ const { ICONS, TERMS } = require('../core/log-copy');
 const DASHBOARD_TIER = Object.freeze({
   GLOBAL: 1,       // 第 1 梯队：全局总盘
   TIMED: 2,        // 第 2 梯队：常规时限订阅 (成对排列：左到期，右流量)
-  TRAFFIC_ONLY: 3, // 第 3 梯队：纯流量无时限订阅 (同类并排，不插队破坏常规对称)
+  TRAFFIC_ONLY: 3, // 第 3 梯队：单出常规信息 (纯流量订阅、未成对的到期节点)，不插队破坏常规对称
   STATUS: 4        // 第 4 梯队：状态与异常垫底 (重置、旧缓存兜底、失效停用、拉取报错)
 });
 
@@ -455,7 +455,7 @@ function getNodeMeta(node) {
  * 梯队结构 (从上到下)：
  * 1. Tier 1 全局总盘：多源综合概览，永远稳居顶部
  * 2. Tier 2 常规成对订阅：有时限订阅，逐订阅 [到期, 流量] 成对输出，绝对保证双列对齐
- * 3. Tier 3 纯流量订阅：无时限订阅，同类收拢并排，不插队破坏第二梯队对称
+ * 3. Tier 3 单出层：纯流量订阅与未成对的常规节点（如仅到期），集中在状态区之上
  * 4. Tier 4 状态与异常垫底：重置倒计时、旧缓存兜底、失效停用、拉取报错按秩序沉底
  *
  * 后续非 synthetic 节点原样后排。
@@ -465,7 +465,7 @@ function sortDashboardNodes(nodes = []) {
 
   const tier1Global = [];
   const tier2ByTag = new Map(); // tag -> { expiry: [], traffic: [] }
-  const tier3TrafficOnly = [];
+  const tier3Singles = [];
   const tier4Status = [];
   const rest = [];
 
@@ -490,7 +490,7 @@ function sortDashboardNodes(nodes = []) {
         bucket.traffic.push(node);
       }
     } else if (meta.tier === DASHBOARD_TIER.TRAFFIC_ONLY) {
-      tier3TrafficOnly.push(node);
+      tier3Singles.push(node);
     } else if (meta.tier === DASHBOARD_TIER.STATUS) {
       tier4Status.push(node);
     } else {
@@ -514,17 +514,19 @@ function sortDashboardNodes(nodes = []) {
     while (bucket.expiry.length > 0 && bucket.traffic.length > 0) {
       tier2Ordered.push(bucket.expiry.shift(), bucket.traffic.shift());
     }
-    // 若有偶发的单出节点，移入 Tier 3 / Tier 4，绝不破坏 Tier 2 双列对称
+    // 若有偶发的单出节点，移入 Tier 3 单出层，绝不破坏 Tier 2 双列对称。
+    // 到期单出（如不限流量套餐只有到期日）属于常规信息，不能沉入 Tier 4 异常区，
+    // 否则客户端面板会把正常的「到期日」排在「拉取失败 / 已失效」之后。
     if (bucket.traffic.length > 0) {
-      tier3TrafficOnly.push(...bucket.traffic);
+      tier3Singles.push(...bucket.traffic);
     }
     if (bucket.expiry.length > 0) {
-      tier4Status.push(...bucket.expiry);
+      tier3Singles.push(...bucket.expiry);
     }
   }
 
-  // 3. Tier 3 纯流量节点：同类并排，集中排列
-  const tier3Ordered = tier3TrafficOnly;
+  // 3. Tier 3 单出层：纯流量订阅与未成对的常规节点，集中在状态区之上
+  const tier3Ordered = tier3Singles;
 
   // 4. Tier 4 状态与异常节点：保持原有发现顺序沉底
   const tier4Ordered = tier4Status;

@@ -213,6 +213,23 @@ describe('【Dashboard】到期剩余天数展示语义', () => {
     assert.equal(names[8], '🇭🇰 香港 01');
   });
 
+  test('单出到期节点（不限流量套餐）不得沉入状态异常区', () => {
+    // total=0 的到期订阅只产出到期节点，Tier 2 无法成对；它属于常规信息，
+    // 必须排在「拉取失败 / 旧缓存 / 已失效」等状态异常之前，而不是被当作异常垫底。
+    const expiryOnly = generateInfoNodes(`expire=${expireIn(20 * DAY_MS)}`, '不限量机场').nodes;
+    const failNode = markTrustedSynthetic({
+      name: '❌ [故障机场] 拉取失败：拉取超时',
+      type: 'direct',
+      server: '1.0.0.1',
+      port: 80,
+      isSyntheticInfo: true
+    });
+
+    const sorted = sortDashboardNodes([failNode, ...expiryOnly]).map(n => n.name);
+    assert.match(sorted[0], /\[不限量机场\]\s*到期日/, '正常到期信息应排在状态异常之前');
+    assert.match(sorted[1], /\[故障机场\]\s*拉取失败/, '状态异常仍垫底');
+  });
+
   test('端到端：管线排序不得用字母序覆盖看板梯队顺序', async () => {
     const buildInput = () => {
       const globalNodes = buildGlobalDashboardNodes({
