@@ -535,7 +535,7 @@ servicesConfigFile: "./services.config.yaml"
 | `osType` | `string` | `'windows'` | `any` | `override` | **目标运行环境**：可选 `windows` \| `mac` \| `linux` \| `all`。用于匹配特定操作系统的进程分流名单。 |
 | `trafficDirection` | `string` | `'split'` | `any` | `override` | **流量方向**：`split` 国内直连 / 海外代理（默认）；`return` 回国（国内代理 / 海外直连）。只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支；规则的国内 / 海外走向由 `routing` 决定。 |
 | `defaultProxyMode` | `string` | `'auto'` | `any` | `override` | **默认代理行为**：可选 `auto` (自动测速) \| `manual` (手动选择) \| `fallback` (故障转移) \| `direct` \| `reject`。 |
-| `enableIPv6` | `boolean` | `false` | `any` | `override` | **全局 IPv6 开关**：控制 TUN、DNS 及路由规则的 IPv6 通道；为 `false` 时同时剔除 server 为 IPv6 字面量的纯 IPv6 节点。本机无公网物理 IPv6 时请保持 `false`。 |
+| `enableIPv6` | `boolean` | `false` | `any` | `override` | **全局 IPv6 开关**：控制 TUN、DNS 及路由规则的 IPv6 通道；为 `false` 时同时剔除 server 为 IPv6 字面量的纯 IPv6 节点。为 `true` 时生成「IPv6控制台」出口开关组（默认跟随漏网之鱼，可切 `REJECT` / `DIRECT`）。本机无公网物理 IPv6 时请保持 `false`。 |
 | `showFeatureIcon` | `boolean` | `true` | `any` | `override` | **节点特征图符**：是否在重命名后的节点末尾追加特征标识（如 🚀 4K 🏠 等）。 |
 | `include` | `string[]` | `[]` | `local` | `override` | **通用配置片段挂载**：引入外部 yaml/json 片段，主配置优先，数组并集去重，支持递归 include。 |
 | `servicesConfigFile` | `string` | `''` | `local` | `override` | **外部服务扩展文件**：挂载外部 `.js`、`.yaml` 或 `.json` 自定义服务编目文件。 |

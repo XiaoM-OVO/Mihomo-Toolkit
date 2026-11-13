@@ -55,6 +55,24 @@ describe('【Pipeline】核心流水线装配与交付形态 (pipeline)', () => 
     assert.ok(groupNames.includes('🇯🇵 日本节点'));
   });
 
+  it('runStrategyPipeline - enableIPv6 生成 IPv6 控制台，默认跟随最终策略', () => {
+    const skeleton = {
+      proxies: [{ name: '🇭🇰 香港 01', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u1' }]
+    };
+
+    const on = runStrategyPipeline(skeleton, { enableIPv6: true });
+    const ipv6Group = on['proxy-groups'].find(g => g.name.includes('IPv6控制台'));
+    assert.ok(ipv6Group, '开启 IPv6 时应生成 IPv6 控制台组');
+    assert.deepEqual(ipv6Group.proxies, ['🐟 漏网之鱼', 'REJECT', '📍 手动选择', 'DIRECT'],
+      '默认必须是跟随最终策略，避免未匹配的 IPv6 流量被静默 REJECT');
+    assert.ok(on.rules.some(r => r.startsWith('IP-CIDR6,::/0,') && r.includes('IPv6控制台')),
+      '开启 IPv6 时应注入 IPv6 兜底规则');
+
+    const off = runStrategyPipeline(skeleton, { enableIPv6: false });
+    assert.equal(off['proxy-groups'].some(g => g.name.includes('IPv6控制台')), false);
+    assert.equal(off.rules.some(r => r.startsWith('IP-CIDR6,::/0,')), false);
+  });
+
   it('buildAuditReport - 结构化审计生成', () => {
     const meta = {
       stats: {

@@ -678,9 +678,12 @@ function buildProxyTopology({
   finalGroups.push(...appGroups);
 
   if (userConfig.enableIPv6) {
+    // IPv6 出口三态开关：默认跟随最终策略（既不静默泄漏 v6，也不误伤），
+    // 用户可在面板切 REJECT（彻底防泄漏）或 DIRECT（原生 v6 直连）。
+    // 组内引用「漏网之鱼」按名字解析，与定义先后无关。
     finalGroups.push(buildSelect(
       groupName(GROUP_KEYS.ipv6),
-      ['REJECT', groupName(GROUP_KEYS.manual), 'DIRECT']
+      [groupName(GROUP_KEYS.final), 'REJECT', groupName(GROUP_KEYS.manual), 'DIRECT']
     ));
   }
 

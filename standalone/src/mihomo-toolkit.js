@@ -1445,7 +1445,7 @@ function main(config, extConfig) {
 
   finalGroups.push(...appGroups);
 
-  if (USER_CONFIG.enableIPv6) finalGroups.push(buildSelect("🌐 IPv6控制台", ["REJECT", "📍 手动选择", "DIRECT"]));
+  if (USER_CONFIG.enableIPv6) finalGroups.push(buildSelect("🌐 IPv6控制台", ["🐟 漏网之鱼", "REJECT", "📍 手动选择", "DIRECT"]));
 
   // 漏网之鱼
   let fallbackProxies = [proxyTarget, "🚀 自动选择", "📍 手动选择", "♻️ 故障转移", "⏬ 下载策略"];
