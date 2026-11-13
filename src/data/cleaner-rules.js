@@ -26,7 +26,6 @@ function escapeRegex(str) {
 
 // 虚假/私网/回环与占位 IP 判定
 const REGEX_FAKE_IPV4 = /^(?:0\.|127\.|10\.|192\.168\.|169\.254\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.|(?:1\.1\.1\.1|1\.0\.0\.1|8\.8\.8\.8|8\.8\.4\.4|9\.9\.9\.9|114\.114\.114\.114|255\.255\.255\.255)(?:$|:))/;
-const REGEX_FAKE_IPV6 = /^(?:\[?(?:::1?|0*(?::0*)*:0*1)\]?(?:$|:)|\[?f[cd][0-9a-f]{2}:|\[?fe80:)/i;
 
 // 弱口令 / 虚拟占位鉴权判定
 const REGEX_DUMMY_AUTH = /^(0{8}-0{4}-0{4}-0{4}-0{12}|123456|password|dummy)$/i;
@@ -274,7 +273,6 @@ module.exports = {
   escapeRegex,
   // 虚假 IP 与安全拦截
   REGEX_FAKE_IPV4,
-  REGEX_FAKE_IPV6,
   REGEX_DUMMY_AUTH,
   REGEX_EXPLICIT_NOTICE,
   REGEX_INFO_NODE,

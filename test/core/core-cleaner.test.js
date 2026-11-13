@@ -60,6 +60,12 @@ describe('【Core】节点清洗与属性提取 (cleaner)', () => {
     const ipv6PrivateProxy = { server: '[fc00::1]', port: 443 };
     assert.equal(checkNodeBlockReason(ipv6PrivateProxy, 'Test'), '假IP');
 
+    // IPv6 全量覆盖：IPv4 映射、链路本地 fe80::/10 全段、6to4 与 NAT64 内嵌私网
+    for (const server of ['[::ffff:10.0.0.1]', '[::ffff:127.0.0.1]', '[feb0::1]', '[2002:7f00:1::]', '[64:ff9b::10.0.0.1]']) {
+      assert.equal(checkNodeBlockReason({ server, port: 443 }, 'Test'), '假IP', `${server} 应判定为假IP`);
+    }
+    assert.equal(checkNodeBlockReason({ server: '[2400:3200::1]', port: 443 }, 'Test'), '', '公网 IPv6 不应误杀');
+
     const dummyProxy = { server: '1.2.3.4', port: 443, password: 'password' };
     assert.equal(checkNodeBlockReason(dummyProxy, 'Test'), '假密码');
 

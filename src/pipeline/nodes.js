@@ -27,7 +27,19 @@ const { FEATURE_TEXT_MAP } = require('../core/shared/icons');
 const { resolveProxiesDomains } = require('../io/dns-resolver');
 const { resolveProxyUrl } = require('../io/fetcher');
 const { fissionNodes } = require('../core/fission');
+const { isIPv6 } = require('../infra/ip');
 const { createEnvelopesBypass } = require('./envelope');
+
+/**
+ * 是否为纯 IPv6 字面量节点（server 为 IPv6 地址，不含域名与 IPv4）。
+ * enableIPv6=false 时此类节点在本机必然不可用，需在清洗阶段剔除。
+ * @param {object} proxy
+ * @returns {boolean}
+ */
+function isPureIpv6Node(proxy) {
+  const server = String(proxy?.server || '').trim();
+  return server !== '' && isIPv6(server);
+}
 
 /**
  * 物理去重的低优先级判定：显式公告/横幅节点不得抢占真实节点的唯一指纹。
@@ -135,6 +147,13 @@ async function runNodesPipeline(proxies = [], userConfig = {}) {
     if (item.skip) {
       discardedCount++;
       if (logger) logger.debug(`🗑️ [阻断] 「${item.rawName}」· 原因：${item.blockReason}`);
+      return false;
+    }
+    // enableIPv6=false：纯 IPv6 节点（含裂变产出的 IPv6 地址）在本机网络下不可达，直接剔除。
+    // 位置放在裂变之后，保证 fissionStack=all 展开出的 IPv6 分身同样被清理。
+    if (config.enableIPv6 !== true && isPureIpv6Node(item.proxy)) {
+      discardedCount++;
+      if (logger) logger.debug(`🚫 [丢弃] 「${item.rawName}」· 原因：纯 IPv6 节点（enableIPv6=false）`);
       return false;
     }
     if (item.isInfo) {

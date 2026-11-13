@@ -35,6 +35,9 @@ describe('【Core】节点域名裂变算法 (fission)', () => {
       enableFission: true,
       fissionMaxNodes: 4,
       fissionStack: 'all',
+      // dns.google 的 IPv4 结果（8.8.8.8 / 8.8.4.4）属于占位 DNS 基线会被清洗拦截，
+      // 可存活的裂变产物只有公网 IPv6，需显式开启 IPv6 才能验证裂变增殖。
+      enableIPv6: true,
       logLevel: 'silent'
     };
 

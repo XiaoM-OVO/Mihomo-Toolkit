@@ -11,12 +11,12 @@
  */
 
 const { isTrustedSynthetic, getTrustedProxyMetadata } = require('./node-trust');
+const { isPrivateIPv6 } = require('../infra/ip');
 const {
   REGEX_INFO_NODE,
   REGEX_NOTICE_KEYWORD,
   REGEX_EXPLICIT_NOTICE,
-  REGEX_FAKE_IPV4,
-  REGEX_FAKE_IPV6
+  REGEX_FAKE_IPV4
 } = require('../data/cleaner-rules');
 
 /**
@@ -32,7 +32,7 @@ function isFakeServerAddress(server, port) {
   const isFakeIp = !s
     || s === 'localhost'
     || REGEX_FAKE_IPV4.test(s)
-    || REGEX_FAKE_IPV6.test(s);
+    || (s.includes(':') && isPrivateIPv6(s));
   return !s || isFakePort || isFakeIp;
 }
 

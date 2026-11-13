@@ -19,6 +19,19 @@ describe('【Pipeline】核心流水线装配与交付形态 (pipeline)', () => 
     assert.ok(cleaned[0].name.includes('香港'));
   });
 
+  it('runNodesPipeline - enableIPv6=false 剔除纯 IPv6 节点，开启时保留', async () => {
+    const proxies = [
+      { name: '🇭🇰 香港 01 BGP', server: '1.2.3.4', port: 443, type: 'vless', uuid: 'u1' },
+      { name: '🇯🇵 日本 01 IPLC', server: '[2400:3200::1]', port: 443, type: 'vless', uuid: 'u2' }
+    ];
+
+    const off = await runNodesPipeline(proxies, { enableIPv6: false, enableDedupe: false });
+    assert.deepEqual(off.map(p => p.server), ['1.2.3.4']);
+
+    const on = await runNodesPipeline(proxies, { enableIPv6: true, enableDedupe: false });
+    assert.deepEqual(on.map(p => p.server).sort(), ['1.2.3.4', '[2400:3200::1]']);
+  });
+
   it('runStrategyPipeline - 策略组拓扑与分流规则组装', () => {
     const config = {
       proxies: [

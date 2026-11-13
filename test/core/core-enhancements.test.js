@@ -77,7 +77,7 @@ describe('【Core】核心能力与健壮性增强 (enhancements)', () => {
         expectedTags: ['yt', 'cellular', 'wap']
       },
       {
-        proxy: { name: '🇸🇬 新加坡 01 纯物理V6', server: '2001:db8::1', port: 443, type: 'vless', uuid: 'u2' },
+        proxy: { name: '🇸🇬 新加坡 01 纯物理V6', server: '2400:3200::1', port: 443, type: 'vless', uuid: 'u2' },
         expectedTags: ['ipv6']
       }
     ];

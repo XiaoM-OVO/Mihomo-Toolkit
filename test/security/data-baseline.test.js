@@ -29,7 +29,6 @@ const {
   STREAMING_FEATURE_REG,
   ISOLATION_SORT_ORDER,
   REGEX_FAKE_IPV4,
-  REGEX_FAKE_IPV6,
   REGEX_DUMMY_AUTH,
   REGEX_INFO_NODE,
   REGEX_AD_TYPO
@@ -403,10 +402,6 @@ describe('【Security】数据层基线与字段注册表防漂移 (data-baselin
       assert.ok(REGEX_FAKE_IPV4.test('10.0.0.1'));
       assert.ok(REGEX_FAKE_IPV4.test('192.168.1.1'));
       assert.ok(!REGEX_FAKE_IPV4.test('1.2.3.4'));
-
-      assert.ok(REGEX_FAKE_IPV6.test('::1'));
-      assert.ok(REGEX_FAKE_IPV6.test('fc00::1'));
-      assert.ok(!REGEX_FAKE_IPV6.test('2400:3200::1'));
 
       assert.ok(REGEX_DUMMY_AUTH.test('password'));
       assert.ok(REGEX_DUMMY_AUTH.test('123456'));

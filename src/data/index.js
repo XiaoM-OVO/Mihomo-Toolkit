@@ -45,7 +45,6 @@ const {
 const {
   escapeRegex,
   REGEX_FAKE_IPV4,
-  REGEX_FAKE_IPV6,
   REGEX_DUMMY_AUTH,
   REGEX_EXPLICIT_NOTICE,
   REGEX_INFO_NODE,
@@ -97,7 +96,6 @@ module.exports = {
   // 节点清洗词库与规则基线
   escapeRegex,
   REGEX_FAKE_IPV4,
-  REGEX_FAKE_IPV6,
   REGEX_DUMMY_AUTH,
   REGEX_EXPLICIT_NOTICE,
   REGEX_INFO_NODE,

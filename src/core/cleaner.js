@@ -12,10 +12,10 @@ const { getIsolationBucket } = require('./isolation');
 const { isNoticeNode } = require('./notice');
 const { extractNodeAttributes } = require('./metadata');
 const ipaddr = require('ipaddr.js');
+const { isPrivateIPv6 } = require('../infra/ip');
 const {
   REGEX_CLEANUP,
   REGEX_FAKE_IPV4,
-  REGEX_FAKE_IPV6,
   REGEX_DUMMY_AUTH,
   REGEX_AD_TYPO,
   REGEX_AD_PROMO,
@@ -82,7 +82,9 @@ function isPrivateOrLoopbackServer(server) {
   if (s.toLowerCase() === 'localhost') return true;
   if (!ipaddr.isValid(s)) return false;
   try {
-    const addr = ipaddr.parse(s);
+    let addr = ipaddr.parse(s);
+    // IPv4 映射 IPv6（::ffff:192.168.1.1）先解包，与 isPrivateIPv6 的判定口径保持一致
+    if (addr.kind() === 'ipv6' && addr.isIPv4MappedAddress()) addr = addr.toIPv4Address();
     const range = addr.range();
     const ALLOWED_RANGES = [
       'loopback',
@@ -114,9 +116,11 @@ function checkNodeBlockReason(proxy, rawName, _userConfig = {}, options = {}) {
   if (!server || isFakePort) return '假IP';
 
   // 2. 假 IP / 回环 / 占位 IP 判定
+  // IPv6 统一走 infra 基元（覆盖 IPv4 映射、6to4、NAT64 内嵌私网与完整 fe80::/10），
+  // 不再依赖只覆盖少数前缀的手写正则。
   const isFakeIp = server === 'localhost'
     || REGEX_FAKE_IPV4.test(server)
-    || REGEX_FAKE_IPV6.test(server);
+    || (server.includes(':') && isPrivateIPv6(server));
 
   const keepName = options.keepName != null
     ? Boolean(options.keepName)

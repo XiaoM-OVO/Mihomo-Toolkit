@@ -32,6 +32,16 @@ describe('【Security】SSRF 安全拦截与 URL 校验 (ssrf)', () => {
     assert.equal(isAllowedUrl('https://example.com/sub.yaml'), true);
   });
 
+  it('resolveLocalProxyDispatcher - IPv6 回环代理（方括号形式）不被误拒', () => {
+    const { resolveLocalProxyDispatcher } = require('../../src/io/fetch-proxy.js');
+    assert.ok(resolveLocalProxyDispatcher('http://[::1]:7890'), '[::1] 应被视为本机回环代理');
+    assert.ok(resolveLocalProxyDispatcher('http://127.0.0.1:7890'));
+    assert.throws(
+      () => resolveLocalProxyDispatcher('http://[2001:db8::1]:7890'),
+      /代理必须为本机地址/
+    );
+  });
+
   it('validateUrlSsrf - 异步解析并阻止 127.0.0.1、私网网段与文件协议', async () => {
     await assert.rejects(
       async () => { await validateUrlSsrf('http://localhost:3000/sub'); },

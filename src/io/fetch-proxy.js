@@ -16,7 +16,11 @@ function resolveLocalProxyDispatcher(proxyUrl) {
   if (!proxyUrl) return null;
   if (!ProxyAgent) throw new Error('Proxy support unavailable (undici not loaded)');
   const pUrl = new URL(proxyUrl);
-  const isLocalTrusted = pUrl.hostname === '127.0.0.1' || pUrl.hostname === 'localhost' || pUrl.hostname === '::1';
+  // WHATWG URL 对 IPv6 的 hostname 保留方括号（[::1]），必须先剥离再比较，
+  // 否则 http://[::1]:7890 这类合法本机代理会被误判为非本机并拒绝。
+  const rawHost = pUrl.hostname.toLowerCase();
+  const host = (rawHost.startsWith('[') && rawHost.endsWith(']')) ? rawHost.slice(1, -1) : rawHost;
+  const isLocalTrusted = host === '127.0.0.1' || host === 'localhost' || host === '::1';
   if (!isLocalTrusted) throw new Error(`SSRF 预检失败：代理必须为本机地址，实际 ${pUrl.hostname}`);
   const cached = proxyAgentCache.get(proxyUrl);
   if (cached) return cached;

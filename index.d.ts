@@ -272,7 +272,7 @@ export interface ToolkitConfig {
   trafficDirection?: 'split' | 'return';
   /** 默认代理策略: auto | manual | fallback（特殊: direct / reject） */
   defaultProxyMode?: string;
-  /** 全局 IPv6：控制 TUN / DNS 及路由（本地无物理 IPv6 请保持 false） */
+  /** 全局 IPv6：控制 TUN / DNS 及路由；为 false 时同时剔除纯 IPv6 节点（本地无物理 IPv6 请保持 false） */
   enableIPv6?: boolean;
 
   // 节点清洗

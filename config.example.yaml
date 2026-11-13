@@ -88,7 +88,7 @@ output: "./dist/config.yaml"    # 产物输出路径
 # logLevel: "info"              # silent | error | warn | info | debug
 # redactLevel: "partial"        # 日志脱敏：off 完整 URL / partial 保留协议与域名 / full 隐藏 IP 与域名
 # enablePipeline: true          # 流水线总控：false 则跳过策略编排与内核优化，仅交付清洗后的节点
-# enableIPv6: false             # 全局 IPv6：控制 TUN / DNS / 路由；本机无公网 IPv6 时保持 false
+# enableIPv6: false             # 全局 IPv6：控制 TUN / DNS / 路由，并剔除纯 IPv6 节点；本机无公网 IPv6 时保持 false
 
 
 # ───── ③ 配置组织：片段挂载 include ───────────────────────────────────
