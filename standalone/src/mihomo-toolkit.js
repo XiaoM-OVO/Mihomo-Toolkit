@@ -1942,8 +1942,9 @@ function main(config, extConfig) {
   /**
    * 解析器列表净化：剥离 #proxy / #h3 / #skip-cert-verify 等修饰符，按需只留加密 DNS，
    * 默认拒绝私网与 fake-ip 段（用户本地显式配置可放行）。
+   * forceDirect：节点解析链统一补 #DIRECT，避免 respect-rules 下用代理解析代理服务器域名形成自环。
    */
-  const sanitizeDnsList = (list, { encryptedOnly = false, allowPrivate = false, fallback = [] } = {}) => {
+  const sanitizeDnsList = (list, { encryptedOnly = false, allowPrivate = false, forceDirect = false, fallback = [] } = {}) => {
     const clean = (Array.isArray(list) ? list : [list])
       .filter(s => typeof s === "string")
       .map(s => s.trim().split("#")[0].trim())
@@ -1953,8 +1954,9 @@ function main(config, extConfig) {
         const host = dnsHostOf(s);
         return Boolean(host) && (allowPrivate || !isPrivateDnsHost(host));
       });
-    const out = dedupe(clean);
-    return out.length ? out : fallback;
+    const applyDirect = arr => dedupe(arr.map(s => (forceDirect && !s.includes("#") ? `${s}#DIRECT` : s)));
+    const out = applyDirect(clean);
+    return out.length ? out : applyDirect(fallback.filter(s => typeof s === "string"));
   };
 
   // default-nameserver 是引导层：必须是纯 IP，DoH 域名自解析会死锁
@@ -2042,12 +2044,15 @@ function main(config, extConfig) {
   /**
    * 提取订阅的「节点域名 → 解析器」映射。
    * 只接受加密 DNS；同一节点域名出现不同解析器时整条回退默认，不做并集、不按顺序择一。
+   * fallback：订阅未给出更具体策略的节点域名默认走它的 proxy-server-nameserver，避免订阅私货解析器失去作用域。
    */
-  const collectNodeDns = (sub, proxies) => {
+  const collectNodeDns = (sub, proxies, fallback = []) => {
     const nodeDomains = dedupe((proxies || []).map(p => serverDomainOf(p && p.server)).filter(Boolean));
     const assignments = new Map();
     const conflicts = new Set();
     if (!nodeDomains.length) return { nodeDomains, policies: {}, conflicts: [] };
+    // 节点解析链必须直连，否则 respect-rules 下会用代理去解析代理服务器域名
+    const direct = list => list.map(s => `${s}#DIRECT`);
     const assign = (domain, resolvers) => {
       if (conflicts.has(domain)) return;
       const key = resolvers.join("\u0000");
@@ -2058,13 +2063,19 @@ function main(config, extConfig) {
     const applyPolicy = (policy) => {
       if (!policy || typeof policy !== "object") return;
       Object.entries(policy).forEach(([pattern, value]) => {
-        const resolvers = sanitizeDnsList(value, { encryptedOnly: true }).slice(0, MAX_NODE_DNS);
+        const resolvers = direct(sanitizeDnsList(value, { encryptedOnly: true }).slice(0, MAX_NODE_DNS));
         if (!resolvers.length) return;
         nodeDomains.filter(d => coversNodeDomain(pattern, [d])).forEach(d => assign(d, resolvers));
       });
     };
     applyPolicy(sub["proxy-server-nameserver-policy"]);
     applyPolicy(sub["nameserver-policy"]);
+    if (fallback.length) {
+      const fallbackResolvers = direct(fallback);
+      nodeDomains.forEach(d => {
+        if (!assignments.has(d) && !conflicts.has(d)) assign(d, fallbackResolvers);
+      });
+    }
     return { nodeDomains, policies: foldNodePolicies(assignments), conflicts: [...conflicts] };
   };
 
@@ -2077,13 +2088,12 @@ function main(config, extConfig) {
     const sub = config.dns || {};
 
     // 1. 节点域名解析器映射（所有模式都执行：不继承等于让依赖私货解析的节点直接连不上）
-    const { nodeDomains, policies: nodePolicies, conflicts: nodeConflicts } = collectNodeDns(sub, config.proxies || []);
-    // 全局节点解析链：用户显式配置 > 订阅 proxy-server-nameserver（仅加密 DNS）> 出厂纯 IP
-    const userNodeDnsExplicit = USER_CONFIG.dnsServer !== DEFAULT_CONFIG.dnsServer;
+    //    全局节点解析链固定走用户 dnsServer 并强制直连，订阅解析器只按节点域名落到 policy，不污染全局
     const subNodeDns = sanitizeDnsList(sub["proxy-server-nameserver"], { encryptedOnly: true }).slice(0, MAX_NODE_DNS);
-    const safeProxyServerNs = userNodeDnsExplicit
-      ? sanitizeDnsList(CUSTOM_DNS_SERVER, { fallback: DEFAULT_NODE_DNS })
-      : (subNodeDns.length ? subNodeDns : sanitizeDnsList(CUSTOM_DNS_SERVER, { fallback: DEFAULT_NODE_DNS }));
+    const safeProxyServerNs = sanitizeDnsList(CUSTOM_DNS_SERVER, { allowPrivate: true, fallback: DEFAULT_NODE_DNS, forceDirect: true });
+    const globalNodeBases = safeProxyServerNs.map(s => s.split("#")[0]);
+    const nodeFallback = subNodeDns.length && subNodeDns.join("\u0000") !== globalNodeBases.join("\u0000") ? subNodeDns : [];
+    const { nodeDomains, policies: nodePolicies, conflicts: nodeConflicts } = collectNodeDns(sub, config.proxies || [], nodeFallback);
 
     // 2. 监听地址：host 只认用户配置（订阅 host 可能把解析器开到 0.0.0.0），端口可沿用订阅
     const userL = splitHostPort(USER_CONFIG.dnsListen);
