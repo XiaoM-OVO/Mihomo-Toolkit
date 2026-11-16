@@ -1,0 +1,1221 @@
+{
+  "proxies": [
+    {
+      "name": "DIRECT",
+      "type": "direct",
+      "udp": true
+    },
+    {
+      "name": "REJECT",
+      "type": "reject",
+      "udp": true
+    },
+    {
+      "name": "剩余流量：100 GB",
+      "type": "ss",
+      "server": "127.0.0.1",
+      "port": 80,
+      "cipher": "none",
+      "password": "",
+      "udp": true
+    },
+    {
+      "name": "官网 https://t.me/example 防失联 点击入群",
+      "type": "ss",
+      "server": "127.0.0.1",
+      "port": 80,
+      "cipher": "aes-128-gcm",
+      "password": "p11",
+      "udp": true
+    },
+    {
+      "name": "🇨🇳 中国 | CN2",
+      "type": "ss",
+      "server": "4.4.4.1",
+      "port": 443,
+      "cipher": "aes-256-gcm",
+      "password": "p5",
+      "udp": true
+    },
+    {
+      "name": "🇭🇰 香港 [01] | BGP",
+      "type": "trojan",
+      "server": "1.1.1.2",
+      "port": 443,
+      "password": "p2",
+      "sni": "hk.example.com",
+      "udp": true
+    },
+    {
+      "name": "🇭🇰 香港 [02] 🧪",
+      "type": "ss",
+      "server": "1.1.1.5",
+      "port": 443,
+      "cipher": "aes-128-gcm",
+      "password": "p10",
+      "udp": true
+    },
+    {
+      "name": "🇭🇰 香港 [03] | x3.5",
+      "type": "ss",
+      "server": "1.1.1.4",
+      "port": 443,
+      "cipher": "aes-128-gcm",
+      "password": "p9",
+      "udp": true
+    },
+    {
+      "name": "🇭🇰 香港 ⏬ | x10",
+      "type": "ss",
+      "server": "1.1.1.3",
+      "port": 443,
+      "cipher": "aes-128-gcm",
+      "password": "p8",
+      "udp": true
+    },
+    {
+      "name": "🇯🇵 日本 [01] | 东京 专线 · WS",
+      "type": "vmess",
+      "server": "2.2.2.1",
+      "port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555551",
+      "alterId": 0,
+      "network": "ws",
+      "client-fingerprint": "chrome",
+      "udp": true
+    },
+    {
+      "name": "🇯🇵 日本 [02] | 大阪 · GRPC",
+      "type": "vless",
+      "server": "2.2.2.2",
+      "port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555552",
+      "network": "grpc",
+      "tls": true,
+      "client-fingerprint": "chrome",
+      "udp": true
+    },
+    {
+      "name": "🇸🇬 新加坡",
+      "type": "tuic",
+      "server": "5.5.5.1",
+      "port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555553",
+      "password": "p6",
+      "udp": true
+    },
+    {
+      "name": "🇺🇸 美国 [01] | 洛杉矶",
+      "type": "trojan",
+      "server": "3.3.3.1",
+      "port": 443,
+      "password": "p3",
+      "sni": "us.example.com",
+      "udp": true
+    },
+    {
+      "name": "🇺🇸 美国 [02] 🏠",
+      "type": "ss",
+      "server": "3.3.3.2",
+      "port": 8443,
+      "cipher": "chacha20-ietf-poly1305",
+      "password": "p4",
+      "udp": true
+    },
+    {
+      "name": "🇩🇪 德国 | 法兰克福",
+      "type": "ss",
+      "server": "6.6.6.1",
+      "port": 443,
+      "cipher": "aes-128-gcm",
+      "password": "p7",
+      "udp": true
+    }
+  ],
+  "proxy-groups": [
+    {
+      "name": "📊 订阅与状态看板",
+      "type": "select",
+      "proxies": [
+        "剩余流量：100 GB",
+        "官网 https://t.me/example 防失联 点击入群",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "📍 手动选择",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🚀 自动选择",
+      "type": "url-test",
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": 300,
+      "tolerance": 50,
+      "proxies": [
+        "🇭🇰 香港 [01] | BGP",
+        "🇯🇵 日本 [01] | 东京 专线 · WS",
+        "🇯🇵 日本 [02] | 大阪 · GRPC",
+        "🇸🇬 新加坡",
+        "🇺🇸 美国 [01] | 洛杉矶",
+        "🇺🇸 美国 [02] 🏠",
+        "🇩🇪 德国 | 法兰克福"
+      ]
+    },
+    {
+      "name": "♻️ 故障转移",
+      "type": "fallback",
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": 300,
+      "proxies": [
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点"
+      ]
+    },
+    {
+      "name": "⏬ 下载策略",
+      "type": "select",
+      "proxies": [
+        "DIRECT",
+        "🔄 负载均衡-轮询",
+        "🚀 自动选择",
+        "🇭🇰 香港 ⏬ | x10"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🔄 负载均衡-轮询",
+      "type": "load-balance",
+      "strategy": "round-robin",
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": 300,
+      "lazy": true,
+      "proxies": [
+        "🇭🇰 香港 ⏬ | x10"
+      ],
+      "hidden": true
+    },
+    {
+      "name": "🚀 高倍率优选",
+      "type": "select",
+      "proxies": [
+        "🇭🇰 香港 [03] | x3.5"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🧪 实验节点",
+      "type": "select",
+      "proxies": [
+        "🇭🇰 香港 [02] 🧪"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🇨🇳 中国分流",
+      "type": "select",
+      "proxies": [
+        "DIRECT",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🚀 自动选择"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🤖 ChatGPT",
+      "type": "select",
+      "proxies": [
+        "🇺🇸 美国节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🚀 自动选择",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "♊ Gemini",
+      "type": "select",
+      "proxies": [
+        "🇺🇸 美国节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🚀 自动选择",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🦀 Claude",
+      "type": "select",
+      "proxies": [
+        "🇺🇸 美国节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🚀 自动选择",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🐙 Copilot",
+      "type": "select",
+      "proxies": [
+        "🇺🇸 美国节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🚀 自动选择",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "▶️ YouTube",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🎬 Netflix",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "📺 BiliBili",
+      "type": "select",
+      "proxies": [
+        "🇨🇳 中国分流",
+        "🇭🇰 香港节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🪄 Disney+",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🎧 Spotify",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🎵 TikTok",
+      "type": "select",
+      "proxies": [
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "🚀 自动选择",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "📺 Bahamut",
+      "type": "select",
+      "proxies": [
+        "🇭🇰 香港节点",
+        "🚀 自动选择",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🅿️ Pixiv",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🎮 Twitch",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "✈️ Telegram",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🐱 GitHub",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🎓 学术网站",
+      "type": "select",
+      "proxies": [
+        "🇺🇸 美国节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇭🇰 香港节点",
+        "🚀 自动选择",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🎮 游戏服务",
+      "type": "select",
+      "proxies": [
+        "DIRECT",
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🎮 游戏下载",
+      "type": "select",
+      "proxies": [
+        "DIRECT",
+        "⏬ 下载策略",
+        "🚀 自动选择",
+        "📍 手动选择"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🪟 Microsoft",
+      "type": "select",
+      "proxies": [
+        "DIRECT",
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🍎 Apple",
+      "type": "select",
+      "proxies": [
+        "DIRECT",
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🔍 Google",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "🚀 高倍率优选",
+        "🧪 实验节点",
+        "🇨🇳 大陆节点",
+        "🇭🇰 香港节点",
+        "🇯🇵 日本节点",
+        "🇸🇬 新加坡节点",
+        "🇺🇸 美国节点",
+        "🌐 其他节点",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🚫 广告拦截",
+      "type": "select",
+      "proxies": [
+        "REJECT-DROP",
+        "REJECT",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🐟 漏网之鱼",
+      "type": "select",
+      "proxies": [
+        "🚀 自动选择",
+        "📍 手动选择",
+        "♻️ 故障转移",
+        "⏬ 下载策略",
+        "DIRECT"
+      ],
+      "hidden": false
+    },
+    {
+      "name": "🇨🇳 大陆节点",
+      "type": "url-test",
+      "proxies": [
+        "🇨🇳 中国 | CN2"
+      ],
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": 300,
+      "lazy": true,
+      "tolerance": 50
+    },
+    {
+      "name": "🇭🇰 香港节点",
+      "type": "url-test",
+      "proxies": [
+        "🇭🇰 香港 [01] | BGP"
+      ],
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": 300,
+      "lazy": true,
+      "tolerance": 50
+    },
+    {
+      "name": "🇯🇵 日本节点",
+      "type": "url-test",
+      "proxies": [
+        "🇯🇵 日本 [01] | 东京 专线 · WS",
+        "🇯🇵 日本 [02] | 大阪 · GRPC"
+      ],
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": 300,
+      "lazy": true,
+      "tolerance": 50
+    },
+    {
+      "name": "🇸🇬 新加坡节点",
+      "type": "url-test",
+      "proxies": [
+        "🇸🇬 新加坡"
+      ],
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": 300,
+      "lazy": true,
+      "tolerance": 50
+    },
+    {
+      "name": "🇺🇸 美国节点",
+      "type": "url-test",
+      "proxies": [
+        "🇺🇸 美国 [01] | 洛杉矶",
+        "🇺🇸 美国 [02] 🏠"
+      ],
+      "url": "https://cp.cloudflare.com/generate_204",
+      "interval": 300,
+      "lazy": true,
+      "tolerance": 50
+    },
+    {
+      "name": "🌐 其他节点",
+      "type": "select",
+      "proxies": [
+        "🇩🇪 德国 | 法兰克福"
+      ],
+      "hidden": false
+    }
+  ],
+  "rules": [
+    "RULE-SET,lan-domain,DIRECT",
+    "RULE-SET,lan-ip,DIRECT,no-resolve",
+    "RULE-SET,ads,🚫 广告拦截",
+    "RULE-SET,youtube,▶️ YouTube",
+    "RULE-SET,netflix,🎬 Netflix",
+    "RULE-SET,bilibili,📺 BiliBili",
+    "RULE-SET,disney,🪄 Disney+",
+    "RULE-SET,spotify,🎧 Spotify",
+    "RULE-SET,tiktok,🎵 TikTok",
+    "RULE-SET,bahamut,📺 Bahamut",
+    "RULE-SET,pixiv,🅿️ Pixiv",
+    "RULE-SET,twitch,🎮 Twitch",
+    "DOMAIN-SUFFIX,steamcontent.com,🎮 游戏下载",
+    "RULE-SET,steam-cn,🎮 游戏下载",
+    "RULE-SET,steam,🎮 游戏服务",
+    "DOMAIN-SUFFIX,download.epicgames.com,🎮 游戏下载",
+    "RULE-SET,epic,🎮 游戏服务",
+    "DOMAIN-SUFFIX,epicgames.com,🎮 游戏服务",
+    "RULE-SET,riot,🎮 游戏服务",
+    "RULE-SET,blizzard,🎮 游戏服务",
+    "RULE-SET,nintendo,🎮 游戏服务",
+    "RULE-SET,playstation,🎮 游戏服务",
+    "RULE-SET,xbox,🎮 游戏服务",
+    "RULE-SET,ubisoft,🎮 游戏服务",
+    "RULE-SET,origin,🎮 游戏服务",
+    "RULE-SET,ea,🎮 游戏服务",
+    "RULE-SET,openai,🤖 ChatGPT",
+    "RULE-SET,gemini,♊ Gemini",
+    "RULE-SET,claude,🦀 Claude",
+    "RULE-SET,bing,🐙 Copilot",
+    "DOMAIN-KEYWORD,sci-hub,🎓 学术网站",
+    "RULE-SET,scholar,🎓 学术网站",
+    "RULE-SET,github,🐱 GitHub",
+    "PROCESS-NAME,Telegram.exe,✈️ Telegram",
+    "RULE-SET,telegram,✈️ Telegram",
+    "RULE-SET,telegram-ip,✈️ Telegram,no-resolve",
+    "RULE-SET,microsoft,🪟 Microsoft",
+    "RULE-SET,apple,🍎 Apple",
+    "RULE-SET,google,🔍 Google",
+    "PROCESS-NAME,qBittorrent.exe,DIRECT",
+    "PROCESS-NAME,Thunder.exe,DIRECT",
+    "PROCESS-NAME,BitComet.exe,DIRECT",
+    "PROCESS-NAME,uTorrent.exe,DIRECT",
+    "PROCESS-NAME,aria2c.exe,DIRECT",
+    "RULE-SET,bt-trackers-pt,DIRECT",
+    "RULE-SET,bt-trackers-public,DIRECT",
+    "DOMAIN-KEYWORD,tracker,DIRECT",
+    "DOMAIN-KEYWORD,announce,DIRECT",
+    "PROCESS-NAME,IDMan.exe,⏬ 下载策略",
+    "PROCESS-NAME,fdm.exe,⏬ 下载策略",
+    "RULE-SET,download-games-cn,DIRECT",
+    "RULE-SET,download-games,⏬ 下载策略",
+    "RULE-SET,download-android,⏬ 下载策略",
+    "RULE-SET,non-cn,🚀 自动选择",
+    "RULE-SET,cn-domain,🇨🇳 中国分流",
+    "RULE-SET,cn-ip,🇨🇳 中国分流,no-resolve",
+    "DST-PORT,53/80/443,🐟 漏网之鱼",
+    "DST-PORT,1-65535,DIRECT",
+    "MATCH,🐟 漏网之鱼"
+  ],
+  "rule-providers": {
+    "lan-domain": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/private.mrs",
+      "path": "./ruleset/lan-domain.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "lan-ip": {
+      "type": "http",
+      "behavior": "ipcidr",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/private.mrs",
+      "path": "./ruleset/lan-ip.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "non-cn": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/geolocation-!cn.mrs",
+      "path": "./ruleset/non-cn.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "cn-domain": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/cn.mrs",
+      "path": "./ruleset/cn-domain.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "cn-ip": {
+      "type": "http",
+      "behavior": "ipcidr",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs",
+      "path": "./ruleset/cn-ip.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "bt-trackers-pt": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-pt.mrs",
+      "path": "./ruleset/bt-trackers-pt.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "bt-trackers-public": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-public-tracker.mrs",
+      "path": "./ruleset/bt-trackers-public.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "download-android": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-android-app-download.mrs",
+      "path": "./ruleset/download-android.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "download-games": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-game-platforms-download.mrs",
+      "path": "./ruleset/download-games.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "download-games-cn": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-game-platforms-download@cn.mrs",
+      "path": "./ruleset/download-games-cn.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "ads": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-ads-all.mrs",
+      "path": "./ruleset/ads.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "youtube": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/youtube.mrs",
+      "path": "./ruleset/youtube.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "netflix": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/netflix.mrs",
+      "path": "./ruleset/netflix.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "bilibili": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/bilibili.mrs",
+      "path": "./ruleset/bilibili.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "disney": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/disney.mrs",
+      "path": "./ruleset/disney.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "spotify": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/spotify.mrs",
+      "path": "./ruleset/spotify.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "tiktok": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/tiktok.mrs",
+      "path": "./ruleset/tiktok.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "bahamut": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/bahamut.mrs",
+      "path": "./ruleset/bahamut.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "pixiv": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/pixiv.mrs",
+      "path": "./ruleset/pixiv.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "twitch": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/twitch.mrs",
+      "path": "./ruleset/twitch.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "steam": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam.mrs",
+      "path": "./ruleset/steam.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "steam-cn": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/steam@cn.mrs",
+      "path": "./ruleset/steam-cn.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "epic": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/epicgames.mrs",
+      "path": "./ruleset/epic.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "riot": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/riot.mrs",
+      "path": "./ruleset/riot.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "blizzard": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/blizzard.mrs",
+      "path": "./ruleset/blizzard.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "nintendo": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/nintendo.mrs",
+      "path": "./ruleset/nintendo.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "playstation": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/playstation.mrs",
+      "path": "./ruleset/playstation.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "xbox": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/xbox.mrs",
+      "path": "./ruleset/xbox.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "ubisoft": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/ubisoft.mrs",
+      "path": "./ruleset/ubisoft.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "origin": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/origin.mrs",
+      "path": "./ruleset/origin.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "ea": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/ea.mrs",
+      "path": "./ruleset/ea.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "openai": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/openai.mrs",
+      "path": "./ruleset/openai.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "gemini": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/google-gemini.mrs",
+      "path": "./ruleset/gemini.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "claude": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/anthropic.mrs",
+      "path": "./ruleset/claude.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "bing": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/bing.mrs",
+      "path": "./ruleset/bing.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "scholar": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/category-scholar-!cn.mrs",
+      "path": "./ruleset/scholar.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "github": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/github.mrs",
+      "path": "./ruleset/github.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "telegram": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/telegram.mrs",
+      "path": "./ruleset/telegram.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "telegram-ip": {
+      "type": "http",
+      "behavior": "ipcidr",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/telegram.mrs",
+      "path": "./ruleset/telegram-ip.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "microsoft": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/microsoft.mrs",
+      "path": "./ruleset/microsoft.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "apple": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/apple.mrs",
+      "path": "./ruleset/apple.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    },
+    "google": {
+      "type": "http",
+      "behavior": "domain",
+      "url": "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/google.mrs",
+      "path": "./ruleset/google.mrs",
+      "interval": 86400,
+      "format": "mrs",
+      "proxy": "DIRECT"
+    }
+  },
+  "ipv6": false,
+  "tun": {
+    "stack": "system",
+    "device": "Mihomo",
+    "auto-route": true,
+    "strict-route": true,
+    "auto-detect-interface": true,
+    "route-exclude-address": [
+      "192.168.0.0/16",
+      "10.0.0.0/8",
+      "172.16.0.0/12"
+    ],
+    "dns-hijack": [
+      "any:53"
+    ]
+  },
+  "dns": {
+    "enable": true,
+    "listen": "127.0.0.1:1053",
+    "ipv6": false,
+    "enhanced-mode": "fake-ip",
+    "fake-ip-range": "198.18.0.1/16",
+    "fake-ip-filter-mode": "blacklist",
+    "fake-ip-filter": [
+      "*.lan",
+      "*.local",
+      "*.arpa",
+      "time.*.com",
+      "ntp.*.com",
+      "localhost.ptlogin2.qq.com",
+      "*.msftncsi.com",
+      "*.msftconnecttest.com",
+      "www.msftconnecttest.com",
+      "ipv6.msftncsi.com",
+      "ipv6.msftconnecttest.com",
+      "*.ipv6-literal.net",
+      "google.cn",
+      "*.music.163.com",
+      "*.music.126.net",
+      "+.stun.*.*",
+      "+.stun.*.*.*",
+      "+.nintendo.net",
+      "+.playstation.net",
+      "+.xboxlive.com"
+    ],
+    "respect-rules": true,
+    "use-hosts": true,
+    "use-system-hosts": false,
+    "default-nameserver": [
+      "223.5.5.5",
+      "119.29.29.29"
+    ],
+    "direct-nameserver": [
+      "https://223.5.5.5/dns-query",
+      "https://120.53.53.53/dns-query",
+      "223.5.5.5",
+      "119.29.29.29"
+    ],
+    "direct-nameserver-follow-policy": false,
+    "proxy-server-nameserver": [
+      "https://223.5.5.5/dns-query#DIRECT",
+      "https://119.29.29.29/dns-query#DIRECT"
+    ],
+    "nameserver": [
+      "https://8.8.8.8/dns-query",
+      "https://1.1.1.1/dns-query"
+    ],
+    "nameserver-policy": {
+      "rule-set:cn-domain": [
+        "https://223.5.5.5/dns-query",
+        "https://120.53.53.53/dns-query",
+        "223.5.5.5",
+        "119.29.29.29"
+      ],
+      "rule-set:non-cn": [
+        "https://8.8.8.8/dns-query",
+        "https://1.1.1.1/dns-query"
+      ]
+    }
+  },
+  "sniffer": {
+    "enable": true,
+    "force-dns-mapping": true,
+    "parse-pure-ip": true,
+    "override-destination": true,
+    "sniff": {
+      "TLS": {
+        "ports": [
+          443,
+          8443
+        ]
+      },
+      "HTTP": {
+        "ports": [
+          80,
+          "8080-8880"
+        ],
+        "override-destination": true
+      },
+      "QUIC": {
+        "ports": [
+          443,
+          4433
+        ]
+      }
+    }
+  },
+  "profile": {
+    "store-selected": true,
+    "store-fake-ip": true
+  },
+  "unified-delay": true,
+  "tcp-concurrent": true,
+  "keep-alive-interval": 15,
+  "find-process-mode": "strict"
+}

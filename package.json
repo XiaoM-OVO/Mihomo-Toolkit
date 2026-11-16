@@ -28,6 +28,7 @@
     "test:security": "node --test --test-reporter=spec test/security/*.test.js",
     "test:server": "node --test --test-reporter=spec test/server/*.test.js",
     "test:pipeline": "node --test --test-reporter=spec test/pipeline/*.test.js",
+    "test:standalone": "node --test --test-reporter=spec test/standalone/*.test.js",
     "build": "node src/targets/cli.js -c config.yaml -m config",
     "build:nodes": "node src/targets/cli.js -c config.yaml -m nodes",
     "build:report": "node src/targets/cli.js -c config.yaml -m report",
