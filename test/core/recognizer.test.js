@@ -27,6 +27,18 @@ describe('【Core】地区与出入口识别 (recognizer)', () => {
     assert.equal(extractEntry('深港专线').entryStr, '深');
   });
 
+  it('三段式：独立落地存在时，复合中转段不参与落地竞争', () => {
+    const parsed = recognizeRegion('新加坡 沪港 2x');
+    assert.equal(parsed.regionDef?.name, '新加坡');
+    assert.equal(parsed.hasConflict, false);
+    assert.deepEqual(parsed.transits.map(t => t.text), ['沪港']);
+    assert.equal(extractEntry('新加坡 沪港 2x').entryStr, '沪');
+
+    assert.equal(matchNodeRegion('东京 沪港 2x')?.name, '日本');
+    // 没有独立落地时维持旧语义：深港专线 = 入口深 → 落地港
+    assert.equal(matchNodeRegion('深港专线')?.name, '香港');
+  });
+
   it('落地取「最后出现」的地区，而不是最长匹配', () => {
     assert.equal(matchNodeRegion('香港 日本 专线')?.name, '日本');
     assert.equal(matchNodeRegion('日本 香港')?.name, '香港');

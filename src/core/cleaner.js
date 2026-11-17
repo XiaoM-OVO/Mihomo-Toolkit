@@ -296,7 +296,7 @@ function classifyNode(proxy, userConfig = {}, options = {}) {
       groupKey: 'special',
       tags: [],
       featurePools: [],
-      attrs: { multiNum: 1.0, multiStr: '', entryStr: '', lineArr: [], cleanLines: '' }
+      attrs: { multiNum: 1.0, multiStr: '', entryStr: '', transitStr: '', lineArr: [], cleanLines: '' }
     };
   }
 

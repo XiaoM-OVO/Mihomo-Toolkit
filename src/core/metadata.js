@@ -67,19 +67,37 @@ function compressCarrierLines(arr) {
 /**
  * 提取入口城市
  * @param {string} name
+ * @param {object} [options={}]
+ * @param {Array<{ index: number, len: number }>} [options.regionSpans] 地区命中区间，
+ *   位于更长地区词内部的单字入口（如 `东京` 里的 `京`）会被跳过
  * @returns {{ entryStr: string, rawMatch: string|null }}
  */
-function extractEntry(name) {
+function extractEntry(name, options = {}) {
   if (!name || typeof name !== 'string') {
     return { entryStr: '', rawMatch: null };
   }
-  const match = name.match(REGEX_ENTRY_CITY);
-  if (match) {
+
+  const regionSpans = Array.isArray(options.regionSpans) ? options.regionSpans : [];
+  const reg = new RegExp(REGEX_ENTRY_CITY.source, 'gi');
+  let match;
+
+  while ((match = reg.exec(name)) !== null) {
+    const token = match[1];
+    const tokenStart = match.index + match[0].indexOf(token);
+    const insideRegion = regionSpans.some(span => {
+      // 只避让「完整地区词」内部的单字别名；跨词拼接出来的命中（如 `港 沪`）
+      // 带分隔符，不是词法上的城市名，不能拿来吞掉入口。
+      if (!span.text || /[\s\-—~>=→⇒至]/.test(span.text)) return false;
+      return tokenStart > span.index && tokenStart < span.index + span.len;
+    });
+    if (insideRegion) continue;
+
     const rawMatch = match[0];
-    const m = match[1].replace(/[-|>至=\s]/g, '');
+    const m = token.replace(/[-|>至=\s]/g, '');
     const entryStr = TAG_MAP[m.toUpperCase()] || TAG_MAP[m] || m;
     return { entryStr, rawMatch };
   }
+
   return { entryStr: '', rawMatch: null };
 }
 
@@ -201,18 +219,21 @@ function extractFeatures(name, options = {}) {
  * @returns {{ regionDef: object|null, hasConflict: boolean }}
  */
 function detectRegion(name, defs = DEFAULT_ENHANCED_DEFS) {
-  const { regionDef, hasConflict } = recognizeRegion(name, defs);
-  return { regionDef, hasConflict };
+  const { regionDef, hasConflict, matches, transits } = recognizeRegion(name, defs);
+  return { regionDef, hasConflict, matches, transits };
 }
 
 /**
- * 剥离入口、倍率、线路等特征词生成干净名称 (供兜底地区匹配与重命名计划使用)
+ * 剥离入口、倍率、中转段等特征词生成干净名称 (供兜底地区匹配与重命名计划使用)
  * @param {string} name
  * @param {object} [matches={}]
  * @returns {string}
  */
-function computeCleanName(name, { entryMatch, multiMatch } = {}) {
+function computeCleanName(name, { entryMatch, multiMatch, transitMatches } = {}) {
   let clean = name;
+  for (const transit of transitMatches || []) {
+    clean = clean.split(transit).join('');
+  }
   if (entryMatch) clean = clean.replace(entryMatch, '');
   if (multiMatch) clean = clean.replace(multiMatch, '');
   clean = clean.replace(new RegExp(REGEX_TECH_LINE.source, 'gi'), '');
@@ -229,10 +250,15 @@ function computeCleanName(name, { entryMatch, multiMatch } = {}) {
 function extractSemanticMetadata(rawName, options = {}) {
   const safeName = typeof rawName === 'string' ? rawName : '';
   const multi = extractMultiplier(safeName, options);
+  const { regionDef, hasConflict, matches: regionMatches, transits } = detectRegion(safeName, options.regionDefs);
+  const entry = extractEntry(safeName, { regionSpans: regionMatches });
   const linesInfo = extractLines(safeName);
-  const entry = extractEntry(safeName);
+  const transitMatches = (transits || []).map(t => t.text);
+  if (transitMatches.length > 0) {
+    linesInfo.lines = [...new Set([...linesInfo.lines, ...transitMatches])];
+    linesInfo.cleanLines = linesInfo.lines.join('/');
+  }
   const features = extractFeatures(safeName, options);
-  const { regionDef, hasConflict } = detectRegion(safeName, options.regionDefs);
 
   let groupKey = 'unknown';
   let regionName = null;
@@ -266,7 +292,8 @@ function extractSemanticMetadata(rawName, options = {}) {
 
   const cleanName = computeCleanName(safeName, {
     entryMatch: entry.rawMatch,
-    multiMatch: multi.rawMatch
+    multiMatch: multi.rawMatch,
+    transitMatches
   });
 
   return {
@@ -278,6 +305,7 @@ function extractSemanticMetadata(rawName, options = {}) {
     hasRegionConflict: hasConflict,
     entryStr: entry.entryStr,
     entryMatch: entry.rawMatch,
+    transitStr: transitMatches.join('/'),
     lines: linesInfo.lines,
     rawMatchedLines: linesInfo.rawMatchedLines,
     cleanLines: linesInfo.cleanLines || '',
@@ -307,6 +335,7 @@ function extractNodeAttributes(name, userConfig = {}) {
     multiNum: meta.multiNum,
     multiStr: meta.multiStr,
     entryStr: meta.entryStr,
+    transitStr: meta.transitStr,
     lineArr: meta.lines,
     cleanLines: meta.cleanLines,
     bestLineWeight: meta.bestLineWeight,

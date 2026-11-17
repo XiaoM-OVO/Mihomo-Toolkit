@@ -21,7 +21,7 @@
 
 'use strict';
 
-const { REGEX_FLAGS, REGEX_UNKNOWN_FLAG, REGEX_ENTRY_CITY } = require('../data/name-grammar');
+const { REGEX_FLAGS, REGEX_UNKNOWN_FLAG, REGEX_ENTRY_CITY, findEntryExitCompounds } = require('../data/name-grammar');
 const { escapeRegex: escapePattern, DOMESTIC_ENTRY_CITIES } = require('../data/cleaner-rules');
 const { getEnhancedRegionDefs, getRegionFlagLookup } = require('./shared/regions');
 
@@ -72,7 +72,7 @@ function isEntryMatch(match) {
  * @returns {{ regionDef: object|null, matches: Array<object>, hasConflict: boolean, conflictReason: string|null, flagRegion: object|null }}
  */
 function recognizeRegion(name, regionDefs, options = {}) {
-  const empty = { regionDef: null, matches: [], hasConflict: false, conflictReason: null, flagRegion: null };
+  const empty = { regionDef: null, matches: [], hasConflict: false, conflictReason: null, flagRegion: null, transits: [] };
   if (!name || typeof name !== 'string') return empty;
 
   const defs = regionDefs || getEnhancedRegionDefs();
@@ -85,10 +85,23 @@ function recognizeRegion(name, regionDefs, options = {}) {
 
   const matches = collectMatches(name, defs);
 
+  // 复合中转段（`沪港` / `深-港`）：只有当名字里还存在独立落地（文字或国旗）时，
+  // 它才是「中转线路」，其中的枢纽字不参与落地竞争。否则维持原语义：
+  // `深港专线` 仍按「入口深 → 落地港」处理。
+  const overlaps = (m, span) => m.index < span.end && m.index + m.len > span.start;
+  const compounds = findEntryExitCompounds(name);
+  const hasOuterRegion = compounds.length > 0 && (
+    Boolean(flagRegion) || matches.some(m => !compounds.some(c => overlaps(m, c)))
+  );
+  const transits = hasOuterRegion ? compounds : [];
+
   // 入口城市出现在落地之前时，只是中转标签，不参与「落地」竞争。
   const entryMatch = name.match(REGEX_ENTRY_CITY);
   const entryIndex = entryMatch ? entryMatch.index : -1;
-  const exitCandidates = matches.filter(m => !(isEntryMatch(m) && entryIndex >= 0 && m.index >= entryIndex));
+  const exitCandidates = matches.filter(m => {
+    if (transits.some(c => overlaps(m, c))) return false;
+    return !(isEntryMatch(m) && entryIndex >= 0 && m.index >= entryIndex);
+  });
 
   const exit = exitCandidates.reduce((best, cur) => {
     if (!best) return cur;
@@ -151,7 +164,8 @@ function recognizeRegion(name, regionDefs, options = {}) {
     matches,
     hasConflict: Boolean(conflictReason),
     conflictReason,
-    flagRegion
+    flagRegion,
+    transits
   };
 }
 

@@ -64,6 +64,57 @@ const REGEX_ENTRY_CITY = new RegExp(
 );
 
 /**
+ * 复合中转段的「枢纽」别名：取自 EXIT_REGIONS 的单字项。
+ *
+ * 不在词表里枚举「沪港 / 深港 / 京港」这类具体组合，而是用现成的
+ * 入口城市 + 枢纽别名做结构识别。枢纽后紧跟更长地区词时避让
+ * （`上海-日本` 的 `日` 不能被当成 `上海-日` 的枢纽）。
+ */
+const TRANSIT_HUB_PATTERN = (() => {
+  const hubs = [...new Set(EXIT_REGIONS.filter(r => [...r].length === 1))];
+  return hubs.map(hub => {
+    const longer = EXIT_REGIONS.filter(r => [...r].length > 1 && r.startsWith(hub));
+    const avoid = longer.length > 0
+      ? `(?!${longer.map(r => escapeRegex(r.slice(hub.length))).join('|')})`
+      : '';
+    return `${escapeRegex(hub)}${avoid}`;
+  }).join('|');
+})();
+
+/**
+ * 提取「入口城市 + 枢纽」的复合中转段（`沪港`、`深-港`、`京港`…）。
+ *
+ * 只负责结构识别，不判断它到底是中转线路还是最终落地；是否作为中转段
+ * 由调用方结合「名字里是否还有独立落地地区」决定（见 core/recognizer）。
+ *
+ * @param {string} name
+ * @returns {Array<{ text: string, entry: string, hub: string, start: number, end: number }>}
+ */
+function findEntryExitCompounds(name) {
+  if (!name || typeof name !== 'string') return [];
+
+  const hubAtom = `(?:${TRANSIT_HUB_PATTERN})`;
+  const reg = new RegExp(
+    `(${ENTRY_PATTERN})(?:${CONNECTOR_PATTERN})?(${hubAtom}(?:${hubAtom})*)`,
+    'gi'
+  );
+  const spans = [];
+  let match;
+
+  while ((match = reg.exec(name)) !== null) {
+    spans.push({
+      text: match[0],
+      entry: match[1],
+      hub: match[2],
+      start: match.index,
+      end: match.index + match[0].length
+    });
+  }
+
+  return spans;
+}
+
+/**
  * 倍率语法：前缀「倍率: 2.5」/ x 前缀「x0.5」/ 后缀「1.5倍」。
  * `core/metadata` 按顺序尝试，命中即止；架构词（x64 等）由 ARCH_AVOID_SET 避让。
  */
@@ -93,5 +144,6 @@ module.exports = {
   REGEX_FLAGS,
   REGEX_UNKNOWN_FLAG,
   MULTIPLIER_PATTERNS,
+  findEntryExitCompounds,
   buildRegionRegex
 };

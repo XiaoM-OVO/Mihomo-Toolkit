@@ -81,7 +81,7 @@ for (const [label, actual] of baseline) {
 
 // 7. 契约文档与历史记录中的相对链接必须真实存在
 const mdFiles = [
-  'README.md', 'ARCHITECTURE.md', 'CONFIGURATION.md', 'DEFAULTS.md', 'ROADMAP.md',
+  'README.md', 'ARCHITECTURE.md', 'CONFIGURATION.md', 'DEFAULTS.md', 'NAMING_GRAMMAR.md', 'ROADMAP.md',
   ...walk(path.join(ROOT, 'docs'))
     .filter(file => file.endsWith('.md') && !file.endsWith('changelog-legacy.md'))
     .map(file => path.relative(ROOT, file))

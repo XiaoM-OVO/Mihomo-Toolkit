@@ -8,6 +8,7 @@
 | [CONFIGURATION.md](../CONFIGURATION.md) | 用户配置契约（字段、语义、默认值） |
 | [DEFAULTS.md](../DEFAULTS.md) | 默认产物基线（规模、59 条展开顺序、变更规则） |
 | [ARCHITECTURE.md](../ARCHITECTURE.md) | 分层架构与依赖规则 |
+| [NAMING_GRAMMAR.md](../NAMING_GRAMMAR.md) | 节点命名结构形态、识别顺序、裁决规则与已知边界 |
 | [ROADMAP.md](../ROADMAP.md) | 当前状态、里程碑与候选改进 |
 
 ## 记录与明细（docs/）
