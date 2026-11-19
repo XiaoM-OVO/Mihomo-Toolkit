@@ -17,6 +17,8 @@ const { isAllowedUrlAsync, redactUrl } = require('../io/ssrf');
 const { validateRequestLimits, DEFAULT_REQUEST_LIMITS } = require('../io/limits');
 const { hardenRemoteConfig } = require('../core/security/remote-config');
 const { absolutizeMountPaths } = require('../config/mounts');
+const { resolveUaVariantPatterns, matchUaVariant } = require('../config/ua-variant');
+const { UA_OS_PARAM_VALUES, UA_OS_PARAM_TO_OSTYPE, UA_VARIANT_OS } = require('../data/ua-variants');
 const { expandIncludes } = require('../config/include');
 const { normalizeSubDomains, normalizeProxyRules, isTrustedProxy } = require('../infra/ip');
 const { renderDelivery } = require('../strategy/delivery-overlay');
@@ -26,6 +28,8 @@ const pkg = require('../../package.json');
 // 远程配置审计去重：按「配置来源 URL + 同一组被忽略字段」隔离计数；
 // 加固与剥离行为始终执行，去重只影响日志级别。
 const remoteConfigAuditGate = createRepeatGate(100);
+// UA 匹配表告警去重：同一告警文案只完整输出一次，重复出现降级为计数提示
+const uaPatternAuditGate = createRepeatGate(100);
 
 /**
  * 把订阅标识编码为安全的响应头值。
@@ -561,6 +565,7 @@ function startServer(options = {}) {
         if (reqUrl.searchParams.get('config')) safeParams.push(`config=${redactUrl(reqUrl.searchParams.get('config'))}`);
         if (reqUrl.searchParams.has('token')) safeParams.push('token=***');
         if (reqUrl.searchParams.has('debug')) safeParams.push(`debug=${reqUrl.searchParams.get('debug')}`);
+        if (reqUrl.searchParams.has('os')) safeParams.push(`os=${reqUrl.searchParams.get('os')}`);
         if (reqUrl.searchParams.has('refresh')) safeParams.push(`refresh=${reqUrl.searchParams.get('refresh')}`);
         else if (reqUrl.searchParams.has('force')) safeParams.push(`force=${reqUrl.searchParams.get('force')}`);
         if (safeParams.length > 0) safeUrl += `?${safeParams.join('&')}`;
@@ -672,6 +677,44 @@ function startServer(options = {}) {
           res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end('Bad Request: Please provide ?url=... or ?config=... or place a config.yaml in the working directory.');
           return;
+        }
+
+        // ── 客户端变体解析（?os= 显式 > UA 匹配 > 默认）────────────────────
+        // 命中移动端变体即以 osType=none patch 构建输入：剥除全部进程规则
+        // （PROCESS-NAME 仅在运行 mihomo 的桌面端有意义）。osType 是缓存键的
+        // 一部分，变体缓存天然隔离；未命中时不 patch，与既有行为完全一致。
+        const osParamRaw = reqUrl.searchParams.get('os');
+        if (osParamRaw !== null && !paramsAllowed) {
+          rejectParams();
+          return;
+        }
+        let osTypePatch = null;
+        if (osParamRaw !== null) {
+          const osParam = osParamRaw.trim().toLowerCase();
+          if (!UA_OS_PARAM_VALUES.includes(osParam)) {
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end(`Bad Request: Invalid os param "${redactUrl(osParamRaw)}" (allowed: ${UA_OS_PARAM_VALUES.join(', ')})`);
+            return;
+          }
+          osTypePatch = UA_OS_PARAM_TO_OSTYPE[osParam];
+        } else {
+          const { patterns, warnings } = resolveUaVariantPatterns(localConfig.uaVariantPatterns);
+          for (const message of [...new Set(warnings)]) {
+            const seenTimes = uaPatternAuditGate(message);
+            if (seenTimes === 1) {
+              serverLogger.warn(`⚠️ ${message}`);
+            } else {
+              serverLogger.debug(`⚠️ ${message}（重复告警第 ${seenTimes} 次）`);
+            }
+          }
+          const variant = matchUaVariant(userAgent, patterns);
+          if (variant) {
+            osTypePatch = UA_VARIANT_OS[variant];
+            serverLogger.info(`📱 UA 命中 ${variant} 变体，按 osType=${osTypePatch} 下发（剥除进程规则）<- ${clientIp}`);
+          }
+        }
+        if (osTypePatch !== null && osTypePatch !== userConfig.osType) {
+          userConfig = { ...userConfig, osType: osTypePatch };
         }
 
         // 订阅服务域名/IP 直连自适应推导：Host 为客户端可控输入，必须过白名单/可信边界

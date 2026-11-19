@@ -72,6 +72,14 @@ const {
   ISOLATION_SORT_ORDER
 } = require('./cleaner-rules');
 
+const {
+  UA_VARIANT_PATTERN_DEFAULTS,
+  UA_VARIANT_KEYS,
+  UA_VARIANT_OS,
+  UA_OS_PARAM_VALUES,
+  UA_OS_PARAM_TO_OSTYPE
+} = require('./ua-variants');
+
 module.exports = {
   // 字段注册表
   FIELDS,
@@ -83,6 +91,12 @@ module.exports = {
   REMOTE_ALLOWED_FIELDS,
   buildDefaultConfig,
   DEFAULT_PROXY_SERVER_DNS,
+  // 客户端 UA 变体基线
+  UA_VARIANT_PATTERN_DEFAULTS,
+  UA_VARIANT_KEYS,
+  UA_VARIANT_OS,
+  UA_OS_PARAM_VALUES,
+  UA_OS_PARAM_TO_OSTYPE,
   // 只读安全基线
   PROTECTED_DOMAINS,
   SKELETON_EXEMPT_GROUPS,

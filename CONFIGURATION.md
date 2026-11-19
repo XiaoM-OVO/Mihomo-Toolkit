@@ -532,7 +532,8 @@ servicesConfigFile: "./services.config.yaml"
 | :--- | :--- | :--- | :---: | :---: | :--- |
 | `enablePipeline` | `boolean` | `true` | `any` | `override` | **流水线总控**：设为 `false` 则跳过所有策略拓扑组建、规则集编排与内核优化，仅交付清洗后的节点。 |
 | `logLevel` | `string` | `'info'` | `any` | `override` | **日志输出级别**：可选 `silent` \| `error` \| `warn` \| `info` \| `debug`。日常使用建议 `info`。 |
-| `osType` | `string` | `'windows'` | `any` | `override` | **目标运行环境**：可选 `windows` \| `mac` \| `linux` \| `all`。用于匹配特定操作系统的进程分流名单。 |
+| `osType` | `string` | `'windows'` | `any` | `override` | **目标运行环境**：可选 `windows` \| `mac` \| `linux` \| `all` \| `none`。用于匹配特定操作系统的进程分流名单；`none` 不注入任何进程规则（服务器按客户端 UA 下发移动端变体时内部使用）。 |
+| `uaVariantPatterns` | `object` | 内置表（见下） | `any` | `override` | **服务器 UA 变体匹配表**（仅 server 模式生效）：UA 命中 `ios` / `android` 变体即以 `osType=none` 下发（剥除进程规则）。键级覆写内置默认表，条目为小写不敏感子串；识别失败一律回落配置默认变体（fail-closed）。内置表：`ios: [Stash/, Shadowrocket/, SFI/, Loon/, Surge iOS/]`、`android: [ClashMetaForAndroid, SFA/, NekoBox]`。 |
 | `trafficDirection` | `string` | `'split'` | `any` | `override` | **流量方向**：`split` 国内直连 / 海外代理（默认）；`return` 回国（国内代理 / 海外直连）。只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支；规则的国内 / 海外走向由 `routing` 决定。 |
 | `defaultProxyMode` | `string` | `'auto'` | `any` | `override` | **默认代理行为**：可选 `auto` (自动测速) \| `manual` (手动选择) \| `fallback` (故障转移) \| `direct` \| `reject`。 |
 | `enableIPv6` | `boolean` | `false` | `any` | `override` | **全局 IPv6 开关**：控制 TUN、DNS 及路由规则的 IPv6 通道；为 `false` 时同时剔除 server 为 IPv6 字面量的纯 IPv6 节点。为 `true` 时生成「IPv6控制台」出口开关组（默认跟随漏网之鱼，可切 `REJECT` / `DIRECT`）。本机无公网物理 IPv6 时请保持 `false`。 |
@@ -547,7 +548,14 @@ defaultProxyMode: "auto"
 osType: "windows"
 include:
   - "./my-custom-rules.yaml"
+
+# 服务器 UA 变体（可选）：键级覆写内置匹配表，给新客户端补一行子串即可
+uaVariantPatterns:
+  ios:
+    - "Quantumult"                       # 例：新增 iOS 客户端识别
 ```
+
+服务器模式还支持 `?os=` 显式参数覆写变体（优先级高于 UA 匹配）：`?os=ios|android` 下发剥除进程规则的移动端变体，`?os=windows|mac|linux|all` 直接覆写 `osType`；非法值返回 400。该参数与 `?url=` / `?config=` 同受 `enableUrlParams` 与 authToken 信任边界约束。
 
 ---
 

@@ -28,6 +28,7 @@ const {
 } = require('./security-baselines');
 const { DEFAULT_ROUTING } = require('./default-routing');
 const { GROUP_KEYS, groupName } = require('./catalog/identity');
+const { UA_VARIANT_PATTERN_DEFAULTS } = require('./ua-variants');
 
 /**
  * 字段声明表。
@@ -48,7 +49,9 @@ const FIELDS = [
   { key: 'logLevel', type: 'string', default: 'info', merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '日志级别: silent | error | warn | info | debug' },
   { key: 'osType', type: 'string', default: 'windows', merge: 'override', trust: 'any',
-    group: '基础全局配置', doc: '设备类型: windows | mac | linux | all' },
+    group: '基础全局配置', doc: '设备类型: windows | mac | linux | all | none（none 不注入任何进程规则，服务器按客户端 UA 下发移动端变体时内部使用）' },
+  { key: 'uaVariantPatterns', type: 'object', default: UA_VARIANT_PATTERN_DEFAULTS, merge: 'override', trust: 'any',
+    group: '基础全局配置', doc: '服务器按客户端 UA 自动适配的匹配表（键级覆写内置默认表，子串匹配不区分大小写）：UA 命中 ios/android 变体即以 osType=none 下发，剥除进程规则' },
   { key: 'trafficDirection', type: 'string', default: 'split', merge: 'override', trust: 'any',
     group: '基础全局配置', doc: '流量方向: split(默认，国内直连/海外代理) | return(回国，国内代理/海外直连)——只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支' },
   { key: 'defaultProxyMode', type: 'string', default: 'auto', merge: 'override', trust: 'any',

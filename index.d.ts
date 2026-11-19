@@ -266,8 +266,10 @@ export interface ToolkitConfig {
   // 基础全局配置
   /** 流水线总控：设为 false 则跳过策略编排与拓扑构建，仅交付清洗后的节点 */
   enablePipeline?: boolean;
-  /** 设备类型: windows | mac | linux | all */
+  /** 设备类型: windows | mac | linux | all | none（none 不注入任何进程规则，服务器按客户端 UA 下发移动端变体时内部使用） */
   osType?: string;
+  /** 服务器按客户端 UA 自动适配的匹配表（键级覆写内置默认表，子串匹配不区分大小写）：UA 命中 ios/android 变体即以 osType=none 下发，剥除进程规则 */
+  uaVariantPatterns?: { ios?: string[]; android?: string[] };
   /** 流量方向: split(默认，国内直连/海外代理) | return(回国，国内代理/海外直连)——只影响 DNS 上游、QUIC 拦截目标与 WebRTC 分支 */
   trafficDirection?: 'split' | 'return';
   /** 默认代理策略: auto | manual | fallback（特殊: direct / reject） */
