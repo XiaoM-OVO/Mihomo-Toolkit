@@ -190,7 +190,8 @@ src/
 │   ├── catalog.js                # 服务编目投影层 (静态声明来自 data/catalog)
 │   ├── defaults.js               # 出厂默认配置 (由 field-registry 派生)
 │   ├── include.js                # 配置片段挂载 include (主文件优先/环路防护)
-│   └── mounts.js                 # 外挂文件载入与存在性校验
+│   ├── mounts.js                 # 外挂文件载入与存在性校验
+│   └── ua-variant.js             # 客户端 UA 变体解析 (匹配表归一化/移动端识别纯函数)
 │
 ├── 7. data/                      # 📦 Layer 7: 只读运行基础层 (静态基线与字典)
 │   ├── index.js                  # 基础层统一导出
@@ -223,6 +224,7 @@ src/
 │   ├── cleaner-rules.js          # 节点清洗规则库 (地区/线路/阻断正则/权重)
 │   ├── default-routing.js        # 出厂分流表与预设定义 (规则顺序唯一基线)
 │   ├── default-pools.js          # 内置节点池定义与展示顺序 (隔离/低倍率)
+│   ├── ua-variants.js            # 客户端 UA 变体基线 (内置匹配表/变体映射/参数契约)
 │   └── name-grammar.js           # 名称语法正则库 (入口/落地/国旗/倍率唯一产地)
 │
 └── 8. infra/                     # 🧱 Layer 8: 基础设施层 (无状态纯计算基元)
