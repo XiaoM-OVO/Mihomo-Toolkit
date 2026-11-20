@@ -39,6 +39,13 @@ describe('【Strategy】目标注册表 (TargetRegistry)', () => {
     assert.equal(registry.resolve('负载均衡-哈希 (香港)'), '负载均衡-哈希 (香港)');
   });
 
+  it('派生轮询组 / 派生家宽组为合法目标（缺席由剪枝层处理）', () => {
+    const registry = build();
+    assert.equal(registry.resolve('负载均衡-轮询 (香港)'), '负载均衡-轮询 (香港)');
+    assert.equal(registry.resolve('家宽 (香港)'), '家宽 (香港)');
+    assert.equal(registry.resolve('家宽 (其它)'), '家宽 (其它)');
+  });
+
   it('`@pool:` 只接受当前生效的池；未启用的内置池与未知池分别给出提示', () => {
     const on = build({ config: { enableIsolation: true } });
     assert.equal(on.resolve('@pool:家宽优选'), '家宽优选');

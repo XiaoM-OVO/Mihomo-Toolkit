@@ -12,7 +12,7 @@
  *   - `name`           规范目标名
  *   - `aliases`        可命中的写法（原始名 + 去装饰名，ref 键单独登记）
  *   - `refKey`         来自 `registries.groups` 的目录键（用于 `disabled` 结算），否则为 null
- *   - `source`         来源类别：builtin / skeleton / download / pool / hashLb / region / continent / user / directory / service
+ *   - `source`         来源类别：builtin / skeleton / download / pool / hashLb / rrLb / resiRegion / region / continent / user / directory / service
  *   - `materializable` 是否会被物化成真实策略组（内核内置目标为 false）
  *   - `skeleton`       是否骨架常驻组
  *   - `poolDependent`  池为空 / 未激活时不建组，指向它的规则按设计跳过
@@ -23,6 +23,8 @@
 const {
   getEnhancedRegionDefs,
   getHashLbGroupNames,
+  getRoundRobinLbGroupNames,
+  getResiRegionGroupNames,
   CONTINENT_DEFS
 } = require('../core/shared/regions');
 const { POOL_NAMES, GATED_POOL_NAMES } = require('../data/default-pools');
@@ -143,6 +145,14 @@ function createTargetRegistry({
 
   for (const name of getHashLbGroupNames()) {
     register(name, 'hashLb');
+  }
+
+  for (const name of getRoundRobinLbGroupNames()) {
+    register(name, 'rrLb');
+  }
+
+  for (const name of getResiRegionGroupNames()) {
+    register(name, 'resiRegion');
   }
 
   for (const region of getEnhancedRegionDefs()) {

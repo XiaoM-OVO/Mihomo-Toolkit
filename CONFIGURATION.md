@@ -596,6 +596,8 @@ uaVariantPatterns:
 | `coreRegions` | `string[]` | `['cn', 'hk', 'tw', 'jp', 'kr', 'sg', 'us']` | `any` | `override` | **主力免折叠大区清单**：即使节点数低于阈值，也始终保持独立建组的大区代码。 |
 | `regionGroupType` | `string` | `'url-test'` | `any` | `override` | **地区策略组行为类型**：`url-test` (测速优选) \| `select` (手动选择) \| `fallback` (故障转移)。 |
 | `enableRegionHashLB`| `boolean`| `false` | `any` | `override` | **地区哈希负载均衡**：是否为符合条件的地区额外创建一致性哈希负载均衡组。 |
+| `enableRegionRoundRobin`| `boolean`| `false` | `any` | `override` | **地区轮询负载均衡**：为每个低倍率节点 ≥2 的地区创建轮询负载均衡派生组（`🔄 负载均衡-轮询 (地区)`），插入地区组头部与下载策略，下载可定向到特定地区。 |
+| `enableRegionResidential`| `boolean`| `false` | `any` | `override` | **地区家宽组**：为家宽节点 ≥2 的地区派生 `🏠 家宽 (地区)` 隐藏故障转移组并插入家宽优选头部，双层 fallback 自动兜底与归位；仅一个有家宽的地区时自动不派生（需 `enableIsolation: true`）。 |
 | `hideUnknownGroup`| `boolean` | `false` | `any` | `override` | **隐藏未知识别组**：是否在客户端策略组面板中隐藏「🗑️ 未知识别」策略组。 |
 | `groupIconMode` | `string` | `'emoji'` | `any` | `override` | **策略组视觉风格**：`emoji` (默认带Emoji) \| `icon` (仅在线图标纯净名) \| `both` (两者皆有) \| `none` (纯文本零图标)。 |
 | `groupIcons` | `object` | `{}` | `any` | `override` | **策略组图标覆写字典**：自定义策略组对应的 Emoji 或图标文件名/URL。 |

@@ -46,6 +46,8 @@
 | `enableTrafficAudit` | **开** | 关 | −2 规则（`DST-PORT,53/80/443` 与 `DST-PORT,1-65535`） |
 | `trafficDirection` | `'split'` | `'return'` | DNS 上游互换、QUIC 拦截的 CN / 非 CN 分支翻转、WebRTC 组成员顺序翻转；规则顺序与目标不变（走向由 `routing` 的 `to` 决定） |
 | `enableRegionHashLB` | 关 | 开 | +1 组（⚖️ 负载均衡-哈希），需要节点支持 |
+| `enableRegionRoundRobin` | 关 | 开 | 每个低倍率节点 ≥2 的地区 +1 组（🔄 负载均衡-轮询 (地区)，隐藏），插入地区组头部；下载策略引用时其 proxies 追加派生组名 |
+| `enableRegionResidential` | 关 | 开 | 需 `enableIsolation` 开且家宽节点充足：≥2 家宽节点的地区各 +1 组（🏠 家宽 (地区)，隐藏 fallback），插入家宽优选头部形成双层自动兜底链；仅单地区或单节点地区时自动不派生（家宽优选平铺兜底） |
 | `enableDashboard` | **开** | 关 | 样本下无差异（看板依赖节点信息） |
 
 ## 三、默认规则顺序（展开期 59 条，默认产物 59 条）

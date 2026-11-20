@@ -67,6 +67,15 @@ describe('【Strategy】策略组展示层与图标装饰 (strategy-presentation
       assert.equal(emojiMap['ChatGPT'], '🤖 ChatGPT');
     });
 
+    it('派生轮询/家宽组登记 emoji 徽标与图标映射', () => {
+      const { emojiMap, iconMap } = buildPresentationMaps({});
+
+      assert.equal(emojiMap['负载均衡-轮询 (香港)'], '🔄 负载均衡-轮询 (香港)');
+      assert.ok(iconMap['负载均衡-轮询 (香港)']);
+      assert.equal(emojiMap['家宽 (香港)'], '🏠 家宽 (香港)');
+      assert.ok(iconMap['家宽 (香港)']);
+    });
+
     it('groupIcons 自定义配置支持字符串与对象声明', () => {
       const userConfig = {
         groupIcons: {

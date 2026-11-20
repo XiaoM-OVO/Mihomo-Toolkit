@@ -9,7 +9,7 @@
  * 3. emoji / both 模式：依据统一字典一次性赋予徽标并安全更新 rules/proxies 引用。
  */
 
-const { getEnhancedRegionDefs, getHashLbGroupNames, CONTINENT_DEFS } = require('../core/shared/regions');
+const { getEnhancedRegionDefs, getHashLbGroupNames, getRoundRobinLbGroupNames, getResiRegionGroupNames, CONTINENT_DEFS } = require('../core/shared/regions');
 const { replaceRuleTarget } = require('../core/chinese-sync');
 const { FIELDS_BY_KEY } = require('../data');
 const {
@@ -136,6 +136,24 @@ function buildPresentationMaps(userConfig = {}, registries = {}) {
     emojiMap[cleanName] = fullName;
     iconMap[cleanName] = hashLbIconUrl;
     iconMap[fullName] = hashLbIconUrl;
+  }
+
+  // 2.6 轮询负载均衡组（enableRegionRoundRobin 派生），与哈希派生同机制
+  const rrLbIconUrl = resolveIconUrl('Roundrobin.png', 'orz', userConfig);
+  for (const cleanName of getRoundRobinLbGroupNames()) {
+    const fullName = `🔄 ${cleanName}`;
+    emojiMap[cleanName] = fullName;
+    iconMap[cleanName] = rrLbIconUrl;
+    iconMap[fullName] = rrLbIconUrl;
+  }
+
+  // 2.7 家宽按地区派生组（enableRegionResidential），与骨架家宽组同款图标
+  const resiRegionIconUrl = resolveIconUrl('05icon/home.png', 'lige47', userConfig);
+  for (const cleanName of getResiRegionGroupNames()) {
+    const fullName = `🏠 ${cleanName}`;
+    emojiMap[cleanName] = fullName;
+    iconMap[cleanName] = resiRegionIconUrl;
+    iconMap[fullName] = resiRegionIconUrl;
   }
 
   // 3. 业务服务注册表 (AI, Streaming, Dev, System, 聚合组及专项组等)

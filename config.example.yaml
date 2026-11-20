@@ -180,6 +180,8 @@ showFeatureIcon: true              # 节点名后追加特征 Emoji（🚀 4K �
 # minorNodeThreshold: 3            # 小众地区独立建组最小节点数（低于则折叠进大洲组）
 # coreRegions: ["cn", "hk", "tw", "jp", "kr", "sg", "us"]  # 主力免折叠大区
 # enableRegionHashLB: false        # 地区组增加哈希负载均衡（建议配 regionGroupType: select）
+# enableRegionRoundRobin: false    # 地区组增加轮询负载均衡派生组（地区 ∩ 低倍率 ≥2 才派生，并插入下载策略）
+# enableRegionResidential: false   # 家宽节点 ≥2 的地区派生「家宽 (地区)」隐藏 fallback 组插入家宽优选头部，双层自动兜底（需 enableIsolation）
 # hideUnknownGroup: false          # 面板隐藏「🗑️ 未知识别」组
 # groupIconMode: "emoji"           # emoji | icon（纯净名+在线图标）| both | none
 # groupIcons:                      # 图标覆盖

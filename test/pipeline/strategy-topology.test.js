@@ -228,6 +228,222 @@ describe('【Pipeline】策略组拓扑装配与分流桶 (strategy-topology)', 
     assert.deepEqual(buckets.hk, ['🇭🇰 香港 01', '🇭🇰 香港 02']);
   });
 
+  it('buildProxyTopology - 地区轮询负载均衡 (enableRegionRoundRobin)', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const classifiedNodes = [
+      {
+        proxy: { name: '🇭🇰 香港 01' },
+        rawName: '🇭🇰 香港 01',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['lowMulti'],
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇭🇰 香港 02' },
+        rawName: '🇭🇰 香港 02',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['lowMulti'],
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇭🇰 香港 03' },
+        rawName: '🇭🇰 香港 03',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: [],
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇺🇸 美国 01' },
+        rawName: '🇺🇸 美国 01',
+        regionInfo: { id: 'us', name: '美国' },
+        tags: ['lowMulti'],
+        groupKey: 'us'
+      }
+    ];
+
+    const { proxyGroups } = buildProxyTopology({
+      classifiedNodes,
+      userConfig: {
+        ...DEFAULT_CONFIG,
+        enableRegionRoundRobin: true
+      },
+      registries,
+      ruleTargets: ['下载策略']
+    });
+
+    const hkRrGroup = proxyGroups.find(g => g.name === '负载均衡-轮询 (香港)');
+    assert.ok(hkRrGroup, '应生成香港轮询负载均衡派生组');
+    assert.equal(hkRrGroup.type, 'load-balance');
+    assert.equal(hkRrGroup.strategy, 'round-robin');
+    assert.equal(hkRrGroup.hidden, true);
+    assert.deepEqual(hkRrGroup.proxies, ['🇭🇰 香港 01', '🇭🇰 香港 02']);
+
+    const hkGroup = proxyGroups.find(g => g.name === '香港节点');
+    assert.ok(hkGroup, '应包含香港地区组');
+    assert.equal(hkGroup.proxies[0], '负载均衡-轮询 (香港)');
+    assert.ok(hkGroup.proxies.includes('🇭🇰 香港 03'), '非低倍率成员仍保留在地区组');
+
+    const usRrGroup = proxyGroups.find(g => g.name.includes('轮询 (美国)'));
+    assert.equal(usRrGroup, undefined, '低倍率成员不足 2 个的地区不派生轮询组');
+
+    const dlGroup = proxyGroups.find(g => g.name === '下载策略');
+    assert.ok(dlGroup, 'ruleTargets 引用下载策略时应装配');
+    const rrIdx = dlGroup.proxies.indexOf('负载均衡-轮询');
+    const rrHkIdx = dlGroup.proxies.indexOf('负载均衡-轮询 (香港)');
+    assert.ok(rrIdx !== -1 && rrHkIdx !== -1 && rrHkIdx === rrIdx + 1, '派生组名应紧跟全局轮询组');
+  });
+
+  it('buildProxyTopology - 哈希与轮询负载均衡双开时地区组头部顺序', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const classifiedNodes = [
+      {
+        proxy: { name: '🇭🇰 香港 01' },
+        rawName: '🇭🇰 香港 01',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['lowMulti'],
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇭🇰 香港 02' },
+        rawName: '🇭🇰 香港 02',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['lowMulti'],
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇺🇸 美国 01' },
+        rawName: '🇺🇸 美国 01',
+        regionInfo: { id: 'us', name: '美国' },
+        tags: [],
+        groupKey: 'us'
+      }
+    ];
+
+    const { proxyGroups } = buildProxyTopology({
+      classifiedNodes,
+      userConfig: {
+        ...DEFAULT_CONFIG,
+        enableRegionHashLB: true,
+        enableRegionRoundRobin: true
+      },
+      registries
+    });
+
+    const hkGroup = proxyGroups.find(g => g.name === '香港节点');
+    assert.ok(hkGroup);
+    assert.deepEqual(
+      hkGroup.proxies.slice(0, 2),
+      ['负载均衡-哈希 (香港)', '负载均衡-轮询 (香港)'],
+      '双开时哈希在前、轮询次之'
+    );
+    assert.equal(proxyGroups.find(g => g.name.includes('轮询 (美国)')), undefined, '低倍率交集为空的地区不派生');
+  });
+
+  it('buildProxyTopology - 地区家宽派生组 (enableRegionResidential)', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const classifiedNodes = [
+      {
+        proxy: { name: '🇭🇰 香港 家宽 01' },
+        rawName: '🇭🇰 香港 家宽 01',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['residential'],
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇭🇰 香港 家宽 02' },
+        rawName: '🇭🇰 香港 家宽 02',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['residential'],
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇯🇵 日本 家宽 01' },
+        rawName: '🇯🇵 日本 家宽 01',
+        regionInfo: { id: 'jp', name: '日本' },
+        tags: ['residential'],
+        groupKey: 'jp'
+      },
+      {
+        proxy: { name: '🇯🇵 日本 家宽 02' },
+        rawName: '🇯🇵 日本 家宽 02',
+        regionInfo: { id: 'jp', name: '日本' },
+        tags: ['residential'],
+        groupKey: 'jp'
+      },
+      {
+        proxy: { name: '🌍 未知 家宽 01' },
+        rawName: '🌍 未知 家宽 01',
+        tags: ['residential'],
+        groupKey: 'unknown'
+      }
+    ];
+
+    const { proxyGroups } = buildProxyTopology({
+      classifiedNodes,
+      userConfig: {
+        ...DEFAULT_CONFIG,
+        enableIsolation: true,
+        enableRegionResidential: true
+      },
+      registries
+    });
+
+    const hkResi = proxyGroups.find(g => g.name === '家宽 (香港)');
+    assert.ok(hkResi, '应生成香港家宽派生组');
+    assert.equal(hkResi.type, 'fallback', '派生家宽组为双层 fallback 兜底链的内层');
+    assert.equal(hkResi.hidden, true, '派生家宽组为隐藏组，仅从家宽优选头部引用');
+    assert.deepEqual(hkResi.proxies, ['🇭🇰 香港 家宽 01', '🇭🇰 香港 家宽 02']);
+
+    assert.ok(proxyGroups.find(g => g.name === '家宽 (日本)'), '≥2 节点的地区派生');
+    assert.equal(proxyGroups.find(g => g.name === '家宽 (其它)'), undefined, '单节点地区不派生');
+
+    const resiGroup = proxyGroups.find(g => g.name === '家宽优选');
+    assert.ok(resiGroup, '家宽优选池组应存在');
+    assert.deepEqual(
+      resiGroup.proxies.slice(0, 2),
+      ['家宽 (香港)', '家宽 (日本)'],
+      '派生组名应插入家宽优选头部'
+    );
+    for (const nodeName of ['🇭🇰 香港 家宽 01', '🇭🇰 香港 家宽 02', '🇯🇵 日本 家宽 01', '🌍 未知 家宽 01']) {
+      assert.ok(resiGroup.proxies.includes(nodeName), `裸节点 ${nodeName} 保留在家宽优选兜底链`);
+    }
+  });
+
+  it('buildProxyTopology - 单地区家宽不派生，家宽优选平铺兜底', () => {
+    const registries = createServiceRegistries(DEFAULT_CONFIG);
+    const classifiedNodes = [
+      {
+        proxy: { name: '🇭🇰 香港 家宽 01' },
+        rawName: '🇭🇰 香港 家宽 01',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['residential'],
+        groupKey: 'hk'
+      },
+      {
+        proxy: { name: '🇭🇰 香港 家宽 02' },
+        rawName: '🇭🇰 香港 家宽 02',
+        regionInfo: { id: 'hk', name: '香港' },
+        tags: ['residential'],
+        groupKey: 'hk'
+      }
+    ];
+
+    const { proxyGroups } = buildProxyTopology({
+      classifiedNodes,
+      userConfig: {
+        ...DEFAULT_CONFIG,
+        enableIsolation: true,
+        enableRegionResidential: true
+      },
+      registries
+    });
+
+    assert.equal(proxyGroups.find(g => g.name === '家宽 (香港)'), undefined, '仅一个地区时派生组无增益，不派生');
+    const resiGroup = proxyGroups.find(g => g.name === '家宽优选');
+    assert.ok(resiGroup);
+    assert.deepEqual(resiGroup.proxies, ['🇭🇰 香港 家宽 01', '🇭🇰 香港 家宽 02'], '家宽优选平铺兜底');
+  });
+
   it('buildProxyTopology - 节点专属策略组注入 (groupTags 节点标签)', () => {
     const registries = createServiceRegistries(DEFAULT_CONFIG);
     const classifiedNodes = [

@@ -614,6 +614,42 @@ function buildProxyTopology({
       if (group) finalGroups.push(group);
     });
 
+  // 🏠 家宽按地区派生（enableRegionResidential）：为每个有 ≥2 家宽节点的地区生成隐藏 fallback 组，
+  // 并插入家宽优选组 proxies 头部（家宽优选成为目录组：点开先选地区再落节点）。
+  // 双层 fallback 形成自动兜底链：地区内节点挂自动挪、地区恢复自动归位；
+  // 派生组不进面板顶层，地区再多也不增加顶层行数。
+  // 门槛守卫：单节点地区不派生（外层 fallback 直接兜住）；仅一个地区时不派生
+  //（外层与派生组成员集相同，包装层无增益，家宽优选平铺即可）；需家宽池已启用且非空。
+  if (residentialPool && userConfig.enableRegionResidential) {
+    const resiRegionMap = buckets.resiRegionMap || {};
+    const populatedResiRegionCount = Object.values(resiRegionMap)
+      .filter(nodes => Array.isArray(nodes) && nodes.length > 0).length;
+    if (populatedResiRegionCount >= 2) {
+      const resiDerivedNames = [];
+      Object.entries(resiRegionMap).forEach(([key, nodes]) => {
+        if (!Array.isArray(nodes) || nodes.length < 2) return;
+        const suffix = key === 'other' ? '其它' : (regionNames[key] || key).replace(/节点$/, '');
+        const derivedName = `家宽 (${suffix})`;
+        resiDerivedNames.push(derivedName);
+        finalGroups.push({
+          name: derivedName,
+          type: 'fallback',
+          url: testURL,
+          interval: testInterval,
+          lazy: true,
+          proxies: dedupe(nodes),
+          hidden: true
+        });
+      });
+      if (resiDerivedNames.length > 0) {
+        const resiGroup = finalGroups.find(g => g.name === POOL_NAMES.residential);
+        if (resiGroup && Array.isArray(resiGroup.proxies)) {
+          resiGroup.proxies.unshift(...resiDerivedNames);
+        }
+      }
+    }
+  }
+
   // 汇集全量节点池成员字典，供 DSL 中的 @pool:<池名> 统一展开
   const allPoolMembers = {};
   poolDefs.forEach(def => {
@@ -640,6 +676,35 @@ function buildProxyTopology({
     logger
   });
 
+  // 地区轮询负载均衡预计算（enableRegionRoundRobin 派生）：成员 = 地区桶 ∩ 低倍率桶，
+  // 与哈希派生同口径（成员 < 2 的地区跳过派生）；派生组插入地区组头部，
+  // 下载策略装配时在全局轮询组之后追加派生组名，支持下载定向到特定地区。
+  const lowMultiSet = new Set(buckets.lowMulti);
+  const regionRrNamesById = {};
+  const regionRrGroupsById = {};
+  const rrPrefix = groupName(GROUP_KEYS.roundRobin);
+  if (userConfig.enableRegionRoundRobin) {
+    Object.entries(regionNames).forEach(([id, name]) => {
+      const regionNodes = buckets[id];
+      if (!regionNodes || regionNodes.length === 0) return;
+      const rrMembers = dedupe(regionNodes.filter(n => lowMultiSet.has(n)));
+      if (rrMembers.length < 2) return;
+      const cleanRegionName = name.replace(/节点$/, '');
+      const rrName = `${rrPrefix} (${cleanRegionName})`;
+      regionRrNamesById[id] = rrName;
+      regionRrGroupsById[id] = {
+        name: rrName,
+        type: 'load-balance',
+        strategy: 'round-robin',
+        url: testURL,
+        interval: testInterval,
+        lazy: true,
+        proxies: rrMembers,
+        hidden: true
+      };
+    });
+  }
+
   // 下载相关组（下载策略 / 负载均衡-轮询）：出厂声明在 data/catalog/groups.js，
   // 下载策略被规则引用时装配；轮询组由低倍率成员裁剪决定是否保留（空组由 prune 剪除）。
   if (isReferenced(GROUP_KEYS.download)) {
@@ -658,6 +723,16 @@ function buildProxyTopology({
       poolMembers: allPoolMembers,
       logger
     });
+    // 地区轮询派生名插入下载策略：紧跟全局轮询组之后（找不到轮询组时追加尾部兜底）
+    const rrNames = Object.values(regionRrNamesById);
+    if (rrNames.length > 0) {
+      const dlGroup = evaluatedGroups.find(g => g.name === groupName(GROUP_KEYS.download));
+      if (dlGroup && Array.isArray(dlGroup.proxies)) {
+        const rrToken = groupName(GROUP_KEYS.roundRobin);
+        const at = dlGroup.proxies.indexOf(rrToken);
+        dlGroup.proxies.splice(at === -1 ? dlGroup.proxies.length : at + 1, 0, ...rrNames);
+      }
+    }
     finalGroups.push(...evaluatedGroups);
   }
 
@@ -691,15 +766,17 @@ function buildProxyTopology({
   const finalGroup = assembleSkeleton(SKELETON_GROUP_DEFS.final[direction]);
   if (finalGroup) finalGroups.push(finalGroup);
 
-  // 地区组与哈希负载均衡
+  // 地区组与哈希/轮询负载均衡派生
   Object.entries(regionNames).forEach(([id, name]) => {
     const regionNodes = buckets[id];
     if (regionNodes && regionNodes.length > 0) {
-      if (userConfig.enableRegionHashLB && regionNodes.length > 1) {
-        const cleanRegionName = name.replace(/节点$/, '');
-        // 内部一律使用纯净中文名，Emoji 徽标由展示层 (presentation) 在终末统一渲染，
-        // 避免硬编码 ⚖️ 在 groupIconMode: "icon" 下无法剥离
-        const hashGroupName = `负载均衡-哈希 (${cleanRegionName})`;
+      // 内部一律使用纯净中文名，Emoji 徽标由展示层 (presentation) 在终末统一渲染，
+      // 避免硬编码 ⚖️/🔄 在 groupIconMode: "icon" 下无法剥离
+      const cleanRegionName = name.replace(/节点$/, '');
+      const hashGroupName = (userConfig.enableRegionHashLB && regionNodes.length > 1)
+        ? `负载均衡-哈希 (${cleanRegionName})`
+        : null;
+      if (hashGroupName) {
         finalGroups.push({
           name: hashGroupName,
           type: 'load-balance',
@@ -710,10 +787,10 @@ function buildProxyTopology({
           proxies: dedupe(regionNodes),
           hidden: true
         });
-        finalGroups.push(buildRegionGroup(id, name, [hashGroupName, ...regionNodes]));
-      } else {
-        finalGroups.push(buildRegionGroup(id, name, regionNodes));
       }
+      const rrGroup = regionRrGroupsById[id];
+      if (rrGroup) finalGroups.push(rrGroup);
+      finalGroups.push(buildRegionGroup(id, name, [hashGroupName, regionRrNamesById[id], ...regionNodes].filter(Boolean)));
     }
   });
 

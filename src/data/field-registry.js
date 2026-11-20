@@ -27,6 +27,7 @@ const {
   SKELETON_EXEMPT_GROUPS
 } = require('./security-baselines');
 const { DEFAULT_ROUTING } = require('./default-routing');
+const { POOL_NAMES } = require('./default-pools');
 const { GROUP_KEYS, groupName } = require('./catalog/identity');
 const { UA_VARIANT_PATTERN_DEFAULTS } = require('./ua-variants');
 
@@ -118,6 +119,10 @@ const FIELDS = [
     group: '策略组建组与 UI 面板', doc: '地区组行为: url-test | select | fallback' },
   { key: 'enableRegionHashLB', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: '地区组是否增加哈希负载均衡策略组' },
+  { key: 'enableRegionRoundRobin', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '策略组建组与 UI 面板', doc: `地区组是否增加轮询负载均衡派生组（成员 = 地区 ∩ 低倍率，≥2 才派生），并插入${groupName(GROUP_KEYS.download)}` },
+  { key: 'enableRegionResidential', type: 'boolean', default: false, merge: 'override', trust: 'any',
+    group: '策略组建组与 UI 面板', doc: `为家宽节点 ≥2 的地区派生隐藏 fallback 家宽组（家宽 (地区)，需 enableIsolation）并插入${POOL_NAMES.residential}头部，形成双层自动兜底链；仅单地区时自动不派生` },
   { key: 'hideUnknownGroup', type: 'boolean', default: false, merge: 'override', trust: 'any',
     group: '策略组建组与 UI 面板', doc: `隐藏${groupName(GROUP_KEYS.unknown)}节点组` },
   { key: 'groupIconMode', type: 'string', default: 'emoji', merge: 'override', trust: 'any',

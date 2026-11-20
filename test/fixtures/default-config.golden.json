@@ -42,6 +42,8 @@
   "minorNodeThreshold": 3,
   "regionGroupType": "url-test",
   "enableRegionHashLB": false,
+  "enableRegionRoundRobin": false,
+  "enableRegionResidential": false,
   "hideUnknownGroup": false,
   "groupIconMode": "emoji",
   "groupIcons": {},

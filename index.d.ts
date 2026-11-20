@@ -302,6 +302,10 @@ export interface ToolkitConfig {
   regionGroupType?: 'url-test' | 'select' | 'fallback';
   /** 地区组是否增加哈希负载均衡策略组 */
   enableRegionHashLB?: boolean;
+  /** 地区组是否增加轮询负载均衡派生组（成员 = 地区 ∩ 低倍率，≥2 才派生），并插入下载策略 */
+  enableRegionRoundRobin?: boolean;
+  /** 为家宽节点 ≥2 的地区派生家宽组（家宽 (地区) 隐藏 fallback，需 enableIsolation）并插入家宽优选头部形成双层兜底链；仅单地区时自动不派生 */
+  enableRegionResidential?: boolean;
   /** 是否在面板中隐藏「🗑️ 未知识别」组 */
   hideUnknownGroup?: boolean;
   /** 策略组图标模式: emoji | icon | both | none */

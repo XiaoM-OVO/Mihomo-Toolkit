@@ -19,6 +19,7 @@ const {
   REGIONS_BY_ID,
   REGION_ZONES
 } = require('../../data/regions');
+const { GROUP_KEYS, groupName } = require('../../data/catalog/identity');
 
 /**
  * 运行时增强：预编译并装配每个地区的 matchReg / cityReg / codeReg
@@ -191,14 +192,11 @@ function filterRegionsByContinent(groupNames = [], continentToken) {
 }
 
 /**
- * 「负载均衡-哈希 (地区)」派生组名全集
- *
- * 后缀与展示层的地区/大洲徽标同源（地区用 `name`，大洲用 `name`），
- * 拓扑建组、routing 目标白名单与展示层登记共用这一份派生规则，避免各自枚举漂移。
- *
- * @returns {string[]} 形如 `负载均衡-哈希 (香港)` 的组名列表
+ * 负载均衡派生组后缀全集：大陆 + 非 cn 地区名 + 大洲名
+ * 后缀与展示层的地区/大洲徽标同源（地区用 `name`，大洲用 `name`）。
+ * @returns {string[]} 后缀列表
  */
-function getHashLbGroupNames() {
+function getLbSuffixes() {
   const suffixes = new Set(['大陆']);
   for (const r of getEnhancedRegionDefs()) {
     if (r.id !== 'cn' && r.name !== '中国' && r.name) suffixes.add(r.name);
@@ -206,7 +204,44 @@ function getHashLbGroupNames() {
   for (const c of CONTINENT_DEFS) {
     if (c.name) suffixes.add(c.name);
   }
-  return [...suffixes].map(suffix => `负载均衡-哈希 (${suffix})`);
+  return [...suffixes];
+}
+
+/**
+ * 「负载均衡-哈希 (地区)」派生组名全集
+ *
+ * 拓扑建组、routing 目标白名单与展示层登记共用这一份派生规则，避免各自枚举漂移。
+ *
+ * @returns {string[]} 形如 `负载均衡-哈希 (香港)` 的组名列表
+ */
+function getHashLbGroupNames() {
+  return getLbSuffixes().map(suffix => `负载均衡-哈希 (${suffix})`);
+}
+
+/**
+ * 「负载均衡-轮询 (地区)」派生组名全集（enableRegionRoundRobin 派生）
+ * 后缀集与哈希派生完全同源。
+ *
+ * @returns {string[]} 形如 `负载均衡-轮询 (香港)` 的组名列表
+ */
+function getRoundRobinLbGroupNames() {
+  return getLbSuffixes().map(suffix => `${groupName(GROUP_KEYS.roundRobin)} (${suffix})`);
+}
+
+/**
+ * 「家宽 (地区)」派生组名全集（enableRegionResidential 派生）
+ *
+ * 后缀集独立于负载均衡派生：家宽按 resiRegionMap 键（叶子地区 id）归桶，
+ * 全量为所有地区名（剥「节点」后缀）+ 其它，不含大洲。
+ *
+ * @returns {string[]} 形如 `家宽 (香港)` 的组名列表
+ */
+function getResiRegionGroupNames() {
+  const suffixes = new Set(['其它']);
+  for (const r of getEnhancedRegionDefs()) {
+    if (r.name) suffixes.add(r.name.replace(/节点$/, ''));
+  }
+  return [...suffixes].map(suffix => `家宽 (${suffix})`);
 }
 
 module.exports = {
@@ -219,6 +254,8 @@ module.exports = {
   getEnhancedRegionDefs,
   getRegionFlagLookup,
   getHashLbGroupNames,
+  getRoundRobinLbGroupNames,
+  getResiRegionGroupNames,
   validateMapping,
   REGION_DEFS_RAW,
   REGIONS_BY_ID,
